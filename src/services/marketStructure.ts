@@ -330,19 +330,36 @@ export function findVipSupportTap(
       ));
     if (!wasUsableAtChoch) continue;
 
-    const tapped = candles.find((candle) => (
-      candle.time > zone.startTime
-      && candle.time >= activeFromTime
-      && candle.time <= chochTime
-      && (!zone.invalidatedAt || candle.time < zone.invalidatedAt)
-      && candle.high >= zone.bottom
-      && candle.low <= zone.top
-    ));
-    if (tapped && (!selected || tapped.time > selected.tapTime)) {
-      selected = { zone, tapTime: tapped.time };
+    // A visit can span several overlapping candles, but it is still one tap.
+    // Leaving the zone and returning later creates a fresh tap event.
+    let insideZone = false;
+    let latestTapTime: number | undefined;
+    for (const candle of candles) {
+      const inEligibleWindow = candle.time > zone.startTime
+        && candle.time >= activeFromTime
+        && candle.time <= chochTime
+        && (!zone.invalidatedAt || candle.time < zone.invalidatedAt);
+      const overlaps = inEligibleWindow
+        && candle.high >= zone.bottom
+        && candle.low <= zone.top;
+      if (overlaps && !insideZone) latestTapTime = candle.time;
+      insideZone = overlaps;
+    }
+    if (latestTapTime !== undefined && (!selected || latestTapTime > selected.tapTime)) {
+      selected = { zone, tapTime: latestTapTime };
     }
   }
   return selected;
+}
+
+export function selectFreshVipSupportTap<T extends { tapTime: number }>(
+  candidate: T | undefined,
+  lastUsedTapTime: number | undefined,
+): T | undefined {
+  if (!candidate) return undefined;
+  return lastUsedTapTime === undefined || candidate.tapTime > lastUsedTapTime
+    ? candidate
+    : undefined;
 }
 
 export function analyzeMarketStructure(candles: StructureCandle[], options: {
@@ -379,6 +396,7 @@ export function analyzeMarketStructure(candles: StructureCandle[], options: {
   let lastBearishLow: StructurePoint | null = null;
   let currentTrendTjl1: StructureZone | null = null;
   let currentTrendTjl2: StructureZone | null = null;
+  let lastVipSupportTapTimeUsed: number | undefined;
   let pendingDouble: {
     direction: 'bullish' | 'bearish';
     qml: StructureZone;
@@ -426,9 +444,13 @@ export function analyzeMarketStructure(candles: StructureCandle[], options: {
         confirmationBarSeconds: options.confirmationBarSeconds,
       })
       : { status: 'pending' as const };
-    const vipTap = options.vipSupport
+    const candidateVipTap = tjl2 && options.vipSupport
       ? findVipSupportTap(candles, options.vipSupport.zones, sourceChochTime)
       : undefined;
+    const vipTap = selectFreshVipSupportTap(candidateVipTap, lastVipSupportTapTimeUsed);
+    // Reserve a tap for the first proper CHoCH after it, even while the TJL2
+    // higher-timeframe close is pending. A later CHoCH needs a fresh retap.
+    if (vipTap) lastVipSupportTapTimeUsed = vipTap.tapTime;
     const classification = classifyChoch({
       tjl1Confirmed,
       tjl2Confirmed: tjl2Confirmation.status === 'valid',

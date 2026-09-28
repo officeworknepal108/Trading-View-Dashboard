@@ -7,6 +7,7 @@ import {
   findVipSupportTap,
   getConfirmationBucketStart,
   resolveTjl1Confirmation,
+  selectFreshVipSupportTap,
   selectTwoCandleRetracementPivot,
   type StructureCandle,
   type StructureZone,
@@ -75,13 +76,20 @@ test('VIP support requires a mapped HTF zone tap before CHoCH while that zone is
     candle(100, 120, 121, 119),
     candle(200, 105, 108, 102),
     candle(300, 115, 117, 113),
+    candle(400, 106, 109, 103),
   ];
   const supportZone = zone({
     name: 'QML', startTime: 100, activeFromTime: 100,
-    bottom: 100, top: 110, status: 'invalidated', active: false, invalidatedAt: 400,
+    bottom: 100, top: 110, status: 'invalidated', active: false, invalidatedAt: 500,
   });
 
-  assert.equal(findVipSupportTap(sourceCandles, [supportZone], 300)?.tapTime, 200);
+  const firstTap = findVipSupportTap(sourceCandles, [supportZone], 300);
+  const freshRetap = findVipSupportTap(sourceCandles, [supportZone], 400);
+  assert.equal(firstTap?.tapTime, 200);
+  assert.equal(freshRetap?.tapTime, 400);
+  assert.equal(selectFreshVipSupportTap(firstTap, undefined)?.tapTime, 200);
+  assert.equal(selectFreshVipSupportTap(firstTap, 200), undefined);
+  assert.equal(selectFreshVipSupportTap(freshRetap, 200)?.tapTime, 400);
   assert.equal(findVipSupportTap(sourceCandles, [{ ...supportZone, invalidatedAt: 200 }], 300), undefined);
 });
 
