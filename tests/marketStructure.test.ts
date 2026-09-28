@@ -1,8 +1,10 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
+  classifyChoch,
   doesInvalidateZone,
   findFirstZoneTapIndex,
+  findVipSupportTap,
   getConfirmationBucketStart,
   resolveTjl1Confirmation,
   selectTwoCandleRetracementPivot,
@@ -47,6 +49,40 @@ test('structure pivots include the first candle of a confirmed two-candle retrac
 
   assert.deepEqual(selectTwoCandleRetracementPivot(bullish, 0, 3, 'high'), { index: 2, time: 2, price: 115 });
   assert.deepEqual(selectTwoCandleRetracementPivot(bearish, 0, 3, 'low'), { index: 2, time: 2, price: 85 });
+});
+
+test('CHoCH classification follows Valid, Air, VIP, and pending trade rules', () => {
+  assert.deepEqual(
+    classifyChoch({ tjl1Confirmed: true, tjl2Confirmed: true, vipZoneTapped: false }),
+    { chochClass: 'valid', tradeable: true },
+  );
+  assert.deepEqual(
+    classifyChoch({ tjl1Confirmed: false, tjl2Confirmed: true, vipZoneTapped: false }),
+    { chochClass: 'air', tradeable: false },
+  );
+  assert.deepEqual(
+    classifyChoch({ tjl1Confirmed: false, tjl2Confirmed: true, vipZoneTapped: true }),
+    { chochClass: 'vip', tradeable: true },
+  );
+  assert.deepEqual(
+    classifyChoch({ tjl1Confirmed: true, tjl2Confirmed: false, vipZoneTapped: true }),
+    { chochClass: 'pending', tradeable: false },
+  );
+});
+
+test('VIP support requires a mapped HTF zone tap before CHoCH while that zone is valid', () => {
+  const sourceCandles = [
+    candle(100, 120, 121, 119),
+    candle(200, 105, 108, 102),
+    candle(300, 115, 117, 113),
+  ];
+  const supportZone = zone({
+    name: 'QML', startTime: 100, activeFromTime: 100,
+    bottom: 100, top: 110, status: 'invalidated', active: false, invalidatedAt: 400,
+  });
+
+  assert.equal(findVipSupportTap(sourceCandles, [supportZone], 300)?.tapTime, 200);
+  assert.equal(findVipSupportTap(sourceCandles, [{ ...supportZone, invalidatedAt: 200 }], 300), undefined);
 });
 
 test('TJL1 confirms on the first completed mapped higher-timeframe close', () => {

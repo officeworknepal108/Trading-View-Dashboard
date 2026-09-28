@@ -21,6 +21,7 @@ import {
 import { analyzeMarketStructure, StructureLine, StructureZone } from '../services/marketStructure';
 
 type OandaGranularity = 'M1' | 'M5' | 'M15' | 'M30' | 'H1' | 'H4' | 'D';
+type MarketGranularity = OandaGranularity | 'W';
 
 interface OandaCandle {
   time: number;
@@ -35,7 +36,7 @@ interface OandaCandle {
 interface MarketDataResponse {
   ok: boolean;
   source?: string;
-  granularity?: OandaGranularity;
+  granularity?: MarketGranularity;
   fetchedAt?: string;
   candles?: OandaCandle[];
   error?: string;
@@ -51,11 +52,11 @@ const TIMEFRAMES: Array<{ value: OandaGranularity; label: string }> = [
   { value: 'D', label: 'D' },
 ];
 
-const TIMEFRAME_SECONDS: Record<OandaGranularity, number> = {
-  M1: 60, M5: 300, M15: 900, M30: 1800, H1: 3600, H4: 14400, D: 86400,
+const TIMEFRAME_SECONDS: Record<MarketGranularity, number> = {
+  M1: 60, M5: 300, M15: 900, M30: 1800, H1: 3600, H4: 14400, D: 86400, W: 604800,
 };
 
-const TJL1_CONFIRMATION_SECONDS: Partial<Record<OandaGranularity, number>> = {
+const TJL1_CONFIRMATION_SECONDS: Partial<Record<MarketGranularity, number>> = {
   M1: 300,
   M5: 900,
   M15: 3600,
@@ -63,6 +64,14 @@ const TJL1_CONFIRMATION_SECONDS: Partial<Record<OandaGranularity, number>> = {
   H1: 14400,
   H4: 86400,
   D: 604800,
+};
+
+const VIP_SUPPORT_GRANULARITY: Partial<Record<OandaGranularity, MarketGranularity>> = {
+  M1: 'M15', M5: 'H1', M15: 'H4', H1: 'D', H4: 'W',
+};
+
+const GRANULARITY_LABELS: Record<MarketGranularity, string> = {
+  M1: '1m', M5: '5m', M15: '15m', M30: '30m', H1: '1h', H4: '4h', D: '1D', W: '1W',
 };
 
 const TJL1_CONFIRMATION_LABELS: Record<OandaGranularity, string> = {
@@ -95,6 +104,7 @@ export const OandaProChart: React.FC = () => {
   const hasFittedRef = useRef(false);
   const [granularity, setGranularity] = useState<OandaGranularity>('H1');
   const [candles, setCandles] = useState<OandaCandle[]>([]);
+  const [vipCandles, setVipCandles] = useState<OandaCandle[]>([]);
   const [hoveredCandle, setHoveredCandle] = useState<OandaCandle | null>(null);
   const [source, setSource] = useState('TradingView WebSocket · OANDA:XAUUSD');
   const [lastUpdated, setLastUpdated] = useState<string | null>(null);
@@ -117,14 +127,40 @@ export const OandaProChart: React.FC = () => {
     ? candles
     : candles.slice(0, Math.min(candles.length, replayIndex + 1)), [candles, replayIndex]);
 
+  const vipSupportGranularity = VIP_SUPPORT_GRANULARITY[granularity];
+  const vipDisplayCandles = useMemo(() => {
+    if (!vipSupportGranularity || displayCandles.length === 0) return [];
+    const lastSourceCandle = displayCandles[displayCandles.length - 1];
+    const cutoff = lastSourceCandle.time
+      + (lastSourceCandle.complete ? TIMEFRAME_SECONDS[granularity] : 0);
+    return vipCandles.filter((candle) => (
+      candle.complete
+      && candle.time + TIMEFRAME_SECONDS[vipSupportGranularity] <= cutoff
+    ));
+  }, [displayCandles, granularity, vipCandles, vipSupportGranularity]);
+
+  const vipStructure = useMemo(() => (
+    vipSupportGranularity
+      ? analyzeMarketStructure(vipDisplayCandles, {
+        allowSupplyDemand: ['H1', 'H4', 'D'].includes(vipSupportGranularity),
+        sourceBarSeconds: TIMEFRAME_SECONDS[vipSupportGranularity],
+        confirmationBarSeconds: TJL1_CONFIRMATION_SECONDS[vipSupportGranularity],
+        zoneVisualBars: 30,
+      })
+      : null
+  ), [vipDisplayCandles, vipSupportGranularity]);
+
   const structure = useMemo(
     () => analyzeMarketStructure(displayCandles, {
       allowSupplyDemand: ['H1', 'H4', 'D'].includes(granularity),
       sourceBarSeconds: TIMEFRAME_SECONDS[granularity],
       confirmationBarSeconds: TJL1_CONFIRMATION_SECONDS[granularity],
       zoneVisualBars: 30,
+      vipSupport: vipSupportGranularity && vipStructure
+        ? { timeframe: GRANULARITY_LABELS[vipSupportGranularity], zones: vipStructure.zones }
+        : undefined,
     }),
-    [displayCandles, granularity],
+    [displayCandles, granularity, vipStructure, vipSupportGranularity],
   );
 
   const latestCandle = hoveredCandle || displayCandles[displayCandles.length - 1] || null;
@@ -326,20 +362,28 @@ export const OandaProChart: React.FC = () => {
   const loadCandles = useCallback(async (signal?: AbortSignal) => {
     setIsLoading(true);
     try {
-      const query = new URLSearchParams({
-        granularity,
-        count: '1500',
-      });
-      const response = await fetch(`/api/tradingview/market-data?${query}`, {
-        signal,
-        cache: 'no-store',
-      });
-      const payload = await response.json() as MarketDataResponse;
-      if (!response.ok || !payload.ok || !Array.isArray(payload.candles)) {
-        throw new Error(payload.error || `TradingView request failed with HTTP ${response.status}`);
-      }
+      const requestCandles = async (requestedGranularity: MarketGranularity) => {
+        const query = new URLSearchParams({
+          granularity: requestedGranularity,
+          count: '1500',
+        });
+        const response = await fetch(`/api/tradingview/market-data?${query}`, {
+          signal,
+          cache: 'no-store',
+        });
+        const payload = await response.json() as MarketDataResponse;
+        if (!response.ok || !payload.ok || !Array.isArray(payload.candles)) {
+          throw new Error(payload.error || `TradingView request failed with HTTP ${response.status}`);
+        }
+        return payload;
+      };
+      const [payload, vipPayload] = await Promise.all([
+        requestCandles(granularity),
+        vipSupportGranularity ? requestCandles(vipSupportGranularity) : Promise.resolve(null),
+      ]);
       if (payload.candles.length === 0) throw new Error('TradingView returned no candles for OANDA:XAUUSD.');
       setCandles(payload.candles);
+      setVipCandles(vipPayload?.candles || []);
       setHoveredCandle(null);
       setSource(payload.source || 'TradingView WebSocket · OANDA:XAUUSD · unofficial');
       setLastUpdated(payload.fetchedAt || new Date().toISOString());
@@ -351,7 +395,7 @@ export const OandaProChart: React.FC = () => {
     } finally {
       if (!signal?.aborted) setIsLoading(false);
     }
-  }, [granularity]);
+  }, [granularity, vipSupportGranularity]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -774,7 +818,7 @@ export const OandaProChart: React.FC = () => {
           )}
           <div className={`pointer-events-auto absolute left-3 top-3 z-20 overflow-hidden rounded-md border border-slate-300 bg-white/95 shadow-sm ${showZoneTable ? 'w-[330px]' : 'w-auto'}`}>
             <div className="flex items-center justify-between gap-3 border-b border-slate-200 bg-violet-50 px-2 py-1 text-[9px] font-black uppercase tracking-wide text-violet-700">
-              <span>{showZoneTable ? 'Waiting TJL1 confirmation · not tradeable' : 'Zone table minimized'}</span>
+              <span>{showZoneTable ? 'Zone table' : 'Zone table minimized'}</span>
               <button
                 type="button"
                 onClick={() => setShowZoneTable((visible) => !visible)}
@@ -791,55 +835,60 @@ export const OandaProChart: React.FC = () => {
                   <th className="px-2 py-1 font-bold">Zone</th>
                   <th className="px-2 py-1 font-bold">Type</th>
                   <th className="px-2 py-1 font-bold">Price range</th>
-                  <th className="px-2 py-1 text-right font-bold">Status</th>
+                  <th className="px-2 py-1 text-right font-bold">Tap / Trade</th>
                 </tr>
               </thead>
               <tbody>
                 {pendingTjlRows.map((zone) => (
-                  <tr key={zone.id} className="border-t border-slate-100 text-slate-700">
+                  <tr key={zone.id} className="border-t border-violet-100 bg-violet-50/70 text-slate-700">
                     <td className="px-2 py-1 font-black text-violet-800">TJL1</td>
                     <td className={`px-2 py-1 font-bold ${zone.isBuy ? 'text-emerald-700' : 'text-rose-700'}`}>
                       {zone.isBuy ? 'BUY' : 'SELL'}
                     </td>
                     <td className="px-2 py-1 whitespace-nowrap">{formatPrice(zone.bottom)} – {formatPrice(zone.top)}</td>
-                    <td className="px-2 py-1 text-right font-bold text-violet-700 whitespace-nowrap">
-                      Waiting {TJL1_CONFIRMATION_LABELS[granularity]} close {zone.isBuy ? 'below' : 'above'}
+                    <td className="px-2 py-1 text-right font-black text-violet-700 whitespace-nowrap">
+                      WAIT {TJL1_CONFIRMATION_LABELS[granularity].toUpperCase()} {zone.isBuy ? 'BELOW' : 'ABOVE'}
                     </td>
                   </tr>
                 ))}
-                {pendingTjlRows.length === 0 && (
-                  <tr>
-                    <td colSpan={4} className="px-2 py-1.5 text-center text-slate-400">No TJL1 waiting for confirmation</td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-            <div className="border-b border-slate-200 bg-slate-50 px-2 py-1 text-[9px] font-black uppercase tracking-wide text-slate-600">
-              First tapped zones · all levels · last 50 bars
-            </div>
-            <table className="w-full border-collapse text-left text-[10px]">
-              <thead className="bg-slate-100 text-[9px] uppercase text-slate-500">
-                <tr>
-                  <th className="px-2 py-1 font-bold">Zone</th>
-                  <th className="px-2 py-1 font-bold">Type</th>
-                  <th className="px-2 py-1 font-bold">Price range</th>
-                  <th className="px-2 py-1 text-right font-bold">Tap</th>
-                </tr>
-              </thead>
-              <tbody>
                 {zoneTableRows.map((zone) => (
                   <tr key={zone.id} className="border-t border-slate-100 text-slate-700">
-                    <td className="px-2 py-1 font-black text-slate-800">{zone.name}</td>
+                    <td className="px-2 py-1 font-black text-slate-800">
+                      <span>{zone.name}</span>
+                      {zone.chochClass && (
+                        <span className={`ml-1 rounded px-1 py-0.5 text-[8px] font-black ${
+                          zone.chochClass === 'vip'
+                            ? 'bg-amber-100 text-amber-800'
+                            : zone.chochClass === 'valid'
+                              ? 'bg-emerald-100 text-emerald-800'
+                              : zone.chochClass === 'air'
+                                ? 'bg-rose-100 text-rose-700'
+                                : 'bg-violet-100 text-violet-700'
+                        }`}>
+                          {zone.chochClass === 'pending' ? 'WAIT' : zone.chochClass.toUpperCase()}
+                        </span>
+                      )}
+                      {zone.chochClass === 'vip' && zone.vipSupportTimeframe && zone.vipSupportZone && (
+                        <span className="ml-1 rounded bg-amber-50 px-1 py-0.5 text-[8px] font-black text-amber-700">
+                          {zone.vipSupportTimeframe} {zone.vipSupportZone}
+                        </span>
+                      )}
+                    </td>
                     <td className={`px-2 py-1 font-bold ${zone.isBuy ? 'text-emerald-700' : 'text-rose-700'}`}>
                       {zone.isBuy ? 'BUY' : 'SELL'}
                     </td>
                     <td className="px-2 py-1 whitespace-nowrap">{formatPrice(zone.bottom)} – {formatPrice(zone.top)}</td>
-                    <td className="px-2 py-1 text-right font-bold text-emerald-700 whitespace-nowrap">{zone.tapBarsAgo} bars ago</td>
+                    <td className="px-2 py-1 text-right font-bold whitespace-nowrap">
+                      <span className="text-slate-500">{zone.tapBarsAgo} bars</span>
+                      <span className={zone.tradeable === false ? 'ml-1 text-rose-700' : 'ml-1 text-emerald-700'}>
+                        - {zone.tradeable === false ? 'NO TRADE' : 'TRADE'}
+                      </span>
+                    </td>
                   </tr>
                 ))}
-                {zoneTableRows.length === 0 && (
+                {pendingTjlRows.length === 0 && zoneTableRows.length === 0 && (
                   <tr>
-                    <td colSpan={4} className="px-2 py-2 text-center text-slate-400">No first-tapped zones in the last 50 bars</td>
+                    <td colSpan={4} className="px-2 py-2 text-center text-slate-400">No active zone rows</td>
                   </tr>
                 )}
               </tbody>

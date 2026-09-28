@@ -4,7 +4,7 @@ import path from 'path';
 import { createServer as createViteServer } from 'vite';
 import { fetchTradingViewCandles } from './src/services/tradingViewDatafeed';
 
-const GRANULARITIES = new Set(['M1', 'M5', 'M15', 'M30', 'H1', 'H4', 'D']);
+const GRANULARITIES = new Set(['M1', 'M5', 'M15', 'M30', 'H1', 'H4', 'D', 'W']);
 
 async function startServer() {
   const app = express();
