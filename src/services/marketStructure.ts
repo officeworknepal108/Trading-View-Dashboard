@@ -167,6 +167,20 @@ function extreme(
   };
 }
 
+/**
+ * Select the swing extreme once a two-candle retracement is confirmed.
+ * The first retracement candle can itself set the final high/low, while the
+ * second candle only confirms the retracement and must not move the pivot.
+ */
+export function selectTwoCandleRetracementPivot(
+  candles: StructureCandle[],
+  from: number,
+  confirmationIndex: number,
+  kind: 'high' | 'low',
+): StructurePoint {
+  return extreme(candles, from, confirmationIndex - 1, kind);
+}
+
 function findOrderBlock(candles: StructureCandle[], from: number, to: number, bullish: boolean): number {
   const start = Math.max(from, to - 12);
   for (let index = to - 1; index >= start; index -= 1) {
@@ -482,7 +496,9 @@ export function analyzeMarketStructure(candles: StructureCandle[], options: {
         const leftBound = bullishBreakCount === 0
           ? protectedPoint.index
           : (lastHLConfirmIndex ?? protectedPoint.index);
-        activeHigh = extreme(candles, leftBound, index, 'high');
+        // The first red candle can own the SH wick. The second red candle only
+        // confirms the retracement, so it cannot relocate the swing or zone.
+        activeHigh = selectTwoCandleRetracementPivot(candles, leftBound, index, 'high');
         // This SH is the same candidate point that later becomes HH.
         markers.push(makeMarker(candles[activeHigh.index], 'SH', 'aboveBar', '#64748b', 'circle', 1));
         // External SH is Point 0 for a bearish internal ISS, bounded by PL.
@@ -524,7 +540,12 @@ export function analyzeMarketStructure(candles: StructureCandle[], options: {
         && candle.close < protectedPoint.price
         && previous.close < protectedPoint.price) {
         addLevel('choch', 'bearish', protectedPoint, index, 'CHoCH');
-        const newProtectedHigh = extreme(candles, protectedPoint.index, index, 'high');
+        // If the two-red retracement already confirmed an SH, CHoCH must
+        // promote that exact wick. Re-scanning through the break candle can
+        // move both the protected point and its DT zone to an unconfirmed wick.
+        const newProtectedHigh = activeHigh
+          ?? extreme(candles, protectedPoint.index, index, 'high');
+        removeStandaloneSwingMarker(newProtectedHigh);
         markers.push(makeMarker(candles[newProtectedHigh.index], 'SH / PH', 'aboveBar', '#b91c1c'));
         // Confirmed uptrend → downtrend: HH/TJL1 becomes QML, HL/TJL2 becomes
         // SBR, and the newly identified PH becomes the DT zone.
@@ -573,7 +594,9 @@ export function analyzeMarketStructure(candles: StructureCandle[], options: {
         const leftBound = bearishBreakCount === 0
           ? protectedPoint.index
           : (lastLHConfirmIndex ?? protectedPoint.index);
-        activeLow = extreme(candles, leftBound, index, 'low');
+        // The first green candle can own the SL wick. The second green candle
+        // only confirms the retracement, so the derived zone stays on this SL.
+        activeLow = selectTwoCandleRetracementPivot(candles, leftBound, index, 'low');
         // This SL is the same candidate point that later becomes LL.
         markers.push(makeMarker(candles[activeLow.index], 'SL', 'belowBar', '#64748b', 'circle', 1));
         // External SL is Point 0 for a bullish internal ISS, bounded by PH.
@@ -615,7 +638,12 @@ export function analyzeMarketStructure(candles: StructureCandle[], options: {
         && candle.close > protectedPoint.price
         && previous.close > protectedPoint.price) {
         addLevel('choch', 'bullish', protectedPoint, index, 'CHoCH');
-        const newProtectedLow = extreme(candles, protectedPoint.index, index, 'low');
+        // If the two-green retracement already confirmed an SL, CHoCH must
+        // promote that exact wick. The DB zone therefore starts at the same
+        // valid retracement point instead of a later arbitrary lower wick.
+        const newProtectedLow = activeLow
+          ?? extreme(candles, protectedPoint.index, index, 'low');
+        removeStandaloneSwingMarker(newProtectedLow);
         markers.push(makeMarker(candles[newProtectedLow.index], 'SL / PL', 'belowBar', '#047857'));
         // Confirmed downtrend → uptrend: LL/TJL1 becomes QML, LH/TJL2 becomes
         // RBS, and the newly identified PL becomes the DB zone.
@@ -785,8 +813,9 @@ function findIssFiveWaves(
 
       if (state === 1 && reversal) {
         // Same wick selection as TJL1: after the two-candle retracement, use
-        // the full highest/lowest wick that formed the internal Swing 1.
-        const point1 = extreme(candles, points[0].index, index - 2, highOrLow);
+        // the full highest/lowest wick through its first candle. The second
+        // retracement candle confirms the turn but is not part of the pivot.
+        const point1 = selectTwoCandleRetracementPivot(candles, points[0].index, index, highOrLow);
         if (withinBoundary(point1, anchor)) {
           points.push(point1);
           state = 2;
@@ -803,13 +832,13 @@ function findIssFiveWaves(
         // Like TJL1, Point 1 stays provisional until its BOS body-close. If a
         // later two-candle retracement makes a higher/lower wick, use that
         // latest extreme as Point 1.
-        const replacement = extreme(candles, points[0].index, index - 2, highOrLow);
+        const replacement = selectTwoCandleRetracementPivot(candles, points[0].index, index, highOrLow);
         const isMoreExtreme = anchor.direction === 'bullish'
           ? replacement.price > points[1].price
           : replacement.price < points[1].price;
         if (isMoreExtreme && withinBoundary(replacement, anchor)) points[1] = replacement;
       } else if (state === 3 && reversal) {
-        const point3 = extreme(candles, points[2].index, index - 2, highOrLow);
+        const point3 = selectTwoCandleRetracementPivot(candles, points[2].index, index, highOrLow);
         if (withinBoundary(point3, anchor)) {
           points.push(point3);
           state = 4;
@@ -825,13 +854,13 @@ function findIssFiveWaves(
       } else if (state === 4 && reversal) {
         // Point 3 follows the same TJL1 rule. Keep the highest bullish (or
         // lowest bearish) post-Point-2 wick after each two-candle retracement.
-        const replacement = extreme(candles, points[2].index, index - 2, highOrLow);
+        const replacement = selectTwoCandleRetracementPivot(candles, points[2].index, index, highOrLow);
         const isMoreExtreme = anchor.direction === 'bullish'
           ? replacement.price > points[3].price
           : replacement.price < points[3].price;
         if (isMoreExtreme && withinBoundary(replacement, anchor)) points[3] = replacement;
       } else if (state === 5 && reversal) {
-        const point5 = extreme(candles, points[4].index, index - 2, highOrLow);
+        const point5 = selectTwoCandleRetracementPivot(candles, points[4].index, index, highOrLow);
         if (withinBoundary(point5, anchor)) {
           complete([...points, point5], anchor.direction, candle.time, anchor);
         }

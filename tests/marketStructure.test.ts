@@ -5,6 +5,7 @@ import {
   findFirstZoneTapIndex,
   getConfirmationBucketStart,
   resolveTjl1Confirmation,
+  selectTwoCandleRetracementPivot,
   type StructureCandle,
   type StructureZone,
 } from '../src/services/marketStructure';
@@ -29,6 +30,24 @@ function zone(overrides: Partial<StructureZone> = {}): StructureZone {
     ...overrides,
   };
 }
+
+test('structure pivots include the first candle of a confirmed two-candle retracement', () => {
+  const bullish = [
+    { time: 0, open: 100, high: 105, low: 99, close: 104 },
+    { time: 1, open: 104, high: 110, low: 103, close: 109 },
+    { time: 2, open: 109, high: 115, low: 106, close: 107 }, // first red retracement candle
+    { time: 3, open: 107, high: 120, low: 103, close: 104 }, // confirmation candle is excluded
+  ];
+  const bearish = [
+    { time: 0, open: 100, high: 101, low: 95, close: 96 },
+    { time: 1, open: 96, high: 97, low: 90, close: 91 },
+    { time: 2, open: 91, high: 94, low: 85, close: 93 }, // first green retracement candle
+    { time: 3, open: 93, high: 97, low: 80, close: 96 }, // confirmation candle is excluded
+  ];
+
+  assert.deepEqual(selectTwoCandleRetracementPivot(bullish, 0, 3, 'high'), { index: 2, time: 2, price: 115 });
+  assert.deepEqual(selectTwoCandleRetracementPivot(bearish, 0, 3, 'low'), { index: 2, time: 2, price: 85 });
+});
 
 test('TJL1 confirms on the first completed mapped higher-timeframe close', () => {
   const result = resolveTjl1Confirmation([
