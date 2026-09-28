@@ -1,0 +1,101 @@
+HOW TO OPEN THE DASHBOARD FROM THE BEGINNING
+==============================================
+
+Project folder:
+C:\Users\ABHI\Desktop\new algo file updated
+
+
+FIRST-TIME SETUP
+----------------
+
+1. Make sure Node.js is installed on the computer.
+
+2. Open the project folder in File Explorer:
+   C:\Users\ABHI\Desktop\new algo file updated
+
+3. Click the File Explorer address bar, type:
+   powershell
+
+4. Press Enter. PowerShell will open inside the project folder.
+
+5. Run this command:
+   npm install
+
+6. Wait until installation is complete.
+
+
+OPEN THE DASHBOARD
+------------------
+
+1. Open PowerShell inside this folder:
+   C:\Users\ABHI\Desktop\new algo file updated
+
+2. Run:
+   npm run dev
+
+3. Keep the PowerShell window open while using the dashboard.
+
+4. Open this address in Chrome or another browser:
+   http://127.0.0.1:3002
+
+
+OPEN IT AGAIN LATER
+-------------------
+
+1. Open the project folder.
+2. Open PowerShell from the folder address bar.
+3. Run:
+   npm run dev
+4. Open:
+   http://127.0.0.1:3002
+
+You normally do not need to run npm install again.
+
+
+STOP THE DASHBOARD
+------------------
+
+Return to the PowerShell window and press:
+Ctrl + C
+
+If PowerShell asks whether to terminate the job, type Y and press Enter.
+
+
+IMPORTANT INFORMATION
+---------------------
+
+- Chart symbol: OANDA:XAUUSD
+- Candle source: TradingView WebSocket
+- This TradingView connection is unofficial.
+- An OANDA API token is not required.
+- No Kalbhairav or Bada Bhairab trading logic is included.
+- No Binance or synthetic candle fallback is included.
+- An internet connection is required to load candles.
+
+
+CHART MARKINGS
+--------------
+
+- MG STRUCTURE ON starts from the Genesis Low and shows HH, HL, LH, LL,
+  BOS, CHoCH, swing lines and horizontal break lines.
+- MG ZONES ON shows TJL1, TJL2, QML, SBR, RBS, DT and DB zones.
+- TJL2 is valid immediately. TJL1 is purple while pending, then becomes valid
+  when a completed mapped higher-timeframe candle closes through the structure
+  confirmation side shown in the zone table.
+- TJL1 mapping: 1m to 5m, 5m to 15m, 15m/30m to 1h, 1h to 4h,
+  4h to daily, and daily to weekly.
+- Every zone is drawn for 30 bars only. Its validity remains stored until the
+  MG invalidation rule is met.
+- S/D 1H+ ON shows supply and demand only on the 1h, 4h and daily charts.
+- ISS 5-WAVE ON shows MG-style 0-5 ISS waves and ISS L3/L4 zones.
+- Use each button at the top of the chart to show or hide that layer.
+- The structure status badge shows BULLISH, BEARISH or NEUTRAL.
+
+
+IF THE PAGE DOES NOT OPEN
+-------------------------
+
+1. Confirm the PowerShell window is still open and shows no error.
+2. Refresh http://127.0.0.1:3002 in the browser.
+3. Stop the server with Ctrl + C, then run npm run dev again.
+4. Make sure another program is not already using port 3002.

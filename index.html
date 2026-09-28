@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <script>
+      (function() {
+        try {
+          const originalFetch = window.fetch ? window.fetch.bind(window) : undefined;
+          let _currentFetch = originalFetch;
+
+          Object.defineProperty(window, 'fetch', {
+            get() {
+              return _currentFetch;
+            },
+            set(newFetch) {
+              _currentFetch = typeof newFetch === 'function' ? newFetch : originalFetch;
+            },
+            configurable: true,
+            enumerable: true
+          });
+
+          if (typeof globalThis !== 'undefined' && globalThis !== window) {
+            try {
+              Object.defineProperty(globalThis, 'fetch', {
+                get() {
+                  return _currentFetch;
+                },
+                set(newFetch) {
+                  _currentFetch = typeof newFetch === 'function' ? newFetch : originalFetch;
+                },
+                configurable: true,
+                enumerable: true
+              });
+            } catch (_) {}
+          }
+        } catch (e) {
+          console.warn('Fetch setter initialization:', e);
+        }
+      })();
+    </script>
+    <title>OANDA Candle Dashboard</title>
+    <meta name="description" content="Multi-timeframe market structure dashboard featuring Kalbairab model merged with Subash SMC engine (Wave 5 ISS, TJL zones, 4-type engulfing), 8-pillar institutional confluence, actionable setups with automated risk-free rules, and quantitative backtesting." />
+    <meta property="og:title" content="Market Structure Multi-Timeframe Dashboard" />
+    <meta property="og:description" content="Multi-timeframe market structure dashboard featuring Kalbairab model merged with Subash SMC engine (Wave 5 ISS, TJL zones, 4-type engulfing), 8-pillar institutional confluence, actionable setups with automated risk-free rules, and quantitative backtesting." />
+    <meta property="og:type" content="website" />
+    <meta name="twitter:card" content="summary_large_image" />
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

@@ -1,0 +1,6 @@
+{
+  "name": "TradingView OANDA Candle Dashboard",
+  "description": "A focused chart using TradingView's unofficial WebSocket feed for OANDA:XAUUSD, without synthetic or Binance fallback data.",
+  "requestFramePermissions": [],
+  "majorCapabilities": []
+}
