@@ -161,7 +161,7 @@ function makeMarker(
   position: 'aboveBar' | 'belowBar',
   color: string,
   shape: 'arrowUp' | 'arrowDown' | 'circle' = 'circle',
-  size = 1,
+  size = 0.55,
 ): SeriesMarker<UTCTimestamp> {
   return { time: candle.time as UTCTimestamp, position, color, shape, text, size };
 }
@@ -583,6 +583,9 @@ export function analyzeMarketStructure(candles: StructureCandle[], options: {
     ));
     if (markerIndex >= 0) markers.splice(markerIndex, 1);
   };
+  const hasStructureMarkerAt = (point: StructurePoint, position: 'aboveBar' | 'belowBar') => (
+    markers.some((marker) => Number(marker.time) === point.time && marker.position === position)
+  );
 
   for (let index = genesis.index + 1; index < candles.length; index += 1) {
     const candle = candles[index];
@@ -620,7 +623,8 @@ export function analyzeMarketStructure(candles: StructureCandle[], options: {
         const startIndex = candles.findIndex((item) => item.time === pendingDouble!.startedAt);
         const doubleHigh = extreme(candles, Math.max(0, startIndex), index, 'high');
         addLevel('choch', 'bearish', protectedPoint, index, 'DOUBLE CHoCH');
-        markers.push(makeMarker(candles[doubleHigh.index], 'SH / PH', 'aboveBar', '#b91c1c'));
+        removeStandaloneSwingMarker(doubleHigh);
+        markers.push(makeMarker(candles[doubleHigh.index], 'PH', 'aboveBar', '#b91c1c'));
         convertZone(pendingDouble.qml, 'QML A+', false, candle.time);
         convertZone(pendingDouble.secondary, 'QML A++', false, candle.time);
         convertZone(pendingDouble.extreme, 'SBR', false, candle.time);
@@ -647,7 +651,9 @@ export function analyzeMarketStructure(candles: StructureCandle[], options: {
         // confirms the retracement, so it cannot relocate the swing or zone.
         activeHigh = selectTwoCandleRetracementPivot(candles, leftBound, index, 'high');
         // This SH is the same candidate point that later becomes HH.
-        markers.push(makeMarker(candles[activeHigh.index], 'SH', 'aboveBar', '#64748b', 'circle', 1));
+        if (!hasStructureMarkerAt(activeHigh, 'aboveBar')) {
+          markers.push(makeMarker(candles[activeHigh.index], 'SH', 'aboveBar', '#64748b', 'circle', 0.55));
+        }
         // External SH is Point 0 for a bearish internal ISS, bounded by PL.
         issAnchors.push({ direction: 'bearish', start: activeHigh, boundary: protectedPoint });
       }
@@ -659,8 +665,11 @@ export function analyzeMarketStructure(candles: StructureCandle[], options: {
         );
         removeStandaloneSwingMarker(confirmedHigh);
         markers.push(
-          makeMarker(candles[confirmedHigh.index], 'HH / SH', 'aboveBar', '#059669'),
-          makeMarker(candles[confirmedLow.index], 'HL / PL', 'belowBar', '#059669'),
+          // Once confirmed, the provisional SH/PL role is finished. Keep only
+          // the permanent structure label so old candidate labels do not
+          // accumulate across the chart.
+          makeMarker(candles[confirmedHigh.index], 'HH', 'aboveBar', '#059669'),
+          makeMarker(candles[confirmedLow.index], 'HL', 'belowBar', '#059669'),
         );
         addSwing(confirmedHigh, 'bullish');
         addSwing(confirmedLow, 'bullish');
@@ -694,7 +703,7 @@ export function analyzeMarketStructure(candles: StructureCandle[], options: {
         const newProtectedHigh = activeHigh
           ?? extreme(candles, protectedPoint.index, index, 'high');
         removeStandaloneSwingMarker(newProtectedHigh);
-        markers.push(makeMarker(candles[newProtectedHigh.index], 'SH / PH', 'aboveBar', '#b91c1c'));
+        markers.push(makeMarker(candles[newProtectedHigh.index], 'PH', 'aboveBar', '#b91c1c'));
         // Confirmed uptrend → downtrend: HH/TJL1 becomes QML, HL/TJL2 becomes
         // SBR, and the newly identified PH becomes the DT zone.
         const lastTjl1 = currentTrendTjl1;
@@ -725,7 +734,8 @@ export function analyzeMarketStructure(candles: StructureCandle[], options: {
         const startIndex = candles.findIndex((item) => item.time === pendingDouble!.startedAt);
         const doubleLow = extreme(candles, Math.max(0, startIndex), index, 'low');
         addLevel('choch', 'bullish', protectedPoint, index, 'DOUBLE CHoCH');
-        markers.push(makeMarker(candles[doubleLow.index], 'SL / PL', 'belowBar', '#047857'));
+        removeStandaloneSwingMarker(doubleLow);
+        markers.push(makeMarker(candles[doubleLow.index], 'PL', 'belowBar', '#047857'));
         convertZone(pendingDouble.qml, 'QML A+', true, candle.time);
         convertZone(pendingDouble.secondary, 'QML A++', true, candle.time);
         convertZone(pendingDouble.extreme, 'RBS', true, candle.time);
@@ -752,7 +762,9 @@ export function analyzeMarketStructure(candles: StructureCandle[], options: {
         // only confirms the retracement, so the derived zone stays on this SL.
         activeLow = selectTwoCandleRetracementPivot(candles, leftBound, index, 'low');
         // This SL is the same candidate point that later becomes LL.
-        markers.push(makeMarker(candles[activeLow.index], 'SL', 'belowBar', '#64748b', 'circle', 1));
+        if (!hasStructureMarkerAt(activeLow, 'belowBar')) {
+          markers.push(makeMarker(candles[activeLow.index], 'SL', 'belowBar', '#64748b', 'circle', 0.55));
+        }
         // External SL is Point 0 for a bullish internal ISS, bounded by PH.
         issAnchors.push({ direction: 'bullish', start: activeLow, boundary: protectedPoint });
       }
@@ -764,8 +776,10 @@ export function analyzeMarketStructure(candles: StructureCandle[], options: {
         );
         removeStandaloneSwingMarker(confirmedLow);
         markers.push(
-          makeMarker(candles[confirmedLow.index], 'LL / SL', 'belowBar', '#dc2626'),
-          makeMarker(candles[confirmedHigh.index], 'LH / PH', 'aboveBar', '#dc2626'),
+          // The active SL/PH has now been promoted to permanent structure.
+          // Display only LL/LH; the next unconfirmed candidate keeps SL/PH.
+          makeMarker(candles[confirmedLow.index], 'LL', 'belowBar', '#dc2626'),
+          makeMarker(candles[confirmedHigh.index], 'LH', 'aboveBar', '#dc2626'),
         );
         addSwing(confirmedLow, 'bearish');
         addSwing(confirmedHigh, 'bearish');
@@ -799,7 +813,7 @@ export function analyzeMarketStructure(candles: StructureCandle[], options: {
         const newProtectedLow = activeLow
           ?? extreme(candles, protectedPoint.index, index, 'low');
         removeStandaloneSwingMarker(newProtectedLow);
-        markers.push(makeMarker(candles[newProtectedLow.index], 'SL / PL', 'belowBar', '#047857'));
+        markers.push(makeMarker(candles[newProtectedLow.index], 'PL', 'belowBar', '#047857'));
         // Confirmed downtrend → uptrend: LL/TJL1 becomes QML, LH/TJL2 becomes
         // RBS, and the newly identified PL becomes the DB zone.
         const lastTjl1 = currentTrendTjl1;

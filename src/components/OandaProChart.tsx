@@ -106,8 +106,10 @@ export const OandaProChart: React.FC = () => {
   const livePriceLabelRef = useRef<HTMLDivElement | null>(null);
   const livePriceValueRef = useRef<HTMLSpanElement | null>(null);
   const liveCountdownRef = useRef<HTMLSpanElement | null>(null);
+  const replaySelectionLineRef = useRef<HTMLDivElement | null>(null);
   const zonesRef = useRef<StructureZone[]>([]);
   const structureLinesRef = useRef<StructureLine[]>([]);
+  const structureMarkersRef = useRef<any[]>([]);
   const issMarkersRef = useRef<any[]>([]);
   const showMgZonesRef = useRef(true);
   const showSupplyDemandRef = useRef(true);
@@ -120,6 +122,10 @@ export const OandaProChart: React.FC = () => {
   const pendingReplayViewportRef = useRef<{ fromOffset: number; toOffset: number } | null>(null);
   const loadRequestIdRef = useRef(0);
   const loadedGranularityRef = useRef<OandaGranularity>('H1');
+  const candlesRef = useRef<OandaCandle[]>([]);
+  const replaySelectingRef = useRef(false);
+  const replaySelectionIndexRef = useRef<number | null>(null);
+  const syncReplaySelectionLineRef = useRef<() => void>(() => undefined);
   const [granularity, setGranularity] = useState<OandaGranularity>('H1');
   const [candles, setCandles] = useState<OandaCandle[]>([]);
   const [vipCandles, setVipCandles] = useState<OandaCandle[]>([]);
@@ -140,6 +146,35 @@ export const OandaProChart: React.FC = () => {
   const [replaySelecting, setReplaySelecting] = useState(false);
   const [replaySelectionIndex, setReplaySelectionIndex] = useState<number | null>(null);
   const [replaySpeed, setReplaySpeed] = useState(1);
+
+  candlesRef.current = candles;
+  replaySelectingRef.current = replaySelecting;
+  replaySelectionIndexRef.current = replaySelectionIndex;
+
+  const syncReplaySelectionLine = useCallback(() => {
+    const line = replaySelectionLineRef.current;
+    const chart = chartRef.current;
+    const host = hostRef.current;
+    const selectionIndex = replaySelectionIndexRef.current;
+    const currentCandles = candlesRef.current;
+    if (!line || !chart || !host || !replaySelectingRef.current
+      || selectionIndex === null || !currentCandles[selectionIndex]) {
+      if (line) line.style.display = 'none';
+      return;
+    }
+    const coordinate = chart.timeScale().timeToCoordinate(
+      currentCandles[selectionIndex].time as UTCTimestamp,
+    );
+    const rightEdge = Math.max(0, host.clientWidth - 72);
+    if (coordinate === null || coordinate < 0 || coordinate > rightEdge) {
+      line.style.display = 'none';
+      return;
+    }
+    line.style.display = 'block';
+    line.style.left = `${coordinate}px`;
+  }, []);
+
+  syncReplaySelectionLineRef.current = syncReplaySelectionLine;
 
   const displayCandles = useMemo(() => replayIndex === null
     ? candles
@@ -330,12 +365,32 @@ export const OandaProChart: React.FC = () => {
           if (!candle) continue;
           const x = chart.timeScale().timeToCoordinate(marker.time as UTCTimestamp);
           const isHigh = marker.position === 'aboveBar';
-          const y = series.priceToCoordinate(isHigh ? candle.high : candle.low);
+          const markerPrice = isHigh ? candle.high : candle.low;
+          const y = series.priceToCoordinate(markerPrice);
           if (x === null || y === null) continue;
+          const overlapsStructureMarker = showStructureRef.current
+            && structureMarkersRef.current.some((structureMarker) => (
+              Number(structureMarker.time) === Number(marker.time)
+              && structureMarker.position === marker.position
+            ));
+          const overlapsVisibleZone = zonesRef.current.some((zone) => {
+            const visible = zone.category === 'mg'
+              ? showMgZonesRef.current
+              : zone.category === 'iss'
+                ? showIssRef.current
+                : showSupplyDemandRef.current;
+            return visible
+              && (zone.active || showInvalidZonesRef.current)
+              && Number(marker.time) >= zone.startTime
+              && Number(marker.time) <= zone.endTime
+              && markerPrice >= zone.bottom
+              && markerPrice <= zone.top;
+          });
+          const offsetForCollision = overlapsStructureMarker || overlapsVisibleZone;
           const text = document.createElementNS(namespace, 'text');
-          text.setAttribute('x', String(x));
+          text.setAttribute('x', String(x + (offsetForCollision ? -10 : 0)));
           text.setAttribute('y', String(y + (isHigh ? -5 : 11)));
-          text.setAttribute('text-anchor', 'middle');
+          text.setAttribute('text-anchor', offsetForCollision ? 'end' : 'middle');
           text.setAttribute('fill', '#2563eb');
           text.setAttribute('fill-opacity', '0.88');
           text.setAttribute('font-size', '10');
@@ -353,6 +408,7 @@ export const OandaProChart: React.FC = () => {
   useEffect(() => {
     zonesRef.current = structure.zones;
     structureLinesRef.current = structure.lines;
+    structureMarkersRef.current = structure.markers;
     issMarkersRef.current = structure.issMarkers;
     showMgZonesRef.current = showMgZones;
     showSupplyDemandRef.current = showSupplyDemand;
@@ -361,7 +417,7 @@ export const OandaProChart: React.FC = () => {
     showInvalidZonesRef.current = showInvalidZones;
     const frame = window.requestAnimationFrame(redrawZones);
     return () => window.cancelAnimationFrame(frame);
-  }, [redrawZones, showInvalidZones, showIss, showMgZones, showStructure, showSupplyDemand, structure.issMarkers, structure.lines, structure.zones]);
+  }, [redrawZones, showInvalidZones, showIss, showMgZones, showStructure, showSupplyDemand, structure.issMarkers, structure.lines, structure.markers, structure.zones]);
 
   useEffect(() => {
     if (!replayPlaying || replayIndex === null) return;
@@ -528,9 +584,15 @@ export const OandaProChart: React.FC = () => {
 
     const observer = new ResizeObserver(([entry]) => {
       chart.applyOptions({ width: entry.contentRect.width, height: entry.contentRect.height });
-      window.requestAnimationFrame(() => redrawZonesRef.current());
+      window.requestAnimationFrame(() => {
+        redrawZonesRef.current();
+        syncReplaySelectionLineRef.current();
+      });
     });
-    const handleVisibleRangeChange = () => redrawZonesRef.current();
+    const handleVisibleRangeChange = () => {
+      redrawZonesRef.current();
+      syncReplaySelectionLineRef.current();
+    };
     chart.timeScale().subscribeVisibleLogicalRangeChange(handleVisibleRangeChange);
     observer.observe(host);
     chartRef.current = chart;
@@ -547,6 +609,11 @@ export const OandaProChart: React.FC = () => {
       markersRef.current = null;
     };
   }, []);
+
+  useEffect(() => {
+    const frame = window.requestAnimationFrame(syncReplaySelectionLine);
+    return () => window.cancelAnimationFrame(frame);
+  }, [candles, replaySelecting, replaySelectionIndex, syncReplaySelectionLine]);
 
   useEffect(() => {
     const chart = chartRef.current;
@@ -631,7 +698,7 @@ export const OandaProChart: React.FC = () => {
   const openReplaySelector = () => {
     if (candles.length < 2) return;
     setReplayPlaying(false);
-    setReplaySelectionIndex(Math.max(1, candles.length - 10));
+    setReplaySelectionIndex(replayIndex ?? Math.max(1, candles.length - 10));
     setReplaySelecting(true);
   };
 
@@ -678,9 +745,16 @@ export const OandaProChart: React.FC = () => {
   };
 
   const selectReplayBar = (event: React.PointerEvent<HTMLDivElement>) => {
-    const bounds = event.currentTarget.getBoundingClientRect();
-    const ratio = Math.max(0, Math.min(1, (event.clientX - bounds.left) / bounds.width));
-    setReplaySelectionIndex(Math.max(1, Math.min(candles.length - 1, Math.round(ratio * (candles.length - 1)))));
+    const chart = chartRef.current;
+    const host = hostRef.current;
+    if (!chart || !host || candles.length < 2) return;
+    const coordinate = event.clientX - host.getBoundingClientRect().left;
+    const logicalIndex = chart.timeScale().coordinateToLogical(coordinate);
+    if (logicalIndex === null || !Number.isFinite(logicalIndex)) return;
+    setReplaySelectionIndex(Math.max(
+      1,
+      Math.min(candles.length - 1, Math.round(logicalIndex)),
+    ));
   };
 
   return (
@@ -729,6 +803,17 @@ export const OandaProChart: React.FC = () => {
                   title="Previous candle"
                 >
                   ‹
+                </button>
+                <button
+                  onClick={openReplaySelector}
+                  className={`rounded-md border px-2 py-1.5 text-[10px] font-black transition ${
+                    replaySelecting
+                      ? 'border-blue-300 bg-blue-100 text-blue-800'
+                      : 'border-blue-200 bg-white text-blue-700 hover:bg-blue-50'
+                  }`}
+                  title="Show the blue Replay line and choose another candle"
+                >
+                  │ LINE
                 </button>
                 <button
                   onClick={() => setReplayPlaying((playing) => !playing)}
@@ -903,8 +988,8 @@ export const OandaProChart: React.FC = () => {
               title="Drag the blue replay line to the candle where replay should start"
             >
               <div
+                ref={replaySelectionLineRef}
                 className="absolute inset-y-0 w-0.5 bg-blue-600 shadow-[0_0_0_1px_rgba(255,255,255,.9)]"
-                style={{ left: `${(replaySelectionIndex / Math.max(1, candles.length - 1)) * 100}%` }}
               >
                 <span className="absolute bottom-2 left-1/2 -translate-x-1/2 whitespace-nowrap rounded bg-blue-600 px-2 py-1 text-[10px] font-black text-white">
                   REPLAY START
