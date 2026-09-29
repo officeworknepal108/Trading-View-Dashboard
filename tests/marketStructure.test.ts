@@ -131,14 +131,56 @@ test('TJL1 stays pending when completed mapped candles have not closed through i
   assert.equal(result.confirmationWindowCloseTime, 3600);
 });
 
-test('directional TJL1 invalidation uses a candle close and ignores a wick', () => {
+test('directional TJL1 invalidation requires the full candle outside the zone', () => {
   const upward = zone({ invalidationDirection: 'up' });
   assert.equal(doesInvalidateZone(upward, { time: 300, open: 105, high: 112, low: 104, close: 109 }), false);
-  assert.equal(doesInvalidateZone(upward, { time: 400, open: 109, high: 112, low: 108, close: 111 }), true);
+  assert.equal(doesInvalidateZone(upward, { time: 400, open: 109, high: 112, low: 108, close: 111 }), false);
+  assert.equal(doesInvalidateZone(upward, { time: 500, open: 111, high: 113, low: 110.5, close: 112 }), true);
 
   const downward = zone({ invalidationDirection: 'down' });
   assert.equal(doesInvalidateZone(downward, { time: 300, open: 105, high: 106, low: 98, close: 101 }), false);
-  assert.equal(doesInvalidateZone(downward, { time: 400, open: 101, high: 102, low: 98, close: 99 }), true);
+  assert.equal(doesInvalidateZone(downward, { time: 400, open: 101, high: 102, low: 98, close: 99 }), false);
+  assert.equal(doesInvalidateZone(downward, { time: 500, open: 99, high: 99.5, low: 97, close: 98 }), true);
+});
+
+test('every zone type waits for a completed candle fully outside its invalidation boundary', () => {
+  const zoneTypes: Array<Pick<StructureZone, 'name' | 'category'>> = [
+    { name: 'TJL2', category: 'mg' },
+    { name: 'QML', category: 'mg' },
+    { name: 'SBR', category: 'mg' },
+    { name: 'RBS', category: 'mg' },
+    { name: 'DT', category: 'mg' },
+    { name: 'DB', category: 'mg' },
+    { name: '3rd wave', category: 'iss' },
+    { name: '4th wave', category: 'iss' },
+    { name: 'SUPPLY', category: 'supplyDemand' },
+    { name: 'DEMAND', category: 'supplyDemand' },
+  ];
+
+  for (const type of zoneTypes) {
+    const sellZone = zone({ ...type, isBuy: false });
+    const buyZone = zone({ ...type, isBuy: true });
+
+    assert.equal(doesInvalidateZone(sellZone, {
+      time: 300, open: 105, high: 112, low: 104, close: 111, complete: false,
+    }), false, `${type.name} must ignore a live close above the zone`);
+    assert.equal(doesInvalidateZone(sellZone, {
+      time: 400, open: 111, high: 112, low: 104, close: 109, complete: true,
+    }), false, `${type.name} must remain valid while any part of the candle overlaps the zone`);
+    assert.equal(doesInvalidateZone(sellZone, {
+      time: 500, open: 111, high: 113, low: 110.5, close: 112, complete: true,
+    }), true, `${type.name} must invalidate when the full completed candle is above the zone`);
+
+    assert.equal(doesInvalidateZone(buyZone, {
+      time: 300, open: 105, high: 106, low: 98, close: 99, complete: false,
+    }), false, `${type.name} must ignore a live close below the zone`);
+    assert.equal(doesInvalidateZone(buyZone, {
+      time: 400, open: 99, high: 106, low: 98, close: 101, complete: true,
+    }), false, `${type.name} must remain valid while any part of the candle overlaps the zone`);
+    assert.equal(doesInvalidateZone(buyZone, {
+      time: 500, open: 99, high: 99.5, low: 97, close: 98, complete: true,
+    }), true, `${type.name} must invalidate when the full completed candle is below the zone`);
+  }
 });
 
 test('first-tap detection excludes the origin and pre-activation candles', () => {

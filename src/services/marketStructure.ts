@@ -6,6 +6,7 @@ export interface StructureCandle {
   high: number;
   low: number;
   close: number;
+  complete?: boolean;
 }
 
 export type ChochClass = 'pending' | 'valid' | 'air' | 'vip';
@@ -277,17 +278,24 @@ export function resolveTjl1Confirmation(candles: StructureCandle[], options: {
 }
 
 export function doesInvalidateZone(zone: StructureZone, candle: StructureCandle): boolean {
+  // No zone can be invalidated by the live candle. Its temporary close can move
+  // beyond a boundary before returning inside the zone when the bar completes.
+  if (candle.complete === false) return false;
+
   if (zone.name === 'TJL1' && zone.invalidationDirection) {
-    // TJL1 must be crossed by a closed source-timeframe candle in the
-    // direction of its paired TJL2. A wick alone does not invalidate it.
+    // TJL1 must have a completed source-timeframe candle fully beyond the
+    // boundary facing its paired TJL2. The entire wick-to-wick range must be
+    // outside; a close or body beyond the boundary is not enough.
     return zone.invalidationDirection === 'up'
-      ? candle.close > zone.top
-      : candle.close < zone.bottom;
+      ? candle.low > zone.top
+      : candle.high < zone.bottom;
   }
 
+  // Apply the same closed-candle rule to every other MG, ISS, and S/D zone.
+  // The whole candle, including its wicks, must finish outside the zone.
   return zone.isBuy
-    ? Math.min(candle.open, candle.close) < zone.bottom
-    : Math.max(candle.open, candle.close) > zone.top;
+    ? candle.high < zone.bottom
+    : candle.low > zone.top;
 }
 
 export function findFirstZoneTapIndex(candles: StructureCandle[], zone: StructureZone): number {
@@ -599,8 +607,8 @@ export function analyzeMarketStructure(candles: StructureCandle[], options: {
         ? zone.confirmationWindowCloseTime
         : zone.activeFromTime ?? zone.startTime;
       if (invalidationStart === undefined || candle.time < invalidationStart) continue;
-      // A wick may cross a zone without cancelling it. But once any part of a
-      // completed candle body crosses the invalid side, the active zone fails.
+      // Wicks and unfinished candles do not cancel zones. The shared rule only
+      // invalidates when a completed candle is fully outside the invalid side.
       if (doesInvalidateZone(zone, candle)) {
         zone.active = false;
         zone.status = 'invalidated';
