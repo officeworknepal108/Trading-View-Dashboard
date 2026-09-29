@@ -492,22 +492,28 @@ export function analyzeMarketStructure(candles: StructureCandle[], options: {
     return source;
   };
 
-  const addTjlZone = (point: StructurePoint, name: 'TJL1' | 'TJL2', isBuy: boolean, formationTime: number) => {
+  const addTjlZone = (
+    point: StructurePoint,
+    name: 'TJL1' | 'TJL2',
+    isBuy: boolean,
+    pivotSide: 'high' | 'low',
+    formationTime: number,
+  ) => {
     const source = candles[point.index];
     const buffer = Math.abs(source.close - source.open) * 0.01;
     const lowerBody = Math.min(source.open, source.close);
     const upperBody = Math.max(source.open, source.close);
     const bottomWick = lowerBody - source.low;
     const topWick = source.high - upperBody;
-    const lowerPivot = (name === 'TJL1' && !isBuy) || (name === 'TJL2' && !isBuy);
-    const bottom = lowerPivot ? point.price - (topWick + buffer) : point.price;
-    const top = lowerPivot ? point.price : point.price + (bottomWick + buffer);
+    // Pivot geometry and trade direction are independent. A bullish TJL1 is
+    // a BUY zone at a high pivot (extending below the high), while a bearish
+    // TJL1 is a SELL zone at a low pivot (extending above the low).
+    const highPivot = pivotSide === 'high';
+    const bottom = highPivot ? point.price - (topWick + buffer) : point.price;
+    const top = highPivot ? point.price : point.price + (bottomWick + buffer);
     const confirmation = name === 'TJL1'
       ? resolveTjl1Confirmation(candles, {
-        // In this structure model, a bearish/sell-side TJL1 is represented by
-        // the low (the displayed BUY zone), so it confirms downward. A
-        // bullish/buy-side TJL1 is represented by the high and confirms up.
-        confirmationDirection: isBuy ? 'down' : 'up', bottom, top, formationTime,
+        confirmationDirection: isBuy ? 'up' : 'down', bottom, top, formationTime,
         sourceBarSeconds,
         confirmationBarSeconds: options.confirmationBarSeconds,
       })
@@ -660,14 +666,15 @@ export function analyzeMarketStructure(candles: StructureCandle[], options: {
         addSwing(confirmedLow, 'bullish');
         addLevel('bos', 'bullish', confirmedHigh, index, 'BOS');
 
-        currentTrendTjl1 = addTjlZone(confirmedHigh, 'TJL1', false, candle.time + sourceBarSeconds);
-        currentTrendTjl2 = addTjlZone(confirmedLow, 'TJL2', true, candle.time + sourceBarSeconds);
+        currentTrendTjl1 = addTjlZone(confirmedHigh, 'TJL1', true, 'high', candle.time + sourceBarSeconds);
+        currentTrendTjl2 = addTjlZone(confirmedLow, 'TJL2', true, 'low', candle.time + sourceBarSeconds);
         linkTjlPair(currentTrendTjl1, currentTrendTjl2);
         lastBullishHigh = confirmedHigh;
         if (options.allowSupplyDemand) {
           const originIndex = findOrderBlock(candles, confirmedHigh.index, index, true);
           const origin = candles[originIndex];
           addZone({ name: 'DEMAND', category: 'supplyDemand', isBuy: true, startTime: origin.time,
+            activeFromTime: candle.time + sourceBarSeconds,
             top: Math.max(origin.open, origin.close), bottom: origin.low });
         }
         protectedPoint = confirmedLow;
@@ -764,14 +771,15 @@ export function analyzeMarketStructure(candles: StructureCandle[], options: {
         addSwing(confirmedHigh, 'bearish');
         addLevel('bos', 'bearish', confirmedLow, index, 'BOS');
 
-        currentTrendTjl1 = addTjlZone(confirmedLow, 'TJL1', true, candle.time + sourceBarSeconds);
-        currentTrendTjl2 = addTjlZone(confirmedHigh, 'TJL2', false, candle.time + sourceBarSeconds);
+        currentTrendTjl1 = addTjlZone(confirmedLow, 'TJL1', false, 'low', candle.time + sourceBarSeconds);
+        currentTrendTjl2 = addTjlZone(confirmedHigh, 'TJL2', false, 'high', candle.time + sourceBarSeconds);
         linkTjlPair(currentTrendTjl1, currentTrendTjl2);
         lastBearishLow = confirmedLow;
         if (options.allowSupplyDemand) {
           const originIndex = findOrderBlock(candles, confirmedLow.index, index, false);
           const origin = candles[originIndex];
           addZone({ name: 'SUPPLY', category: 'supplyDemand', isBuy: false, startTime: origin.time,
+            activeFromTime: candle.time + sourceBarSeconds,
             top: origin.high, bottom: Math.min(origin.open, origin.close) });
         }
         protectedPoint = confirmedHigh;

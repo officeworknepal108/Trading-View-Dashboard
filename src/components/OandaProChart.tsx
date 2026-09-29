@@ -19,6 +19,7 @@ import {
   WifiOff,
 } from 'lucide-react';
 import { analyzeMarketStructure, StructureLine, StructureZone } from '../services/marketStructure';
+import { findReplayIndexAtOrBefore } from '../services/replay';
 
 type OandaGranularity = 'M1' | 'M5' | 'M15' | 'M30' | 'H1' | 'H4' | 'D';
 type MarketGranularity = OandaGranularity | 'W';
@@ -85,6 +86,16 @@ function formatPrice(value: number | undefined): string {
   }) : '—';
 }
 
+function formatCandleCountdown(secondsRemaining: number): string {
+  const total = Math.max(0, Math.floor(secondsRemaining));
+  const hours = Math.floor(total / 3600);
+  const minutes = Math.floor((total % 3600) / 60);
+  const seconds = total % 60;
+  return hours > 0
+    ? `${hours}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`
+    : `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+}
+
 export const OandaProChart: React.FC = () => {
   const hostRef = useRef<HTMLDivElement | null>(null);
   const chartRef = useRef<any>(null);
@@ -92,6 +103,9 @@ export const OandaProChart: React.FC = () => {
   const volumeSeriesRef = useRef<any>(null);
   const markersRef = useRef<any>(null);
   const zoneLayerRef = useRef<HTMLDivElement | null>(null);
+  const livePriceLabelRef = useRef<HTMLDivElement | null>(null);
+  const livePriceValueRef = useRef<HTMLSpanElement | null>(null);
+  const liveCountdownRef = useRef<HTMLSpanElement | null>(null);
   const zonesRef = useRef<StructureZone[]>([]);
   const structureLinesRef = useRef<StructureLine[]>([]);
   const issMarkersRef = useRef<any[]>([]);
@@ -102,6 +116,10 @@ export const OandaProChart: React.FC = () => {
   const showInvalidZonesRef = useRef(false);
   const redrawZonesRef = useRef<() => void>(() => undefined);
   const hasFittedRef = useRef(false);
+  const replayTimeRef = useRef<number | null>(null);
+  const pendingReplayViewportRef = useRef<{ fromOffset: number; toOffset: number } | null>(null);
+  const loadRequestIdRef = useRef(0);
+  const loadedGranularityRef = useRef<OandaGranularity>('H1');
   const [granularity, setGranularity] = useState<OandaGranularity>('H1');
   const [candles, setCandles] = useState<OandaCandle[]>([]);
   const [vipCandles, setVipCandles] = useState<OandaCandle[]>([]);
@@ -217,13 +235,13 @@ export const OandaProChart: React.FC = () => {
       const fill = inactive
         ? 'rgba(100, 116, 139, 0.10)'
         : pending
-        ? 'rgba(124, 58, 237, 0.13)'
+        ? demand ? 'rgba(16, 185, 129, 0.13)' : 'rgba(244, 63, 94, 0.12)'
         : isIss
         ? 'rgba(217, 119, 6, 0.14)'
         : demand ? 'rgba(16, 185, 129, 0.13)' : 'rgba(244, 63, 94, 0.12)';
       const border = inactive
         ? 'rgba(71, 85, 105, 0.72)'
-        : pending ? 'rgba(109, 40, 217, 0.72)' : isIss ? 'rgba(180, 83, 9, 0.72)' : demand ? 'rgba(5, 150, 105, 0.65)' : 'rgba(225, 29, 72, 0.65)';
+        : pending ? demand ? 'rgba(5, 150, 105, 0.72)' : 'rgba(225, 29, 72, 0.72)' : isIss ? 'rgba(180, 83, 9, 0.72)' : demand ? 'rgba(5, 150, 105, 0.65)' : 'rgba(225, 29, 72, 0.65)';
       box.style.position = 'absolute';
       box.style.left = `${left}px`;
       box.style.width = `${right - left}px`;
@@ -236,13 +254,13 @@ export const OandaProChart: React.FC = () => {
       const label = document.createElement('span');
       const name = isMg || isIss ? zone.name : demand ? 'DEMAND' : 'SUPPLY';
       label.textContent = inactive
-        ? `${name} · ${rejected ? 'REJECTED' : 'INVALID'}`
+        ? rejected ? `${name} · REJECTED` : name
         : `${name}${pending ? ' · PENDING' : zone.name === 'TJL1' ? ' · VALID' : ''}`;
       if (inactive) {
-        label.textContent = `${name} \u00b7 ${rejected ? 'REJECTED' : 'INVALID'}`;
+        label.textContent = rejected ? `${name} \u00b7 REJECTED` : name;
       } else if (zone.name === 'TJL1') {
         label.textContent = pending
-          ? `TJL1 · PENDING ${confirmationLabel} ${zone.isBuy ? 'BELOW' : 'ABOVE'}`
+          ? `TJL1 · PENDING ${confirmationLabel} ${zone.isBuy ? 'ABOVE' : 'BELOW'}`
           : 'VALID TJL1';
       } else if (zone.name === 'TJL2') {
         label.textContent = 'TJL2';
@@ -253,7 +271,7 @@ export const OandaProChart: React.FC = () => {
       label.style.fontSize = '9px';
       label.style.lineHeight = '12px';
       label.style.fontWeight = '800';
-      label.style.color = inactive ? '#475569' : pending ? '#6d28d9' : isIss ? '#b45309' : demand ? '#047857' : '#be123c';
+      label.style.color = inactive ? '#475569' : pending ? demand ? '#047857' : '#be123c' : isIss ? '#b45309' : demand ? '#047857' : '#be123c';
       box.appendChild(label);
       layer.appendChild(box);
     }
@@ -359,7 +377,15 @@ export const OandaProChart: React.FC = () => {
     return () => window.clearInterval(timer);
   }, [candles.length, replayIndex, replayPlaying, replaySpeed]);
 
+  useEffect(() => {
+    if (replayIndex === null) return;
+    const replayCandle = candles[Math.min(replayIndex, candles.length - 1)];
+    if (replayCandle) replayTimeRef.current = replayCandle.time;
+  }, [candles, replayIndex]);
+
   const loadCandles = useCallback(async (signal?: AbortSignal) => {
+    const requestId = ++loadRequestIdRef.current;
+    const replayTime = replayTimeRef.current;
     setIsLoading(true);
     try {
       const requestCandles = async (requestedGranularity: MarketGranularity) => {
@@ -367,6 +393,7 @@ export const OandaProChart: React.FC = () => {
           granularity: requestedGranularity,
           count: '1500',
         });
+        if (replayTime !== null) query.set('endTime', String(replayTime));
         const response = await fetch(`/api/tradingview/market-data?${query}`, {
           signal,
           cache: 'no-store',
@@ -381,9 +408,18 @@ export const OandaProChart: React.FC = () => {
         requestCandles(granularity),
         vipSupportGranularity ? requestCandles(vipSupportGranularity) : Promise.resolve(null),
       ]);
+      if (requestId !== loadRequestIdRef.current) return;
       if (payload.candles.length === 0) throw new Error('TradingView returned no candles for OANDA:XAUUSD.');
+      const nextReplayIndex = replayTime === null
+        ? null
+        : findReplayIndexAtOrBefore(payload.candles, replayTime);
+      if (replayTime !== null && nextReplayIndex === null) {
+        throw new Error(`The selected replay date is not available on ${GRANULARITY_LABELS[granularity]}.`);
+      }
+      loadedGranularityRef.current = granularity;
       setCandles(payload.candles);
       setVipCandles(vipPayload?.candles || []);
+      if (nextReplayIndex !== null) setReplayIndex(nextReplayIndex);
       setHoveredCandle(null);
       setSource(payload.source || 'TradingView WebSocket · OANDA:XAUUSD · unofficial');
       setLastUpdated(payload.fetchedAt || new Date().toISOString());
@@ -391,9 +427,13 @@ export const OandaProChart: React.FC = () => {
     } catch (loadError) {
       if ((loadError as Error).name !== 'AbortError') {
         setError(loadError instanceof Error ? loadError.message : 'Unable to load TradingView candles.');
+        if (requestId === loadRequestIdRef.current && replayTime !== null) {
+          pendingReplayViewportRef.current = null;
+          setGranularity(loadedGranularityRef.current);
+        }
       }
     } finally {
-      if (!signal?.aborted) setIsLoading(false);
+      if (!signal?.aborted && requestId === loadRequestIdRef.current) setIsLoading(false);
     }
   }, [granularity, vipSupportGranularity]);
 
@@ -401,7 +441,9 @@ export const OandaProChart: React.FC = () => {
     const controller = new AbortController();
     hasFittedRef.current = false;
     void loadCandles(controller.signal);
-    const interval = window.setInterval(() => void loadCandles(), 15_000);
+    const interval = window.setInterval(() => {
+      if (replayTimeRef.current === null) void loadCandles();
+    }, 15_000);
     return () => {
       controller.abort();
       window.clearInterval(interval);
@@ -526,13 +568,58 @@ export const OandaProChart: React.FC = () => {
     markersRef.current?.setMarkers([
       ...(showStructure ? structure.markers : []),
     ].sort((a: any, b: any) => Number(a.time) - Number(b.time)));
-    if (!hasFittedRef.current) {
+    const pendingViewport = pendingReplayViewportRef.current;
+    if (replayIndex !== null && pendingViewport && loadedGranularityRef.current === granularity) {
+      const replayLogicalIndex = displayCandles.length - 1;
+      chart.timeScale().setVisibleLogicalRange({
+        from: replayLogicalIndex + pendingViewport.fromOffset,
+        to: replayLogicalIndex + pendingViewport.toOffset,
+      });
+      pendingReplayViewportRef.current = null;
+      hasFittedRef.current = true;
+    } else if (!hasFittedRef.current) {
       chart.timeScale().fitContent();
       chart.timeScale().scrollToRealTime();
       hasFittedRef.current = true;
     }
     window.requestAnimationFrame(() => redrawZonesRef.current());
-  }, [displayCandles, showIss, showStructure, structure.issMarkers, structure.markers]);
+  }, [displayCandles, replayIndex, showIss, showStructure, structure.issMarkers, structure.markers]);
+
+  useEffect(() => {
+    const label = livePriceLabelRef.current;
+    const priceValue = livePriceValueRef.current;
+    const countdown = liveCountdownRef.current;
+    if (!label || !priceValue || !countdown) return;
+
+    const updateLiveCountdown = () => {
+      const series = candleSeriesRef.current;
+      const host = hostRef.current;
+      const liveCandle = candles[candles.length - 1];
+      if (replayIndex !== null || !series || !host || !liveCandle) {
+        label.style.display = 'none';
+        return;
+      }
+
+      const coordinate = series.priceToCoordinate(liveCandle.close);
+      if (coordinate === null) {
+        label.style.display = 'none';
+        return;
+      }
+
+      const closesAt = liveCandle.time + TIMEFRAME_SECONDS[granularity];
+      const remaining = closesAt - Date.now() / 1000;
+      const rising = liveCandle.close >= liveCandle.open;
+      label.style.display = 'flex';
+      label.style.top = `${Math.max(22, Math.min(host.clientHeight - 22, coordinate))}px`;
+      label.style.backgroundColor = rising ? '#089981' : '#f23645';
+      priceValue.textContent = formatPrice(liveCandle.close);
+      countdown.textContent = formatCandleCountdown(remaining);
+    };
+
+    updateLiveCountdown();
+    const timer = window.setInterval(updateLiveCountdown, 1000);
+    return () => window.clearInterval(timer);
+  }, [candles, granularity, replayIndex]);
 
   const toggleFullscreen = async () => {
     const element = hostRef.current?.parentElement?.parentElement;
@@ -550,18 +637,44 @@ export const OandaProChart: React.FC = () => {
 
   const beginReplay = () => {
     if (candles.length < 2) return;
+    const nextReplayIndex = replaySelectionIndex ?? Math.max(1, candles.length - 10);
     setReplayPlaying(false);
-    setReplayIndex(replaySelectionIndex ?? Math.max(1, candles.length - 10));
+    replayTimeRef.current = candles[nextReplayIndex]?.time ?? null;
+    setReplayIndex(nextReplayIndex);
     setReplaySelecting(false);
     hasFittedRef.current = false;
   };
 
   const exitReplay = () => {
     setReplayPlaying(false);
+    replayTimeRef.current = null;
+    pendingReplayViewportRef.current = null;
     setReplayIndex(null);
     setReplaySelecting(false);
     setReplaySelectionIndex(null);
     hasFittedRef.current = false;
+    setRefreshKey((value) => value + 1);
+  };
+
+  const changeTimeframe = (nextGranularity: OandaGranularity) => {
+    if (nextGranularity === granularity) return;
+    if (replayIndex !== null) {
+      const replayCandle = candles[Math.min(replayIndex, candles.length - 1)];
+      if (replayCandle) replayTimeRef.current = replayCandle.time;
+      const visibleRange = chartRef.current?.timeScale().getVisibleLogicalRange();
+      const replayLogicalIndex = displayCandles.length - 1;
+      if (visibleRange && replayLogicalIndex >= 0) {
+        pendingReplayViewportRef.current = {
+          fromOffset: visibleRange.from - replayLogicalIndex,
+          toOffset: visibleRange.to - replayLogicalIndex,
+        };
+      }
+      setReplayPlaying(false);
+    } else {
+      setReplaySelecting(false);
+      setReplaySelectionIndex(null);
+    }
+    setGranularity(nextGranularity);
   };
 
   const selectReplayBar = (event: React.PointerEvent<HTMLDivElement>) => {
@@ -586,10 +699,7 @@ export const OandaProChart: React.FC = () => {
             {TIMEFRAMES.map((timeframe) => (
               <button
                 key={timeframe.value}
-                onClick={() => {
-                  setGranularity(timeframe.value);
-                  exitReplay();
-                }}
+                onClick={() => changeTimeframe(timeframe.value)}
                 className={`rounded-md px-2.5 py-1.5 text-xs font-black transition ${
                   granularity === timeframe.value
                     ? 'bg-slate-900 text-white shadow-sm'
@@ -771,6 +881,14 @@ export const OandaProChart: React.FC = () => {
         <div className="relative flex-1 min-h-0 bg-white">
           <div ref={hostRef} className="absolute inset-0" />
           <div ref={zoneLayerRef} className="pointer-events-none absolute inset-0 z-10 overflow-hidden" />
+          <div
+            ref={livePriceLabelRef}
+            className="pointer-events-none absolute right-0 z-20 hidden w-[72px] -translate-y-1/2 flex-col items-center justify-center py-0.5 text-white shadow-sm"
+            aria-label="Live candle price and time remaining"
+          >
+            <span ref={livePriceValueRef} className="text-[10px] font-black leading-[12px]" />
+            <span ref={liveCountdownRef} className="text-[9px] font-bold leading-[11px]" />
+          </div>
           {replaySelecting && replaySelectionIndex !== null && (
             <div
               className="absolute inset-0 z-30 cursor-ew-resize"
@@ -840,14 +958,14 @@ export const OandaProChart: React.FC = () => {
               </thead>
               <tbody>
                 {pendingTjlRows.map((zone) => (
-                  <tr key={zone.id} className="border-t border-violet-100 bg-violet-50/70 text-slate-700">
-                    <td className="px-2 py-1 font-black text-violet-800">TJL1</td>
+                  <tr key={zone.id} className={`border-t text-slate-700 ${zone.isBuy ? 'border-emerald-100 bg-emerald-50/70' : 'border-rose-100 bg-rose-50/70'}`}>
+                    <td className={`px-2 py-1 font-black ${zone.isBuy ? 'text-emerald-800' : 'text-rose-800'}`}>TJL1</td>
                     <td className={`px-2 py-1 font-bold ${zone.isBuy ? 'text-emerald-700' : 'text-rose-700'}`}>
                       {zone.isBuy ? 'BUY' : 'SELL'}
                     </td>
                     <td className="px-2 py-1 whitespace-nowrap">{formatPrice(zone.bottom)} – {formatPrice(zone.top)}</td>
-                    <td className="px-2 py-1 text-right font-black text-violet-700 whitespace-nowrap">
-                      WAIT {TJL1_CONFIRMATION_LABELS[granularity].toUpperCase()} {zone.isBuy ? 'BELOW' : 'ABOVE'}
+                    <td className={`px-2 py-1 text-right font-black whitespace-nowrap ${zone.isBuy ? 'text-emerald-700' : 'text-rose-700'}`}>
+                      WAIT {TJL1_CONFIRMATION_LABELS[granularity].toUpperCase()} {zone.isBuy ? 'ABOVE' : 'BELOW'}
                     </td>
                   </tr>
                 ))}

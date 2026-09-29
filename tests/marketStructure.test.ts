@@ -151,6 +151,26 @@ test('first-tap detection excludes the origin and pre-activation candles', () =>
   assert.equal(findFirstZoneTapIndex(candles, zone()), 2);
 });
 
+test('supply is tapped only by a revisit after its confirming BOS candle', () => {
+  const candles = [
+    candle(100, 105, 111, 99), // supply origin
+    candle(200, 105, 109, 101), // formation overlap: not yet a zone
+    candle(300, 95, 106, 90), // confirming BOS candle
+    candle(400, 95, 99, 91), // first eligible candle, no overlap
+    candle(500, 101, 103, 98), // genuine revisit
+  ];
+  const supply = zone({
+    name: 'SUPPLY',
+    category: 'supplyDemand',
+    startTime: 100,
+    activeFromTime: 400,
+    bottom: 100,
+    top: 110,
+  });
+
+  assert.equal(findFirstZoneTapIndex(candles, supply), 4);
+});
+
 test('H4 confirmation buckets follow the 5 p.m. New York OANDA session', () => {
   const sunday21Utc = Date.UTC(2026, 8, 27, 21) / 1000;
   assert.equal(getConfirmationBucketStart(sunday21Utc, 4 * 3600), sunday21Utc);

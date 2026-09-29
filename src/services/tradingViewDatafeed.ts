@@ -46,6 +46,7 @@ export async function fetchTradingViewCandles(options: {
   exchange?: string;
   granularity?: string;
   count?: number;
+  endTime?: number;
   timeoutMs?: number;
 } = {}): Promise<TradingViewCandle[]> {
   const symbol = (options.symbol || 'XAUUSD').toUpperCase().replace(/[^A-Z0-9]/g, '');
@@ -55,13 +56,19 @@ export async function fetchTradingViewCandles(options: {
   if (!resolution) throw new Error(`Unsupported TradingView granularity: ${granularity}`);
 
   const count = Math.max(10, Math.min(Number(options.count || 1500), 5000));
-  const timeoutMs = Math.max(3_000, options.timeoutMs || 12_000);
+  const endTime = Number.isFinite(options.endTime) ? Math.floor(Number(options.endTime)) : undefined;
+  const timeoutMs = Math.max(3_000, options.timeoutMs || (endTime === undefined ? 12_000 : 45_000));
   const fullSymbol = `${exchange}:${symbol}`;
   const chartSession = randomSession('cs');
 
   return new Promise((resolve, reject) => {
     let settled = false;
     let buffer = '';
+    const candlesByTime = new Map<number, TradingViewCandle>();
+    let earliestSeen = Number.POSITIVE_INFINITY;
+    let historyRequests = 0;
+    const pageSize = Math.max(count, 5000);
+    const maxHistoryRequests = 100;
     const socket = new WebSocket(TRADINGVIEW_SOCKET, {
       headers: {
         Origin: 'https://data.tradingview.com',
@@ -90,7 +97,10 @@ export async function fetchTradingViewCandles(options: {
       socket.send(packet('chart_create_session', [chartSession, '']));
       const specification = `={"symbol":"${fullSymbol}","adjustment":"splits","session":"regular"}`;
       socket.send(packet('resolve_symbol', [chartSession, 'symbol_1', specification]));
-      socket.send(packet('create_series', [chartSession, 'series_1', 's1', 'symbol_1', resolution, count, '']));
+      socket.send(packet('create_series', [
+        chartSession, 's1', 's1', 'symbol_1', resolution,
+        endTime === undefined ? count : pageSize, '',
+      ]));
     });
 
     socket.on('message', (data: RawData) => {
@@ -104,14 +114,19 @@ export async function fetchTradingViewCandles(options: {
       const messages = parseMessages(buffer) as Array<{ m?: string; p?: any[] }>;
       if (messages.length > 0) buffer = '';
       for (const message of messages) {
+        if (message.m === 'series_completed' && endTime !== undefined
+          && message.p?.[4]?.data_completed === 'limit' && candlesByTime.size > 0) {
+          finish(new Error(`TradingView's available ${granularity} history does not reach ${new Date(endTime * 1000).toISOString()}.`));
+          return;
+        }
         if (message.m === 'critical_error' || message.m === 'symbol_error') {
           finish(new Error(`TradingView rejected ${fullSymbol}.`));
           return;
         }
         if (message.m !== 'timescale_update') continue;
-        const rows = message.p?.[1]?.series_1?.s;
+        const rows = message.p?.[1]?.s1?.s;
         if (!Array.isArray(rows) || rows.length === 0) continue;
-        const candles = rows
+        const receivedCandles = rows
           .map((row: any): TradingViewCandle | null => {
             const value = row?.v;
             if (!Array.isArray(value) || value.length < 5) return null;
@@ -125,10 +140,41 @@ export async function fetchTradingViewCandles(options: {
           })
           .filter((candle: TradingViewCandle | null): candle is TradingViewCandle => candle !== null)
           .sort((a: TradingViewCandle, b: TradingViewCandle) => a.time - b.time);
-        if (candles.length > 0) {
+        if (receivedCandles.length === 0) continue;
+        for (const candle of receivedCandles) candlesByTime.set(candle.time, candle);
+        const candles = [...candlesByTime.values()].sort((a, b) => a.time - b.time);
+
+        if (endTime === undefined) {
           candles[candles.length - 1].complete = false;
-          finish(undefined, candles);
+          finish(undefined, candles.slice(-count));
           return;
+        }
+
+        const newEarliest = candles[0].time;
+        let replayIndex = -1;
+        for (let index = candles.length - 1; index >= 0; index -= 1) {
+          if (candles[index].time <= endTime) {
+            replayIndex = index;
+            break;
+          }
+        }
+        if (replayIndex >= 0) {
+          // Keep history for structure calculations and a matching amount of
+          // future data so candle-by-candle Replay can continue after a switch.
+          const from = Math.max(0, replayIndex - count + 1);
+          const to = Math.min(candles.length, replayIndex + count + 1);
+          finish(undefined, candles.slice(from, to).map((candle) => ({ ...candle, complete: true })));
+          return;
+        }
+
+        if (newEarliest < earliestSeen) {
+          earliestSeen = newEarliest;
+          if (historyRequests >= maxHistoryRequests) {
+            finish(new Error(`TradingView history limit was reached before ${new Date(endTime * 1000).toISOString()}.`));
+            return;
+          }
+          historyRequests += 1;
+          socket.send(packet('request_more_data', [chartSession, 's1', pageSize]));
         }
       }
     });

@@ -29,12 +29,16 @@ async function startServer() {
     try {
       const granularity = String(req.query.granularity || 'H1').toUpperCase();
       const count = Math.max(10, Math.min(Number(req.query.count || 1500), 5000));
+      const requestedEndTime = Number(req.query.endTime);
+      const endTime = Number.isFinite(requestedEndTime) && requestedEndTime > 0
+        ? Math.floor(requestedEndTime)
+        : undefined;
       if (!GRANULARITIES.has(granularity)) {
         return res.status(400).json({ ok: false, error: 'Unsupported candle granularity.' });
       }
 
       const candles = await fetchTradingViewCandles({
-        exchange: 'OANDA', symbol: 'XAUUSD', granularity, count,
+        exchange: 'OANDA', symbol: 'XAUUSD', granularity, count, endTime,
       });
       res.setHeader('Cache-Control', 'no-store');
       return res.json({
