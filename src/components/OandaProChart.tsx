@@ -121,12 +121,12 @@ export const OandaProChart: React.FC = () => {
   const replayTimeRef = useRef<number | null>(null);
   const pendingReplayViewportRef = useRef<{ fromOffset: number; toOffset: number } | null>(null);
   const loadRequestIdRef = useRef(0);
-  const loadedGranularityRef = useRef<OandaGranularity>('H1');
+  const loadedGranularityRef = useRef<OandaGranularity>('M15');
   const candlesRef = useRef<OandaCandle[]>([]);
   const replaySelectingRef = useRef(false);
   const replaySelectionIndexRef = useRef<number | null>(null);
   const syncReplaySelectionLineRef = useRef<() => void>(() => undefined);
-  const [granularity, setGranularity] = useState<OandaGranularity>('H1');
+  const [granularity, setGranularity] = useState<OandaGranularity>('M15');
   const [candles, setCandles] = useState<OandaCandle[]>([]);
   const [vipCandles, setVipCandles] = useState<OandaCandle[]>([]);
   const [hoveredCandle, setHoveredCandle] = useState<OandaCandle | null>(null);
@@ -760,12 +760,12 @@ export const OandaProChart: React.FC = () => {
   return (
     <section className="h-full w-full bg-slate-100 p-3 sm:p-4 overflow-hidden">
       <div className="h-full w-full overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm flex flex-col">
-        <div className="flex flex-wrap items-center gap-3 border-b border-slate-200 px-3 py-2 bg-white">
-          <div className="flex items-center gap-2 pr-3 border-r border-slate-200">
-            <div className="h-8 w-8 rounded-full bg-amber-100 text-amber-700 grid place-items-center font-black">Au</div>
+        <div className="flex flex-wrap items-center gap-2 border-b border-slate-200 px-2.5 py-1.5 bg-white">
+          <div className="flex items-center gap-1.5 pr-2 border-r border-slate-200">
+            <div className="h-7 w-7 rounded-full bg-amber-100 text-amber-700 grid place-items-center text-xs font-black">Au</div>
             <div>
-              <div className="text-sm font-black text-slate-900 leading-tight">Gold Spot / U.S. Dollar</div>
-              <div className="text-[10px] font-bold tracking-wider text-slate-500">XAUUSD · OANDA</div>
+              <div className="text-[13px] font-black text-slate-900 leading-tight">Gold Spot / U.S. Dollar</div>
+              <div className="text-[9px] font-bold tracking-wider text-slate-500">XAUUSD · OANDA</div>
             </div>
           </div>
 
@@ -774,7 +774,7 @@ export const OandaProChart: React.FC = () => {
               <button
                 key={timeframe.value}
                 onClick={() => changeTimeframe(timeframe.value)}
-                className={`rounded-md px-2.5 py-1.5 text-xs font-black transition ${
+                className={`rounded-md px-2 py-1 text-[11px] font-black transition ${
                   granularity === timeframe.value
                     ? 'bg-slate-900 text-white shadow-sm'
                     : 'text-slate-600 hover:bg-slate-100 hover:text-slate-950'
@@ -785,12 +785,12 @@ export const OandaProChart: React.FC = () => {
             ))}
           </div>
 
-          <div className="flex items-center gap-1 border-l border-slate-200 pl-3">
+          <div className="flex items-center gap-1 border-l border-slate-200 pl-2">
             {replayIndex === null ? (
               <button
                 onClick={openReplaySelector}
                 disabled={candles.length < 2}
-                className="rounded-md border border-violet-200 bg-violet-50 px-2.5 py-1.5 text-[10px] font-black text-violet-700 transition hover:bg-violet-100 disabled:cursor-not-allowed disabled:opacity-50"
+                className="rounded-md border border-violet-200 bg-violet-50 px-2 py-1 text-[9px] font-black text-violet-700 transition hover:bg-violet-100 disabled:cursor-not-allowed disabled:opacity-50"
                 title="Choose a chart bar, then start candle-by-candle replay from that point"
               >
                 ▶ REPLAY
@@ -799,14 +799,14 @@ export const OandaProChart: React.FC = () => {
               <>
                 <button
                   onClick={() => setReplayIndex((index) => Math.max(1, (index ?? 1) - 1))}
-                  className="rounded-md border border-violet-200 bg-white px-2 py-1.5 text-[10px] font-black text-violet-700 hover:bg-violet-50"
+                  className="rounded-md border border-violet-200 bg-white px-1.5 py-1 text-[9px] font-black text-violet-700 hover:bg-violet-50"
                   title="Previous candle"
                 >
                   ‹
                 </button>
                 <button
                   onClick={openReplaySelector}
-                  className={`rounded-md border px-2 py-1.5 text-[10px] font-black transition ${
+                  className={`rounded-md border px-1.5 py-1 text-[9px] font-black transition ${
                     replaySelecting
                       ? 'border-blue-300 bg-blue-100 text-blue-800'
                       : 'border-blue-200 bg-white text-blue-700 hover:bg-blue-50'
@@ -817,14 +817,14 @@ export const OandaProChart: React.FC = () => {
                 </button>
                 <button
                   onClick={() => setReplayPlaying((playing) => !playing)}
-                  className="rounded-md border border-violet-200 bg-violet-50 px-2.5 py-1.5 text-[10px] font-black text-violet-700 hover:bg-violet-100"
+                  className="rounded-md border border-violet-200 bg-violet-50 px-2 py-1 text-[9px] font-black text-violet-700 hover:bg-violet-100"
                   title={replayPlaying ? 'Pause replay' : 'Play replay'}
                 >
                   {replayPlaying ? '❚❚ PAUSE' : '▶ PLAY'}
                 </button>
                 <button
                   onClick={() => setReplayIndex((index) => Math.min(candles.length - 1, (index ?? 1) + 1))}
-                  className="rounded-md border border-violet-200 bg-white px-2 py-1.5 text-[10px] font-black text-violet-700 hover:bg-violet-50"
+                  className="rounded-md border border-violet-200 bg-white px-1.5 py-1 text-[9px] font-black text-violet-700 hover:bg-violet-50"
                   title="Next candle"
                 >
                   ›
@@ -832,7 +832,7 @@ export const OandaProChart: React.FC = () => {
                 <select
                   value={replaySpeed}
                   onChange={(event) => setReplaySpeed(Number(event.target.value))}
-                  className="rounded-md border border-violet-200 bg-white px-1.5 py-1.5 text-[10px] font-black text-violet-700"
+                  className="rounded-md border border-violet-200 bg-white px-1 py-1 text-[9px] font-black text-violet-700"
                   title="Replay speed"
                 >
                   <option value={0.5}>0.5x</option>
@@ -843,22 +843,22 @@ export const OandaProChart: React.FC = () => {
                 </select>
                 <button
                   onClick={exitReplay}
-                  className="rounded-md border border-slate-200 bg-white px-2 py-1.5 text-[10px] font-black text-slate-500 hover:bg-slate-100"
+                  className="rounded-md border border-slate-200 bg-white px-1.5 py-1 text-[9px] font-black text-slate-500 hover:bg-slate-100"
                   title="Exit replay and return to the live chart"
                 >
                   LIVE
                 </button>
-                <span className="px-1 text-[10px] font-bold text-violet-700">
+                <span className="px-1 text-[9px] font-bold text-violet-700">
                   {displayCandles.length}/{candles.length}
                 </span>
               </>
             )}
           </div>
 
-          <div className="flex items-center gap-1 border-l border-slate-200 pl-3">
+          <div className="flex items-center gap-1 border-l border-slate-200 pl-2">
             <button
               onClick={() => setShowStructure((value) => !value)}
-              className={`rounded-md border px-2.5 py-1.5 text-[10px] font-black transition ${
+              className={`rounded-md border px-2 py-1 text-[9px] font-black transition ${
                 showStructure
                   ? 'border-indigo-200 bg-indigo-50 text-indigo-700'
                   : 'border-slate-200 bg-white text-slate-500'
@@ -869,7 +869,7 @@ export const OandaProChart: React.FC = () => {
             </button>
             <button
               onClick={() => setShowMgZones((value) => !value)}
-              className={`rounded-md border px-2.5 py-1.5 text-[10px] font-black transition ${
+              className={`rounded-md border px-2 py-1 text-[9px] font-black transition ${
                 showMgZones
                   ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
                   : 'border-slate-200 bg-white text-slate-500'
@@ -880,7 +880,7 @@ export const OandaProChart: React.FC = () => {
             </button>
             <button
               onClick={() => setShowSupplyDemand((value) => !value)}
-              className={`rounded-md border px-2.5 py-1.5 text-[10px] font-black transition ${
+              className={`rounded-md border px-2 py-1 text-[9px] font-black transition ${
                 showSupplyDemand
                   ? 'border-cyan-200 bg-cyan-50 text-cyan-700'
                   : 'border-slate-200 bg-white text-slate-500'
@@ -891,7 +891,7 @@ export const OandaProChart: React.FC = () => {
             </button>
             <button
               onClick={() => setShowIss((value) => !value)}
-              className={`rounded-md border px-2.5 py-1.5 text-[10px] font-black transition ${
+              className={`rounded-md border px-2 py-1 text-[9px] font-black transition ${
                 showIss ? 'border-amber-200 bg-amber-50 text-amber-700' : 'border-slate-200 bg-white text-slate-500'
               }`}
               title="Show or hide ISS 0–5 wave markings"
@@ -900,7 +900,7 @@ export const OandaProChart: React.FC = () => {
             </button>
             <button
               onClick={() => setShowInvalidZones((value) => !value)}
-              className={`rounded-md border px-2.5 py-1.5 text-[10px] font-black transition ${
+              className={`rounded-md border px-2 py-1 text-[9px] font-black transition ${
                 showInvalidZones
                   ? 'border-slate-400 bg-slate-200 text-slate-700'
                   : 'border-slate-200 bg-white text-slate-500'
@@ -911,28 +911,28 @@ export const OandaProChart: React.FC = () => {
             </button>
           </div>
 
-          <div className="ml-auto flex items-center gap-2">
-            <div className={`flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[10px] font-black ${
+          <div className="ml-auto flex items-center gap-1.5">
+            <div className={`flex items-center gap-1 rounded-full border px-2 py-0.5 text-[9px] font-black ${
               error
                 ? 'border-rose-200 bg-rose-50 text-rose-700'
                 : 'border-emerald-200 bg-emerald-50 text-emerald-700'
             }`}>
-              {error ? <WifiOff className="h-3 w-3" /> : <Wifi className="h-3 w-3" />}
+              {error ? <WifiOff className="h-2.5 w-2.5" /> : <Wifi className="h-2.5 w-2.5" />}
               {error ? 'FEED DISCONNECTED' : 'TRADINGVIEW CONNECTED'}
             </div>
             <button
               onClick={() => setRefreshKey((value) => value + 1)}
-              className="rounded-md border border-slate-200 p-1.5 text-slate-600 hover:bg-slate-100"
+              className="rounded-md border border-slate-200 p-1 text-slate-600 hover:bg-slate-100"
               title="Refresh TradingView OANDA:XAUUSD candles"
             >
-              <RefreshCw className={`h-4 w-4 ${isLoading ? 'animate-spin' : ''}`} />
+              <RefreshCw className={`h-3.5 w-3.5 ${isLoading ? 'animate-spin' : ''}`} />
             </button>
             <button
               onClick={() => void toggleFullscreen()}
-              className="rounded-md border border-slate-200 p-1.5 text-slate-600 hover:bg-slate-100"
+              className="rounded-md border border-slate-200 p-1 text-slate-600 hover:bg-slate-100"
               title="Fullscreen chart"
             >
-              <Maximize2 className="h-4 w-4" />
+              <Maximize2 className="h-3.5 w-3.5" />
             </button>
           </div>
         </div>
