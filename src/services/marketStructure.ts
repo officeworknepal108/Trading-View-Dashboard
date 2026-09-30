@@ -1011,6 +1011,7 @@ export function analyzeMarketStructure(candles: StructureCandle[], options: {
     // An external BOS continues the current structure. Only an external CHoCH
     // starts a new external structure and terminates the post-ISS internal run.
     lines.filter((line) => line.type === 'choch').map((line) => line.toTime),
+    options.vipSupport,
   );
   issMarkers.push(...iss.markers);
   internalMarkers.push(...iss.internalMarkers);
@@ -1061,6 +1062,7 @@ export function findIssFiveWaves(
   zoneVisualBars: number,
   confirmationBarSeconds?: number,
   externalStructureTimes: number[] = [],
+  vipSupport?: VipSupportContext | VipSupportContext[],
 ): {
   markers: IssMarker[];
   internalMarkers: SeriesMarker<UTCTimestamp>[];
@@ -1357,6 +1359,66 @@ export function findIssFiveWaves(
     });
   };
 
+  const internalVipSupportContexts = !vipSupport
+    ? []
+    : Array.isArray(vipSupport) ? vipSupport : [vipSupport];
+  let lastInternalVipSupportTapTimeUsed: number | undefined;
+  const buildInternalChochContext = (
+    direction: 'bullish' | 'bearish',
+    tjl1: StructureZone | null,
+    tjl2: StructureZone | null,
+    sourceChochTime: number,
+  ): ChochMetadata => {
+    const formationTime = sourceChochTime + sourceBarSeconds;
+    const tjl1Confirmed = wasTjl1ConfirmedBy(tjl1, formationTime);
+    const tjl2Confirmation = tjl2
+      ? resolveTjl1Confirmation(candles, {
+        confirmationDirection: direction === 'bullish' ? 'up' : 'down',
+        bottom: tjl2.bottom,
+        top: tjl2.top,
+        formationTime,
+        sourceBarSeconds,
+        confirmationBarSeconds,
+      })
+      : { status: 'pending' as const };
+    const candidateVipTap = tjl2
+      ? findVipSupportTapAcrossContexts(
+        candles,
+        internalVipSupportContexts,
+        sourceChochTime,
+        direction === 'bullish',
+      )
+      : undefined;
+    const vipTap = selectFreshVipSupportTap(
+      candidateVipTap,
+      lastInternalVipSupportTapTimeUsed,
+    );
+    if (vipTap) lastInternalVipSupportTapTimeUsed = vipTap.tapTime;
+    return {
+      ...classifyChoch({
+        tjl1Confirmed,
+        tjl2Confirmed: tjl2Confirmation.status === 'valid',
+        vipZoneTapped: vipTap !== undefined,
+      }),
+      chochTime: sourceChochTime,
+      chochConfirmationTime: tjl2Confirmation.confirmationTime,
+      vipSupportTimeframe: vipTap?.timeframe,
+      vipSupportZone: vipTap?.zone.name,
+      vipSupportTapTime: vipTap?.tapTime,
+    };
+  };
+  const applyInternalChochContext = (
+    context: ChochMetadata,
+    ...contextZones: Array<StructureZone | null>
+  ) => {
+    for (const zone of contextZones) {
+      if (zone) Object.assign(zone, context);
+    }
+  };
+  const internalChochLabel = (context: ChochMetadata) => (
+    `INT CHoCH · ${context.chochClass === 'pending' ? 'WAIT' : context.chochClass.toUpperCase()}`
+  );
+
   for (const pattern of patterns) {
     const confirmedIndex = candles.findIndex((candle) => candle.time === pattern.confirmedAt);
     if (confirmedIndex < 0) continue;
@@ -1395,8 +1457,25 @@ export function findIssFiveWaves(
     let pathStart = bootstrapPoint;
     let activeHigh: StructurePoint | null = null;
     let activeLow: StructurePoint | null = null;
-    let currentTjl1: StructureZone | null = null;
-    let currentTjl2: StructureZone | null = null;
+    // Point 5 and the first confirmed post-ISS reversal are the initial
+    // internal TJL pair. A CHoCH before the first continuation BOS must
+    // therefore convert Point 5 to Internal QML and the fresh reversal level
+    // to Internal SBR/RBS; a later BOS will replace this pair normally.
+    let currentTjl1: StructureZone | null = addInternalTjlZone(
+      point5,
+      'Internal TJL1',
+      isBullishIss,
+      isBullishIss ? 'high' : 'low',
+      candles[bootstrapIndex].time + sourceBarSeconds,
+    );
+    let currentTjl2: StructureZone | null = addInternalTjlZone(
+      bootstrapPoint,
+      'Internal TJL2',
+      isBullishIss,
+      isBullishIss ? 'low' : 'high',
+      candles[bootstrapIndex].time + sourceBarSeconds,
+    );
+    linkInternalTjlPair(currentTjl1, currentTjl2);
     let lastBullishConfirmIndex: number | null = isBullishIss ? bootstrapIndex : null;
     let lastBearishConfirmIndex: number | null = isBullishIss ? null : bootstrapIndex;
 
@@ -1442,13 +1521,19 @@ export function findIssFiveWaves(
         }
         if (candle.close < protectedPoint.price && previous.close < protectedPoint.price) {
           const newProtectedHigh = activeHigh ?? extreme(candles, protectedPoint.index, index, 'high');
+          const lastTjl1 = currentTjl1;
+          const lastTjl2 = currentTjl2;
+          const chochContext = buildInternalChochContext('bearish', lastTjl1, lastTjl2, candle.time);
           addInternalLine('internal-choch', 'bearish', protectedPoint, {
             index, time: candle.time, price: protectedPoint.price,
-          }, 'INT CHoCH');
-          if (currentTjl1) activateInternalZone(currentTjl1, 'Internal QML', false, candle.time);
-          if (currentTjl2) activateInternalZone(currentTjl2, 'Internal SBR', false, candle.time);
+          }, internalChochLabel(chochContext));
+          if (lastTjl1) activateInternalZone(lastTjl1, 'Internal QML', false, candle.time);
+          if (lastTjl2) activateInternalZone(lastTjl2, 'Internal SBR', false, candle.time);
           internalMarkers.push(makeMarker(candles[newProtectedHigh.index], 'I PH', 'aboveBar', '#be123c'));
-          addInternalExtremeZone(newProtectedHigh, 'Internal DT', false, candle.time + sourceBarSeconds);
+          const dt = addInternalExtremeZone(
+            newProtectedHigh, 'Internal DT', false, candle.time + sourceBarSeconds,
+          );
+          applyInternalChochContext(chochContext, lastTjl1, lastTjl2, dt);
           internalTrend = 'bearish';
           protectedPoint = newProtectedHigh;
           pathStart = newProtectedHigh;
@@ -1489,13 +1574,19 @@ export function findIssFiveWaves(
         }
         if (candle.close > protectedPoint.price && previous.close > protectedPoint.price) {
           const newProtectedLow = activeLow ?? extreme(candles, protectedPoint.index, index, 'low');
+          const lastTjl1 = currentTjl1;
+          const lastTjl2 = currentTjl2;
+          const chochContext = buildInternalChochContext('bullish', lastTjl1, lastTjl2, candle.time);
           addInternalLine('internal-choch', 'bullish', protectedPoint, {
             index, time: candle.time, price: protectedPoint.price,
-          }, 'INT CHoCH');
-          if (currentTjl1) activateInternalZone(currentTjl1, 'Internal QML', true, candle.time);
-          if (currentTjl2) activateInternalZone(currentTjl2, 'Internal RBS', true, candle.time);
+          }, internalChochLabel(chochContext));
+          if (lastTjl1) activateInternalZone(lastTjl1, 'Internal QML', true, candle.time);
+          if (lastTjl2) activateInternalZone(lastTjl2, 'Internal RBS', true, candle.time);
           internalMarkers.push(makeMarker(candles[newProtectedLow.index], 'I PL', 'belowBar', '#047857'));
-          addInternalExtremeZone(newProtectedLow, 'Internal DB', true, candle.time + sourceBarSeconds);
+          const db = addInternalExtremeZone(
+            newProtectedLow, 'Internal DB', true, candle.time + sourceBarSeconds,
+          );
+          applyInternalChochContext(chochContext, lastTjl1, lastTjl2, db);
           internalTrend = 'bullish';
           protectedPoint = newProtectedLow;
           pathStart = newProtectedLow;

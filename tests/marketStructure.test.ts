@@ -364,6 +364,24 @@ test('completed ISS starts internal structure at Point 5 and stops at the next e
     boundary: { index: 0, time: 0, price: 200 },
   };
 
+  const firstLegChoch = findIssFiveWaves([
+    ...candles.slice(0, 17),
+    { time: 1700, open: 116, high: 118, low: 112, close: 113 },
+    { time: 1800, open: 113, high: 114, low: 108, close: 110 },
+  ], [anchor], 100, 30, 400);
+  const firstQml = firstLegChoch.zones.find((item) => item.name === 'Internal QML');
+  const firstSbr = firstLegChoch.zones.find((item) => item.name === 'Internal SBR');
+  const firstDt = firstLegChoch.zones.find((item) => item.name === 'Internal DT');
+  assert.equal(firstLegChoch.lines.some((line) => line.type === 'internal-bos'), false);
+  assert.equal(firstQml?.startTime, 1100, 'Point 5 must become the first Internal QML');
+  assert.equal(firstSbr?.startTime, 1400, 'the fresh post-ISS low must become the first Internal SBR');
+  assert.equal(firstDt?.startTime, 1600);
+  assert.equal(firstQml?.chochClass, 'pending');
+  assert.equal(firstSbr?.chochClass, 'pending');
+  assert.equal(firstDt?.chochClass, 'pending');
+  assert.equal(firstQml?.tradeable, false);
+  assert.ok(firstLegChoch.lines.some((line) => line.label === 'INT CHoCH · WAIT'));
+
   const formed = findIssFiveWaves(candles.slice(0, -2), [anchor], 100, 30, 400);
   assert.ok(formed.zones.some((item) => item.name === 'ISS L3'));
   assert.ok(formed.zones.some((item) => item.name === 'ISS L4'));

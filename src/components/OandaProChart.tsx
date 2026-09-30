@@ -103,6 +103,10 @@ function formatPrice(value: number | undefined): string {
   }) : '—';
 }
 
+function displayZoneName(name: string): string {
+  return name.startsWith('Internal ') ? `Int ${name.slice('Internal '.length)}` : name;
+}
+
 function formatCandleCountdown(secondsRemaining: number): string {
   const total = Math.max(0, Math.floor(secondsRemaining));
   const hours = Math.floor(total / 3600);
@@ -337,7 +341,7 @@ export const OandaProChart: React.FC = () => {
       box.style.borderBottom = `1px solid ${border}`;
 
       const label = document.createElement('span');
-      const name = isMg || isIss || isInternal ? zone.name : demand ? 'DEMAND' : 'SUPPLY';
+      const name = isMg || isIss || isInternal ? displayZoneName(zone.name) : demand ? 'DEMAND' : 'SUPPLY';
       label.textContent = inactive
         ? rejected ? `${name} · REJECTED` : name
         : `${name}${pending ? ' · PENDING' : zone.name === 'TJL1' ? ' · VALID' : ''}`;
@@ -349,10 +353,13 @@ export const OandaProChart: React.FC = () => {
           : `${name} · VALID DOUBLE CHoCH`;
       } else if (zone.name === 'TJL1' || zone.name === 'ISS L3' || zone.name === 'Internal TJL1') {
         label.textContent = pending
-          ? `${zone.name} · PENDING ${confirmationLabel} ${zone.isBuy ? 'ABOVE' : 'BELOW'}`
-          : `VALID ${zone.name}`;
+          ? `${name} · PENDING ${confirmationLabel} ${zone.isBuy ? 'ABOVE' : 'BELOW'}`
+          : `VALID ${name}`;
       } else if (zone.name === 'TJL2') {
         label.textContent = 'TJL2';
+      } else if (isInternal && zone.chochClass) {
+        const internalClass = zone.chochClass === 'pending' ? 'WAIT' : zone.chochClass.toUpperCase();
+        label.textContent = `${name} · INT CHoCH · ${internalClass}`;
       }
       label.style.position = 'absolute';
       label.style.right = '4px';
@@ -1126,7 +1133,7 @@ export const OandaProChart: React.FC = () => {
               <tbody>
                 {pendingConfirmationRows.map((zone) => (
                   <tr key={zone.id} className={`border-t text-slate-700 ${zone.isBuy ? 'border-emerald-100 bg-emerald-50/70' : 'border-rose-100 bg-rose-50/70'}`}>
-                    <td className={`px-2 py-1 font-black ${zone.isBuy ? 'text-emerald-800' : 'text-rose-800'}`}>{zone.name}</td>
+                    <td className={`px-2 py-1 font-black ${zone.isBuy ? 'text-emerald-800' : 'text-rose-800'}`}>{displayZoneName(zone.name)}</td>
                     <td className={`px-2 py-1 font-bold ${zone.isBuy ? 'text-emerald-700' : 'text-rose-700'}`}>
                       {zone.isBuy ? 'BUY' : 'SELL'}
                     </td>
@@ -1145,7 +1152,7 @@ export const OandaProChart: React.FC = () => {
                       pending ? 'border-amber-100 bg-amber-50/70' : 'border-emerald-100 bg-emerald-50/50'
                     }`}>
                       <td className="px-2 py-1 font-black text-slate-800">
-                        <span>{zone.name}</span>
+                        <span>{displayZoneName(zone.name)}</span>
                         <span className="ml-1 rounded bg-violet-100 px-1 py-0.5 text-[8px] font-black text-violet-800">
                           DOUBLE CHoCH
                         </span>
@@ -1179,7 +1186,7 @@ export const OandaProChart: React.FC = () => {
                 {zoneTableRows.map((zone) => (
                   <tr key={zone.id} className="border-t border-slate-100 text-slate-700">
                     <td className="px-2 py-1 font-black text-slate-800">
-                      <span>{zone.name}</span>
+                      <span>{displayZoneName(zone.name)}</span>
                       {zone.chochClass && (
                         <span className={`ml-1 rounded px-1 py-0.5 text-[8px] font-black ${
                           zone.chochClass === 'vip'
@@ -1190,12 +1197,13 @@ export const OandaProChart: React.FC = () => {
                                 ? 'bg-rose-100 text-rose-700'
                                 : 'bg-violet-100 text-violet-700'
                         }`}>
+                          {zone.category === 'internal' ? 'INT ' : ''}
                           {zone.chochClass === 'pending' ? 'WAIT' : zone.chochClass.toUpperCase()}
                         </span>
                       )}
                       {zone.chochClass === 'vip' && zone.vipSupportTimeframe && zone.vipSupportZone && (
                         <span className="ml-1 rounded bg-amber-50 px-1 py-0.5 text-[8px] font-black text-amber-700">
-                          {zone.vipSupportTimeframe} {zone.vipSupportZone}
+                          {zone.vipSupportTimeframe} {displayZoneName(zone.vipSupportZone)}
                         </span>
                       )}
                     </td>
