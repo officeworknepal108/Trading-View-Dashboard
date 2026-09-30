@@ -13,7 +13,7 @@ export interface TradingViewCandle {
 const TRADINGVIEW_SOCKET = 'wss://data.tradingview.com/socket.io/websocket';
 
 const RESOLUTIONS: Record<string, string> = {
-  M1: '1', M5: '5', M15: '15', M30: '30', H1: '60', H4: '240', D: '1D', W: '1W',
+  M1: '1', M5: '5', M15: '15', M30: '30', H1: '60', H4: '240', D: '1D', W: '1W', MO: '1M',
 };
 
 function packet(method: string, params: unknown[]): string {

@@ -327,6 +327,18 @@ export function classifyChoch(options: {
   return { chochClass: 'air', tradeable: false };
 }
 
+export function wasTjl1ConfirmedBy(
+  tjl1: StructureZone | null,
+  formationTime: number,
+): boolean {
+  // Confirmation is historical evidence. A later invalidation can retire the
+  // source zone, but it cannot retroactively turn a confirmed TJL1 into AIR.
+  return Boolean(
+    tjl1?.confirmationTime !== undefined
+    && tjl1.confirmationTime <= formationTime
+  );
+}
+
 export function findVipSupportTap(
   candles: StructureCandle[],
   zones: StructureZone[],
@@ -366,6 +378,23 @@ export function findVipSupportTap(
   return selected;
 }
 
+export function findVipSupportTapAcrossContexts(
+  candles: StructureCandle[],
+  contexts: VipSupportContext[],
+  chochTime: number,
+): { zone: StructureZone; tapTime: number; timeframe: string } | undefined {
+  return contexts.reduce<{
+    zone: StructureZone;
+    tapTime: number;
+    timeframe: string;
+  } | undefined>((latest, context) => {
+    const candidate = findVipSupportTap(candles, context.zones, chochTime);
+    if (!candidate) return latest;
+    const withTimeframe = { ...candidate, timeframe: context.timeframe };
+    return !latest || withTimeframe.tapTime > latest.tapTime ? withTimeframe : latest;
+  }, undefined);
+}
+
 export function selectFreshVipSupportTap<T extends { tapTime: number }>(
   candidate: T | undefined,
   lastUsedTapTime: number | undefined,
@@ -381,7 +410,7 @@ export function analyzeMarketStructure(candles: StructureCandle[], options: {
   sourceBarSeconds?: number;
   confirmationBarSeconds?: number;
   zoneVisualBars?: number;
-  vipSupport?: VipSupportContext;
+  vipSupport?: VipSupportContext | VipSupportContext[];
 } = {}): MarketStructureResult {
   if (candles.length < 12) {
     return { markers: [], issMarkers: [], zones: [], lines: [], trend: 'neutral' };
@@ -443,11 +472,7 @@ export function analyzeMarketStructure(candles: StructureCandle[], options: {
     sourceChochTime: number,
   ): ChochMetadata => {
     const formationTime = sourceChochTime + sourceBarSeconds;
-    const tjl1Confirmed = Boolean(
-      tjl1?.confirmationTime !== undefined
-      && tjl1.confirmationTime <= formationTime
-      && (!tjl1.invalidatedAt || tjl1.invalidatedAt > sourceChochTime),
-    );
+    const tjl1Confirmed = wasTjl1ConfirmedBy(tjl1, formationTime);
     const tjl2Confirmation = tjl2
       ? resolveTjl1Confirmation(candles, {
         confirmationDirection: direction === 'bullish' ? 'up' : 'down',
@@ -458,8 +483,11 @@ export function analyzeMarketStructure(candles: StructureCandle[], options: {
         confirmationBarSeconds: options.confirmationBarSeconds,
       })
       : { status: 'pending' as const };
-    const candidateVipTap = tjl2 && options.vipSupport
-      ? findVipSupportTap(candles, options.vipSupport.zones, sourceChochTime)
+    const vipSupportContexts = !options.vipSupport
+      ? []
+      : Array.isArray(options.vipSupport) ? options.vipSupport : [options.vipSupport];
+    const candidateVipTap = tjl2
+      ? findVipSupportTapAcrossContexts(candles, vipSupportContexts, sourceChochTime)
       : undefined;
     const vipTap = selectFreshVipSupportTap(candidateVipTap, lastVipSupportTapTimeUsed);
     // Reserve a tap for the first proper CHoCH after it, even while the TJL2
@@ -474,7 +502,7 @@ export function analyzeMarketStructure(candles: StructureCandle[], options: {
       ...classification,
       chochTime: sourceChochTime,
       chochConfirmationTime: tjl2Confirmation.confirmationTime,
-      vipSupportTimeframe: vipTap ? options.vipSupport?.timeframe : undefined,
+      vipSupportTimeframe: vipTap?.timeframe,
       vipSupportZone: vipTap?.zone.name,
       vipSupportTapTime: vipTap?.tapTime,
     };

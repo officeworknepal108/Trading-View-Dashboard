@@ -22,7 +22,7 @@ import { analyzeMarketStructure, StructureLine, StructureZone } from '../service
 import { findReplayIndexAtOrBefore } from '../services/replay';
 
 type OandaGranularity = 'M1' | 'M5' | 'M15' | 'M30' | 'H1' | 'H4' | 'D';
-type MarketGranularity = OandaGranularity | 'W';
+type MarketGranularity = OandaGranularity | 'W' | 'MO';
 
 interface OandaCandle {
   time: number;
@@ -55,6 +55,7 @@ const TIMEFRAMES: Array<{ value: OandaGranularity; label: string }> = [
 
 const TIMEFRAME_SECONDS: Record<MarketGranularity, number> = {
   M1: 60, M5: 300, M15: 900, M30: 1800, H1: 3600, H4: 14400, D: 86400, W: 604800,
+  MO: 31 * 86400,
 };
 
 const TJL1_CONFIRMATION_SECONDS: Partial<Record<MarketGranularity, number>> = {
@@ -67,13 +68,29 @@ const TJL1_CONFIRMATION_SECONDS: Partial<Record<MarketGranularity, number>> = {
   D: 604800,
 };
 
-const VIP_SUPPORT_GRANULARITY: Partial<Record<OandaGranularity, MarketGranularity>> = {
-  M1: 'M15', M5: 'H1', M15: 'H4', H1: 'D', H4: 'W',
+const VIP_SUPPORT_GRANULARITIES: Record<OandaGranularity, MarketGranularity[]> = {
+  // A fresh valid zone from either mapped timeframe can qualify VIP CHoCH.
+  M1: ['M5', 'M15'],
+  M5: ['M15', 'H1'],
+  M15: ['H1', 'H4'],
+  M30: ['H1', 'H4'],
+  H1: ['H4', 'D'],
+  H4: ['D', 'W'],
+  D: ['W', 'MO'],
 };
 
 const GRANULARITY_LABELS: Record<MarketGranularity, string> = {
-  M1: '1m', M5: '5m', M15: '15m', M30: '30m', H1: '1h', H4: '4h', D: '1D', W: '1W',
+  M1: '1m', M5: '5m', M15: '15m', M30: '30m', H1: '1h', H4: '4h', D: '1D', W: '1W', MO: '1M',
 };
+
+function marketCandleCloseTime(time: number, granularity: MarketGranularity): number {
+  if (granularity !== 'MO') return time + TIMEFRAME_SECONDS[granularity];
+  const start = new Date(time * 1000);
+  return Date.UTC(
+    start.getUTCFullYear(), start.getUTCMonth() + 1, start.getUTCDate(),
+    start.getUTCHours(), start.getUTCMinutes(), start.getUTCSeconds(),
+  ) / 1000;
+}
 
 const TJL1_CONFIRMATION_LABELS: Record<OandaGranularity, string> = {
   M1: '5m', M5: '15m', M15: '1h', M30: '1h', H1: '4h', H4: '1D', D: '1W',
@@ -128,7 +145,7 @@ export const OandaProChart: React.FC = () => {
   const syncReplaySelectionLineRef = useRef<() => void>(() => undefined);
   const [granularity, setGranularity] = useState<OandaGranularity>('M15');
   const [candles, setCandles] = useState<OandaCandle[]>([]);
-  const [vipCandles, setVipCandles] = useState<OandaCandle[]>([]);
+  const [vipCandles, setVipCandles] = useState<Partial<Record<MarketGranularity, OandaCandle[]>>>({});
   const [hoveredCandle, setHoveredCandle] = useState<OandaCandle | null>(null);
   const [source, setSource] = useState('TradingView WebSocket · OANDA:XAUUSD');
   const [lastUpdated, setLastUpdated] = useState<string | null>(null);
@@ -180,28 +197,29 @@ export const OandaProChart: React.FC = () => {
     ? candles
     : candles.slice(0, Math.min(candles.length, replayIndex + 1)), [candles, replayIndex]);
 
-  const vipSupportGranularity = VIP_SUPPORT_GRANULARITY[granularity];
-  const vipDisplayCandles = useMemo(() => {
-    if (!vipSupportGranularity || displayCandles.length === 0) return [];
+  const vipSupportGranularities = VIP_SUPPORT_GRANULARITIES[granularity];
+  const vipSupportContexts = useMemo(() => {
+    if (displayCandles.length === 0) return [];
     const lastSourceCandle = displayCandles[displayCandles.length - 1];
     const cutoff = lastSourceCandle.time
       + (lastSourceCandle.complete ? TIMEFRAME_SECONDS[granularity] : 0);
-    return vipCandles.filter((candle) => (
-      candle.complete
-      && candle.time + TIMEFRAME_SECONDS[vipSupportGranularity] <= cutoff
-    ));
-  }, [displayCandles, granularity, vipCandles, vipSupportGranularity]);
-
-  const vipStructure = useMemo(() => (
-    vipSupportGranularity
-      ? analyzeMarketStructure(vipDisplayCandles, {
-        allowSupplyDemand: ['H1', 'H4', 'D'].includes(vipSupportGranularity),
-        sourceBarSeconds: TIMEFRAME_SECONDS[vipSupportGranularity],
-        confirmationBarSeconds: TJL1_CONFIRMATION_SECONDS[vipSupportGranularity],
+    return vipSupportGranularities.map((supportGranularity) => {
+      const completedCandles = (vipCandles[supportGranularity] || []).filter((candle) => (
+        candle.complete
+        && marketCandleCloseTime(candle.time, supportGranularity) <= cutoff
+      ));
+      const supportStructure = analyzeMarketStructure(completedCandles, {
+        allowSupplyDemand: ['H1', 'H4', 'D', 'W', 'MO'].includes(supportGranularity),
+        sourceBarSeconds: TIMEFRAME_SECONDS[supportGranularity],
+        confirmationBarSeconds: TJL1_CONFIRMATION_SECONDS[supportGranularity],
         zoneVisualBars: 30,
-      })
-      : null
-  ), [vipDisplayCandles, vipSupportGranularity]);
+      });
+      return {
+        timeframe: GRANULARITY_LABELS[supportGranularity],
+        zones: supportStructure.zones,
+      };
+    });
+  }, [displayCandles, granularity, vipCandles, vipSupportGranularities]);
 
   const structure = useMemo(
     () => analyzeMarketStructure(displayCandles, {
@@ -209,11 +227,9 @@ export const OandaProChart: React.FC = () => {
       sourceBarSeconds: TIMEFRAME_SECONDS[granularity],
       confirmationBarSeconds: TJL1_CONFIRMATION_SECONDS[granularity],
       zoneVisualBars: 30,
-      vipSupport: vipSupportGranularity && vipStructure
-        ? { timeframe: GRANULARITY_LABELS[vipSupportGranularity], zones: vipStructure.zones }
-        : undefined,
+      vipSupport: vipSupportContexts,
     }),
-    [displayCandles, granularity, vipStructure, vipSupportGranularity],
+    [displayCandles, granularity, vipSupportContexts],
   );
 
   const latestCandle = hoveredCandle || displayCandles[displayCandles.length - 1] || null;
@@ -468,10 +484,11 @@ export const OandaProChart: React.FC = () => {
         }
         return payload;
       };
-      const [payload, vipPayload] = await Promise.all([
+      const responses: MarketDataResponse[] = await Promise.all([
         requestCandles(granularity),
-        vipSupportGranularity ? requestCandles(vipSupportGranularity) : Promise.resolve(null),
+        ...vipSupportGranularities.map(requestCandles),
       ]);
+      const [payload, ...vipPayloads] = responses;
       if (requestId !== loadRequestIdRef.current) return;
       if (payload.candles.length === 0) throw new Error('TradingView returned no candles for OANDA:XAUUSD.');
       const nextReplayIndex = replayTime === null
@@ -482,7 +499,9 @@ export const OandaProChart: React.FC = () => {
       }
       loadedGranularityRef.current = granularity;
       setCandles(payload.candles);
-      setVipCandles(vipPayload?.candles || []);
+      setVipCandles(Object.fromEntries(vipSupportGranularities.map((supportGranularity, index) => (
+        [supportGranularity, vipPayloads[index]?.candles || []]
+      ))));
       if (nextReplayIndex !== null) setReplayIndex(nextReplayIndex);
       setHoveredCandle(null);
       setSource(payload.source || 'TradingView WebSocket · OANDA:XAUUSD · unofficial');
@@ -499,7 +518,7 @@ export const OandaProChart: React.FC = () => {
     } finally {
       if (!signal?.aborted && requestId === loadRequestIdRef.current) setIsLoading(false);
     }
-  }, [granularity, vipSupportGranularity]);
+  }, [granularity, vipSupportGranularities]);
 
   useEffect(() => {
     const controller = new AbortController();

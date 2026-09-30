@@ -5,10 +5,12 @@ import {
   doesInvalidateZone,
   findFirstZoneTapIndex,
   findVipSupportTap,
+  findVipSupportTapAcrossContexts,
   getConfirmationBucketStart,
   resolveTjl1Confirmation,
   selectFreshVipSupportTap,
   selectTwoCandleRetracementPivot,
+  wasTjl1ConfirmedBy,
   type StructureCandle,
   type StructureZone,
 } from '../src/services/marketStructure';
@@ -71,6 +73,18 @@ test('CHoCH classification follows Valid, Air, VIP, and pending trade rules', ()
   );
 });
 
+test('a later zone invalidation does not erase an earlier TJL1 confirmation', () => {
+  const confirmedThenInvalidated = zone({
+    confirmationTime: 200,
+    invalidatedAt: 300,
+    active: false,
+    status: 'invalidated',
+  });
+
+  assert.equal(wasTjl1ConfirmedBy(confirmedThenInvalidated, 400), true);
+  assert.equal(wasTjl1ConfirmedBy(confirmedThenInvalidated, 100), false);
+});
+
 test('VIP support requires a mapped HTF zone tap before CHoCH while that zone is valid', () => {
   const sourceCandles = [
     candle(100, 120, 121, 119),
@@ -91,6 +105,32 @@ test('VIP support requires a mapped HTF zone tap before CHoCH while that zone is
   assert.equal(selectFreshVipSupportTap(firstTap, 200), undefined);
   assert.equal(selectFreshVipSupportTap(freshRetap, 200)?.tapTime, 400);
   assert.equal(findVipSupportTap(sourceCandles, [{ ...supportZone, invalidatedAt: 200 }], 300), undefined);
+});
+
+test('VIP support accepts either mapped timeframe and keeps the freshest qualifying tap', () => {
+  const sourceCandles = [
+    candle(100, 50),
+    candle(200, 105, 108, 102),
+    candle(300, 50),
+    candle(400, 205, 208, 202),
+  ];
+  const firstSupport = zone({
+    id: 'first-support', name: 'QML', startTime: 100, activeFromTime: 100,
+    bottom: 100, top: 110,
+  });
+  const secondSupport = zone({
+    id: 'second-support', name: 'TJL2', startTime: 300, activeFromTime: 300,
+    bottom: 200, top: 210,
+  });
+
+  const tap = findVipSupportTapAcrossContexts(sourceCandles, [
+    { timeframe: '5m', zones: [firstSupport] },
+    { timeframe: '15m', zones: [secondSupport] },
+  ], 500);
+
+  assert.equal(tap?.timeframe, '15m');
+  assert.equal(tap?.zone.id, 'second-support');
+  assert.equal(tap?.tapTime, 400);
 });
 
 test('TJL1 confirms on the first completed mapped higher-timeframe close', () => {
