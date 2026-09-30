@@ -4,6 +4,7 @@ import {
   activateZoneAfterChoch,
   classifyChoch,
   classifyDoubleChoch,
+  classifyFibOverlap,
   doesInvalidateZone,
   findIssFiveWaves,
   findFirstZoneTapIndex,
@@ -74,6 +75,22 @@ test('CHoCH classification follows Valid, Air, VIP, and pending trade rules', ()
     classifyChoch({ tjl1Confirmed: true, tjl2Confirmed: false, vipZoneTapped: true }),
     { chochClass: 'pending', tradeable: false },
   );
+});
+
+test('FIB overlap accepts primary for TJL1 and both primary and deep for TJL2', () => {
+  const levels = { level50: 50, level618: 61.8, level71: 71, level79: 79 };
+  assert.equal(classifyFibOverlap({
+    zoneBottom: 55, zoneTop: 57, ...levels, acceptDeep: false,
+  }), '0.5-0.618');
+  assert.equal(classifyFibOverlap({
+    zoneBottom: 55, zoneTop: 57, ...levels, acceptDeep: true,
+  }), '0.5-0.618', 'TJL2 accepts the primary band');
+  assert.equal(classifyFibOverlap({
+    zoneBottom: 73, zoneTop: 75, ...levels, acceptDeep: false,
+  }), undefined, 'TJL1 does not accept the deep band');
+  assert.equal(classifyFibOverlap({
+    zoneBottom: 73, zoneTop: 75, ...levels, acceptDeep: true,
+  }), '0.71-0.79', 'TJL2 accepts the deep band as well as the primary band');
 });
 
 test('a later zone invalidation does not erase an earlier TJL1 confirmation', () => {

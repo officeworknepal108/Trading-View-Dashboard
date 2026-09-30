@@ -12,6 +12,7 @@ export interface StructureCandle {
 export type ChochClass = 'pending' | 'valid' | 'air' | 'vip';
 export type DoubleChochStatus = 'pending' | 'valid';
 export type DoubleChochOriginClass = Extract<ChochClass, 'valid' | 'air' | 'vip'>;
+export type FibBand = '0.5-0.618' | '0.71-0.79' | 'DB/DT';
 
 export interface VipSupportContext {
   timeframe: string;
@@ -55,6 +56,11 @@ export interface StructureZone {
   doubleChochTime?: number;
   doubleChochConfirmationTime?: number;
   doubleChochConfirmationDirection?: 'up' | 'down';
+  // FIB is an independent confluence layer. It never creates, validates, or
+  // invalidates a structure zone.
+  fibRelevant?: boolean;
+  fibBand?: FibBand;
+  fibStatus?: 'a-plus' | 'not-valid';
 }
 
 type ChochMetadata = Pick<StructureZone,
@@ -357,6 +363,149 @@ export function classifyChoch(options: {
   if (options.vipZoneTapped) return { chochClass: 'vip', tradeable: true };
   if (options.tjl1Confirmed) return { chochClass: 'valid', tradeable: true };
   return { chochClass: 'air', tradeable: false };
+}
+
+export function classifyFibOverlap(options: {
+  zoneBottom: number;
+  zoneTop: number;
+  level50: number;
+  level618: number;
+  level71: number;
+  level79: number;
+  acceptDeep: boolean;
+}): FibBand | undefined {
+  const overlaps = (first: number, second: number) => (
+    options.zoneBottom <= Math.max(first, second)
+    && options.zoneTop >= Math.min(first, second)
+  );
+  if (overlaps(options.level50, options.level618)) return '0.5-0.618';
+  if (options.acceptDeep && overlaps(options.level71, options.level79)) return '0.71-0.79';
+  return undefined;
+}
+
+function applyFibConfluence(candles: StructureCandle[], zones: StructureZone[]): void {
+  const completed = candles.filter((candle) => candle.complete !== false);
+  const zoneNames = (names: StructureZone['name'][]) => new Set<StructureZone['name']>(names);
+  const tjl1Names = zoneNames(['TJL1', 'Internal TJL1']);
+  const tjl2Names = zoneNames(['TJL2', 'Internal TJL2']);
+  const singleChochNames = zoneNames([
+    'QML', 'SBR', 'RBS', 'DT', 'DB',
+    'Internal QML', 'Internal SBR', 'Internal RBS', 'Internal DT', 'Internal DB',
+  ]);
+  const doubleChochNames = zoneNames(['QML A+', 'QML A++', 'SBR', 'RBS', 'DTD', 'DBD']);
+
+  const classifyFromMove = (
+    zone: StructureZone,
+    sourceTime: number,
+    sourcePrice: number,
+    isSell: boolean,
+    acceptDeep: boolean,
+  ) => {
+    const moveCandles = completed.filter((candle) => candle.time >= sourceTime);
+    if (moveCandles.length === 0) return;
+    const zeroPrice = isSell
+      ? Math.min(...moveCandles.map((candle) => candle.low))
+      : Math.max(...moveCandles.map((candle) => candle.high));
+    const validMove = isSell ? sourcePrice > zeroPrice : zeroPrice > sourcePrice;
+    zone.fibRelevant = true;
+    if (!validMove) {
+      zone.fibStatus = 'not-valid';
+      return;
+    }
+    const move = Math.abs(zeroPrice - sourcePrice);
+    const level = (ratio: number) => (
+      isSell ? zeroPrice + move * ratio : zeroPrice - move * ratio
+    );
+    zone.fibBand = classifyFibOverlap({
+      zoneBottom: zone.bottom,
+      zoneTop: zone.top,
+      level50: level(0.5),
+      level618: level(0.618),
+      level71: level(0.71),
+      level79: level(0.79),
+      acceptDeep,
+    });
+    zone.fibStatus = zone.fibBand ? 'a-plus' : 'not-valid';
+  };
+
+  for (const zone of zones) {
+    zone.fibRelevant = false;
+    zone.fibBand = undefined;
+    zone.fibStatus = undefined;
+  }
+
+  const sorted = [...zones].sort((a, b) => a.startTime - b.startTime);
+  for (const zone of sorted) {
+    const isTjl1 = tjl1Names.has(zone.name);
+    const isTjl2 = tjl2Names.has(zone.name);
+    if (!isTjl1 && !isTjl2) continue;
+    const internal = zone.category === 'internal';
+    const resetTime = Math.max(-Infinity, ...zones
+      .filter((candidate) => candidate.category === zone.category
+        && candidate.chochTime !== undefined
+        && candidate.chochTime < zone.startTime)
+      .map((candidate) => candidate.chochTime!));
+    const source = sorted
+      .filter((candidate) => candidate.category === zone.category
+        && candidate.name === (internal ? 'Internal TJL2' : 'TJL2')
+        && candidate.isBuy === zone.isBuy
+        && candidate.startTime < zone.startTime
+        && candidate.startTime > resetTime)
+      .at(-1);
+    if (!source) continue;
+    classifyFromMove(
+      zone,
+      source.startTime,
+      zone.isBuy ? source.bottom : source.top,
+      !zone.isBuy,
+      // TJL1 accepts the primary band only. TJL2 always accepts both primary
+      // and deep bands, matching the supplied Pine reference.
+      isTjl2,
+    );
+  }
+
+  const applyChochGroup = (
+    group: StructureZone[],
+    isDouble: boolean,
+  ) => {
+    const eligible = isDouble ? doubleChochNames : singleChochNames;
+    const anchor = group.find((zone) => (
+      isDouble
+        ? zone.name === 'DTD' || zone.name === 'DBD'
+        : zone.name === 'DT' || zone.name === 'DB'
+          || zone.name === 'Internal DT' || zone.name === 'Internal DB'
+    ));
+    if (!anchor) return;
+    const isSell = !anchor.isBuy;
+    const sourcePrice = isSell ? anchor.top : anchor.bottom;
+    for (const zone of group) {
+      if (!eligible.has(zone.name)) continue;
+      if (!isDouble && (zone.name === 'DT' || zone.name === 'DB')) {
+        zone.fibRelevant = true;
+        zone.fibBand = 'DB/DT';
+        zone.fibStatus = 'a-plus';
+        continue;
+      }
+      classifyFromMove(zone, anchor.startTime, sourcePrice, isSell, true);
+    }
+  };
+
+  const singleKeys = new Set(zones
+    .filter((zone) => zone.chochTime !== undefined)
+    .map((zone) => `${zone.category}:${zone.chochTime}`));
+  for (const key of singleKeys) {
+    const [category, timeText] = key.split(':');
+    const eventTime = Number(timeText);
+    applyChochGroup(zones.filter((zone) => (
+      zone.category === category && zone.chochTime === eventTime
+    )), false);
+  }
+  const doubleTimes = new Set(zones
+    .filter((zone) => zone.doubleChochTime !== undefined)
+    .map((zone) => zone.doubleChochTime!));
+  for (const eventTime of doubleTimes) {
+    applyChochGroup(zones.filter((zone) => zone.doubleChochTime === eventTime), true);
+  }
 }
 
 export function classifyDoubleChoch(
@@ -1017,6 +1166,7 @@ export function analyzeMarketStructure(candles: StructureCandle[], options: {
   internalMarkers.push(...iss.internalMarkers);
   zones.push(...iss.zones);
   lines.push(...iss.lines);
+  applyFibConfluence(candles, zones);
   const visibleLines = lines.length > 160
     ? [lines[0], ...lines.slice(-159)]
     : lines;

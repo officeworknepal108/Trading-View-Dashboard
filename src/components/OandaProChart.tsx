@@ -138,6 +138,7 @@ export const OandaProChart: React.FC = () => {
   const showStructureRef = useRef(true);
   const showIssRef = useRef(true);
   const showInternalRef = useRef(true);
+  const showFibRef = useRef(true);
   const showInvalidZonesRef = useRef(false);
   const redrawZonesRef = useRef<() => void>(() => undefined);
   const hasFittedRef = useRef(false);
@@ -163,6 +164,7 @@ export const OandaProChart: React.FC = () => {
   const [showSupplyDemand, setShowSupplyDemand] = useState(true);
   const [showIss, setShowIss] = useState(true);
   const [showInternal, setShowInternal] = useState(true);
+  const [showFib, setShowFib] = useState(true);
   const [showInvalidZones, setShowInvalidZones] = useState(false);
   const [showZoneTable, setShowZoneTable] = useState(true);
   const [replayIndex, setReplayIndex] = useState<number | null>(null);
@@ -361,6 +363,9 @@ export const OandaProChart: React.FC = () => {
         const internalClass = zone.chochClass === 'pending' ? 'WAIT' : zone.chochClass.toUpperCase();
         label.textContent = `${name} · INT CHoCH · ${internalClass}`;
       }
+      if (!inactive && showFibRef.current && zone.fibStatus === 'a-plus' && zone.fibBand) {
+        label.textContent = `${label.textContent} · A+ FIB ${zone.fibBand}`;
+      }
       label.style.position = 'absolute';
       label.style.right = '4px';
       label.style.top = '2px';
@@ -490,10 +495,11 @@ export const OandaProChart: React.FC = () => {
     showStructureRef.current = showStructure;
     showIssRef.current = showIss;
     showInternalRef.current = showInternal;
+    showFibRef.current = showFib;
     showInvalidZonesRef.current = showInvalidZones;
     const frame = window.requestAnimationFrame(redrawZones);
     return () => window.cancelAnimationFrame(frame);
-  }, [redrawZones, showInternal, showInvalidZones, showIss, showMgZones, showStructure, showSupplyDemand, structure.internalMarkers, structure.issMarkers, structure.lines, structure.markers, structure.zones]);
+  }, [redrawZones, showFib, showInternal, showInvalidZones, showIss, showMgZones, showStructure, showSupplyDemand, structure.internalMarkers, structure.issMarkers, structure.lines, structure.markers, structure.zones]);
 
   useEffect(() => {
     if (!replayPlaying || replayIndex === null) return;
@@ -988,6 +994,15 @@ export const OandaProChart: React.FC = () => {
               INT STRUCTURE {showInternal ? 'ON' : 'OFF'}
             </button>
             <button
+              onClick={() => setShowFib((value) => !value)}
+              className={`rounded-md border px-2 py-1 text-[9px] font-black transition ${
+                showFib ? 'border-fuchsia-200 bg-fuchsia-50 text-fuchsia-700' : 'border-slate-200 bg-white text-slate-500'
+              }`}
+              title="Show or hide independent Fibonacci confluence labels"
+            >
+              FIB {showFib ? 'ON' : 'OFF'}
+            </button>
+            <button
               onClick={() => setShowInvalidZones((value) => !value)}
               className={`rounded-md border px-2 py-1 text-[9px] font-black transition ${
                 showInvalidZones
@@ -1204,6 +1219,11 @@ export const OandaProChart: React.FC = () => {
                       {zone.chochClass === 'vip' && zone.vipSupportTimeframe && zone.vipSupportZone && (
                         <span className="ml-1 rounded bg-amber-50 px-1 py-0.5 text-[8px] font-black text-amber-700">
                           {zone.vipSupportTimeframe} {displayZoneName(zone.vipSupportZone)}
+                        </span>
+                      )}
+                      {showFib && zone.fibStatus === 'a-plus' && zone.fibBand && (
+                        <span className="ml-1 rounded bg-fuchsia-100 px-1 py-0.5 text-[8px] font-black text-fuchsia-800">
+                          A+ FIB {zone.fibBand}
                         </span>
                       )}
                     </td>
