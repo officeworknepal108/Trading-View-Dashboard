@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
+  activateZoneAfterChoch,
   classifyChoch,
   classifyDoubleChoch,
   doesInvalidateZone,
@@ -221,19 +222,19 @@ test('TJL1 stays pending when completed mapped candles have not closed through i
   assert.equal(result.confirmationWindowCloseTime, 3600);
 });
 
-test('directional TJL1 invalidation requires the full candle outside the zone', () => {
+test('directional TJL1 invalidation requires the completed body outside the zone', () => {
   const upward = zone({ invalidationDirection: 'up' });
   assert.equal(doesInvalidateZone(upward, { time: 300, open: 105, high: 112, low: 104, close: 109 }), false);
   assert.equal(doesInvalidateZone(upward, { time: 400, open: 109, high: 112, low: 108, close: 111 }), false);
-  assert.equal(doesInvalidateZone(upward, { time: 500, open: 111, high: 113, low: 110.5, close: 112 }), true);
+  assert.equal(doesInvalidateZone(upward, { time: 500, open: 111, high: 113, low: 104, close: 112 }), true);
 
   const downward = zone({ invalidationDirection: 'down' });
   assert.equal(doesInvalidateZone(downward, { time: 300, open: 105, high: 106, low: 98, close: 101 }), false);
   assert.equal(doesInvalidateZone(downward, { time: 400, open: 101, high: 102, low: 98, close: 99 }), false);
-  assert.equal(doesInvalidateZone(downward, { time: 500, open: 99, high: 99.5, low: 97, close: 98 }), true);
+  assert.equal(doesInvalidateZone(downward, { time: 500, open: 99, high: 105, low: 97, close: 98 }), true);
 });
 
-test('every zone type waits for a completed candle fully outside its invalidation boundary', () => {
+test('every zone type invalidates when a completed candle body is fully outside', () => {
   const zoneTypes: Array<Pick<StructureZone, 'name' | 'category'>> = [
     { name: 'TJL2', category: 'mg' },
     { name: 'QML', category: 'mg' },
@@ -256,20 +257,20 @@ test('every zone type waits for a completed candle fully outside its invalidatio
     }), false, `${type.name} must ignore a live close above the zone`);
     assert.equal(doesInvalidateZone(sellZone, {
       time: 400, open: 111, high: 112, low: 104, close: 109, complete: true,
-    }), false, `${type.name} must remain valid while any part of the candle overlaps the zone`);
+    }), false, `${type.name} must remain valid while the candle body overlaps the zone`);
     assert.equal(doesInvalidateZone(sellZone, {
-      time: 500, open: 111, high: 113, low: 110.5, close: 112, complete: true,
-    }), true, `${type.name} must invalidate when the full completed candle is above the zone`);
+      time: 500, open: 111, high: 113, low: 104, close: 112, complete: true,
+    }), true, `${type.name} must invalidate when the completed body is above despite wick re-entry`);
 
     assert.equal(doesInvalidateZone(buyZone, {
       time: 300, open: 105, high: 106, low: 98, close: 99, complete: false,
     }), false, `${type.name} must ignore a live close below the zone`);
     assert.equal(doesInvalidateZone(buyZone, {
       time: 400, open: 99, high: 106, low: 98, close: 101, complete: true,
-    }), false, `${type.name} must remain valid while any part of the candle overlaps the zone`);
+    }), false, `${type.name} must remain valid while the candle body overlaps the zone`);
     assert.equal(doesInvalidateZone(buyZone, {
-      time: 500, open: 99, high: 99.5, low: 97, close: 98, complete: true,
-    }), true, `${type.name} must invalidate when the full completed candle is below the zone`);
+      time: 500, open: 99, high: 105, low: 97, close: 98, complete: true,
+    }), true, `${type.name} must invalidate when the completed body is below despite wick re-entry`);
   }
 });
 
@@ -281,6 +282,30 @@ test('first-tap detection excludes the origin and pre-activation candles', () =>
   ];
 
   assert.equal(findFirstZoneTapIndex(candles, zone()), 2);
+});
+
+test('CHoCH-created zones ignore historical overlaps and the break candle', () => {
+  const converted = zone({
+    name: 'SBR',
+    startTime: 100,
+    activeFromTime: 100,
+    tapTime: 200,
+    tapBarsAgo: 2,
+  });
+  const candles = [
+    candle(100, 105, 111, 99), // original TJL2 pivot
+    candle(200, 105, 111, 99), // historical overlap
+    candle(300, 95, 105, 90), // CHoCH break/formation candle
+    candle(400, 95, 99, 91), // first eligible candle, no overlap
+    candle(500, 105, 108, 102), // genuine post-CHoCH revisit
+  ];
+
+  activateZoneAfterChoch(converted, 300, 100);
+
+  assert.equal(converted.activeFromTime, 400);
+  assert.equal(converted.tapTime, undefined);
+  assert.equal(converted.tapBarsAgo, undefined);
+  assert.equal(findFirstZoneTapIndex(candles, converted), 4);
 });
 
 test('supply is tapped only by a revisit after its confirming BOS candle', () => {

@@ -299,20 +299,21 @@ export function doesInvalidateZone(zone: StructureZone, candle: StructureCandle)
   // beyond a boundary before returning inside the zone when the bar completes.
   if (candle.complete === false) return false;
 
+  const bodyLow = Math.min(candle.open, candle.close);
+  const bodyHigh = Math.max(candle.open, candle.close);
+
   if (zone.name === 'TJL1' && zone.invalidationDirection) {
-    // TJL1 must have a completed source-timeframe candle fully beyond the
-    // boundary facing its paired TJL2. The entire wick-to-wick range must be
-    // outside; a close or body beyond the boundary is not enough.
+    // TJL1 uses the boundary facing its paired TJL2. Wick re-entry does not
+    // preserve the zone once a completed candle's entire body is outside.
     return zone.invalidationDirection === 'up'
-      ? candle.low > zone.top
-      : candle.high < zone.bottom;
+      ? bodyLow > zone.top
+      : bodyHigh < zone.bottom;
   }
 
-  // Apply the same closed-candle rule to every other MG, ISS, and S/D zone.
-  // The whole candle, including its wicks, must finish outside the zone.
+  // Apply the same completed-body rule to every other MG, ISS, and S/D zone.
   return zone.isBuy
-    ? candle.high < zone.bottom
-    : candle.low > zone.top;
+    ? bodyHigh < zone.bottom
+    : bodyLow > zone.top;
 }
 
 export function findFirstZoneTapIndex(candles: StructureCandle[], zone: StructureZone): number {
@@ -325,6 +326,18 @@ export function findFirstZoneTapIndex(candles: StructureCandle[], zone: Structur
     && candle.high >= zone.bottom
     && candle.low <= zone.top
   ));
+}
+
+export function activateZoneAfterChoch(
+  zone: StructureZone,
+  chochTime: number,
+  sourceBarSeconds: number,
+): void {
+  // A CHoCH creates or converts the zone on its break candle. Historical
+  // overlaps and the break candle itself are formation, not a trade revisit.
+  zone.activeFromTime = chochTime + sourceBarSeconds;
+  zone.tapTime = undefined;
+  zone.tapBarsAgo = undefined;
 }
 
 export function classifyChoch(options: {
@@ -546,7 +559,12 @@ export function analyzeMarketStructure(candles: StructureCandle[], options: {
 
   const applyChochContext = (context: ChochMetadata, ...contextZones: Array<StructureZone | null>) => {
     for (const zone of contextZones) {
-      if (zone) Object.assign(zone, context);
+      if (zone) {
+        Object.assign(zone, context);
+        if (context.chochTime !== undefined) {
+          activateZoneAfterChoch(zone, context.chochTime, sourceBarSeconds);
+        }
+      }
     }
   };
 
@@ -585,13 +603,8 @@ export function analyzeMarketStructure(candles: StructureCandle[], options: {
     for (const zone of contextZones) {
       if (zone) {
         Object.assign(zone, context);
-        // The candle that confirms Double CHoCH creates/converts these zones;
-        // crossing a zone on that same candle is formation, not a revisit.
-        // Start tap detection on the following source-timeframe candle.
         if (context.doubleChochTime !== undefined) {
-          zone.activeFromTime = context.doubleChochTime + sourceBarSeconds;
-          zone.tapTime = undefined;
-          zone.tapBarsAgo = undefined;
+          activateZoneAfterChoch(zone, context.doubleChochTime, sourceBarSeconds);
         }
       }
     }
@@ -724,8 +737,8 @@ export function analyzeMarketStructure(candles: StructureCandle[], options: {
         ? zone.confirmationWindowCloseTime
         : zone.activeFromTime ?? zone.startTime;
       if (invalidationStart === undefined || candle.time < invalidationStart) continue;
-      // Wicks and unfinished candles do not cancel zones. The shared rule only
-      // invalidates when a completed candle is fully outside the invalid side.
+      // Unfinished candles do not cancel zones. The shared rule invalidates
+      // when a completed candle's full body is outside the invalid side.
       if (doesInvalidateZone(zone, candle)) {
         zone.active = false;
         zone.status = 'invalidated';
