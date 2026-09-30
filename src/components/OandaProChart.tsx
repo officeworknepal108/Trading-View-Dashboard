@@ -257,8 +257,9 @@ export const OandaProChart: React.FC = () => {
       - (a.tapTime ?? a.doubleChochTime ?? a.startTime)
       || b.startTime - a.startTime)
     .slice(0, 8), [granularity, latestDisplayCandleTime, structure.zones]);
-  const pendingTjlRows = useMemo(() => structure.zones
-    .filter((zone) => zone.name === 'TJL1' && zone.active && zone.status === 'pending')
+  const pendingConfirmationRows = useMemo(() => structure.zones
+    .filter((zone) => (zone.name === 'TJL1' || zone.name === 'ISS L3')
+      && zone.active && zone.status === 'pending')
     .sort((a, b) => b.startTime - a.startTime)
     .slice(0, 4), [structure.zones]);
   const change = latestCandle && previousCandle ? latestCandle.close - previousCandle.close : 0;
@@ -336,10 +337,10 @@ export const OandaProChart: React.FC = () => {
         label.textContent = zone.doubleChochStatus === 'pending'
           ? `${name} · DOUBLE CHoCH · PENDING ${confirmationLabel} ${zone.doubleChochConfirmationDirection === 'up' ? 'ABOVE' : 'BELOW'}`
           : `${name} · VALID DOUBLE CHoCH`;
-      } else if (zone.name === 'TJL1') {
+      } else if (zone.name === 'TJL1' || zone.name === 'ISS L3') {
         label.textContent = pending
-          ? `TJL1 · PENDING ${confirmationLabel} ${zone.isBuy ? 'ABOVE' : 'BELOW'}`
-          : 'VALID TJL1';
+          ? `${zone.name} · PENDING ${confirmationLabel} ${zone.isBuy ? 'ABOVE' : 'BELOW'}`
+          : `VALID ${zone.name}`;
       } else if (zone.name === 'TJL2') {
         label.textContent = 'TJL2';
       }
@@ -1096,9 +1097,9 @@ export const OandaProChart: React.FC = () => {
                 </tr>
               </thead>
               <tbody>
-                {pendingTjlRows.map((zone) => (
+                {pendingConfirmationRows.map((zone) => (
                   <tr key={zone.id} className={`border-t text-slate-700 ${zone.isBuy ? 'border-emerald-100 bg-emerald-50/70' : 'border-rose-100 bg-rose-50/70'}`}>
-                    <td className={`px-2 py-1 font-black ${zone.isBuy ? 'text-emerald-800' : 'text-rose-800'}`}>TJL1</td>
+                    <td className={`px-2 py-1 font-black ${zone.isBuy ? 'text-emerald-800' : 'text-rose-800'}`}>{zone.name}</td>
                     <td className={`px-2 py-1 font-bold ${zone.isBuy ? 'text-emerald-700' : 'text-rose-700'}`}>
                       {zone.isBuy ? 'BUY' : 'SELL'}
                     </td>
@@ -1183,7 +1184,7 @@ export const OandaProChart: React.FC = () => {
                     </td>
                   </tr>
                 ))}
-                {pendingTjlRows.length === 0 && doubleChochRows.length === 0 && zoneTableRows.length === 0 && (
+                {pendingConfirmationRows.length === 0 && doubleChochRows.length === 0 && zoneTableRows.length === 0 && (
                   <tr>
                     <td colSpan={4} className="px-2 py-2 text-center text-slate-400">No active zone rows</td>
                   </tr>

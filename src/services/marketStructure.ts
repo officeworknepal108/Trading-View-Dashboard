@@ -302,9 +302,10 @@ export function doesInvalidateZone(zone: StructureZone, candle: StructureCandle)
   const bodyLow = Math.min(candle.open, candle.close);
   const bodyHigh = Math.max(candle.open, candle.close);
 
-  if (zone.name === 'TJL1' && zone.invalidationDirection) {
-    // TJL1 uses the boundary facing its paired TJL2. Wick re-entry does not
-    // preserve the zone once a completed candle's entire body is outside.
+  if (zone.invalidationDirection) {
+    // TJL1 and ISS Level 3 use the boundary facing their paired Level 2/4.
+    // Wick re-entry does not preserve the zone once a completed candle's
+    // entire body is outside.
     return zone.invalidationDirection === 'up'
       ? bodyLow > zone.top
       : bodyHigh < zone.bottom;
@@ -317,6 +318,8 @@ export function doesInvalidateZone(zone: StructureZone, candle: StructureCandle)
 }
 
 export function findFirstZoneTapIndex(candles: StructureCandle[], zone: StructureZone): number {
+  // Confirmation-controlled zones cannot record a trade tap while pending.
+  if ((zone.name === 'TJL1' || zone.name === 'ISS L3') && zone.status !== 'valid') return -1;
   const activeFromTime = zone.activeFromTime ?? zone.startTime;
   return candles.findIndex((candle) => (
     // The source candle that defines a zone is its origin, not a revisit.
@@ -394,7 +397,7 @@ export function findVipSupportTap(
       && activeFromTime <= chochTime
       && zone.startTime < chochTime
       && (!zone.invalidatedAt || zone.invalidatedAt > chochTime)
-      && (zone.name !== 'TJL1' || (
+      && ((zone.name !== 'TJL1' && zone.name !== 'ISS L3') || (
         zone.confirmationTime !== undefined && zone.confirmationTime <= chochTime
       ));
     if (!wasUsableAtChoch) continue;
@@ -993,7 +996,13 @@ export function analyzeMarketStructure(candles: StructureCandle[], options: {
   const visibleMarkers = sortedMarkers.length > 180
     ? [sortedMarkers[0], ...sortedMarkers.slice(-179)]
     : sortedMarkers;
-  const iss = findIssFiveWaves(candles, issAnchors, sourceBarSeconds, zoneVisualBars);
+  const iss = findIssFiveWaves(
+    candles,
+    issAnchors,
+    sourceBarSeconds,
+    zoneVisualBars,
+    options.confirmationBarSeconds,
+  );
   issMarkers.push(...iss.markers);
   zones.push(...iss.zones);
   lines.push(...iss.lines);
@@ -1039,6 +1048,7 @@ function findIssFiveWaves(
   anchors: { direction: 'bullish' | 'bearish'; start: StructurePoint; boundary: StructurePoint }[],
   sourceBarSeconds: number,
   zoneVisualBars: number,
+  confirmationBarSeconds?: number,
 ): {
   markers: IssMarker[];
   lines: StructureLine[];
@@ -1087,13 +1097,35 @@ function findIssFiveWaves(
     const wick4 = isBullish
       ? Math.min(candle4.open, candle4.close) - candle4.low
       : candle4.high - Math.max(candle4.open, candle4.close);
+    const wave3Bottom = isBullish ? wave3.price - (wick3 + buffer3) : wave3.price;
+    const wave3Top = isBullish ? wave3.price : wave3.price + (wick3 + buffer3);
+    // Level 3 is the ISS equivalent of TJL1. The completed five-wave pattern
+    // creates it, then the mapped higher timeframe must close through its
+    // confirmation side before it becomes valid/tradeable.
+    const wave3FormationTime = confirmedAt + sourceBarSeconds;
+    const wave3Confirmation = resolveTjl1Confirmation(candles, {
+      confirmationDirection: isBullish ? 'up' : 'down',
+      bottom: wave3Bottom,
+      top: wave3Top,
+      formationTime: wave3FormationTime,
+      sourceBarSeconds,
+      confirmationBarSeconds,
+    });
     const wave3Zone: StructureZone = {
         id: `iss-l3-${wave3.time}`, name: 'ISS L3', category: 'iss', isBuy: isBullish,
         startTime: wave3.time,
         endTime: wave3.time + sourceBarSeconds * zoneVisualBars,
-        activeFromTime: confirmedAt,
-        bottom: isBullish ? wave3.price - (wick3 + buffer3) : wave3.price,
-        top: isBullish ? wave3.price : wave3.price + (wick3 + buffer3), active: true, status: 'valid',
+        activeFromTime: wave3Confirmation.status === 'valid'
+          ? wave3Confirmation.confirmationTime ?? wave3FormationTime
+          : wave3FormationTime,
+        bottom: wave3Bottom,
+        top: wave3Top,
+        active: true,
+        status: wave3Confirmation.status,
+        tjl1ConfirmationAttempts: wave3Confirmation.tjl1ConfirmationAttempts,
+        confirmationTime: wave3Confirmation.confirmationTime,
+        confirmationWindowCloseTime: wave3Confirmation.confirmationWindowCloseTime,
+        invalidationDirection: isBullish ? 'down' : 'up',
       };
     const wave4Zone: StructureZone = {
         id: `iss-l4-${wave4.time}`, name: 'ISS L4', category: 'iss', isBuy: isBullish,
@@ -1277,7 +1309,7 @@ function findIssFiveWaves(
 
   for (const zone of zones) {
     for (const candle of candles) {
-      const invalidationStart = zone.name === 'TJL1'
+      const invalidationStart = (zone.name === 'TJL1' || zone.name === 'ISS L3')
         ? zone.confirmationWindowCloseTime
         : zone.activeFromTime ?? zone.startTime;
       if (invalidationStart === undefined || candle.time < invalidationStart) continue;

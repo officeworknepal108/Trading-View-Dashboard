@@ -284,6 +284,28 @@ test('first-tap detection excludes the origin and pre-activation candles', () =>
   assert.equal(findFirstZoneTapIndex(candles, zone()), 2);
 });
 
+test('pending ISS Level 3 cannot record a tap before higher-timeframe validation', () => {
+  const candles = [
+    candle(100, 105, 111, 99),
+    candle(200, 105, 111, 99),
+    candle(300, 105, 111, 99),
+  ];
+  const level3 = zone({
+    name: 'ISS L3',
+    category: 'iss',
+    status: 'pending',
+    activeFromTime: 200,
+  });
+
+  assert.equal(findFirstZoneTapIndex(candles, level3), -1);
+  assert.equal(findFirstZoneTapIndex(candles, {
+    ...level3,
+    status: 'valid',
+    confirmationTime: 300,
+    activeFromTime: 300,
+  }), 2);
+});
+
 test('CHoCH-created zones ignore historical overlaps and the break candle', () => {
   const converted = zone({
     name: 'SBR',
