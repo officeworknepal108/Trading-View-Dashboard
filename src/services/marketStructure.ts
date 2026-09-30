@@ -21,7 +21,7 @@ export interface VipSupportContext {
 export interface StructureZone {
   id: string;
   name: 'TJL1' | 'TJL2' | 'QML' | 'QML A+' | 'QML A++' | 'SBR' | 'RBS' | 'DT' | 'DB' | 'DBD' | 'DTD' | 'ISS L3' | 'ISS L4' | 'Internal QML' | 'Internal SBR' | 'Internal RBS' | 'Internal DT' | 'Internal DB' | 'Internal TJL1' | 'Internal TJL2' | 'SUPPLY' | 'DEMAND';
-  category: 'mg' | 'iss' | 'supplyDemand';
+  category: 'mg' | 'iss' | 'internal' | 'supplyDemand';
   isBuy: boolean;
   startTime: number;
   endTime: number;
@@ -67,7 +67,7 @@ type DoubleChochMetadata = Pick<StructureZone,
 
 export interface StructureLine {
   id: string;
-  type: 'swing' | 'bos' | 'choch' | 'iss';
+  type: 'swing' | 'bos' | 'choch' | 'iss' | 'internal-swing' | 'internal-bos' | 'internal-choch';
   direction: 'bullish' | 'bearish';
   fromTime: number;
   fromPrice: number;
@@ -85,6 +85,7 @@ export type IssMarker = SeriesMarker<UTCTimestamp> & {
 export interface MarketStructureResult {
   markers: SeriesMarker<UTCTimestamp>[];
   issMarkers: IssMarker[];
+  internalMarkers: SeriesMarker<UTCTimestamp>[];
   zones: StructureZone[];
   lines: StructureLine[];
   trend: 'bullish' | 'bearish' | 'neutral';
@@ -302,7 +303,7 @@ export function doesInvalidateZone(zone: StructureZone, candle: StructureCandle)
   const bodyLow = Math.min(candle.open, candle.close);
   const bodyHigh = Math.max(candle.open, candle.close);
 
-  if ((zone.name === 'TJL1' || zone.name === 'ISS L3') && zone.invalidationDirection) {
+  if (requiresMappedConfirmation(zone) && zone.invalidationDirection) {
     // TJL1 and ISS Level 3 use the boundary facing their paired Level 2/4.
     // Wick re-entry does not preserve the zone once a completed candle's
     // entire body is outside.
@@ -319,7 +320,7 @@ export function doesInvalidateZone(zone: StructureZone, candle: StructureCandle)
 
 export function findFirstZoneTapIndex(candles: StructureCandle[], zone: StructureZone): number {
   // Confirmation-controlled zones cannot record a trade tap while pending.
-  if ((zone.name === 'TJL1' || zone.name === 'ISS L3') && zone.status !== 'valid') return -1;
+  if (requiresMappedConfirmation(zone) && zone.status !== 'valid') return -1;
   const activeFromTime = zone.activeFromTime ?? zone.startTime;
   return candles.findIndex((candle) => (
     // The source candle that defines a zone is its origin, not a revisit.
@@ -329,6 +330,10 @@ export function findFirstZoneTapIndex(candles: StructureCandle[], zone: Structur
     && candle.high >= zone.bottom
     && candle.low <= zone.top
   ));
+}
+
+function requiresMappedConfirmation(zone: StructureZone): boolean {
+  return zone.name === 'TJL1' || zone.name === 'ISS L3' || zone.name === 'Internal TJL1';
 }
 
 export function activateZoneAfterChoch(
@@ -397,7 +402,7 @@ export function findVipSupportTap(
       && activeFromTime <= chochTime
       && zone.startTime < chochTime
       && (!zone.invalidatedAt || zone.invalidatedAt > chochTime)
-      && ((zone.name !== 'TJL1' && zone.name !== 'ISS L3') || (
+      && (!requiresMappedConfirmation(zone) || (
         zone.confirmationTime !== undefined && zone.confirmationTime <= chochTime
       ));
     if (!wasUsableAtChoch) continue;
@@ -460,7 +465,7 @@ export function analyzeMarketStructure(candles: StructureCandle[], options: {
   vipSupport?: VipSupportContext | VipSupportContext[];
 } = {}): MarketStructureResult {
   if (candles.length < 12) {
-    return { markers: [], issMarkers: [], zones: [], lines: [], trend: 'neutral' };
+    return { markers: [], issMarkers: [], internalMarkers: [], zones: [], lines: [], trend: 'neutral' };
   }
 
   // MG Bhai: initialize on the lowest wick in the first 500 loaded bars.
@@ -472,6 +477,7 @@ export function analyzeMarketStructure(candles: StructureCandle[], options: {
   const lines: StructureLine[] = [];
   const zones: StructureZone[] = [];
   const issMarkers: IssMarker[] = [];
+  const internalMarkers: SeriesMarker<UTCTimestamp>[] = [];
   const issAnchors: { direction: 'bullish' | 'bearish'; start: StructurePoint; boundary: StructurePoint }[] = [];
   let trend: 'bullish' | 'bearish' = 'bullish';
   let protectedPoint = genesis;
@@ -1002,8 +1008,12 @@ export function analyzeMarketStructure(candles: StructureCandle[], options: {
     sourceBarSeconds,
     zoneVisualBars,
     options.confirmationBarSeconds,
+    // An external BOS continues the current structure. Only an external CHoCH
+    // starts a new external structure and terminates the post-ISS internal run.
+    lines.filter((line) => line.type === 'choch').map((line) => line.toTime),
   );
   issMarkers.push(...iss.markers);
+  internalMarkers.push(...iss.internalMarkers);
   zones.push(...iss.zones);
   lines.push(...iss.lines);
   const visibleLines = lines.length > 160
@@ -1036,6 +1046,7 @@ export function analyzeMarketStructure(candles: StructureCandle[], options: {
   return {
     markers: visibleMarkers,
     issMarkers: issMarkers.slice(-36),
+    internalMarkers: internalMarkers.slice(-80),
     zones: visibleZones,
     lines: visibleLines,
     trend,
@@ -1043,20 +1054,23 @@ export function analyzeMarketStructure(candles: StructureCandle[], options: {
   };
 }
 
-function findIssFiveWaves(
+export function findIssFiveWaves(
   candles: StructureCandle[],
   anchors: { direction: 'bullish' | 'bearish'; start: StructurePoint; boundary: StructurePoint }[],
   sourceBarSeconds: number,
   zoneVisualBars: number,
   confirmationBarSeconds?: number,
+  externalStructureTimes: number[] = [],
 ): {
   markers: IssMarker[];
+  internalMarkers: SeriesMarker<UTCTimestamp>[];
   lines: StructureLine[];
   zones: StructureZone[];
 } {
   // ISS uses only the current chart timeframe. Point 0 is an external SL/SH,
   // and the five internal points must remain inside its PH/PL boundary.
   const markers: IssMarker[] = [];
+  const internalMarkers: SeriesMarker<UTCTimestamp>[] = [];
   const lines: StructureLine[] = [];
   const zones: StructureZone[] = [];
   const patterns: { direction: 'bullish' | 'bearish'; points: StructurePoint[]; confirmedAt: number; anchor: typeof anchors[number]; wave3: StructureZone; wave4: StructureZone }[] = [];
@@ -1216,14 +1230,6 @@ function findIssFiveWaves(
           points.push(point4);
           state = 5;
         }
-      } else if (state === 4 && reversal) {
-        // Point 3 follows the same TJL1 rule. Keep the highest bullish (or
-        // lowest bearish) post-Point-2 wick after each two-candle retracement.
-        const replacement = selectTwoCandleRetracementPivot(candles, points[2].index + 1, index, highOrLow);
-        const isMoreExtreme = anchor.direction === 'bullish'
-          ? replacement.price > points[3].price
-          : replacement.price < points[3].price;
-        if (isMoreExtreme && withinBoundary(replacement, anchor)) points[3] = replacement;
       } else if (state === 5 && reversal) {
         const point5 = selectTwoCandleRetracementPivot(candles, points[4].index + 1, index, highOrLow);
         if (withinBoundary(point5, anchor)) {
@@ -1241,17 +1247,19 @@ function findIssFiveWaves(
     activeFromTime: number,
   ) => {
     zone.name = name;
+    zone.category = 'internal';
     zone.isBuy = isBuy;
     zone.active = true;
     zone.status = 'valid';
-    zone.activeFromTime = activeFromTime;
+    zone.activeFromTime = activeFromTime + sourceBarSeconds;
+    zone.invalidationDirection = undefined;
     zone.invalidatedAt = undefined;
     zone.tapTime = undefined;
     zone.tapBarsAgo = undefined;
   };
-  const addInternalZone = (
+  const addInternalExtremeZone = (
     point: StructurePoint,
-    name: Extract<StructureZone['name'], 'Internal TJL1' | 'Internal TJL2' | 'Internal DT' | 'Internal DB'>,
+    name: Extract<StructureZone['name'], 'Internal DT' | 'Internal DB'>,
     isBuy: boolean,
     activeFromTime: number,
   ) => {
@@ -1259,10 +1267,14 @@ function findIssFiveWaves(
     const bodyLow = Math.min(candle.open, candle.close);
     const bodyHigh = Math.max(candle.open, candle.close);
     const buffer = Math.abs(candle.close - candle.open) * 0.01;
-    const bottom = isBuy ? point.price : point.price - (candle.high - bodyHigh + buffer);
-    const top = isBuy ? point.price + (bodyLow - candle.low + buffer) : point.price;
+    const bottom = name === 'Internal DB'
+      ? point.price
+      : point.price - (candle.high - bodyHigh + buffer);
+    const top = name === 'Internal DB'
+      ? point.price + (bodyLow - candle.low + buffer)
+      : point.price;
     const created: StructureZone = {
-      id: `${name}-${point.time}-${point.price}`, name, category: 'iss', isBuy,
+      id: `${name}-${point.time}-${point.price}`, name, category: 'internal', isBuy,
       startTime: point.time, activeFromTime,
       endTime: point.time + sourceBarSeconds * zoneVisualBars,
       bottom, top, active: true, status: 'valid',
@@ -1271,45 +1283,235 @@ function findIssFiveWaves(
     return created;
   };
 
+  const addInternalTjlZone = (
+    point: StructurePoint,
+    name: 'Internal TJL1' | 'Internal TJL2',
+    isBuy: boolean,
+    pivotSide: 'high' | 'low',
+    formationTime: number,
+  ) => {
+    const source = candles[point.index];
+    const buffer = Math.abs(source.close - source.open) * 0.01;
+    const lowerBody = Math.min(source.open, source.close);
+    const upperBody = Math.max(source.open, source.close);
+    const bottomWick = lowerBody - source.low;
+    const topWick = source.high - upperBody;
+    const highPivot = pivotSide === 'high';
+    const bottom = highPivot ? point.price - (topWick + buffer) : point.price;
+    const top = highPivot ? point.price : point.price + (bottomWick + buffer);
+    const confirmation = name === 'Internal TJL1'
+      ? resolveTjl1Confirmation(candles, {
+        confirmationDirection: isBuy ? 'up' : 'down',
+        bottom,
+        top,
+        formationTime,
+        sourceBarSeconds,
+        confirmationBarSeconds,
+      })
+      : { status: 'valid' as const };
+    const created: StructureZone = {
+      id: `${name}-${point.time}-${point.price}`,
+      name,
+      category: 'internal',
+      isBuy,
+      startTime: point.time,
+      endTime: point.time + sourceBarSeconds * zoneVisualBars,
+      activeFromTime: confirmation.status === 'valid'
+        ? confirmation.confirmationTime ?? formationTime
+        : formationTime,
+      bottom,
+      top,
+      active: true,
+      status: confirmation.status,
+      tjl1ConfirmationAttempts: confirmation.tjl1ConfirmationAttempts,
+      confirmationTime: confirmation.confirmationTime,
+      confirmationWindowCloseTime: confirmation.confirmationWindowCloseTime,
+    };
+    zones.push(created);
+    return created;
+  };
+
+  const linkInternalTjlPair = (tjl1: StructureZone, tjl2: StructureZone) => {
+    const tjl1Midpoint = (tjl1.top + tjl1.bottom) / 2;
+    const tjl2Midpoint = (tjl2.top + tjl2.bottom) / 2;
+    tjl1.invalidationDirection = tjl2Midpoint > tjl1Midpoint ? 'up' : 'down';
+  };
+
+  const addInternalLine = (
+    type: Extract<StructureLine['type'], 'internal-swing' | 'internal-bos' | 'internal-choch'>,
+    direction: 'bullish' | 'bearish',
+    from: StructurePoint,
+    to: StructurePoint,
+    label?: string,
+  ) => {
+    if (type === 'internal-swing' && from.time === to.time && from.price === to.price) return;
+    lines.push({
+      id: `${type}-${from.time}-${to.time}-${to.price}`,
+      type,
+      direction,
+      fromTime: from.time,
+      fromPrice: from.price,
+      toTime: to.time,
+      toPrice: to.price,
+      label,
+    });
+  };
+
   for (const pattern of patterns) {
     const confirmedIndex = candles.findIndex((candle) => candle.time === pattern.confirmedAt);
     if (confirmedIndex < 0) continue;
-    const point4 = pattern.points[4];
     const point5 = pattern.points[5];
     const isBullishIss = pattern.direction === 'bullish';
-
+    const stopTime = externalStructureTimes.find((time) => time > pattern.confirmedAt) ?? Infinity;
+    // ISS Level 3 and Level 4 remain ISS zones. Internal structure starts only
+    // after Point 5, once the first new reversal confirms a fresh low/high.
+    let bootstrapIndex = -1;
+    let bootstrapPoint: StructurePoint | null = null;
     for (let index = confirmedIndex + 1; index < candles.length; index += 1) {
+      if (candles[index].time >= stopTime) break;
       const candle = candles[index];
       const previous = candles[index - 1];
-      const crossesPoint4 = isBullishIss
-        ? candle.close < point4.price && previous.close < point4.price
-        : candle.close > point4.price && previous.close > point4.price;
-      if (crossesPoint4) {
-        const direction = isBullishIss ? 'bearish' : 'bullish';
-        lines.push({
-          id: `internal-choch-${point4.time}-${candle.time}`, type: 'choch', direction,
-          fromTime: point4.time, fromPrice: point4.price, toTime: candle.time, toPrice: point4.price,
-          label: 'INTERNAL CHoCH',
-        });
-        if (isBullishIss) {
-          activateInternalZone(pattern.wave3, 'Internal QML', false, candle.time);
-          activateInternalZone(pattern.wave4, 'Internal SBR', false, candle.time);
-          addInternalZone(point5, 'Internal DT', false, candle.time);
-          markers.push(makeMarker(candles[point5.index], 'I PH', 'aboveBar', '#b91c1c'));
-        } else {
-          activateInternalZone(pattern.wave3, 'Internal QML', true, candle.time);
-          activateInternalZone(pattern.wave4, 'Internal RBS', true, candle.time);
-          addInternalZone(point5, 'Internal DB', true, candle.time);
-          markers.push(makeMarker(candles[point5.index], 'I PL', 'belowBar', '#047857'));
+      const reversal = isBullishIss
+        ? candle.close > candle.open
+          && previous.close > previous.open
+          && candle.close > previous.high
+        : candle.close < candle.open
+          && previous.close < previous.open
+          && candle.close < previous.low;
+      if (!reversal) continue;
+      bootstrapPoint = selectTwoCandleRetracementPivot(
+        candles,
+        point5.index + 1,
+        index,
+        isBullishIss ? 'low' : 'high',
+      );
+      bootstrapIndex = index;
+      break;
+    }
+    if (!bootstrapPoint || bootstrapIndex < 0) continue;
+
+    let internalTrend: 'bullish' | 'bearish' = pattern.direction;
+    let protectedPoint = bootstrapPoint;
+    let pathStart = bootstrapPoint;
+    let activeHigh: StructurePoint | null = null;
+    let activeLow: StructurePoint | null = null;
+    let currentTjl1: StructureZone | null = null;
+    let currentTjl2: StructureZone | null = null;
+    let lastBullishConfirmIndex: number | null = isBullishIss ? bootstrapIndex : null;
+    let lastBearishConfirmIndex: number | null = isBullishIss ? null : bootstrapIndex;
+
+    for (let index = bootstrapIndex + 1; index < candles.length; index += 1) {
+      const candle = candles[index];
+      const previous = candles[index - 1];
+      if (candle.time >= stopTime) break;
+      const twoRed = candle.close < candle.open
+        && previous.close < previous.open
+        && candle.close < previous.low;
+      const twoGreen = candle.close > candle.open
+        && previous.close > previous.open
+        && candle.close > previous.high;
+
+      if (internalTrend === 'bullish') {
+        if (twoRed && activeHigh === null) {
+          const from = lastBullishConfirmIndex ?? protectedPoint.index;
+          activeHigh = selectTwoCandleRetracementPivot(candles, from, index, 'high');
         }
-        break;
+        if (activeHigh && candle.close > activeHigh.price) {
+          const confirmedHigh = activeHigh;
+          const confirmedLow = extreme(candles, confirmedHigh.index, index, 'low', lastBullishConfirmIndex);
+          internalMarkers.push(
+            makeMarker(candles[confirmedHigh.index], 'I HH', 'aboveBar', '#0d9488'),
+            makeMarker(candles[confirmedLow.index], 'I HL', 'belowBar', '#0d9488'),
+          );
+          addInternalLine('internal-swing', 'bullish', pathStart, confirmedHigh);
+          addInternalLine('internal-swing', 'bullish', confirmedHigh, confirmedLow);
+          addInternalLine('internal-bos', 'bullish', confirmedHigh, {
+            index, time: candle.time, price: confirmedHigh.price,
+          }, 'INT BOS');
+          currentTjl1 = addInternalTjlZone(
+            confirmedHigh, 'Internal TJL1', true, 'high', candle.time + sourceBarSeconds,
+          );
+          currentTjl2 = addInternalTjlZone(
+            confirmedLow, 'Internal TJL2', true, 'low', candle.time + sourceBarSeconds,
+          );
+          linkInternalTjlPair(currentTjl1, currentTjl2);
+          protectedPoint = confirmedLow;
+          pathStart = confirmedLow;
+          activeHigh = null;
+          lastBullishConfirmIndex = index;
+        }
+        if (candle.close < protectedPoint.price && previous.close < protectedPoint.price) {
+          const newProtectedHigh = activeHigh ?? extreme(candles, protectedPoint.index, index, 'high');
+          addInternalLine('internal-choch', 'bearish', protectedPoint, {
+            index, time: candle.time, price: protectedPoint.price,
+          }, 'INT CHoCH');
+          if (currentTjl1) activateInternalZone(currentTjl1, 'Internal QML', false, candle.time);
+          if (currentTjl2) activateInternalZone(currentTjl2, 'Internal SBR', false, candle.time);
+          internalMarkers.push(makeMarker(candles[newProtectedHigh.index], 'I PH', 'aboveBar', '#be123c'));
+          addInternalExtremeZone(newProtectedHigh, 'Internal DT', false, candle.time + sourceBarSeconds);
+          internalTrend = 'bearish';
+          protectedPoint = newProtectedHigh;
+          pathStart = newProtectedHigh;
+          currentTjl1 = null;
+          currentTjl2 = null;
+          activeHigh = null;
+          activeLow = null;
+          lastBearishConfirmIndex = null;
+        }
+      } else {
+        if (twoGreen && activeLow === null) {
+          const from = lastBearishConfirmIndex ?? protectedPoint.index;
+          activeLow = selectTwoCandleRetracementPivot(candles, from, index, 'low');
+        }
+        if (activeLow && candle.close < activeLow.price) {
+          const confirmedLow = activeLow;
+          const confirmedHigh = extreme(candles, confirmedLow.index, index, 'high', lastBearishConfirmIndex);
+          internalMarkers.push(
+            makeMarker(candles[confirmedLow.index], 'I LL', 'belowBar', '#e11d48'),
+            makeMarker(candles[confirmedHigh.index], 'I LH', 'aboveBar', '#e11d48'),
+          );
+          addInternalLine('internal-swing', 'bearish', pathStart, confirmedLow);
+          addInternalLine('internal-swing', 'bearish', confirmedLow, confirmedHigh);
+          addInternalLine('internal-bos', 'bearish', confirmedLow, {
+            index, time: candle.time, price: confirmedLow.price,
+          }, 'INT BOS');
+          currentTjl1 = addInternalTjlZone(
+            confirmedLow, 'Internal TJL1', false, 'low', candle.time + sourceBarSeconds,
+          );
+          currentTjl2 = addInternalTjlZone(
+            confirmedHigh, 'Internal TJL2', false, 'high', candle.time + sourceBarSeconds,
+          );
+          linkInternalTjlPair(currentTjl1, currentTjl2);
+          protectedPoint = confirmedHigh;
+          pathStart = confirmedHigh;
+          activeLow = null;
+          lastBearishConfirmIndex = index;
+        }
+        if (candle.close > protectedPoint.price && previous.close > protectedPoint.price) {
+          const newProtectedLow = activeLow ?? extreme(candles, protectedPoint.index, index, 'low');
+          addInternalLine('internal-choch', 'bullish', protectedPoint, {
+            index, time: candle.time, price: protectedPoint.price,
+          }, 'INT CHoCH');
+          if (currentTjl1) activateInternalZone(currentTjl1, 'Internal QML', true, candle.time);
+          if (currentTjl2) activateInternalZone(currentTjl2, 'Internal RBS', true, candle.time);
+          internalMarkers.push(makeMarker(candles[newProtectedLow.index], 'I PL', 'belowBar', '#047857'));
+          addInternalExtremeZone(newProtectedLow, 'Internal DB', true, candle.time + sourceBarSeconds);
+          internalTrend = 'bullish';
+          protectedPoint = newProtectedLow;
+          pathStart = newProtectedLow;
+          currentTjl1 = null;
+          currentTjl2 = null;
+          activeHigh = null;
+          activeLow = null;
+          lastBullishConfirmIndex = null;
+        }
       }
     }
   }
 
   for (const zone of zones) {
     for (const candle of candles) {
-      const invalidationStart = (zone.name === 'TJL1' || zone.name === 'ISS L3')
+      const invalidationStart = requiresMappedConfirmation(zone)
         ? zone.confirmationWindowCloseTime
         : zone.activeFromTime ?? zone.startTime;
       if (invalidationStart === undefined || candle.time < invalidationStart) continue;
@@ -1321,5 +1523,10 @@ function findIssFiveWaves(
       if (!zone.active) break;
     }
   }
-  return { markers: markers.slice(-36), lines: lines.slice(-30), zones: zones.slice(-12) };
+  return {
+    markers: markers.slice(-36),
+    internalMarkers: internalMarkers.slice(-80),
+    lines: lines.slice(-120),
+    zones: zones.slice(-60),
+  };
 }

@@ -5,6 +5,7 @@ import {
   classifyChoch,
   classifyDoubleChoch,
   doesInvalidateZone,
+  findIssFiveWaves,
   findFirstZoneTapIndex,
   findVipSupportTap,
   findVipSupportTapAcrossContexts,
@@ -261,6 +262,9 @@ test('every zone type invalidates when a completed candle body is fully outside'
     { name: 'DB', category: 'mg' },
     { name: 'ISS L3', category: 'iss' },
     { name: 'ISS L4', category: 'iss' },
+    { name: 'Internal TJL1', category: 'internal' },
+    { name: 'Internal TJL2', category: 'internal' },
+    { name: 'Internal QML', category: 'internal' },
     { name: 'SUPPLY', category: 'supplyDemand' },
     { name: 'DEMAND', category: 'supplyDemand' },
   ];
@@ -301,7 +305,7 @@ test('first-tap detection excludes the origin and pre-activation candles', () =>
   assert.equal(findFirstZoneTapIndex(candles, zone()), 2);
 });
 
-test('pending ISS Level 3 cannot record a tap before higher-timeframe validation', () => {
+test('pending ISS Level 3 and Internal TJL1 cannot tap before higher-timeframe validation', () => {
   const candles = [
     candle(100, 105, 111, 99),
     candle(200, 105, 111, 99),
@@ -317,10 +321,66 @@ test('pending ISS Level 3 cannot record a tap before higher-timeframe validation
   assert.equal(findFirstZoneTapIndex(candles, level3), -1);
   assert.equal(findFirstZoneTapIndex(candles, {
     ...level3,
+    name: 'Internal TJL1',
+    category: 'internal',
+  }), -1);
+  assert.equal(findFirstZoneTapIndex(candles, {
+    ...level3,
     status: 'valid',
     confirmationTime: 300,
     activeFromTime: 300,
   }), 2);
+});
+
+test('completed ISS starts internal structure at Point 5 and stops at the next external event', () => {
+  const candles: StructureCandle[] = [
+    { time: 0, open: 101, high: 102, low: 100, close: 101 },
+    { time: 100, open: 101, high: 112, low: 101, close: 110 },
+    { time: 200, open: 110, high: 111, low: 107, close: 108 },
+    { time: 300, open: 108, high: 109, low: 104, close: 105 },
+    { time: 400, open: 105, high: 110, low: 105, close: 109 },
+    { time: 500, open: 109, high: 115, low: 108, close: 114 },
+    { time: 600, open: 114, high: 120, low: 114, close: 118 },
+    { time: 700, open: 118, high: 119, low: 115, close: 116 },
+    { time: 800, open: 116, high: 117, low: 112, close: 113 },
+    { time: 900, open: 113, high: 120, low: 113, close: 119 },
+    { time: 1000, open: 119, high: 123, low: 118, close: 122 },
+    { time: 1100, open: 122, high: 125, low: 121, close: 124 },
+    { time: 1200, open: 124, high: 125, low: 120, close: 121 },
+    { time: 1300, open: 121, high: 122, low: 117, close: 118 },
+    { time: 1400, open: 118, high: 119, low: 114, close: 115 },
+    { time: 1500, open: 115, high: 119, low: 114, close: 118 },
+    { time: 1600, open: 118, high: 122, low: 117, close: 121 },
+    { time: 1700, open: 121, high: 122, low: 115, close: 116 },
+    { time: 1800, open: 116, high: 117, low: 111, close: 112 },
+    { time: 1900, open: 112, high: 120, low: 112, close: 119 },
+    { time: 2000, open: 119, high: 125, low: 118, close: 124 },
+    { time: 2100, open: 124, high: 124, low: 109, close: 110 },
+    { time: 2200, open: 110, high: 111, low: 107, close: 108 },
+  ];
+  const anchor = {
+    direction: 'bullish' as const,
+    start: { index: 0, time: 0, price: 100 },
+    boundary: { index: 0, time: 0, price: 200 },
+  };
+
+  const formed = findIssFiveWaves(candles.slice(0, -2), [anchor], 100, 30, 400);
+  assert.ok(formed.zones.some((item) => item.name === 'ISS L3'));
+  assert.ok(formed.zones.some((item) => item.name === 'ISS L4'));
+  assert.ok(formed.zones.some((item) => item.name === 'Internal TJL1'));
+  assert.ok(formed.zones.some((item) => item.name === 'Internal TJL2' && item.status === 'valid'));
+
+  const running = findIssFiveWaves(candles, [anchor], 100, 30, 400);
+  assert.ok(running.lines.some((line) => line.type === 'internal-choch'));
+  assert.ok(running.zones.some((item) => item.name === 'Internal QML'));
+  assert.ok(running.zones.some((item) => item.name === 'Internal SBR'));
+  assert.ok(running.zones.some((item) => item.name === 'Internal DT'));
+  assert.ok(running.internalMarkers.some((marker) => marker.text === 'I PH'));
+
+  const stopped = findIssFiveWaves(candles, [anchor], 100, 30, 400, [1400]);
+  assert.equal(stopped.lines.some((line) => line.type.startsWith('internal-')), false);
+  assert.equal(stopped.zones.some((item) => item.name === 'Internal QML'), false);
+  assert.equal(stopped.zones.some((item) => item.category === 'internal'), false);
 });
 
 test('CHoCH-created zones ignore historical overlaps and the break candle', () => {

@@ -128,10 +128,12 @@ export const OandaProChart: React.FC = () => {
   const structureLinesRef = useRef<StructureLine[]>([]);
   const structureMarkersRef = useRef<any[]>([]);
   const issMarkersRef = useRef<any[]>([]);
+  const internalMarkersRef = useRef<any[]>([]);
   const showMgZonesRef = useRef(true);
   const showSupplyDemandRef = useRef(true);
   const showStructureRef = useRef(true);
   const showIssRef = useRef(true);
+  const showInternalRef = useRef(true);
   const showInvalidZonesRef = useRef(false);
   const redrawZonesRef = useRef<() => void>(() => undefined);
   const hasFittedRef = useRef(false);
@@ -156,6 +158,7 @@ export const OandaProChart: React.FC = () => {
   const [showMgZones, setShowMgZones] = useState(true);
   const [showSupplyDemand, setShowSupplyDemand] = useState(true);
   const [showIss, setShowIss] = useState(true);
+  const [showInternal, setShowInternal] = useState(true);
   const [showInvalidZones, setShowInvalidZones] = useState(false);
   const [showZoneTable, setShowZoneTable] = useState(true);
   const [replayIndex, setReplayIndex] = useState<number | null>(null);
@@ -236,10 +239,11 @@ export const OandaProChart: React.FC = () => {
   const previousCandle = displayCandles.length > 1 ? displayCandles[displayCandles.length - 2] : null;
   const zoneTableRows = useMemo(() => structure.zones
     .filter((zone) => zone.active && zone.status === 'valid'
+      && (showInternal || zone.category !== 'internal')
       && zone.doubleChochStatus === undefined
       && zone.tapTime !== undefined && (zone.tapBarsAgo ?? Infinity) <= 50)
     .sort((a, b) => (b.tapTime ?? b.startTime) - (a.tapTime ?? a.startTime))
-    .slice(0, 8), [structure.zones]);
+    .slice(0, 8), [showInternal, structure.zones]);
   const latestDisplayCandleTime = displayCandles[displayCandles.length - 1]?.time;
   const doubleChochRows = useMemo(() => structure.zones
     .filter((zone) => zone.active && zone.status === 'valid'
@@ -258,10 +262,11 @@ export const OandaProChart: React.FC = () => {
       || b.startTime - a.startTime)
     .slice(0, 8), [granularity, latestDisplayCandleTime, structure.zones]);
   const pendingConfirmationRows = useMemo(() => structure.zones
-    .filter((zone) => (zone.name === 'TJL1' || zone.name === 'ISS L3')
-      && zone.active && zone.status === 'pending')
+    .filter((zone) => (zone.name === 'TJL1' || zone.name === 'ISS L3' || zone.name === 'Internal TJL1')
+      && zone.active && zone.status === 'pending'
+      && (showInternal || zone.category !== 'internal'))
     .sort((a, b) => b.startTime - a.startTime)
-    .slice(0, 4), [structure.zones]);
+    .slice(0, 4), [showInternal, structure.zones]);
   const change = latestCandle && previousCandle ? latestCandle.close - previousCandle.close : 0;
   const changePercent = latestCandle && previousCandle && previousCandle.close
     ? change / previousCandle.close * 100
@@ -282,7 +287,9 @@ export const OandaProChart: React.FC = () => {
         ? showMgZonesRef.current
         : zone.category === 'iss'
           ? showIssRef.current
-          : showSupplyDemandRef.current;
+          : zone.category === 'internal'
+            ? showInternalRef.current
+            : showSupplyDemandRef.current;
       if (!visible) continue;
       if (!zone.active && !showInvalidZonesRef.current) continue;
       const rawLeft = chart.timeScale().timeToCoordinate(zone.startTime as UTCTimestamp);
@@ -297,6 +304,7 @@ export const OandaProChart: React.FC = () => {
       const box = document.createElement('div');
       const demand = zone.isBuy;
       const isIss = zone.category === 'iss';
+      const isInternal = zone.category === 'internal';
       const isMg = zone.category === 'mg';
       // Like TJL1, show HTF confirmation state only on the zone whose break
       // actually confirmed Double CHoCH (SBR for bearish, RBS for bullish).
@@ -313,10 +321,12 @@ export const OandaProChart: React.FC = () => {
         ? demand ? 'rgba(16, 185, 129, 0.13)' : 'rgba(244, 63, 94, 0.12)'
         : isIss
         ? 'rgba(217, 119, 6, 0.14)'
+        : isInternal
+        ? 'rgba(124, 58, 237, 0.12)'
         : demand ? 'rgba(16, 185, 129, 0.13)' : 'rgba(244, 63, 94, 0.12)';
       const border = inactive
         ? 'rgba(71, 85, 105, 0.72)'
-        : pending ? demand ? 'rgba(5, 150, 105, 0.72)' : 'rgba(225, 29, 72, 0.72)' : isIss ? 'rgba(180, 83, 9, 0.72)' : demand ? 'rgba(5, 150, 105, 0.65)' : 'rgba(225, 29, 72, 0.65)';
+        : pending ? demand ? 'rgba(5, 150, 105, 0.72)' : 'rgba(225, 29, 72, 0.72)' : isIss ? 'rgba(180, 83, 9, 0.72)' : isInternal ? 'rgba(109, 40, 217, 0.72)' : demand ? 'rgba(5, 150, 105, 0.65)' : 'rgba(225, 29, 72, 0.65)';
       box.style.position = 'absolute';
       box.style.left = `${left}px`;
       box.style.width = `${right - left}px`;
@@ -327,7 +337,7 @@ export const OandaProChart: React.FC = () => {
       box.style.borderBottom = `1px solid ${border}`;
 
       const label = document.createElement('span');
-      const name = isMg || isIss ? zone.name : demand ? 'DEMAND' : 'SUPPLY';
+      const name = isMg || isIss || isInternal ? zone.name : demand ? 'DEMAND' : 'SUPPLY';
       label.textContent = inactive
         ? rejected ? `${name} · REJECTED` : name
         : `${name}${pending ? ' · PENDING' : zone.name === 'TJL1' ? ' · VALID' : ''}`;
@@ -337,7 +347,7 @@ export const OandaProChart: React.FC = () => {
         label.textContent = zone.doubleChochStatus === 'pending'
           ? `${name} · DOUBLE CHoCH · PENDING ${confirmationLabel} ${zone.doubleChochConfirmationDirection === 'up' ? 'ABOVE' : 'BELOW'}`
           : `${name} · VALID DOUBLE CHoCH`;
-      } else if (zone.name === 'TJL1' || zone.name === 'ISS L3') {
+      } else if (zone.name === 'TJL1' || zone.name === 'ISS L3' || zone.name === 'Internal TJL1') {
         label.textContent = pending
           ? `${zone.name} · PENDING ${confirmationLabel} ${zone.isBuy ? 'ABOVE' : 'BELOW'}`
           : `VALID ${zone.name}`;
@@ -350,12 +360,12 @@ export const OandaProChart: React.FC = () => {
       label.style.fontSize = '9px';
       label.style.lineHeight = '12px';
       label.style.fontWeight = '800';
-      label.style.color = inactive ? '#475569' : pending ? demand ? '#047857' : '#be123c' : isIss ? '#b45309' : demand ? '#047857' : '#be123c';
+      label.style.color = inactive ? '#475569' : pending ? demand ? '#047857' : '#be123c' : isIss ? '#b45309' : isInternal ? '#6d28d9' : demand ? '#047857' : '#be123c';
       box.appendChild(label);
       layer.appendChild(box);
     }
 
-    if (showStructureRef.current || showIssRef.current) {
+    if (showStructureRef.current || showIssRef.current || showInternalRef.current) {
       const namespace = 'http://www.w3.org/2000/svg';
       const svg = document.createElementNS(namespace, 'svg');
       svg.setAttribute('width', String(host.clientWidth));
@@ -365,8 +375,10 @@ export const OandaProChart: React.FC = () => {
       svg.style.overflow = 'hidden';
 
       for (const structureLine of structureLinesRef.current) {
+        const isInternalLine = structureLine.type.startsWith('internal-');
         if (structureLine.type === 'iss' && !showIssRef.current) continue;
-        if (structureLine.type !== 'iss' && !showStructureRef.current) continue;
+        if (isInternalLine && !showInternalRef.current) continue;
+        if (structureLine.type !== 'iss' && !isInternalLine && !showStructureRef.current) continue;
         const x1 = chart.timeScale().timeToCoordinate(structureLine.fromTime as UTCTimestamp);
         const x2 = chart.timeScale().timeToCoordinate(structureLine.toTime as UTCTimestamp);
         const y1 = series.priceToCoordinate(structureLine.fromPrice);
@@ -375,16 +387,17 @@ export const OandaProChart: React.FC = () => {
 
         const bullish = structureLine.direction === 'bullish';
         const isIssLine = structureLine.type === 'iss';
-        const color = isIssLine ? '#d97706' : bullish ? '#0f766e' : '#be123c';
+        const color = isIssLine ? '#d97706' : isInternalLine ? '#7c3aed' : bullish ? '#0f766e' : '#be123c';
         const line = document.createElementNS(namespace, 'line');
         line.setAttribute('x1', String(x1));
         line.setAttribute('y1', String(y1));
         line.setAttribute('x2', String(x2));
         line.setAttribute('y2', String(y2));
         line.setAttribute('stroke', color);
-        line.setAttribute('stroke-width', isIssLine ? '0.8' : structureLine.type === 'swing' ? '1' : '0.8');
-        line.setAttribute('stroke-opacity', isIssLine ? '0.74' : structureLine.type === 'swing' ? '0.52' : '0.42');
-        if (structureLine.type !== 'swing' && !isIssLine) line.setAttribute('stroke-dasharray', '4 3');
+        const isSwing = structureLine.type === 'swing' || structureLine.type === 'internal-swing';
+        line.setAttribute('stroke-width', isIssLine ? '0.8' : isSwing ? '1' : '0.8');
+        line.setAttribute('stroke-opacity', isIssLine ? '0.74' : isInternalLine ? '0.68' : isSwing ? '0.52' : '0.42');
+        if (!isSwing && !isIssLine) line.setAttribute('stroke-dasharray', '4 3');
         svg.appendChild(line);
 
         if (structureLine.label) {
@@ -425,7 +438,9 @@ export const OandaProChart: React.FC = () => {
               ? showMgZonesRef.current
               : zone.category === 'iss'
                 ? showIssRef.current
-                : showSupplyDemandRef.current;
+                : zone.category === 'internal'
+                  ? showInternalRef.current
+                  : showSupplyDemandRef.current;
             return visible
               && (zone.active || showInvalidZonesRef.current)
               && Number(marker.time) >= zone.startTime
@@ -462,14 +477,16 @@ export const OandaProChart: React.FC = () => {
     structureLinesRef.current = structure.lines;
     structureMarkersRef.current = structure.markers;
     issMarkersRef.current = structure.issMarkers;
+    internalMarkersRef.current = structure.internalMarkers;
     showMgZonesRef.current = showMgZones;
     showSupplyDemandRef.current = showSupplyDemand;
     showStructureRef.current = showStructure;
     showIssRef.current = showIss;
+    showInternalRef.current = showInternal;
     showInvalidZonesRef.current = showInvalidZones;
     const frame = window.requestAnimationFrame(redrawZones);
     return () => window.cancelAnimationFrame(frame);
-  }, [redrawZones, showInvalidZones, showIss, showMgZones, showStructure, showSupplyDemand, structure.issMarkers, structure.lines, structure.markers, structure.zones]);
+  }, [redrawZones, showInternal, showInvalidZones, showIss, showMgZones, showStructure, showSupplyDemand, structure.internalMarkers, structure.issMarkers, structure.lines, structure.markers, structure.zones]);
 
   useEffect(() => {
     if (!replayPlaying || replayIndex === null) return;
@@ -689,6 +706,7 @@ export const OandaProChart: React.FC = () => {
     })));
     markersRef.current?.setMarkers([
       ...(showStructure ? structure.markers : []),
+      ...(showInternal ? structure.internalMarkers : []),
     ].sort((a: any, b: any) => Number(a.time) - Number(b.time)));
     const pendingViewport = pendingReplayViewportRef.current;
     if (replayIndex !== null && pendingViewport && loadedGranularityRef.current === granularity) {
@@ -705,7 +723,7 @@ export const OandaProChart: React.FC = () => {
       hasFittedRef.current = true;
     }
     window.requestAnimationFrame(() => redrawZonesRef.current());
-  }, [displayCandles, replayIndex, showIss, showStructure, structure.issMarkers, structure.markers]);
+  }, [displayCandles, replayIndex, showInternal, showIss, showStructure, structure.internalMarkers, structure.issMarkers, structure.markers]);
 
   useEffect(() => {
     const label = livePriceLabelRef.current;
@@ -952,6 +970,15 @@ export const OandaProChart: React.FC = () => {
               title="Show or hide ISS 0–5 wave markings"
             >
               ISS 5-WAVE {showIss ? 'ON' : 'OFF'}
+            </button>
+            <button
+              onClick={() => setShowInternal((value) => !value)}
+              className={`rounded-md border px-2 py-1 text-[9px] font-black transition ${
+                showInternal ? 'border-violet-200 bg-violet-50 text-violet-700' : 'border-slate-200 bg-white text-slate-500'
+              }`}
+              title="Show or hide post-ISS internal structure, zones, BOS and CHoCH"
+            >
+              INT STRUCTURE {showInternal ? 'ON' : 'OFF'}
             </button>
             <button
               onClick={() => setShowInvalidZones((value) => !value)}
