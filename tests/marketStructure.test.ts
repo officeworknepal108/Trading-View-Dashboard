@@ -151,8 +151,8 @@ test('every zone type waits for a completed candle fully outside its invalidatio
     { name: 'RBS', category: 'mg' },
     { name: 'DT', category: 'mg' },
     { name: 'DB', category: 'mg' },
-    { name: '3rd wave', category: 'iss' },
-    { name: '4th wave', category: 'iss' },
+    { name: 'ISS L3', category: 'iss' },
+    { name: 'ISS L4', category: 'iss' },
     { name: 'SUPPLY', category: 'supplyDemand' },
     { name: 'DEMAND', category: 'supplyDemand' },
   ];

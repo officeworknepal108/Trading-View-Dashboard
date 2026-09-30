@@ -330,16 +330,17 @@ export const OandaProChart: React.FC = () => {
         if (x1 === null || x2 === null || y1 === null || y2 === null) continue;
 
         const bullish = structureLine.direction === 'bullish';
-        const color = bullish ? '#0f766e' : '#be123c';
+        const isIssLine = structureLine.type === 'iss';
+        const color = isIssLine ? '#d97706' : bullish ? '#0f766e' : '#be123c';
         const line = document.createElementNS(namespace, 'line');
         line.setAttribute('x1', String(x1));
         line.setAttribute('y1', String(y1));
         line.setAttribute('x2', String(x2));
         line.setAttribute('y2', String(y2));
         line.setAttribute('stroke', color);
-        line.setAttribute('stroke-width', structureLine.type === 'swing' ? '1' : '0.8');
-        line.setAttribute('stroke-opacity', structureLine.type === 'swing' ? '0.52' : '0.42');
-        if (structureLine.type !== 'swing') line.setAttribute('stroke-dasharray', '4 3');
+        line.setAttribute('stroke-width', isIssLine ? '0.8' : structureLine.type === 'swing' ? '1' : '0.8');
+        line.setAttribute('stroke-opacity', isIssLine ? '0.74' : structureLine.type === 'swing' ? '0.52' : '0.42');
+        if (structureLine.type !== 'swing' && !isIssLine) line.setAttribute('stroke-dasharray', '4 3');
         svg.appendChild(line);
 
         if (structureLine.label) {
@@ -365,7 +366,9 @@ export const OandaProChart: React.FC = () => {
           if (!candle) continue;
           const x = chart.timeScale().timeToCoordinate(marker.time as UTCTimestamp);
           const isHigh = marker.position === 'aboveBar';
-          const markerPrice = isHigh ? candle.high : candle.low;
+          const markerPrice = typeof marker.pivotPrice === 'number'
+            ? marker.pivotPrice
+            : isHigh ? candle.high : candle.low;
           const y = series.priceToCoordinate(markerPrice);
           if (x === null || y === null) continue;
           const overlapsStructureMarker = showStructureRef.current
@@ -387,13 +390,18 @@ export const OandaProChart: React.FC = () => {
               && markerPrice <= zone.top;
           });
           const offsetForCollision = overlapsStructureMarker || overlapsVisibleZone;
+          // Keep every ISS number outside its pivot wick. If a structure marker
+          // or zone label occupies that side, move it farther vertically rather
+          // than sideways so it remains centered on the correct candle.
+          const markerOffset = offsetForCollision ? 38 : 24;
           const text = document.createElementNS(namespace, 'text');
-          text.setAttribute('x', String(x + (offsetForCollision ? -10 : 0)));
-          text.setAttribute('y', String(y + (isHigh ? -5 : 11)));
-          text.setAttribute('text-anchor', offsetForCollision ? 'end' : 'middle');
-          text.setAttribute('fill', '#2563eb');
-          text.setAttribute('fill-opacity', '0.88');
-          text.setAttribute('font-size', '10');
+          text.setAttribute('x', String(x));
+          text.setAttribute('y', String(y + (isHigh ? -markerOffset : markerOffset)));
+          text.setAttribute('text-anchor', 'middle');
+          text.setAttribute('dominant-baseline', 'middle');
+          text.setAttribute('fill', marker.color || '#d97706');
+          text.setAttribute('fill-opacity', '0.95');
+          text.setAttribute('font-size', '11');
           text.setAttribute('font-weight', '700');
           text.textContent = marker.text;
           svg.appendChild(text);

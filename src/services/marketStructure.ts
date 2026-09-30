@@ -18,7 +18,7 @@ export interface VipSupportContext {
 
 export interface StructureZone {
   id: string;
-  name: 'TJL1' | 'TJL2' | 'QML' | 'QML A+' | 'QML A++' | 'SBR' | 'RBS' | 'DT' | 'DB' | 'DBD' | 'DTD' | '3rd wave' | '4th wave' | 'Internal QML' | 'Internal SBR' | 'Internal RBS' | 'Internal DT' | 'Internal DB' | 'Internal TJL1' | 'Internal TJL2' | 'SUPPLY' | 'DEMAND';
+  name: 'TJL1' | 'TJL2' | 'QML' | 'QML A+' | 'QML A++' | 'SBR' | 'RBS' | 'DT' | 'DB' | 'DBD' | 'DTD' | 'ISS L3' | 'ISS L4' | 'Internal QML' | 'Internal SBR' | 'Internal RBS' | 'Internal DT' | 'Internal DB' | 'Internal TJL1' | 'Internal TJL2' | 'SUPPLY' | 'DEMAND';
   category: 'mg' | 'iss' | 'supplyDemand';
   isBuy: boolean;
   startTime: number;
@@ -65,9 +65,15 @@ export interface StructureLine {
   label?: string;
 }
 
+export type IssMarker = SeriesMarker<UTCTimestamp> & {
+  // The precise wave vertex. Rendering from this value keeps the label tied to
+  // the ISS line through every zoom level instead of inferring a candle wick.
+  pivotPrice?: number;
+};
+
 export interface MarketStructureResult {
   markers: SeriesMarker<UTCTimestamp>[];
-  issMarkers: SeriesMarker<UTCTimestamp>[];
+  issMarkers: IssMarker[];
   zones: StructureZone[];
   lines: StructureLine[];
   trend: 'bullish' | 'bearish' | 'neutral';
@@ -389,7 +395,7 @@ export function analyzeMarketStructure(candles: StructureCandle[], options: {
   ];
   const lines: StructureLine[] = [];
   const zones: StructureZone[] = [];
-  const issMarkers: SeriesMarker<UTCTimestamp>[] = [];
+  const issMarkers: IssMarker[] = [];
   const issAnchors: { direction: 'bullish' | 'bearish'; start: StructurePoint; boundary: StructurePoint }[] = [];
   let trend: 'bullish' | 'bearish' = 'bullish';
   let protectedPoint = genesis;
@@ -898,13 +904,13 @@ function findIssFiveWaves(
   sourceBarSeconds: number,
   zoneVisualBars: number,
 ): {
-  markers: SeriesMarker<UTCTimestamp>[];
+  markers: IssMarker[];
   lines: StructureLine[];
   zones: StructureZone[];
 } {
   // ISS uses only the current chart timeframe. Point 0 is an external SL/SH,
   // and the five internal points must remain inside its PH/PL boundary.
-  const markers: SeriesMarker<UTCTimestamp>[] = [];
+  const markers: IssMarker[] = [];
   const lines: StructureLine[] = [];
   const zones: StructureZone[] = [];
   const patterns: { direction: 'bullish' | 'bearish'; points: StructurePoint[]; confirmedAt: number; anchor: typeof anchors[number]; wave3: StructureZone; wave4: StructureZone }[] = [];
@@ -917,12 +923,15 @@ function findIssFiveWaves(
   ) => {
     const isBullish = direction === 'bullish';
     points.forEach((point, index) => {
-      const text = `(${index})`;
+      const text = index === 5 ? '⑤ ISS' : ['⓪', '①', '②', '③', '④'][index];
       const isHighPoint = isBullish ? index % 2 === 1 : index % 2 === 0;
-      markers.push(makeMarker(
-        candles[point.index], text, isHighPoint ? 'aboveBar' : 'belowBar', '#2563eb',
-        'circle', 2,
-      ));
+      markers.push({
+        ...makeMarker(
+          candles[point.index], text, isHighPoint ? 'aboveBar' : 'belowBar', '#d97706',
+          'circle', 2,
+        ),
+        pivotPrice: point.price,
+      });
       if (index > 0) lines.push({
         id: `iss-${direction}-${points[index - 1].time}-${point.time}`,
         type: 'iss', direction,
@@ -943,7 +952,7 @@ function findIssFiveWaves(
       ? Math.min(candle4.open, candle4.close) - candle4.low
       : candle4.high - Math.max(candle4.open, candle4.close);
     const wave3Zone: StructureZone = {
-        id: `iss-wave3-${wave3.time}`, name: '3rd wave', category: 'iss', isBuy: isBullish,
+        id: `iss-l3-${wave3.time}`, name: 'ISS L3', category: 'iss', isBuy: isBullish,
         startTime: wave3.time,
         endTime: wave3.time + sourceBarSeconds * zoneVisualBars,
         activeFromTime: confirmedAt,
@@ -951,7 +960,7 @@ function findIssFiveWaves(
         top: isBullish ? wave3.price : wave3.price + (wick3 + buffer3), active: true, status: 'valid',
       };
     const wave4Zone: StructureZone = {
-        id: `iss-wave4-${wave4.time}`, name: '4th wave', category: 'iss', isBuy: isBullish,
+        id: `iss-l4-${wave4.time}`, name: 'ISS L4', category: 'iss', isBuy: isBullish,
         startTime: wave4.time,
         endTime: wave4.time + sourceBarSeconds * zoneVisualBars,
         activeFromTime: confirmedAt,
@@ -974,8 +983,15 @@ function findIssFiveWaves(
     for (let index = anchor.start.index + 2; index < candles.length; index += 1) {
       const candle = candles[index];
       const previous = candles[index - 1];
-      const twoRed = candle.close < candle.open && previous.close < previous.open;
-      const twoGreen = candle.close > candle.open && previous.close > previous.open;
+      // An ISS reversal needs two same-colour candles and a wick break by the
+      // second close. Without the wick break, tiny continuation candles can
+      // replace a valid wave pivot (for example Point 1) too early.
+      const twoRed = candle.close < candle.open
+        && previous.close < previous.open
+        && candle.close < previous.low;
+      const twoGreen = candle.close > candle.open
+        && previous.close > previous.open
+        && candle.close > previous.high;
       const reversal = anchor.direction === 'bullish' ? twoRed : twoGreen;
       const highOrLow = anchor.direction === 'bullish' ? 'high' : 'low';
       const lowOrHigh = anchor.direction === 'bullish' ? 'low' : 'high';
@@ -996,7 +1012,7 @@ function findIssFiveWaves(
         // Same wick selection as TJL1: after the two-candle retracement, use
         // the full highest/lowest wick through its first candle. The second
         // retracement candle confirms the turn but is not part of the pivot.
-        const point1 = selectTwoCandleRetracementPivot(candles, points[0].index, index, highOrLow);
+        const point1 = selectTwoCandleRetracementPivot(candles, points[0].index + 1, index, highOrLow);
         if (withinBoundary(point1, anchor)) {
           points.push(point1);
           state = 2;
@@ -1013,13 +1029,13 @@ function findIssFiveWaves(
         // Like TJL1, Point 1 stays provisional until its BOS body-close. If a
         // later two-candle retracement makes a higher/lower wick, use that
         // latest extreme as Point 1.
-        const replacement = selectTwoCandleRetracementPivot(candles, points[0].index, index, highOrLow);
+        const replacement = selectTwoCandleRetracementPivot(candles, points[0].index + 1, index, highOrLow);
         const isMoreExtreme = anchor.direction === 'bullish'
           ? replacement.price > points[1].price
           : replacement.price < points[1].price;
         if (isMoreExtreme && withinBoundary(replacement, anchor)) points[1] = replacement;
       } else if (state === 3 && reversal) {
-        const point3 = selectTwoCandleRetracementPivot(candles, points[2].index, index, highOrLow);
+        const point3 = selectTwoCandleRetracementPivot(candles, points[2].index + 1, index, highOrLow);
         if (withinBoundary(point3, anchor)) {
           points.push(point3);
           state = 4;
@@ -1035,13 +1051,13 @@ function findIssFiveWaves(
       } else if (state === 4 && reversal) {
         // Point 3 follows the same TJL1 rule. Keep the highest bullish (or
         // lowest bearish) post-Point-2 wick after each two-candle retracement.
-        const replacement = selectTwoCandleRetracementPivot(candles, points[2].index, index, highOrLow);
+        const replacement = selectTwoCandleRetracementPivot(candles, points[2].index + 1, index, highOrLow);
         const isMoreExtreme = anchor.direction === 'bullish'
           ? replacement.price > points[3].price
           : replacement.price < points[3].price;
         if (isMoreExtreme && withinBoundary(replacement, anchor)) points[3] = replacement;
       } else if (state === 5 && reversal) {
-        const point5 = selectTwoCandleRetracementPivot(candles, points[4].index, index, highOrLow);
+        const point5 = selectTwoCandleRetracementPivot(candles, points[4].index + 1, index, highOrLow);
         if (withinBoundary(point5, anchor)) {
           complete([...points, point5], anchor.direction, candle.time, anchor);
         }
