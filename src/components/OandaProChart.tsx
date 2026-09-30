@@ -242,6 +242,7 @@ export const OandaProChart: React.FC = () => {
   const [showIss, setShowIss] = useState(true);
   const [showInternal, setShowInternal] = useState(true);
   const [showFib, setShowFib] = useState(true);
+  const [showEngulfing, setShowEngulfing] = useState(true);
   const [showInvalidZones, setShowInvalidZones] = useState(false);
   const [showZoneTable, setShowZoneTable] = useState(true);
   const [replayIndex, setReplayIndex] = useState<number | null>(null);
@@ -834,6 +835,7 @@ export const OandaProChart: React.FC = () => {
     markersRef.current?.setMarkers([
       ...(showStructure ? structure.markers : []),
       ...(showInternal ? structure.internalMarkers : []),
+      ...(showEngulfing ? structure.engulfingMarkers : []),
     ].sort((a: any, b: any) => Number(a.time) - Number(b.time)));
     const pendingViewport = pendingReplayViewportRef.current;
     if (replayIndex !== null && pendingViewport && loadedGranularityRef.current === granularity) {
@@ -850,7 +852,7 @@ export const OandaProChart: React.FC = () => {
       hasFittedRef.current = true;
     }
     window.requestAnimationFrame(() => redrawZonesRef.current());
-  }, [displayCandles, replayIndex, showInternal, showIss, showStructure, structure.internalMarkers, structure.issMarkers, structure.markers]);
+  }, [displayCandles, replayIndex, showEngulfing, showInternal, showIss, showStructure, structure.engulfingMarkers, structure.internalMarkers, structure.issMarkers, structure.markers]);
 
   useEffect(() => {
     const label = livePriceLabelRef.current;
@@ -1117,6 +1119,15 @@ export const OandaProChart: React.FC = () => {
               FIB {showFib ? 'ON' : 'OFF'}
             </button>
             <button
+              onClick={() => setShowEngulfing((value) => !value)}
+              className={`rounded-md border px-2 py-1 text-[9px] font-black transition ${
+                showEngulfing ? 'border-blue-200 bg-blue-50 text-blue-700' : 'border-slate-200 bg-white text-slate-500'
+              }`}
+              title="Show or hide confirmed Type 1–4 engulfing signals in A+ FIB zones"
+            >
+              ENGULFING {showEngulfing ? 'ON' : 'OFF'}
+            </button>
+            <button
               onClick={() => setShowInvalidZones((value) => !value)}
               className={`rounded-md border px-2 py-1 text-[9px] font-black transition ${
                 showInvalidZones
@@ -1237,7 +1248,7 @@ export const OandaProChart: React.FC = () => {
               <button onClick={() => setReplaySelecting(false)} className="rounded border border-slate-200 px-2 py-1 text-[10px] font-black text-slate-500 hover:bg-slate-100">CANCEL</button>
             </div>
           )}
-          <div className={`pointer-events-auto absolute left-3 top-3 z-20 overflow-hidden rounded-md border border-slate-300 bg-white/95 shadow-sm ${showZoneTable ? 'w-[430px]' : 'w-auto'}`}>
+          <div className={`pointer-events-auto absolute left-3 top-3 z-20 overflow-hidden rounded-md border border-slate-300 bg-white/95 shadow-sm ${showZoneTable ? 'w-[500px]' : 'w-auto'}`}>
             <div className="flex items-center justify-between gap-3 border-b border-slate-200 bg-violet-50 px-2 py-1 text-[9px] font-black uppercase tracking-wide text-violet-700">
               <span>{showZoneTable ? 'Zone table' : 'Zone table minimized'}</span>
               <button
@@ -1256,6 +1267,7 @@ export const OandaProChart: React.FC = () => {
                   <th className="px-2 py-1 font-bold">Zone</th>
                   <th className="px-2 py-1 font-bold">Type</th>
                   <th className="px-2 py-1 font-bold">Price range</th>
+                  <th className="px-2 py-1 text-center font-bold">Engulf</th>
                   <th className="px-2 py-1 text-right font-bold">Tap / Trade</th>
                 </tr>
               </thead>
@@ -1267,6 +1279,7 @@ export const OandaProChart: React.FC = () => {
                       {zone.isBuy ? 'BUY' : 'SELL'}
                     </td>
                     <td className="px-2 py-1 whitespace-nowrap">{formatPrice(zone.bottom)} – {formatPrice(zone.top)}</td>
+                    <td className="px-2 py-1 text-center text-slate-400">—</td>
                     <td className={`px-2 py-1 text-right font-black whitespace-nowrap ${zone.isBuy ? 'text-emerald-700' : 'text-rose-700'}`}>
                       WAIT {TJL1_CONFIRMATION_LABELS[granularity].toUpperCase()} {zone.isBuy ? 'ABOVE' : 'BELOW'}
                     </td>
@@ -1300,6 +1313,13 @@ export const OandaProChart: React.FC = () => {
                         {zone.isBuy ? 'BUY' : 'SELL'}
                       </td>
                       <td className="px-2 py-1 whitespace-nowrap">{formatPrice(zone.bottom)} – {formatPrice(zone.top)}</td>
+                      <td className={`px-2 py-1 text-center font-black whitespace-nowrap ${
+                        zone.isBuy ? 'text-emerald-700' : 'text-rose-700'
+                      }`}>
+                        {showEngulfing && zone.engulfingType
+                          ? `${zone.engulfingType} ${zone.isBuy ? 'BULL' : 'BEAR'}`
+                          : '—'}
+                      </td>
                       <td className={`px-2 py-1 text-right font-black whitespace-nowrap ${
                         pending ? 'text-amber-700' : 'text-emerald-700'
                       }`}>
@@ -1345,6 +1365,13 @@ export const OandaProChart: React.FC = () => {
                       {zone.isBuy ? 'BUY' : 'SELL'}
                     </td>
                     <td className="px-2 py-1 whitespace-nowrap">{formatPrice(zone.bottom)} – {formatPrice(zone.top)}</td>
+                    <td className={`px-2 py-1 text-center font-black whitespace-nowrap ${
+                      zone.isBuy ? 'text-emerald-700' : 'text-rose-700'
+                    }`}>
+                      {showEngulfing && zone.engulfingType
+                        ? `${zone.engulfingType} ${zone.isBuy ? 'BULL' : 'BEAR'}`
+                        : '—'}
+                    </td>
                     <td className="px-2 py-1 text-right font-bold whitespace-nowrap">
                       <span className="text-slate-500">{zone.tapBarsAgo} bars</span>
                       <span className={zone.tradeable === false ? 'ml-1 text-rose-700' : 'ml-1 text-emerald-700'}>
@@ -1355,7 +1382,7 @@ export const OandaProChart: React.FC = () => {
                 ))}
                 {pendingConfirmationRows.length === 0 && doubleChochRows.length === 0 && zoneTableRows.length === 0 && (
                   <tr>
-                    <td colSpan={4} className="px-2 py-2 text-center text-slate-400">No active zone rows</td>
+                    <td colSpan={5} className="px-2 py-2 text-center text-slate-400">No active zone rows</td>
                   </tr>
                 )}
               </tbody>

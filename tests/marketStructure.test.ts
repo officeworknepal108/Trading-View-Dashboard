@@ -5,7 +5,9 @@ import {
   classifyChoch,
   classifyDoubleChoch,
   classifyFibOverlap,
+  detectEngulfingPatternAt,
   doesInvalidateZone,
+  findZoneEngulfingPattern,
   findIssFiveWaves,
   findFirstZoneTapIndex,
   findVipSupportTap,
@@ -91,6 +93,99 @@ test('FIB overlap accepts primary for TJL1 and both primary and deep for TJL2', 
   assert.equal(classifyFibOverlap({
     zoneBottom: 73, zoneTop: 75, ...levels, acceptDeep: true,
   }), '0.71-0.79', 'TJL2 accepts the deep band as well as the primary band');
+});
+
+test('engulfing detector recognizes bullish and bearish Type 1 patterns only after close', () => {
+  const bullish: StructureCandle[] = [
+    { time: 1, open: 12, high: 13, low: 9, close: 10, complete: true },
+    { time: 2, open: 10, high: 14, low: 9.5, close: 13.5, complete: true },
+  ];
+  const bearish: StructureCandle[] = [
+    { time: 1, open: 10, high: 13, low: 9, close: 12, complete: true },
+    { time: 2, open: 12, high: 12.5, low: 8, close: 8.5, complete: true },
+  ];
+
+  assert.equal(detectEngulfingPatternAt(bullish, 1)?.type, 'T1');
+  assert.equal(detectEngulfingPatternAt(bullish, 1)?.direction, 'bullish');
+  assert.equal(detectEngulfingPatternAt(bearish, 1)?.direction, 'bearish');
+  bullish[1].complete = false;
+  assert.equal(detectEngulfingPatternAt(bullish, 1), undefined);
+});
+
+test('Type 2 requires the third candle to close beyond the first candle after the sweep', () => {
+  const bullish: StructureCandle[] = [
+    { time: 1, open: 12, high: 13, low: 9, close: 10, complete: true },
+    { time: 2, open: 10.5, high: 11, low: 8, close: 9, complete: true },
+    { time: 3, open: 9, high: 14, low: 8.5, close: 13.5, complete: true },
+  ];
+  const bearish: StructureCandle[] = [
+    { time: 1, open: 10, high: 13, low: 9, close: 12, complete: true },
+    { time: 2, open: 12, high: 14, low: 11, close: 13, complete: true },
+    { time: 3, open: 13, high: 13.5, low: 8, close: 8.5, complete: true },
+  ];
+
+  assert.equal(detectEngulfingPatternAt(bullish, 2)?.type, 'T2');
+  assert.equal(detectEngulfingPatternAt(bullish, 2)?.direction, 'bullish');
+  assert.equal(detectEngulfingPatternAt(bearish, 2)?.type, 'T2');
+  assert.equal(detectEngulfingPatternAt(bearish, 2)?.direction, 'bearish');
+
+  bullish[2] = { ...bullish[2], high: 12.5, close: 12 };
+  assert.notEqual(detectEngulfingPatternAt(bullish, 2)?.type, 'T2');
+});
+
+test('Type 3 uses a mixed middle candle that sweeps the first candle', () => {
+  const bullish: StructureCandle[] = [
+    { time: 1, open: 12, high: 13, low: 9, close: 10, complete: true },
+    { time: 2, open: 10, high: 12, low: 8, close: 11, complete: true },
+    { time: 3, open: 11, high: 13, low: 10, close: 12.5, complete: true },
+  ];
+  const bearish: StructureCandle[] = [
+    { time: 1, open: 10, high: 13, low: 9, close: 12, complete: true },
+    { time: 2, open: 12, high: 14, low: 10, close: 11, complete: true },
+    { time: 3, open: 11, high: 12, low: 9, close: 9.5, complete: true },
+  ];
+
+  assert.equal(detectEngulfingPatternAt(bullish, 2)?.type, 'T3');
+  assert.equal(detectEngulfingPatternAt(bullish, 2)?.direction, 'bullish');
+  assert.equal(detectEngulfingPatternAt(bearish, 2)?.type, 'T3');
+  assert.equal(detectEngulfingPatternAt(bearish, 2)?.direction, 'bearish');
+});
+
+test('Type 4 contains all middle candles inside the first candle over 5–10 candles', () => {
+  const bullish: StructureCandle[] = [
+    { time: 1, open: 12, high: 13, low: 8, close: 9, complete: true },
+    { time: 2, open: 9, high: 11, low: 8.5, close: 10, complete: true },
+    { time: 3, open: 10, high: 12, low: 9, close: 11, complete: true },
+    { time: 4, open: 11, high: 12.5, low: 10, close: 10.5, complete: true },
+    { time: 5, open: 10.5, high: 14.5, low: 10, close: 14, complete: true },
+  ];
+  assert.deepEqual(detectEngulfingPatternAt(bullish, 4), {
+    type: 'T4', direction: 'bullish', candleCount: 5, startIndex: 0, endIndex: 4,
+  });
+
+  bullish[2] = { ...bullish[2], high: 13.5 };
+  assert.notEqual(detectEngulfingPatternAt(bullish, 4)?.type, 'T4');
+});
+
+test('zone engulfing requires A+ FIB, active-zone contact, and matching direction', () => {
+  const candles: StructureCandle[] = [
+    { time: 1, open: 12, high: 13, low: 9, close: 10, complete: true },
+    { time: 2, open: 10.5, high: 11, low: 8, close: 9, complete: true },
+    { time: 3, open: 9, high: 14, low: 8.5, close: 13.5, complete: true },
+  ];
+  const eligible = zone({
+    isBuy: true,
+    startTime: 0,
+    activeFromTime: 1,
+    bottom: 7.5,
+    top: 8.5,
+    fibStatus: 'a-plus',
+  });
+
+  assert.equal(findZoneEngulfingPattern(candles, eligible)?.type, 'T2');
+  assert.equal(findZoneEngulfingPattern(candles, { ...eligible, isBuy: false }), undefined);
+  assert.equal(findZoneEngulfingPattern(candles, { ...eligible, fibStatus: 'not-valid' }), undefined);
+  assert.equal(findZoneEngulfingPattern(candles, { ...eligible, bottom: 20, top: 21 }), undefined);
 });
 
 test('a later zone invalidation does not erase an earlier TJL1 confirmation', () => {

@@ -13,6 +13,16 @@ export type ChochClass = 'pending' | 'valid' | 'air' | 'vip';
 export type DoubleChochStatus = 'pending' | 'valid';
 export type DoubleChochOriginClass = Extract<ChochClass, 'valid' | 'air' | 'vip'>;
 export type FibBand = '0.5-0.618' | '0.71-0.79' | 'DB/DT';
+export type EngulfingType = 'T1' | 'T2' | 'T3' | 'T4';
+export type EngulfingDirection = 'bullish' | 'bearish';
+
+export interface EngulfingPattern {
+  type: EngulfingType;
+  direction: EngulfingDirection;
+  candleCount: number;
+  startIndex: number;
+  endIndex: number;
+}
 
 export interface VipSupportContext {
   timeframe: string;
@@ -61,6 +71,12 @@ export interface StructureZone {
   fibRelevant?: boolean;
   fibBand?: FibBand;
   fibStatus?: 'a-plus' | 'not-valid';
+  // The first confirmed, direction-matching engulfing pattern that touches
+  // this zone after it becomes active. Only A+ FIB zones are eligible.
+  engulfingType?: EngulfingType;
+  engulfingDirection?: EngulfingDirection;
+  engulfingTime?: number;
+  engulfingCandleCount?: number;
 }
 
 type ChochMetadata = Pick<StructureZone,
@@ -92,6 +108,7 @@ export interface MarketStructureResult {
   markers: SeriesMarker<UTCTimestamp>[];
   issMarkers: IssMarker[];
   internalMarkers: SeriesMarker<UTCTimestamp>[];
+  engulfingMarkers: SeriesMarker<UTCTimestamp>[];
   zones: StructureZone[];
   lines: StructureLine[];
   trend: 'bullish' | 'bearish' | 'neutral';
@@ -383,6 +400,150 @@ export function classifyFibOverlap(options: {
   return undefined;
 }
 
+function candleIsBullish(candle: StructureCandle): boolean {
+  return candle.close > candle.open;
+}
+
+function candleIsBearish(candle: StructureCandle): boolean {
+  return candle.close < candle.open;
+}
+
+/**
+ * Detect the strongest confirmed engulfing pattern ending at one candle.
+ * T4 is checked first because its 5–10 candle containment can also satisfy a
+ * shorter T1 pattern. T2 is checked before T1 for the same reason.
+ */
+export function detectEngulfingPatternAt(
+  candles: StructureCandle[],
+  endIndex: number,
+  type4MaxCandles = 10,
+): EngulfingPattern | undefined {
+  const current = candles[endIndex];
+  if (!current || current.complete === false) return undefined;
+
+  const maximumType4Count = Math.max(5, Math.min(10, Math.floor(type4MaxCandles)));
+  for (let candleCount = 5; candleCount <= maximumType4Count; candleCount += 1) {
+    const startIndex = endIndex - candleCount + 1;
+    if (startIndex < 0) break;
+    const first = candles[startIndex];
+    const patternCandles = candles.slice(startIndex, endIndex + 1);
+    if (patternCandles.some((candle) => candle.complete === false)) continue;
+    const middleInsideFirst = candles.slice(startIndex + 1, endIndex).every((candle) => (
+      candle.high <= first.high && candle.low >= first.low
+    ));
+    if (!middleInsideFirst) continue;
+    if (candleIsBearish(first) && candleIsBullish(current) && current.close > first.high) {
+      return { type: 'T4', direction: 'bullish', candleCount, startIndex, endIndex };
+    }
+    if (candleIsBullish(first) && candleIsBearish(current) && current.close < first.low) {
+      return { type: 'T4', direction: 'bearish', candleCount, startIndex, endIndex };
+    }
+  }
+
+  const second = candles[endIndex - 1];
+  const first = candles[endIndex - 2];
+  if (first && second && first.complete !== false && second.complete !== false) {
+    // Type 2: two same-direction candles, the second sweeps the first, and the
+    // third reverses through the FIRST candle's opposite extreme.
+    if (candleIsBearish(first) && candleIsBearish(second)
+      && second.low <= first.low && candleIsBullish(current) && current.close > first.high) {
+      return { type: 'T2', direction: 'bullish', candleCount: 3, startIndex: endIndex - 2, endIndex };
+    }
+    if (candleIsBullish(first) && candleIsBullish(second)
+      && second.high >= first.high && candleIsBearish(current) && current.close < first.low) {
+      return { type: 'T2', direction: 'bearish', candleCount: 3, startIndex: endIndex - 2, endIndex };
+    }
+
+    // Type 3: the middle candle already reverses, sweeps the first candle, and
+    // the third continuation candle closes through the MIDDLE candle.
+    if (candleIsBearish(first) && candleIsBullish(second)
+      && second.low <= first.low && candleIsBullish(current) && current.close > second.high) {
+      return { type: 'T3', direction: 'bullish', candleCount: 3, startIndex: endIndex - 2, endIndex };
+    }
+    if (candleIsBullish(first) && candleIsBearish(second)
+      && second.high >= first.high && candleIsBearish(current) && current.close < second.low) {
+      return { type: 'T3', direction: 'bearish', candleCount: 3, startIndex: endIndex - 2, endIndex };
+    }
+  }
+
+  if (!second || second.complete === false) return undefined;
+  if (candleIsBearish(second) && candleIsBullish(current) && current.close > second.high) {
+    return { type: 'T1', direction: 'bullish', candleCount: 2, startIndex: endIndex - 1, endIndex };
+  }
+  if (candleIsBullish(second) && candleIsBearish(current) && current.close < second.low) {
+    return { type: 'T1', direction: 'bearish', candleCount: 2, startIndex: endIndex - 1, endIndex };
+  }
+  return undefined;
+}
+
+export function findZoneEngulfingPattern(
+  candles: StructureCandle[],
+  zone: StructureZone,
+  type4MaxCandles = 10,
+): EngulfingPattern | undefined {
+  if (zone.fibStatus !== 'a-plus' || zone.status === 'pending' || zone.status === 'rejected') {
+    return undefined;
+  }
+  const validFrom = Math.max(
+    zone.startTime,
+    zone.activeFromTime ?? zone.startTime,
+    zone.confirmationTime ?? zone.startTime,
+  );
+  const requiredDirection: EngulfingDirection = zone.isBuy ? 'bullish' : 'bearish';
+
+  for (let endIndex = 1; endIndex < candles.length; endIndex += 1) {
+    const finalCandle = candles[endIndex];
+    if (finalCandle.complete === false || finalCandle.time < validFrom) continue;
+    if (zone.invalidatedAt !== undefined && finalCandle.time >= zone.invalidatedAt) continue;
+    const pattern = detectEngulfingPatternAt(candles, endIndex, type4MaxCandles);
+    if (!pattern || pattern.direction !== requiredDirection) continue;
+    const touchesActiveZone = candles
+      .slice(pattern.startIndex, pattern.endIndex + 1)
+      .some((candle) => (
+        candle.time > zone.startTime
+        && candle.time >= validFrom
+        && candle.high >= zone.bottom
+        && candle.low <= zone.top
+      ));
+    if (touchesActiveZone) return pattern;
+  }
+  return undefined;
+}
+
+function applyEngulfingConfluence(
+  candles: StructureCandle[],
+  zones: StructureZone[],
+): SeriesMarker<UTCTimestamp>[] {
+  const markerKeys = new Set<string>();
+  const markers: SeriesMarker<UTCTimestamp>[] = [];
+  for (const zone of zones) {
+    zone.engulfingType = undefined;
+    zone.engulfingDirection = undefined;
+    zone.engulfingTime = undefined;
+    zone.engulfingCandleCount = undefined;
+    const pattern = findZoneEngulfingPattern(candles, zone);
+    if (!pattern) continue;
+    const finalCandle = candles[pattern.endIndex];
+    zone.engulfingType = pattern.type;
+    zone.engulfingDirection = pattern.direction;
+    zone.engulfingTime = finalCandle.time;
+    zone.engulfingCandleCount = pattern.candleCount;
+    const markerKey = `${pattern.direction}:${pattern.type}:${finalCandle.time}`;
+    if (markerKeys.has(markerKey)) continue;
+    markerKeys.add(markerKey);
+    const bullish = pattern.direction === 'bullish';
+    markers.push(makeMarker(
+      finalCandle,
+      `${bullish ? 'B' : 'S'} ${pattern.type}`,
+      bullish ? 'belowBar' : 'aboveBar',
+      bullish ? '#059669' : '#e11d48',
+      bullish ? 'arrowUp' : 'arrowDown',
+      0.7,
+    ));
+  }
+  return markers.sort((a, b) => Number(a.time) - Number(b.time)).slice(-120);
+}
+
 function applyFibConfluence(candles: StructureCandle[], zones: StructureZone[]): void {
   const completed = candles.filter((candle) => candle.complete !== false);
   const zoneNames = (names: StructureZone['name'][]) => new Set<StructureZone['name']>(names);
@@ -614,7 +775,7 @@ export function analyzeMarketStructure(candles: StructureCandle[], options: {
   vipSupport?: VipSupportContext | VipSupportContext[];
 } = {}): MarketStructureResult {
   if (candles.length < 12) {
-    return { markers: [], issMarkers: [], internalMarkers: [], zones: [], lines: [], trend: 'neutral' };
+    return { markers: [], issMarkers: [], internalMarkers: [], engulfingMarkers: [], zones: [], lines: [], trend: 'neutral' };
   }
 
   // MG Bhai: initialize on the lowest wick in the first 500 loaded bars.
@@ -1167,6 +1328,7 @@ export function analyzeMarketStructure(candles: StructureCandle[], options: {
   zones.push(...iss.zones);
   lines.push(...iss.lines);
   applyFibConfluence(candles, zones);
+  const engulfingMarkers = applyEngulfingConfluence(candles, zones);
   const visibleLines = lines.length > 160
     ? [lines[0], ...lines.slice(-159)]
     : lines;
@@ -1198,6 +1360,7 @@ export function analyzeMarketStructure(candles: StructureCandle[], options: {
     markers: visibleMarkers,
     issMarkers: issMarkers.slice(-36),
     internalMarkers: internalMarkers.slice(-80),
+    engulfingMarkers,
     zones: visibleZones,
     lines: visibleLines,
     trend,
