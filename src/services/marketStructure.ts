@@ -302,7 +302,7 @@ export function doesInvalidateZone(zone: StructureZone, candle: StructureCandle)
   const bodyLow = Math.min(candle.open, candle.close);
   const bodyHigh = Math.max(candle.open, candle.close);
 
-  if (zone.invalidationDirection) {
+  if ((zone.name === 'TJL1' || zone.name === 'ISS L3') && zone.invalidationDirection) {
     // TJL1 and ISS Level 3 use the boundary facing their paired Level 2/4.
     // Wick re-entry does not preserve the zone once a completed candle's
     // entire body is outside.

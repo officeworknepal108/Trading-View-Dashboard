@@ -234,6 +234,23 @@ test('directional TJL1 invalidation requires the completed body outside the zone
   assert.equal(doesInvalidateZone(downward, { time: 500, open: 99, high: 105, low: 97, close: 98 }), true);
 });
 
+test('a converted QML ignores stale TJL1 directional metadata', () => {
+  const qml = zone({
+    name: 'QML',
+    isBuy: false,
+    invalidationDirection: 'down',
+    bottom: 100,
+    top: 110,
+  });
+
+  assert.equal(doesInvalidateZone(qml, {
+    time: 300, open: 95, high: 105, low: 90, close: 92, complete: true,
+  }), false, 'a sell QML must remain valid while price is below it');
+  assert.equal(doesInvalidateZone(qml, {
+    time: 400, open: 111, high: 114, low: 105, close: 112, complete: true,
+  }), true, 'a sell QML invalidates only when the completed body is above it');
+});
+
 test('every zone type invalidates when a completed candle body is fully outside', () => {
   const zoneTypes: Array<Pick<StructureZone, 'name' | 'category'>> = [
     { name: 'TJL2', category: 'mg' },
