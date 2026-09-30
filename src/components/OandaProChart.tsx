@@ -53,6 +53,12 @@ const TIMEFRAMES: Array<{ value: OandaGranularity; label: string }> = [
   { value: 'D', label: 'D' },
 ];
 
+const TREND_TABLE_GRANULARITIES: OandaGranularity[] = ['M1', 'M5', 'M15', 'H1', 'H4', 'D'];
+
+const TREND_TABLE_LABELS: Record<OandaGranularity, string> = {
+  M1: '1 MIN', M5: '5 MIN', M15: '15 MIN', M30: '30 MIN', H1: '1 HOUR', H4: '4 HOUR', D: '1 DAY',
+};
+
 const TIMEFRAME_SECONDS: Record<MarketGranularity, number> = {
   M1: 60, M5: 300, M15: 900, M30: 1800, H1: 3600, H4: 14400, D: 86400, W: 604800,
   MO: 31 * 86400,
@@ -116,6 +122,77 @@ function formatCandleCountdown(secondsRemaining: number): string {
     ? `${hours}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`
     : `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
 }
+
+interface TrendTableRow {
+  granularity: OandaGranularity;
+  label: string;
+  trend: ReturnType<typeof analyzeMarketStructure>['trend'];
+  closesAt?: number;
+}
+
+const MultiTimeframeTrendTable: React.FC<{ rows: TrendTableRow[]; replayActive: boolean }> = ({
+  rows,
+  replayActive,
+}) => {
+  const [expanded, setExpanded] = useState(true);
+  const [nowSeconds, setNowSeconds] = useState(() => Date.now() / 1000);
+
+  useEffect(() => {
+    if (!expanded || replayActive) return undefined;
+    const updateClock = () => setNowSeconds(Date.now() / 1000);
+    updateClock();
+    const timer = window.setInterval(updateClock, 1000);
+    return () => window.clearInterval(timer);
+  }, [expanded, replayActive]);
+
+  return (
+    <div className={`pointer-events-auto absolute bottom-3 right-20 z-20 overflow-hidden rounded-md border border-slate-300 bg-white/95 shadow-sm ${expanded ? 'w-[238px]' : 'w-auto'}`}>
+      <div className="flex items-center justify-between gap-2 border-b border-slate-300 bg-slate-100 px-1.5 py-0.5 text-[8px] font-black uppercase tracking-wide text-slate-600">
+        <span>{expanded ? 'Trend table' : 'Trend table minimized'}</span>
+        <button
+          type="button"
+          onClick={() => setExpanded((visible) => !visible)}
+          className="rounded border border-slate-300 bg-white px-1 py-0.5 text-[7px] font-black text-slate-600 hover:bg-slate-200"
+          title={expanded ? 'Minimize trend table' : 'Show trend table'}
+        >
+          {expanded ? '− MINIMIZE' : '+ SHOW TABLE'}
+        </button>
+      </div>
+      {expanded && (
+        <table className="w-full border-collapse text-center text-[9px]">
+          <thead className="bg-slate-500 text-[8px] uppercase text-white">
+            <tr>
+              <th className="border-r border-slate-400 px-1 py-0.5 font-bold">Timeframe</th>
+              <th className="border-r border-slate-400 px-1 py-0.5 font-bold">Trend</th>
+              <th className="px-1 py-0.5 font-bold">Time left</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((row) => {
+              const isBullish = row.trend === 'bullish';
+              const isBearish = row.trend === 'bearish';
+              return (
+                <tr key={row.granularity} className="border-t border-slate-300 text-slate-700">
+                  <td className="border-r border-slate-300 px-1 py-0.5 font-medium">{row.label}</td>
+                  <td className={`border-r border-slate-300 px-1 py-0.5 font-bold ${
+                    isBullish ? 'text-emerald-600' : isBearish ? 'text-rose-600' : 'text-slate-500'
+                  }`}>
+                    {isBullish ? '▲ BULLISH' : isBearish ? '▼ BEARISH' : '— NEUTRAL'}
+                  </td>
+                  <td className="px-1 py-0.5 font-medium tabular-nums text-slate-600">
+                    {replayActive || row.closesAt === undefined
+                      ? '—'
+                      : formatCandleCountdown(row.closesAt - nowSeconds)}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      )}
+    </div>
+  );
+};
 
 export const OandaProChart: React.FC = () => {
   const hostRef = useRef<HTMLDivElement | null>(null);
@@ -207,6 +284,10 @@ export const OandaProChart: React.FC = () => {
     : candles.slice(0, Math.min(candles.length, replayIndex + 1)), [candles, replayIndex]);
 
   const vipSupportGranularities = VIP_SUPPORT_GRANULARITIES[granularity];
+  const auxiliaryGranularities = useMemo(() => Array.from(new Set<MarketGranularity>([
+    ...vipSupportGranularities,
+    ...TREND_TABLE_GRANULARITIES,
+  ])).filter((value) => value !== granularity), [granularity, vipSupportGranularities]);
   const vipSupportContexts = useMemo(() => {
     if (displayCandles.length === 0) return [];
     const lastSourceCandle = displayCandles[displayCandles.length - 1];
@@ -240,6 +321,39 @@ export const OandaProChart: React.FC = () => {
     }),
     [displayCandles, granularity, vipSupportContexts],
   );
+
+  const trendTableRows = useMemo<TrendTableRow[]>(() => {
+    const replayCutoff = replayIndex === null || displayCandles.length === 0
+      ? undefined
+      : displayCandles[displayCandles.length - 1].time
+        + (displayCandles[displayCandles.length - 1].complete ? TIMEFRAME_SECONDS[granularity] : 0);
+
+    return TREND_TABLE_GRANULARITIES.map((tableGranularity) => {
+      const availableCandles = tableGranularity === granularity
+        ? displayCandles
+        : vipCandles[tableGranularity] || [];
+      const timeframeCandles = replayCutoff === undefined
+        ? availableCandles
+        : availableCandles.filter((candle) => candle.time <= replayCutoff);
+      const tableStructure = tableGranularity === granularity
+        ? structure
+        : analyzeMarketStructure(timeframeCandles, {
+          allowSupplyDemand: ['H1', 'H4', 'D'].includes(tableGranularity),
+          sourceBarSeconds: TIMEFRAME_SECONDS[tableGranularity],
+          confirmationBarSeconds: TJL1_CONFIRMATION_SECONDS[tableGranularity],
+          zoneVisualBars: 30,
+        });
+      const latestTimeframeCandle = timeframeCandles[timeframeCandles.length - 1];
+      return {
+        granularity: tableGranularity,
+        label: TREND_TABLE_LABELS[tableGranularity],
+        trend: tableStructure.trend,
+        closesAt: latestTimeframeCandle
+          ? marketCandleCloseTime(latestTimeframeCandle.time, tableGranularity)
+          : undefined,
+      };
+    });
+  }, [displayCandles, granularity, replayIndex, structure, vipCandles]);
 
   const latestCandle = hoveredCandle || displayCandles[displayCandles.length - 1] || null;
   const previousCandle = displayCandles.length > 1 ? displayCandles[displayCandles.length - 2] : null;
@@ -544,9 +658,9 @@ export const OandaProChart: React.FC = () => {
       };
       const responses: MarketDataResponse[] = await Promise.all([
         requestCandles(granularity),
-        ...vipSupportGranularities.map(requestCandles),
+        ...auxiliaryGranularities.map(requestCandles),
       ]);
-      const [payload, ...vipPayloads] = responses;
+      const [payload, ...auxiliaryPayloads] = responses;
       if (requestId !== loadRequestIdRef.current) return;
       if (payload.candles.length === 0) throw new Error('TradingView returned no candles for OANDA:XAUUSD.');
       const nextReplayIndex = replayTime === null
@@ -557,8 +671,8 @@ export const OandaProChart: React.FC = () => {
       }
       loadedGranularityRef.current = granularity;
       setCandles(payload.candles);
-      setVipCandles(Object.fromEntries(vipSupportGranularities.map((supportGranularity, index) => (
-        [supportGranularity, vipPayloads[index]?.candles || []]
+      setVipCandles(Object.fromEntries(auxiliaryGranularities.map((supportGranularity, index) => (
+        [supportGranularity, auxiliaryPayloads[index]?.candles || []]
       ))));
       if (nextReplayIndex !== null) setReplayIndex(nextReplayIndex);
       setHoveredCandle(null);
@@ -576,7 +690,7 @@ export const OandaProChart: React.FC = () => {
     } finally {
       if (!signal?.aborted && requestId === loadRequestIdRef.current) setIsLoading(false);
     }
-  }, [granularity, vipSupportGranularities]);
+  }, [auxiliaryGranularities, granularity]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -1248,6 +1362,7 @@ export const OandaProChart: React.FC = () => {
             </table>
             </>}
           </div>
+          <MultiTimeframeTrendTable rows={trendTableRows} replayActive={replayIndex !== null} />
           {isLoading && candles.length === 0 && !error && (
             <div className="absolute inset-0 z-20 grid place-items-center bg-white/85">
               <div className="flex items-center gap-2 text-sm font-bold text-slate-600">
