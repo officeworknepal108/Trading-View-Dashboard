@@ -343,9 +343,13 @@ export function findVipSupportTap(
   candles: StructureCandle[],
   zones: StructureZone[],
   chochTime: number,
+  requiredIsBuy: boolean,
 ): { zone: StructureZone; tapTime: number } | undefined {
   let selected: { zone: StructureZone; tapTime: number } | undefined;
   for (const zone of zones) {
+    // VIP support must agree with the direction after CHoCH. A bearish CHoCH
+    // can use only sell zones; a bullish CHoCH can use only buy zones.
+    if (zone.isBuy !== requiredIsBuy) continue;
     const activeFromTime = zone.activeFromTime ?? zone.startTime;
     const wasUsableAtChoch = zone.status !== 'rejected'
       && activeFromTime <= chochTime
@@ -382,13 +386,14 @@ export function findVipSupportTapAcrossContexts(
   candles: StructureCandle[],
   contexts: VipSupportContext[],
   chochTime: number,
+  requiredIsBuy: boolean,
 ): { zone: StructureZone; tapTime: number; timeframe: string } | undefined {
   return contexts.reduce<{
     zone: StructureZone;
     tapTime: number;
     timeframe: string;
   } | undefined>((latest, context) => {
-    const candidate = findVipSupportTap(candles, context.zones, chochTime);
+    const candidate = findVipSupportTap(candles, context.zones, chochTime, requiredIsBuy);
     if (!candidate) return latest;
     const withTimeframe = { ...candidate, timeframe: context.timeframe };
     return !latest || withTimeframe.tapTime > latest.tapTime ? withTimeframe : latest;
@@ -487,7 +492,12 @@ export function analyzeMarketStructure(candles: StructureCandle[], options: {
       ? []
       : Array.isArray(options.vipSupport) ? options.vipSupport : [options.vipSupport];
     const candidateVipTap = tjl2
-      ? findVipSupportTapAcrossContexts(candles, vipSupportContexts, sourceChochTime)
+      ? findVipSupportTapAcrossContexts(
+        candles,
+        vipSupportContexts,
+        sourceChochTime,
+        direction === 'bullish',
+      )
       : undefined;
     const vipTap = selectFreshVipSupportTap(candidateVipTap, lastVipSupportTapTimeUsed);
     // Reserve a tap for the first proper CHoCH after it, even while the TJL2

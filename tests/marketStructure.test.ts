@@ -97,14 +97,19 @@ test('VIP support requires a mapped HTF zone tap before CHoCH while that zone is
     bottom: 100, top: 110, status: 'invalidated', active: false, invalidatedAt: 500,
   });
 
-  const firstTap = findVipSupportTap(sourceCandles, [supportZone], 300);
-  const freshRetap = findVipSupportTap(sourceCandles, [supportZone], 400);
+  const firstTap = findVipSupportTap(sourceCandles, [supportZone], 300, false);
+  const freshRetap = findVipSupportTap(sourceCandles, [supportZone], 400, false);
   assert.equal(firstTap?.tapTime, 200);
   assert.equal(freshRetap?.tapTime, 400);
   assert.equal(selectFreshVipSupportTap(firstTap, undefined)?.tapTime, 200);
   assert.equal(selectFreshVipSupportTap(firstTap, 200), undefined);
   assert.equal(selectFreshVipSupportTap(freshRetap, 200)?.tapTime, 400);
-  assert.equal(findVipSupportTap(sourceCandles, [{ ...supportZone, invalidatedAt: 200 }], 300), undefined);
+  assert.equal(findVipSupportTap(
+    sourceCandles,
+    [{ ...supportZone, invalidatedAt: 200 }],
+    300,
+    false,
+  ), undefined);
 });
 
 test('VIP support accepts either mapped timeframe and keeps the freshest qualifying tap', () => {
@@ -126,11 +131,36 @@ test('VIP support accepts either mapped timeframe and keeps the freshest qualify
   const tap = findVipSupportTapAcrossContexts(sourceCandles, [
     { timeframe: '5m', zones: [firstSupport] },
     { timeframe: '15m', zones: [secondSupport] },
-  ], 500);
+  ], 500, false);
 
   assert.equal(tap?.timeframe, '15m');
   assert.equal(tap?.zone.id, 'second-support');
   assert.equal(tap?.tapTime, 400);
+});
+
+test('VIP support ignores an opposite-direction zone even when its tap is fresher', () => {
+  const sourceCandles = [
+    candle(100, 50),
+    candle(200, 205, 208, 202),
+    candle(300, 50),
+    candle(400, 105, 108, 102),
+  ];
+  const sellZone = zone({
+    id: 'sell-support', name: 'QML', isBuy: false,
+    startTime: 100, activeFromTime: 100, bottom: 200, top: 210,
+  });
+  const buyZone = zone({
+    id: 'buy-support', name: 'RBS', isBuy: true,
+    startTime: 300, activeFromTime: 300, bottom: 100, top: 110,
+  });
+
+  const bearishTap = findVipSupportTapAcrossContexts(sourceCandles, [
+    { timeframe: '15m', zones: [sellZone] },
+    { timeframe: '1h', zones: [buyZone] },
+  ], 500, false);
+
+  assert.equal(bearishTap?.zone.id, 'sell-support');
+  assert.equal(bearishTap?.tapTime, 200);
 });
 
 test('TJL1 confirms on the first completed mapped higher-timeframe close', () => {
