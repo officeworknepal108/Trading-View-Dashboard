@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
   classifyChoch,
+  classifyDoubleChoch,
   doesInvalidateZone,
   findFirstZoneTapIndex,
   findVipSupportTap,
@@ -83,6 +84,25 @@ test('a later zone invalidation does not erase an earlier TJL1 confirmation', ()
 
   assert.equal(wasTjl1ConfirmedBy(confirmedThenInvalidated, 400), true);
   assert.equal(wasTjl1ConfirmedBy(confirmedThenInvalidated, 100), false);
+});
+
+test('Double CHoCH accepts confirmed Valid, AIR, or VIP origins and waits for mapped HTF confirmation', () => {
+  assert.deepEqual(classifyDoubleChoch('valid', false), {
+    doubleChochStatus: 'pending',
+    doubleChochOriginClass: 'valid',
+    tradeable: false,
+  });
+  assert.deepEqual(classifyDoubleChoch('air', true), {
+    doubleChochStatus: 'valid',
+    doubleChochOriginClass: 'air',
+    tradeable: true,
+  });
+  assert.deepEqual(classifyDoubleChoch('vip', false), {
+    doubleChochStatus: 'pending',
+    doubleChochOriginClass: 'vip',
+    tradeable: false,
+  });
+  assert.equal(classifyDoubleChoch('pending', true), undefined);
 });
 
 test('VIP support requires a mapped HTF zone tap before CHoCH while that zone is valid', () => {

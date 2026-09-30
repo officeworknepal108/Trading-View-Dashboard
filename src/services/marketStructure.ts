@@ -10,6 +10,8 @@ export interface StructureCandle {
 }
 
 export type ChochClass = 'pending' | 'valid' | 'air' | 'vip';
+export type DoubleChochStatus = 'pending' | 'valid';
+export type DoubleChochOriginClass = Extract<ChochClass, 'valid' | 'air' | 'vip'>;
 
 export interface VipSupportContext {
   timeframe: string;
@@ -48,11 +50,20 @@ export interface StructureZone {
   vipSupportTimeframe?: string;
   vipSupportZone?: StructureZone['name'];
   vipSupportTapTime?: number;
+  doubleChochStatus?: DoubleChochStatus;
+  doubleChochOriginClass?: DoubleChochOriginClass;
+  doubleChochTime?: number;
+  doubleChochConfirmationTime?: number;
+  doubleChochConfirmationDirection?: 'up' | 'down';
 }
 
 type ChochMetadata = Pick<StructureZone,
   'chochClass' | 'tradeable' | 'chochTime' | 'chochConfirmationTime'
   | 'vipSupportTimeframe' | 'vipSupportZone' | 'vipSupportTapTime'>;
+
+type DoubleChochMetadata = Pick<StructureZone,
+  'doubleChochStatus' | 'doubleChochOriginClass' | 'doubleChochTime'
+  | 'doubleChochConfirmationTime' | 'doubleChochConfirmationDirection' | 'tradeable'>;
 
 export interface StructureLine {
   id: string;
@@ -327,6 +338,21 @@ export function classifyChoch(options: {
   return { chochClass: 'air', tradeable: false };
 }
 
+export function classifyDoubleChoch(
+  originClass: ChochClass | undefined,
+  higherTimeframeConfirmed: boolean,
+): Pick<DoubleChochMetadata, 'doubleChochStatus' | 'doubleChochOriginClass' | 'tradeable'> | undefined {
+  // Double CHoCH is a same-timeframe structural event. Any already-confirmed
+  // first CHoCH (Valid, AIR, or VIP) can form it; mapped HTF confirmation is
+  // evaluated separately and only controls whether its zones are tradeable.
+  if (originClass !== 'valid' && originClass !== 'air' && originClass !== 'vip') return undefined;
+  return {
+    doubleChochStatus: higherTimeframeConfirmed ? 'valid' : 'pending',
+    doubleChochOriginClass: originClass,
+    tradeable: higherTimeframeConfirmed,
+  };
+}
+
 export function wasTjl1ConfirmedBy(
   tjl1: StructureZone | null,
   formationTime: number,
@@ -524,6 +550,53 @@ export function analyzeMarketStructure(candles: StructureCandle[], options: {
     }
   };
 
+  const buildDoubleChochContext = (
+    originContext: ChochMetadata,
+    brokenZone: StructureZone,
+    direction: 'bullish' | 'bearish',
+    sourceDoubleChochTime: number,
+  ): DoubleChochMetadata | undefined => {
+    const confirmationDirection = direction === 'bullish' ? 'up' : 'down';
+    const confirmation = resolveTjl1Confirmation(candles, {
+      confirmationDirection,
+      bottom: brokenZone.bottom,
+      top: brokenZone.top,
+      formationTime: sourceDoubleChochTime + sourceBarSeconds,
+      sourceBarSeconds,
+      confirmationBarSeconds: options.confirmationBarSeconds,
+    });
+    const classification = classifyDoubleChoch(
+      originContext.chochClass,
+      confirmation.status === 'valid',
+    );
+    if (!classification) return undefined;
+    return {
+      ...classification,
+      doubleChochTime: sourceDoubleChochTime,
+      doubleChochConfirmationTime: confirmation.confirmationTime,
+      doubleChochConfirmationDirection: confirmationDirection,
+    };
+  };
+
+  const applyDoubleChochContext = (
+    context: DoubleChochMetadata,
+    ...contextZones: Array<StructureZone | null>
+  ) => {
+    for (const zone of contextZones) {
+      if (zone) {
+        Object.assign(zone, context);
+        // The candle that confirms Double CHoCH creates/converts these zones;
+        // crossing a zone on that same candle is formation, not a revisit.
+        // Start tap detection on the following source-timeframe candle.
+        if (context.doubleChochTime !== undefined) {
+          zone.activeFromTime = context.doubleChochTime + sourceBarSeconds;
+          zone.tapTime = undefined;
+          zone.tapBarsAgo = undefined;
+        }
+      }
+    }
+  };
+
   const convertZone = (
     source: StructureZone,
     name: Extract<StructureZone['name'], 'QML' | 'QML A+' | 'QML A++' | 'SBR' | 'RBS'>,
@@ -671,18 +744,24 @@ export function analyzeMarketStructure(candles: StructureCandle[], options: {
       if (pendingDouble?.direction === 'bullish'
         && candle.time > pendingDouble.startedAt
         && candle.close < pendingDouble.extreme.bottom) {
-        const doubleContext = pendingDouble.context;
+        const originContext = pendingDouble.context;
+        const doubleContext = buildDoubleChochContext(
+          originContext,
+          pendingDouble.extreme,
+          'bearish',
+          candle.time,
+        );
         const startIndex = candles.findIndex((item) => item.time === pendingDouble!.startedAt);
         const doubleHigh = extreme(candles, Math.max(0, startIndex), index, 'high');
         addLevel('choch', 'bearish', protectedPoint, index, 'DOUBLE CHoCH');
         removeStandaloneSwingMarker(doubleHigh);
         markers.push(makeMarker(candles[doubleHigh.index], 'PH', 'aboveBar', '#b91c1c'));
-        convertZone(pendingDouble.qml, 'QML A+', false, candle.time);
-        convertZone(pendingDouble.secondary, 'QML A++', false, candle.time);
-        convertZone(pendingDouble.extreme, 'SBR', false, candle.time);
+        const qmlA = convertZone(pendingDouble.qml, 'QML A+', false, candle.time);
+        const qmlAA = convertZone(pendingDouble.secondary, 'QML A++', false, candle.time);
+        const sbr = convertZone(pendingDouble.extreme, 'SBR', false, candle.time);
         const dtd = addDbDtZone(doubleHigh, 'DT', false);
         dtd.name = 'DTD';
-        applyChochContext(doubleContext, dtd);
+        if (doubleContext) applyDoubleChochContext(doubleContext, qmlA, qmlAA, sbr, dtd);
         pendingDouble = null;
         trend = 'bearish';
         protectedPoint = doubleHigh;
@@ -765,7 +844,7 @@ export function analyzeMarketStructure(candles: StructureCandle[], options: {
         const sbr = lastTjl2 ? convertZone(lastTjl2, 'SBR', false, candle.time) : null;
         const dt = addDbDtZone(newProtectedHigh, 'DT', false);
         applyChochContext(chochContext, qml, sbr, dt);
-        pendingDouble = qml && sbr
+        pendingDouble = qml && sbr && classifyDoubleChoch(chochContext.chochClass, false)
           ? { direction: 'bearish', qml, secondary: sbr, extreme: dt, startedAt: candle.time, context: chochContext }
           : null;
         trend = 'bearish';
@@ -782,18 +861,24 @@ export function analyzeMarketStructure(candles: StructureCandle[], options: {
       if (pendingDouble?.direction === 'bearish'
         && candle.time > pendingDouble.startedAt
         && candle.close > pendingDouble.extreme.top) {
-        const doubleContext = pendingDouble.context;
+        const originContext = pendingDouble.context;
+        const doubleContext = buildDoubleChochContext(
+          originContext,
+          pendingDouble.extreme,
+          'bullish',
+          candle.time,
+        );
         const startIndex = candles.findIndex((item) => item.time === pendingDouble!.startedAt);
         const doubleLow = extreme(candles, Math.max(0, startIndex), index, 'low');
         addLevel('choch', 'bullish', protectedPoint, index, 'DOUBLE CHoCH');
         removeStandaloneSwingMarker(doubleLow);
         markers.push(makeMarker(candles[doubleLow.index], 'PL', 'belowBar', '#047857'));
-        convertZone(pendingDouble.qml, 'QML A+', true, candle.time);
-        convertZone(pendingDouble.secondary, 'QML A++', true, candle.time);
-        convertZone(pendingDouble.extreme, 'RBS', true, candle.time);
+        const qmlA = convertZone(pendingDouble.qml, 'QML A+', true, candle.time);
+        const qmlAA = convertZone(pendingDouble.secondary, 'QML A++', true, candle.time);
+        const rbs = convertZone(pendingDouble.extreme, 'RBS', true, candle.time);
         const dbd = addDbDtZone(doubleLow, 'DB', true);
         dbd.name = 'DBD';
-        applyChochContext(doubleContext, dbd);
+        if (doubleContext) applyDoubleChochContext(doubleContext, qmlA, qmlAA, rbs, dbd);
         pendingDouble = null;
         trend = 'bullish';
         protectedPoint = doubleLow;
@@ -875,7 +960,7 @@ export function analyzeMarketStructure(candles: StructureCandle[], options: {
         const rbs = lastTjl2 ? convertZone(lastTjl2, 'RBS', true, candle.time) : null;
         const db = addDbDtZone(newProtectedLow, 'DB', true);
         applyChochContext(chochContext, qml, rbs, db);
-        pendingDouble = qml && rbs
+        pendingDouble = qml && rbs && classifyDoubleChoch(chochContext.chochClass, false)
           ? { direction: 'bullish', qml, secondary: rbs, extreme: db, startedAt: candle.time, context: chochContext }
           : null;
         trend = 'bullish';
