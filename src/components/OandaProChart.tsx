@@ -59,8 +59,7 @@ const ALL_FIB_VISIBILITY_OPTIONS = [
 ];
 
 function isSingleFibMarkingKey(key: FibVisibilityKey): boolean {
-  return key === 'tjl1' || key === 'tjl2' || key === 'intChoch'
-    || key === 'intTjl1' || key === 'intTjl2'
+  return key === 'tjl1' || key === 'tjl2' || key === 'intTjl1' || key === 'intTjl2'
     || key === 'doubleChoch' || key === 'iss';
 }
 
@@ -185,8 +184,7 @@ function isFibMarkingVisible(
   previousVisibility: Record<FibVisibilityKey, boolean>,
 ): boolean {
   const key = fibVisibilityKey(zone);
-  if (key === 'tjl1' || key === 'tjl2' || key === 'intChoch'
-    || key === 'intTjl1' || key === 'intTjl2'
+  if (key === 'tjl1' || key === 'tjl2' || key === 'intTjl1' || key === 'intTjl2'
     || key === 'doubleChoch' || key === 'iss') {
     return showFib && visibility[key];
   }
@@ -695,8 +693,7 @@ export const OandaProChart: React.FC = () => {
             });
           return [
             fibVisibilityRef.current[type] ? orderedMoves[0] : undefined,
-            type !== 'tjl1' && type !== 'tjl2' && type !== 'intChoch'
-              && type !== 'intTjl1' && type !== 'intTjl2'
+            type !== 'tjl1' && type !== 'tjl2' && type !== 'intTjl1' && type !== 'intTjl2'
               && type !== 'doubleChoch' && type !== 'iss'
               && fibPreviousVisibilityRef.current[type]
               ? orderedMoves[1]
