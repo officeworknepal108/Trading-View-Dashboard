@@ -2,18 +2,21 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
   activateZoneAfterChoch,
+  applyIssFibAnchors,
   classifyChoch,
   classifyDoubleChoch,
   classifyFibOverlap,
   detectEngulfingPatternAt,
   doesInvalidateZone,
   findDeepFibInvalidationTime,
+  findTjlFibSource,
   findZoneEngulfingPattern,
   findIssFiveWaves,
   findFirstZoneTapIndex,
   findVipSupportTap,
   findVipSupportTapAcrossContexts,
   getConfirmationBucketStart,
+  invalidateTjlFibBeforeLatestStructureReset,
   resolveTjl1Confirmation,
   selectFreshVipSupportTap,
   selectTwoCandleRetracementPivot,
@@ -102,6 +105,120 @@ test('FIB overlap accepts primary for TJL1 and both primary and deep for TJL2', 
     zoneBottom: 82, zoneTop: 88, ...levels, acceptDeep: true,
     sourcePrice: 100, deepBandValid: false,
   }), undefined, 'a completed close through 0.79 invalidates the deep setup');
+});
+
+test('CHoCH and Double CHoCH reset older external TJL1 and TJL2 FIB setups', () => {
+  const fibFields = {
+    fibRelevant: true,
+    fibBand: '0.5-0.618' as const,
+    fibStatus: 'a-plus' as const,
+    fibLevel50: 105,
+    fibSourceTime: 100,
+    fibSourcePrice: 110,
+    fibZeroTime: 200,
+    fibZeroPrice: 100,
+  };
+  const oldTjl1 = zone({ ...fibFields, id: 'old-tjl1', name: 'TJL1', startTime: 100 });
+  const oldTjl2 = zone({ ...fibFields, id: 'old-tjl2', name: 'TJL2', startTime: 200 });
+  const currentTjl1 = zone({ ...fibFields, id: 'current-tjl1', name: 'TJL1', startTime: 500 });
+  const internalTjl = zone({
+    ...fibFields,
+    id: 'internal-tjl',
+    name: 'Internal TJL1',
+    category: 'internal',
+    startTime: 100,
+  });
+  const choch = zone({ id: 'choch', name: 'QML', startTime: 300, chochTime: 300 });
+  const doubleChoch = zone({
+    id: 'double-choch',
+    name: 'QML A+',
+    startTime: 400,
+    doubleChochTime: 400,
+  });
+
+  invalidateTjlFibBeforeLatestStructureReset([
+    oldTjl1,
+    oldTjl2,
+    currentTjl1,
+    internalTjl,
+    choch,
+    doubleChoch,
+  ]);
+
+  assert.equal(oldTjl1.fibRelevant, false);
+  assert.equal(oldTjl1.fibStatus, undefined);
+  assert.equal(oldTjl2.fibSourceTime, undefined);
+  assert.equal(currentTjl1.fibStatus, 'a-plus', 'a TJL formed after the latest reset remains eligible');
+  assert.equal(internalTjl.fibStatus, 'a-plus', 'external CHoCH does not reset internal ISS structure FIB');
+});
+
+test('TJL1 FIB uses its current paired TJL2 even when the TJL2 pivot is newer', () => {
+  const oldTjl2 = zone({
+    id: 'old-tjl2', name: 'TJL2', isBuy: true, startTime: 100, tjlPairTime: 300,
+  });
+  const currentTjl1 = zone({
+    id: 'current-tjl1', name: 'TJL1', isBuy: true, startTime: 200, tjlPairTime: 500,
+  });
+  const currentTjl2 = zone({
+    id: 'current-tjl2', name: 'TJL2', isBuy: true, startTime: 250, tjlPairTime: 500,
+  });
+
+  assert.equal(
+    findTjlFibSource(currentTjl1, [oldTjl2, currentTjl1, currentTjl2])?.id,
+    'current-tjl2',
+  );
+
+  const bearishTjl1 = zone({
+    id: 'bearish-tjl1', name: 'TJL1', isBuy: false, startTime: 600, tjlPairTime: 800,
+  });
+  const bearishTjl2 = zone({
+    id: 'bearish-tjl2', name: 'TJL2', isBuy: false, startTime: 700, tjlPairTime: 800,
+  });
+  assert.equal(
+    findTjlFibSource(bearishTjl1, [currentTjl2, bearishTjl1, bearishTjl2])?.id,
+    'bearish-tjl2',
+  );
+});
+
+test('ISS FIB runs from Point 0 and extends beyond Point 5 to the latest completed extreme', () => {
+  const bullishIss = zone({
+    id: 'bullish-iss',
+    name: 'ISS L3',
+    category: 'iss',
+    isBuy: true,
+    issPoint0Time: 100,
+    issPoint0Price: 90,
+    issPoint5Time: 500,
+    issPoint5Price: 120,
+    issDirection: 'bullish',
+    issCompletionTime: 600,
+  });
+  applyIssFibAnchors([
+    { time: 500, open: 118, high: 120, low: 116, close: 119, complete: true },
+    { time: 600, open: 119, high: 128, low: 118, close: 126, complete: true },
+    { time: 700, open: 126, high: 135, low: 125, close: 134, complete: false },
+  ], [bullishIss]);
+  assert.equal(bullishIss.fibSourceTime, 100);
+  assert.equal(bullishIss.fibSourcePrice, 90);
+  assert.equal(bullishIss.fibZeroTime, 600);
+  assert.equal(bullishIss.fibZeroPrice, 128, 'a live extension beyond Point 5 is ignored until complete');
+
+  const bearishIss = zone({
+    id: 'bearish-iss',
+    name: 'ISS L3',
+    category: 'iss',
+    isBuy: false,
+    issPoint0Time: 100,
+    issPoint0Price: 130,
+    issPoint5Time: 500,
+    issPoint5Price: 100,
+    issDirection: 'bearish',
+  });
+  applyIssFibAnchors([
+    { time: 500, open: 102, high: 104, low: 100, close: 101, complete: true },
+    { time: 600, open: 101, high: 102, low: 94, close: 95, complete: true },
+  ], [bearishIss]);
+  assert.equal(bearishIss.fibZeroPrice, 94);
 });
 
 test('deep FIB invalidation requires a completed close beyond 0.79, not a wick or live close', () => {
@@ -505,7 +622,7 @@ test('pending ISS Level 3 and Internal TJL1 cannot tap before higher-timeframe v
   }), 2);
 });
 
-test('completed ISS seeds internal structure from Points 3-5 and stops at the next external event', () => {
+test('completed ISS delays internal TJLs until continuation and accepts both direct and post-BOS CHoCH', () => {
   const candles: StructureCandle[] = [
     { time: 0, open: 101, high: 102, low: 100, close: 101 },
     { time: 100, open: 101, high: 112, low: 101, close: 110 },
@@ -537,6 +654,13 @@ test('completed ISS seeds internal structure from Points 3-5 and stops at the ne
     boundary: { index: 0, time: 0, price: 200 },
   };
 
+  const justCompleted = findIssFiveWaves(candles.slice(0, 14), [anchor], 100, 30, 400);
+  assert.ok(justCompleted.zones.some((item) => item.name === 'ISS L3'));
+  assert.ok(justCompleted.zones.some((item) => item.name === 'ISS L4'));
+  assert.equal(justCompleted.zones.some((item) => item.name === 'Internal TJL1'), false);
+  assert.equal(justCompleted.zones.some((item) => item.name === 'Internal TJL2'), false,
+    'ISS completion must not duplicate L3/L4 as internal TJL zones');
+
   const firstLegChoch = findIssFiveWaves([
     ...candles.slice(0, 17),
     { time: 1700, open: 116, high: 118, low: 112, close: 113 },
@@ -566,14 +690,16 @@ test('completed ISS seeds internal structure from Points 3-5 and stops at the ne
     { time: 1700, open: 116, high: 118, low: 112, close: 113 },
     { time: 1800, open: 113, high: 114, low: 108, close: 110 },
   ], [anchor], 100, 30, 400);
-  assert.equal(noPostIssBos.lines.some((line) => line.type === 'internal-choch'), false,
-    'a direct reversal after ISS must wait until a post-ISS internal BOS exists');
+  assert.equal(noPostIssBos.lines.some((line) => line.type === 'internal-choch'), true,
+    'a direct Point-5 reversal through Point 4 is a valid internal CHoCH');
+  assert.ok(noPostIssBos.zones.some((item) => item.name === 'Internal QML'));
+  assert.ok(noPostIssBos.zones.some((item) => item.name === 'Internal SBR'));
 
-  const formed = findIssFiveWaves(candles.slice(0, -2), [anchor], 100, 30, 400);
-  assert.ok(formed.zones.some((item) => item.name === 'ISS L3'));
-  assert.ok(formed.zones.some((item) => item.name === 'ISS L4'));
-  assert.ok(formed.zones.some((item) => item.name === 'Internal TJL1'));
-  assert.ok(formed.zones.some((item) => item.name === 'Internal TJL2' && item.status === 'valid'));
+  const continued = findIssFiveWaves(candles.slice(0, 17), [anchor], 100, 30, 400);
+  assert.ok(continued.zones.some((item) => item.name === 'ISS L3'));
+  assert.ok(continued.zones.some((item) => item.name === 'ISS L4'));
+  assert.ok(continued.zones.some((item) => item.name === 'Internal TJL1'));
+  assert.ok(continued.zones.some((item) => item.name === 'Internal TJL2' && item.status === 'valid'));
 
   const running = findIssFiveWaves(candles, [anchor], 100, 30, 400);
   assert.ok(running.lines.some((line) => line.type === 'internal-choch'));
@@ -585,8 +711,8 @@ test('completed ISS seeds internal structure from Points 3-5 and stops at the ne
   const stopped = findIssFiveWaves(candles, [anchor], 100, 30, 400, [1400]);
   assert.equal(stopped.lines.some((line) => line.type.startsWith('internal-')), false);
   assert.equal(stopped.zones.some((item) => item.name === 'Internal QML'), false);
-  assert.ok(stopped.zones.some((item) => item.name === 'Internal TJL1'));
-  assert.ok(stopped.zones.some((item) => item.name === 'Internal TJL2'));
+  assert.equal(stopped.zones.some((item) => item.name === 'Internal TJL1'), false);
+  assert.equal(stopped.zones.some((item) => item.name === 'Internal TJL2'), false);
 });
 
 test('CHoCH-created zones ignore historical overlaps and the break candle', () => {

@@ -49,6 +49,9 @@ export interface StructureZone {
   // A confirmed TJL1 invalidates only through the side that faces its paired
   // TJL2, rather than from a hard-coded buy/sell side.
   invalidationDirection?: 'up' | 'down';
+  // TJL1 and TJL2 created by the same BOS share this timestamp. It lets the
+  // TJL1 FIB anchor to its current paired TJL2 even when that pivot is newer.
+  tjlPairTime?: number;
   invalidatedAt?: number;
   tapTime?: number;
   tapBarsAgo?: number;
@@ -74,6 +77,20 @@ export interface StructureZone {
   // A deep 0.71-0.79 setup remains usable until a completed candle closes
   // through 0.79 toward the originating DB/DT side. Wicks do not invalidate it.
   fibDeepInvalidatedAt?: number;
+  // Anchors for the visible Fibonacci retracement overlay. The originating
+  // structure price is level 1 and the completed move extreme is level 0.
+  fibSourceTime?: number;
+  fibSourcePrice?: number;
+  fibZeroTime?: number;
+  fibZeroPrice?: number;
+  // Completed ISS anchors. Its FIB runs from Point 0 to Point 5 and keeps
+  // extending level 0 when continuation makes a newer extreme.
+  issPoint0Time?: number;
+  issPoint0Price?: number;
+  issPoint5Time?: number;
+  issPoint5Price?: number;
+  issDirection?: 'bullish' | 'bearish';
+  issCompletionTime?: number;
   // Exact 0.5 retracement used by the engulfing gate. A zone can be A+ from
   // band overlap, but no engulfing type is valid until its confirming candle
   // itself trades through this price.
@@ -618,6 +635,10 @@ function applyFibConfluence(candles: StructureCandle[], zones: StructureZone[]):
       zone.fibStatus = 'not-valid';
       return;
     }
+    zone.fibSourceTime = sourceTime;
+    zone.fibSourcePrice = sourcePrice;
+    zone.fibZeroTime = zeroCandle.time;
+    zone.fibZeroPrice = zeroPrice;
     const move = Math.abs(zeroPrice - sourcePrice);
     const level = (ratio: number) => (
       isSell ? zeroPrice + move * ratio : zeroPrice - move * ratio
@@ -649,6 +670,10 @@ function applyFibConfluence(candles: StructureCandle[], zones: StructureZone[]):
     zone.fibStatus = undefined;
     zone.fibLevel50 = undefined;
     zone.fibDeepInvalidatedAt = undefined;
+    zone.fibSourceTime = undefined;
+    zone.fibSourcePrice = undefined;
+    zone.fibZeroTime = undefined;
+    zone.fibZeroPrice = undefined;
   }
 
   const sorted = [...zones].sort((a, b) => a.startTime - b.startTime);
@@ -656,19 +681,7 @@ function applyFibConfluence(candles: StructureCandle[], zones: StructureZone[]):
     const isTjl1 = tjl1Names.has(zone.name);
     const isTjl2 = tjl2Names.has(zone.name);
     if (!isTjl1 && !isTjl2) continue;
-    const internal = zone.category === 'internal';
-    const resetTime = Math.max(-Infinity, ...zones
-      .filter((candidate) => candidate.category === zone.category
-        && candidate.chochTime !== undefined
-        && candidate.chochTime < zone.startTime)
-      .map((candidate) => candidate.chochTime!));
-    const source = sorted
-      .filter((candidate) => candidate.category === zone.category
-        && candidate.name === (internal ? 'Internal TJL2' : 'TJL2')
-        && candidate.isBuy === zone.isBuy
-        && candidate.startTime < zone.startTime
-        && candidate.startTime > resetTime)
-      .at(-1);
+    const source = findTjlFibSource(zone, sorted);
     if (!source) continue;
     classifyFromMove(
       zone,
@@ -722,6 +735,86 @@ function applyFibConfluence(candles: StructureCandle[], zones: StructureZone[]):
     .map((zone) => zone.doubleChochTime!));
   for (const eventTime of doubleTimes) {
     applyChochGroup(zones.filter((zone) => zone.doubleChochTime === eventTime), true);
+  }
+  invalidateTjlFibBeforeLatestStructureReset(zones);
+  applyIssFibAnchors(candles, zones);
+}
+
+export function applyIssFibAnchors(
+  candles: StructureCandle[],
+  zones: StructureZone[],
+): void {
+  const completed = candles.filter((candle) => candle.complete !== false);
+  for (const zone of zones) {
+    if (zone.name !== 'ISS L3'
+      || zone.issPoint0Time === undefined || zone.issPoint0Price === undefined
+      || zone.issPoint5Time === undefined || zone.issPoint5Price === undefined
+      || zone.issDirection === undefined) continue;
+    const continuation = completed.filter((candle) => candle.time >= zone.issPoint5Time!);
+    const extreme = continuation.reduce<StructureCandle | undefined>((selected, candle) => {
+      if (!selected) return candle;
+      return zone.issDirection === 'bullish'
+        ? candle.high > selected.high ? candle : selected
+        : candle.low < selected.low ? candle : selected;
+    }, undefined);
+    const zeroTime = extreme?.time ?? zone.issPoint5Time;
+    const zeroPrice = extreme
+      ? zone.issDirection === 'bullish' ? extreme.high : extreme.low
+      : zone.issPoint5Price;
+    zone.fibRelevant = true;
+    zone.fibSourceTime = zone.issPoint0Time;
+    zone.fibSourcePrice = zone.issPoint0Price;
+    zone.fibZeroTime = zeroTime;
+    zone.fibZeroPrice = zeroPrice;
+    zone.fibLevel50 = zeroPrice + (zone.issPoint0Price - zeroPrice) * 0.5;
+  }
+}
+
+export function findTjlFibSource(
+  zone: StructureZone,
+  zones: StructureZone[],
+): StructureZone | undefined {
+  const internal = zone.category === 'internal';
+  const structureTime = zone.tjlPairTime ?? zone.startTime;
+  const resetTime = Math.max(-Infinity, ...zones
+    .filter((candidate) => candidate.category === zone.category
+      && candidate.chochTime !== undefined
+      && candidate.chochTime < structureTime)
+    .map((candidate) => candidate.chochTime!));
+  return [...zones]
+    .sort((first, second) => first.startTime - second.startTime)
+    .filter((candidate) => candidate !== zone
+      && candidate.category === zone.category
+      && candidate.name === (internal ? 'Internal TJL2' : 'TJL2')
+      && candidate.isBuy === zone.isBuy
+      && candidate.startTime > resetTime
+      && (zone.name === 'TJL1' && zone.tjlPairTime !== undefined
+        ? candidate.tjlPairTime === zone.tjlPairTime
+        : candidate.startTime < zone.startTime))
+    .at(-1);
+}
+
+export function invalidateTjlFibBeforeLatestStructureReset(zones: StructureZone[]): void {
+  const resetTimes = zones
+    .filter((zone) => zone.category === 'mg')
+    .flatMap((zone) => [zone.chochTime, zone.doubleChochTime])
+    .filter((time): time is number => time !== undefined);
+  if (resetTimes.length === 0) return;
+
+  const latestResetTime = Math.max(...resetTimes);
+  for (const zone of zones) {
+    if (zone.category !== 'mg'
+      || (zone.name !== 'TJL1' && zone.name !== 'TJL2')
+      || zone.startTime > latestResetTime) continue;
+    zone.fibRelevant = false;
+    zone.fibBand = undefined;
+    zone.fibStatus = undefined;
+    zone.fibDeepInvalidatedAt = undefined;
+    zone.fibLevel50 = undefined;
+    zone.fibSourceTime = undefined;
+    zone.fibSourcePrice = undefined;
+    zone.fibZeroTime = undefined;
+    zone.fibZeroPrice = undefined;
   }
 }
 
@@ -1033,6 +1126,7 @@ export function analyzeMarketStructure(candles: StructureCandle[], options: {
       : { status: 'valid' as const };
     return addZone({
       name, category: 'mg', isBuy, startTime: point.time,
+      tjlPairTime: formationTime,
       bottom, top,
       status: confirmation.status,
       tjl1ConfirmationAttempts: confirmation.tjl1ConfirmationAttempts,
@@ -1470,8 +1564,10 @@ export function findIssFiveWaves(
         toTime: point.time, toPrice: point.price,
       });
     });
+    const point0 = points[0];
     const wave3 = points[3]; // second TJL1
     const wave4 = points[4]; // second TJL2
+    const point5 = points[5];
     const candle3 = candles[wave3.index];
     const candle4 = candles[wave4.index];
     const buffer3 = Math.abs(candle3.close - candle3.open) * 0.01;
@@ -1511,6 +1607,12 @@ export function findIssFiveWaves(
         confirmationTime: wave3Confirmation.confirmationTime,
         confirmationWindowCloseTime: wave3Confirmation.confirmationWindowCloseTime,
         invalidationDirection: isBullish ? 'down' : 'up',
+        issPoint0Time: point0.time,
+        issPoint0Price: point0.price,
+        issPoint5Time: point5.time,
+        issPoint5Price: point5.price,
+        issDirection: direction,
+        issCompletionTime: confirmedAt,
       };
     const wave4Zone: StructureZone = {
         id: `iss-l4-${wave4.time}`, name: 'ISS L4', category: 'iss', isBuy: isBullish,
@@ -1796,34 +1898,35 @@ export function findIssFiveWaves(
     const point5 = pattern.points[5];
     const isBullishIss = pattern.direction === 'bullish';
     const stopTime = externalStructureTimes.find((time) => time > pattern.confirmedAt) ?? Infinity;
-    // The final ISS continuation leg already contains the first complete
-    // internal structure: Point 3 is TJL1, Point 4 is the protected TJL2, and
-    // Point 5 is the new continuation extreme. Waiting for another post-ISS
-    // retracement skipped the first valid CHoCH and could incorrectly convert
-    // Point 5 (rather than Point 3) into QML.
+    // ISS L3/L4 remain the only visible zones at completion. Internal TJL1/2
+    // begin only after price confirms continuation beyond Point 5. Point 3/4
+    // are retained as a hidden seed pair solely for a direct Point-5 CHoCH.
     let internalTrend: 'bullish' | 'bearish' = pattern.direction;
     let protectedPoint = point4;
     let pathStart = point5;
     let activeHigh: StructurePoint | null = null;
     let activeLow: StructurePoint | null = null;
-    // Keep ISS L3/L4 as their own zones while also using their pivots as the
-    // initial internal TJL pair. On reversal, Point 3 becomes QML, Point 4
-    // becomes SBR/RBS, and Point 5 supplies the DT/DB extreme.
-    let currentTjl1: StructureZone | null = addInternalTjlZone(
-      point3,
-      'Internal TJL1',
-      isBullishIss,
-      isBullishIss ? 'high' : 'low',
-      pattern.confirmedAt + sourceBarSeconds,
-    );
-    let currentTjl2: StructureZone | null = addInternalTjlZone(
-      point4,
-      'Internal TJL2',
-      isBullishIss,
-      isBullishIss ? 'low' : 'high',
-      pattern.confirmedAt + sourceBarSeconds,
-    );
-    linkInternalTjlPair(currentTjl1, currentTjl2);
+    let currentTjl1: StructureZone | null = null;
+    let currentTjl2: StructureZone | null = null;
+    let initialIssPairAvailable = true;
+    const seedDirectChochPair = () => {
+      if (!initialIssPairAvailable || currentTjl1 || currentTjl2) return;
+      currentTjl1 = addInternalTjlZone(
+        point3,
+        'Internal TJL1',
+        isBullishIss,
+        isBullishIss ? 'high' : 'low',
+        pattern.confirmedAt + sourceBarSeconds,
+      );
+      currentTjl2 = addInternalTjlZone(
+        point4,
+        'Internal TJL2',
+        isBullishIss,
+        isBullishIss ? 'low' : 'high',
+        pattern.confirmedAt + sourceBarSeconds,
+      );
+      linkInternalTjlPair(currentTjl1, currentTjl2);
+    };
     let lastBullishConfirmIndex: number | null = isBullishIss ? point5.index : null;
     let lastBearishConfirmIndex: number | null = isBullishIss ? null : point5.index;
     // Internal reversal structure is not established by ISS completion alone.
@@ -1871,11 +1974,14 @@ export function findIssFiveWaves(
           activeHigh = null;
           lastBullishConfirmIndex = index;
           hasPostIssInternalBos = true;
+          initialIssPairAvailable = false;
         }
         // Internal CHoCH is confirmed by the first body close through the
         // protected Point-4 level. Requiring a second close can miss the true
         // displacement candle when price immediately retests the broken level.
-        if (hasPostIssInternalBos && candle.close < protectedPoint.price) {
+        if ((hasPostIssInternalBos || initialIssPairAvailable)
+          && candle.close < protectedPoint.price) {
+          seedDirectChochPair();
           const newProtectedHigh = activeHigh ?? extreme(candles, protectedPoint.index, index, 'high');
           const lastTjl1 = currentTjl1;
           const lastTjl2 = currentTjl2;
@@ -1899,6 +2005,7 @@ export function findIssFiveWaves(
           activeLow = null;
           lastBearishConfirmIndex = null;
           hasPostIssInternalBos = false;
+          initialIssPairAvailable = false;
         }
       } else {
         if (twoGreen && activeLow === null) {
@@ -1929,8 +2036,11 @@ export function findIssFiveWaves(
           activeLow = null;
           lastBearishConfirmIndex = index;
           hasPostIssInternalBos = true;
+          initialIssPairAvailable = false;
         }
-        if (hasPostIssInternalBos && candle.close > protectedPoint.price) {
+        if ((hasPostIssInternalBos || initialIssPairAvailable)
+          && candle.close > protectedPoint.price) {
+          seedDirectChochPair();
           const newProtectedLow = activeLow ?? extreme(candles, protectedPoint.index, index, 'low');
           const lastTjl1 = currentTjl1;
           const lastTjl2 = currentTjl2;
@@ -1954,6 +2064,7 @@ export function findIssFiveWaves(
           activeLow = null;
           lastBullishConfirmIndex = null;
           hasPostIssInternalBos = false;
+          initialIssPairAvailable = false;
         }
       }
     }
