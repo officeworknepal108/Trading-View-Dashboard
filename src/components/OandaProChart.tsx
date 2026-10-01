@@ -113,6 +113,13 @@ function displayZoneName(name: string): string {
   return name.startsWith('Internal ') ? `Int ${name.slice('Internal '.length)}` : name;
 }
 
+function displayFibLabel(zone: StructureZone): string {
+  if (zone.fibBand === 'deep') {
+    return 'FIB DEEP DISCOUNT';
+  }
+  return `A+ FIB ${zone.fibBand}`;
+}
+
 function formatCandleCountdown(secondsRemaining: number): string {
   const total = Math.max(0, Math.floor(secondsRemaining));
   const hours = Math.floor(total / 3600);
@@ -478,8 +485,9 @@ export const OandaProChart: React.FC = () => {
         const internalClass = zone.chochClass === 'pending' ? 'WAIT' : zone.chochClass.toUpperCase();
         label.textContent = `${name} · INT CHoCH · ${internalClass}`;
       }
-      if (!inactive && showFibRef.current && zone.fibStatus === 'a-plus' && zone.fibBand) {
-        label.textContent = `${label.textContent} · A+ FIB ${zone.fibBand}`;
+      if (!inactive && showFibRef.current && zone.fibStatus === 'a-plus'
+        && zone.fibBand && zone.fibBand !== 'DB/DT') {
+        label.textContent = `${label.textContent} · ${displayFibLabel(zone)}`;
       }
       label.style.position = 'absolute';
       label.style.right = '4px';
@@ -1335,7 +1343,11 @@ export const OandaProChart: React.FC = () => {
                 {zoneTableRows.map((zone) => (
                   <tr key={zone.id} className="border-t border-slate-100 text-slate-700">
                     <td className="px-2 py-1 font-black text-slate-800">
-                      <span>{displayZoneName(zone.name)}</span>
+                      <span>
+                        {zone.fibBand === 'DB/DT'
+                          ? `FIB A+ ${displayZoneName(zone.name)}`
+                          : displayZoneName(zone.name)}
+                      </span>
                       {zone.chochClass && (
                         <span className={`ml-1 rounded px-1 py-0.5 text-[8px] font-black ${
                           zone.chochClass === 'vip'
@@ -1355,9 +1367,10 @@ export const OandaProChart: React.FC = () => {
                           {zone.vipSupportTimeframe} {displayZoneName(zone.vipSupportZone)}
                         </span>
                       )}
-                      {showFib && zone.fibStatus === 'a-plus' && zone.fibBand && (
+                      {showFib && zone.fibStatus === 'a-plus'
+                        && zone.fibBand && zone.fibBand !== 'DB/DT' && (
                         <span className="ml-1 rounded bg-fuchsia-100 px-1 py-0.5 text-[8px] font-black text-fuchsia-800">
-                          A+ FIB {zone.fibBand}
+                          {displayFibLabel(zone)}
                         </span>
                       )}
                     </td>

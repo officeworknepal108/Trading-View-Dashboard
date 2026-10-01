@@ -12,7 +12,7 @@ export interface StructureCandle {
 export type ChochClass = 'pending' | 'valid' | 'air' | 'vip';
 export type DoubleChochStatus = 'pending' | 'valid';
 export type DoubleChochOriginClass = Extract<ChochClass, 'valid' | 'air' | 'vip'>;
-export type FibBand = '0.5-0.618' | '0.71-0.79' | 'DB/DT';
+export type FibBand = '0.5-0.618' | '0.71-0.79' | 'deep' | 'DB/DT';
 export type EngulfingType = 'T1' | 'T2' | 'T3' | 'T4';
 export type EngulfingDirection = 'bullish' | 'bearish';
 
@@ -71,6 +71,9 @@ export interface StructureZone {
   fibRelevant?: boolean;
   fibBand?: FibBand;
   fibStatus?: 'a-plus' | 'not-valid';
+  // A deep 0.71-0.79 setup remains usable until a completed candle closes
+  // through 0.79 toward the originating DB/DT side. Wicks do not invalidate it.
+  fibDeepInvalidatedAt?: number;
   // Exact 0.5 retracement used by the engulfing gate. A zone can be A+ from
   // band overlap, but no engulfing type is valid until its confirming candle
   // itself trades through this price.
@@ -394,14 +397,37 @@ export function classifyFibOverlap(options: {
   level71: number;
   level79: number;
   acceptDeep: boolean;
+  sourcePrice?: number;
+  deepBandValid?: boolean;
 }): FibBand | undefined {
   const overlaps = (first: number, second: number) => (
     options.zoneBottom <= Math.max(first, second)
     && options.zoneTop >= Math.min(first, second)
   );
   if (overlaps(options.level50, options.level618)) return '0.5-0.618';
-  if (options.acceptDeep && overlaps(options.level71, options.level79)) return '0.71-0.79';
+  if (options.acceptDeep && options.deepBandValid !== false) {
+    if (overlaps(options.level71, options.level79)) return '0.71-0.79';
+    // A QML can sit deeper than 0.79 without overlapping the band itself. It
+    // remains A+ while it is between 0.79 and the originating DB/DT and the
+    // completed-close invalidation below/above 0.79 has not occurred.
+    if (options.sourcePrice !== undefined && overlaps(options.level79, options.sourcePrice)) {
+      return 'deep';
+    }
+  }
   return undefined;
+}
+
+export function findDeepFibInvalidationTime(
+  candles: StructureCandle[],
+  zeroTime: number,
+  level79: number,
+  isSell: boolean,
+): number | undefined {
+  return candles.find((candle) => (
+    candle.time > zeroTime
+    && candle.complete !== false
+    && (isSell ? candle.close > level79 : candle.close < level79)
+  ))?.time;
 }
 
 function candleIsBullish(candle: StructureCandle): boolean {
@@ -574,9 +600,12 @@ function applyFibConfluence(candles: StructureCandle[], zones: StructureZone[]):
   ) => {
     const moveCandles = completed.filter((candle) => candle.time >= sourceTime);
     if (moveCandles.length === 0) return;
-    const zeroPrice = isSell
-      ? Math.min(...moveCandles.map((candle) => candle.low))
-      : Math.max(...moveCandles.map((candle) => candle.high));
+    const zeroCandle = moveCandles.reduce((selected, candle) => (
+      isSell
+        ? candle.low < selected.low ? candle : selected
+        : candle.high > selected.high ? candle : selected
+    ));
+    const zeroPrice = isSell ? zeroCandle.low : zeroCandle.high;
     const validMove = isSell ? sourcePrice > zeroPrice : zeroPrice > sourcePrice;
     zone.fibRelevant = true;
     if (!validMove) {
@@ -588,6 +617,12 @@ function applyFibConfluence(candles: StructureCandle[], zones: StructureZone[]):
       isSell ? zeroPrice + move * ratio : zeroPrice - move * ratio
     );
     zone.fibLevel50 = level(0.5);
+    zone.fibDeepInvalidatedAt = findDeepFibInvalidationTime(
+      candles,
+      zeroCandle.time,
+      level(0.79),
+      isSell,
+    );
     zone.fibBand = classifyFibOverlap({
       zoneBottom: zone.bottom,
       zoneTop: zone.top,
@@ -596,6 +631,8 @@ function applyFibConfluence(candles: StructureCandle[], zones: StructureZone[]):
       level71: level(0.71),
       level79: level(0.79),
       acceptDeep,
+      sourcePrice,
+      deepBandValid: zone.fibDeepInvalidatedAt === undefined,
     });
     zone.fibStatus = zone.fibBand ? 'a-plus' : 'not-valid';
   };
@@ -605,6 +642,7 @@ function applyFibConfluence(candles: StructureCandle[], zones: StructureZone[]):
     zone.fibBand = undefined;
     zone.fibStatus = undefined;
     zone.fibLevel50 = undefined;
+    zone.fibDeepInvalidatedAt = undefined;
   }
 
   const sorted = [...zones].sort((a, b) => a.startTime - b.startTime);

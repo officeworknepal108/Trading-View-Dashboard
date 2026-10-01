@@ -7,6 +7,7 @@ import {
   classifyFibOverlap,
   detectEngulfingPatternAt,
   doesInvalidateZone,
+  findDeepFibInvalidationTime,
   findZoneEngulfingPattern,
   findIssFiveWaves,
   findFirstZoneTapIndex,
@@ -93,6 +94,34 @@ test('FIB overlap accepts primary for TJL1 and both primary and deep for TJL2', 
   assert.equal(classifyFibOverlap({
     zoneBottom: 73, zoneTop: 75, ...levels, acceptDeep: true,
   }), '0.71-0.79', 'TJL2 accepts the deep band as well as the primary band');
+  assert.equal(classifyFibOverlap({
+    zoneBottom: 82, zoneTop: 88, ...levels, acceptDeep: true,
+    sourcePrice: 100, deepBandValid: true,
+  }), 'deep', 'a zone beyond 0.79 is named deep premium/discount toward DB/DT');
+  assert.equal(classifyFibOverlap({
+    zoneBottom: 82, zoneTop: 88, ...levels, acceptDeep: true,
+    sourcePrice: 100, deepBandValid: false,
+  }), undefined, 'a completed close through 0.79 invalidates the deep setup');
+});
+
+test('deep FIB invalidation requires a completed close beyond 0.79, not a wick or live close', () => {
+  const wickAndLiveOnly: StructureCandle[] = [
+    { time: 1, open: 120, high: 125, low: 118, close: 123, complete: true },
+    { time: 2, open: 123, high: 124, low: 99, close: 105, complete: true },
+    { time: 3, open: 105, high: 106, low: 95, close: 98, complete: false },
+  ];
+  assert.equal(findDeepFibInvalidationTime(wickAndLiveOnly, 1, 100, false), undefined);
+
+  const closedOutside = [
+    ...wickAndLiveOnly,
+    { time: 4, open: 105, high: 106, low: 97, close: 99, complete: true },
+  ];
+  assert.equal(findDeepFibInvalidationTime(closedOutside, 1, 100, false), 4);
+  assert.equal(findDeepFibInvalidationTime([
+    { time: 1, open: 80, high: 82, low: 75, close: 78, complete: true },
+    { time: 2, open: 78, high: 101, low: 77, close: 99, complete: true },
+    { time: 3, open: 99, high: 102, low: 98, close: 101, complete: true },
+  ], 1, 100, true), 3);
 });
 
 test('engulfing detector recognizes bullish and bearish Type 1 patterns only after close', () => {
