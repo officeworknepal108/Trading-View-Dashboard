@@ -64,6 +64,10 @@ const TIMEFRAME_SECONDS: Record<MarketGranularity, number> = {
   MO: 31 * 86400,
 };
 
+const PRESENT_VIEW_BAR_SPACING = 8.5;
+const PRESENT_VIEW_RIGHT_GAP_RATIO = 0.34;
+const PRESENT_VIEW_PRICE_SCALE_WIDTH = 80;
+
 const TJL1_CONFIRMATION_SECONDS: Partial<Record<MarketGranularity, number>> = {
   M1: 300,
   M5: 900,
@@ -251,6 +255,7 @@ export const OandaProChart: React.FC = () => {
   const [showFib, setShowFib] = useState(true);
   const [showEngulfing, setShowEngulfing] = useState(true);
   const [showInvalidZones, setShowInvalidZones] = useState(false);
+  const [showIndicatorControls, setShowIndicatorControls] = useState(false);
   const [showZoneTable, setShowZoneTable] = useState(true);
   const [replayIndex, setReplayIndex] = useState<number | null>(null);
   const [replayPlaying, setReplayPlaying] = useState(false);
@@ -329,6 +334,37 @@ export const OandaProChart: React.FC = () => {
     }),
     [displayCandles, granularity, vipSupportContexts],
   );
+
+  const restorePresentChartView = useCallback(() => {
+    const chart = chartRef.current;
+    const host = hostRef.current;
+    if (!chart || !host || displayCandles.length === 0) return;
+    const lastIndex = displayCandles.length - 1;
+    const plotWidth = Math.max(
+      PRESENT_VIEW_BAR_SPACING * 72,
+      host.clientWidth - PRESENT_VIEW_PRICE_SCALE_WIDTH,
+    );
+    const totalVisibleSlots = Math.max(
+      72,
+      Math.floor(plotWidth / PRESENT_VIEW_BAR_SPACING),
+    );
+    const rightOffset = Math.max(
+      12,
+      Math.round(totalVisibleSlots * PRESENT_VIEW_RIGHT_GAP_RATIO),
+    );
+    const visibleCandleCount = Math.max(
+      48,
+      totalVisibleSlots - rightOffset,
+    );
+    chart.timeScale().setVisibleLogicalRange({
+      from: Math.max(0, lastIndex - visibleCandleCount + 1),
+      to: lastIndex + rightOffset,
+    });
+    window.requestAnimationFrame(() => {
+      redrawZonesRef.current();
+      syncReplaySelectionLineRef.current();
+    });
+  }, [displayCandles.length]);
 
   const trendTableRows = useMemo<TrendTableRow[]>(() => {
     const replayCutoff = replayIndex === null || displayCandles.length === 0
@@ -744,7 +780,7 @@ export const OandaProChart: React.FC = () => {
         timeVisible: true,
         secondsVisible: false,
         rightOffset: 8,
-        barSpacing: 7,
+        barSpacing: PRESENT_VIEW_BAR_SPACING,
         minBarSpacing: 1.5,
       },
       handleScroll: { mouseWheel: true, pressedMouseMove: true, horzTouchDrag: true, vertTouchDrag: false },
@@ -855,12 +891,11 @@ export const OandaProChart: React.FC = () => {
       pendingReplayViewportRef.current = null;
       hasFittedRef.current = true;
     } else if (!hasFittedRef.current) {
-      chart.timeScale().fitContent();
-      chart.timeScale().scrollToRealTime();
+      restorePresentChartView();
       hasFittedRef.current = true;
     }
     window.requestAnimationFrame(() => redrawZonesRef.current());
-  }, [displayCandles, replayIndex, showEngulfing, showInternal, showIss, showStructure, structure.engulfingMarkers, structure.internalMarkers, structure.issMarkers, structure.markers]);
+  }, [displayCandles, replayIndex, restorePresentChartView, showEngulfing, showInternal, showIss, showStructure, structure.engulfingMarkers, structure.internalMarkers, structure.issMarkers, structure.markers]);
 
   useEffect(() => {
     const label = livePriceLabelRef.current;
@@ -1067,6 +1102,15 @@ export const OandaProChart: React.FC = () => {
 
           <div className="flex items-center gap-1 border-l border-slate-200 pl-2">
             <button
+              type="button"
+              onClick={() => setShowIndicatorControls((visible) => !visible)}
+              className="rounded-md border border-slate-300 bg-slate-50 px-2 py-1 text-[9px] font-black text-slate-600 transition hover:bg-slate-100"
+              title={showIndicatorControls ? 'Minimize indicator controls' : 'Show indicator controls'}
+            >
+              {showIndicatorControls ? 'INDICATORS − MINIMIZE' : 'INDICATORS + SHOW CONTROLS'}
+            </button>
+            {showIndicatorControls && <>
+            <button
               onClick={() => setShowStructure((value) => !value)}
               className={`rounded-md border px-2 py-1 text-[9px] font-black transition ${
                 showStructure
@@ -1146,6 +1190,7 @@ export const OandaProChart: React.FC = () => {
             >
               INVALID ZONES {showInvalidZones ? 'ON' : 'OFF'}
             </button>
+            </>}
           </div>
 
           <div className="ml-auto flex items-center gap-1.5">
@@ -1157,6 +1202,15 @@ export const OandaProChart: React.FC = () => {
               {error ? <WifiOff className="h-2.5 w-2.5" /> : <Wifi className="h-2.5 w-2.5" />}
               {error ? 'FEED DISCONNECTED' : 'TRADINGVIEW CONNECTED'}
             </div>
+            <button
+              type="button"
+              onClick={restorePresentChartView}
+              className="flex items-center gap-1 rounded-md border border-slate-200 px-2 py-1 text-[9px] font-black text-slate-600 hover:bg-slate-100"
+              title="Restore the default candle zoom and return to the latest candle"
+            >
+              <RefreshCw className="h-3 w-3" />
+              REFRESH CHART VIEW
+            </button>
             <button
               onClick={() => setRefreshKey((value) => value + 1)}
               className="rounded-md border border-slate-200 p-1 text-slate-600 hover:bg-slate-100"
