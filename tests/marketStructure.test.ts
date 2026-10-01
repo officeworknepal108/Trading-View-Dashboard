@@ -444,7 +444,7 @@ test('pending ISS Level 3 and Internal TJL1 cannot tap before higher-timeframe v
   }), 2);
 });
 
-test('completed ISS starts internal structure at Point 5 and stops at the next external event', () => {
+test('completed ISS seeds internal structure from Points 3-5 and stops at the next external event', () => {
   const candles: StructureCandle[] = [
     { time: 0, open: 101, high: 102, low: 100, close: 101 },
     { time: 100, open: 101, high: 112, low: 101, close: 110 },
@@ -462,7 +462,7 @@ test('completed ISS starts internal structure at Point 5 and stops at the next e
     { time: 1300, open: 121, high: 122, low: 117, close: 118 },
     { time: 1400, open: 118, high: 119, low: 114, close: 115 },
     { time: 1500, open: 115, high: 119, low: 114, close: 118 },
-    { time: 1600, open: 118, high: 122, low: 117, close: 121 },
+    { time: 1600, open: 118, high: 127, low: 117, close: 126 }, // post-ISS internal BOS
     { time: 1700, open: 121, high: 122, low: 115, close: 116 },
     { time: 1800, open: 116, high: 117, low: 111, close: 112 },
     { time: 1900, open: 112, high: 120, low: 112, close: 119 },
@@ -484,15 +484,29 @@ test('completed ISS starts internal structure at Point 5 and stops at the next e
   const firstQml = firstLegChoch.zones.find((item) => item.name === 'Internal QML');
   const firstSbr = firstLegChoch.zones.find((item) => item.name === 'Internal SBR');
   const firstDt = firstLegChoch.zones.find((item) => item.name === 'Internal DT');
-  assert.equal(firstLegChoch.lines.some((line) => line.type === 'internal-bos'), false);
-  assert.equal(firstQml?.startTime, 1100, 'Point 5 must become the first Internal QML');
-  assert.equal(firstSbr?.startTime, 1400, 'the fresh post-ISS low must become the first Internal SBR');
-  assert.equal(firstDt?.startTime, 1600);
+  assert.ok(firstLegChoch.lines.some((line) => (
+    line.type === 'internal-bos' && line.toTime === 1600
+  )), 'a post-ISS internal BOS must establish the reversal structure first');
+  assert.equal(firstQml?.startTime, 1100, 'the BOS-confirmed internal high must become QML');
+  assert.equal(firstSbr?.startTime, 1400, 'the BOS-confirmed internal low must become SBR');
+  assert.equal(firstDt?.startTime, 1600, 'the reversal extreme must become Internal DT');
   assert.equal(firstQml?.chochClass, 'pending');
   assert.equal(firstSbr?.chochClass, 'pending');
   assert.equal(firstDt?.chochClass, 'pending');
   assert.equal(firstQml?.tradeable, false);
   assert.ok(firstLegChoch.lines.some((line) => line.label === 'INT CHoCH · WAIT'));
+  assert.ok(firstLegChoch.lines.some((line) => (
+    line.type === 'internal-choch' && line.fromTime === 1400 && line.toTime === 1700
+  )), 'internal CHoCH must follow and break the pair established by internal BOS');
+
+  const noPostIssBos = findIssFiveWaves([
+    ...candles.slice(0, 16),
+    { time: 1600, open: 118, high: 122, low: 117, close: 121 },
+    { time: 1700, open: 116, high: 118, low: 112, close: 113 },
+    { time: 1800, open: 113, high: 114, low: 108, close: 110 },
+  ], [anchor], 100, 30, 400);
+  assert.equal(noPostIssBos.lines.some((line) => line.type === 'internal-choch'), false,
+    'a direct reversal after ISS must wait until a post-ISS internal BOS exists');
 
   const formed = findIssFiveWaves(candles.slice(0, -2), [anchor], 100, 30, 400);
   assert.ok(formed.zones.some((item) => item.name === 'ISS L3'));
@@ -510,7 +524,8 @@ test('completed ISS starts internal structure at Point 5 and stops at the next e
   const stopped = findIssFiveWaves(candles, [anchor], 100, 30, 400, [1400]);
   assert.equal(stopped.lines.some((line) => line.type.startsWith('internal-')), false);
   assert.equal(stopped.zones.some((item) => item.name === 'Internal QML'), false);
-  assert.equal(stopped.zones.some((item) => item.category === 'internal'), false);
+  assert.ok(stopped.zones.some((item) => item.name === 'Internal TJL1'));
+  assert.ok(stopped.zones.some((item) => item.name === 'Internal TJL2'));
 });
 
 test('CHoCH-created zones ignore historical overlaps and the break candle', () => {

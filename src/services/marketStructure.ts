@@ -1735,64 +1735,47 @@ export function findIssFiveWaves(
   for (const pattern of patterns) {
     const confirmedIndex = candles.findIndex((candle) => candle.time === pattern.confirmedAt);
     if (confirmedIndex < 0) continue;
+    const point3 = pattern.points[3];
+    const point4 = pattern.points[4];
     const point5 = pattern.points[5];
     const isBullishIss = pattern.direction === 'bullish';
     const stopTime = externalStructureTimes.find((time) => time > pattern.confirmedAt) ?? Infinity;
-    // ISS Level 3 and Level 4 remain ISS zones. Internal structure starts only
-    // after Point 5, once the first new reversal confirms a fresh low/high.
-    let bootstrapIndex = -1;
-    let bootstrapPoint: StructurePoint | null = null;
-    for (let index = confirmedIndex + 1; index < candles.length; index += 1) {
-      if (candles[index].time >= stopTime) break;
-      const candle = candles[index];
-      const previous = candles[index - 1];
-      const reversal = isBullishIss
-        ? candle.close > candle.open
-          && previous.close > previous.open
-          && candle.close > previous.high
-        : candle.close < candle.open
-          && previous.close < previous.open
-          && candle.close < previous.low;
-      if (!reversal) continue;
-      bootstrapPoint = selectTwoCandleRetracementPivot(
-        candles,
-        point5.index + 1,
-        index,
-        isBullishIss ? 'low' : 'high',
-      );
-      bootstrapIndex = index;
-      break;
-    }
-    if (!bootstrapPoint || bootstrapIndex < 0) continue;
-
+    // The final ISS continuation leg already contains the first complete
+    // internal structure: Point 3 is TJL1, Point 4 is the protected TJL2, and
+    // Point 5 is the new continuation extreme. Waiting for another post-ISS
+    // retracement skipped the first valid CHoCH and could incorrectly convert
+    // Point 5 (rather than Point 3) into QML.
     let internalTrend: 'bullish' | 'bearish' = pattern.direction;
-    let protectedPoint = bootstrapPoint;
-    let pathStart = bootstrapPoint;
+    let protectedPoint = point4;
+    let pathStart = point5;
     let activeHigh: StructurePoint | null = null;
     let activeLow: StructurePoint | null = null;
-    // Point 5 and the first confirmed post-ISS reversal are the initial
-    // internal TJL pair. A CHoCH before the first continuation BOS must
-    // therefore convert Point 5 to Internal QML and the fresh reversal level
-    // to Internal SBR/RBS; a later BOS will replace this pair normally.
+    // Keep ISS L3/L4 as their own zones while also using their pivots as the
+    // initial internal TJL pair. On reversal, Point 3 becomes QML, Point 4
+    // becomes SBR/RBS, and Point 5 supplies the DT/DB extreme.
     let currentTjl1: StructureZone | null = addInternalTjlZone(
-      point5,
+      point3,
       'Internal TJL1',
       isBullishIss,
       isBullishIss ? 'high' : 'low',
-      candles[bootstrapIndex].time + sourceBarSeconds,
+      pattern.confirmedAt + sourceBarSeconds,
     );
     let currentTjl2: StructureZone | null = addInternalTjlZone(
-      bootstrapPoint,
+      point4,
       'Internal TJL2',
       isBullishIss,
       isBullishIss ? 'low' : 'high',
-      candles[bootstrapIndex].time + sourceBarSeconds,
+      pattern.confirmedAt + sourceBarSeconds,
     );
     linkInternalTjlPair(currentTjl1, currentTjl2);
-    let lastBullishConfirmIndex: number | null = isBullishIss ? bootstrapIndex : null;
-    let lastBearishConfirmIndex: number | null = isBullishIss ? null : bootstrapIndex;
+    let lastBullishConfirmIndex: number | null = isBullishIss ? point5.index : null;
+    let lastBearishConfirmIndex: number | null = isBullishIss ? null : point5.index;
+    // Internal reversal structure is not established by ISS completion alone.
+    // At least one continuation BOS after Point 5 must confirm the working
+    // internal HH/HL or LL/LH pair before an opposite close can be CHoCH.
+    let hasPostIssInternalBos = false;
 
-    for (let index = bootstrapIndex + 1; index < candles.length; index += 1) {
+    for (let index = point5.index + 1; index < candles.length; index += 1) {
       const candle = candles[index];
       const previous = candles[index - 1];
       if (candle.time >= stopTime) break;
@@ -1831,8 +1814,12 @@ export function findIssFiveWaves(
           pathStart = confirmedLow;
           activeHigh = null;
           lastBullishConfirmIndex = index;
+          hasPostIssInternalBos = true;
         }
-        if (candle.close < protectedPoint.price && previous.close < protectedPoint.price) {
+        // Internal CHoCH is confirmed by the first body close through the
+        // protected Point-4 level. Requiring a second close can miss the true
+        // displacement candle when price immediately retests the broken level.
+        if (hasPostIssInternalBos && candle.close < protectedPoint.price) {
           const newProtectedHigh = activeHigh ?? extreme(candles, protectedPoint.index, index, 'high');
           const lastTjl1 = currentTjl1;
           const lastTjl2 = currentTjl2;
@@ -1855,6 +1842,7 @@ export function findIssFiveWaves(
           activeHigh = null;
           activeLow = null;
           lastBearishConfirmIndex = null;
+          hasPostIssInternalBos = false;
         }
       } else {
         if (twoGreen && activeLow === null) {
@@ -1884,8 +1872,9 @@ export function findIssFiveWaves(
           pathStart = confirmedHigh;
           activeLow = null;
           lastBearishConfirmIndex = index;
+          hasPostIssInternalBos = true;
         }
-        if (candle.close > protectedPoint.price && previous.close > protectedPoint.price) {
+        if (hasPostIssInternalBos && candle.close > protectedPoint.price) {
           const newProtectedLow = activeLow ?? extreme(candles, protectedPoint.index, index, 'low');
           const lastTjl1 = currentTjl1;
           const lastTjl2 = currentTjl2;
@@ -1908,6 +1897,7 @@ export function findIssFiveWaves(
           activeHigh = null;
           activeLow = null;
           lastBullishConfirmIndex = null;
+          hasPostIssInternalBos = false;
         }
       }
     }
