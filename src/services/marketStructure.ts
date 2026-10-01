@@ -71,8 +71,12 @@ export interface StructureZone {
   fibRelevant?: boolean;
   fibBand?: FibBand;
   fibStatus?: 'a-plus' | 'not-valid';
-  // The first confirmed, direction-matching engulfing pattern that touches
-  // this zone after it becomes active. Only A+ FIB zones are eligible.
+  // Exact 0.5 retracement used by the engulfing gate. A zone can be A+ from
+  // band overlap, but no engulfing type is valid until its confirming candle
+  // itself trades through this price.
+  fibLevel50?: number;
+  // The first confirmed, direction-matching engulfing pattern whose final
+  // candle touches both this active zone and the FIB 0.5 level.
   engulfingType?: EngulfingType;
   engulfingDirection?: EngulfingDirection;
   engulfingTime?: number;
@@ -481,7 +485,10 @@ export function findZoneEngulfingPattern(
   zone: StructureZone,
   type4MaxCandles = 10,
 ): EngulfingPattern | undefined {
-  if (zone.fibStatus !== 'a-plus' || zone.status === 'pending' || zone.status === 'rejected') {
+  if (zone.fibStatus !== 'a-plus'
+    || zone.fibLevel50 === undefined
+    || zone.status === 'pending'
+    || zone.status === 'rejected') {
     return undefined;
   }
   const validFrom = Math.max(
@@ -497,6 +504,9 @@ export function findZoneEngulfingPattern(
     if (zone.invalidatedAt !== undefined && finalCandle.time >= zone.invalidatedAt) continue;
     const pattern = detectEngulfingPatternAt(candles, endIndex, type4MaxCandles);
     if (!pattern || pattern.direction !== requiredDirection) continue;
+    const finalCandleTouchesFib50 = finalCandle.low <= zone.fibLevel50
+      && finalCandle.high >= zone.fibLevel50;
+    if (!finalCandleTouchesFib50) continue;
     const touchesActiveZone = candles
       .slice(pattern.startIndex, pattern.endIndex + 1)
       .some((candle) => (
@@ -577,6 +587,7 @@ function applyFibConfluence(candles: StructureCandle[], zones: StructureZone[]):
     const level = (ratio: number) => (
       isSell ? zeroPrice + move * ratio : zeroPrice - move * ratio
     );
+    zone.fibLevel50 = level(0.5);
     zone.fibBand = classifyFibOverlap({
       zoneBottom: zone.bottom,
       zoneTop: zone.top,
@@ -593,6 +604,7 @@ function applyFibConfluence(candles: StructureCandle[], zones: StructureZone[]):
     zone.fibRelevant = false;
     zone.fibBand = undefined;
     zone.fibStatus = undefined;
+    zone.fibLevel50 = undefined;
   }
 
   const sorted = [...zones].sort((a, b) => a.startTime - b.startTime);

@@ -167,7 +167,7 @@ test('Type 4 contains all middle candles inside the first candle over 5–10 can
   assert.notEqual(detectEngulfingPatternAt(bullish, 4)?.type, 'T4');
 });
 
-test('zone engulfing requires A+ FIB, active-zone contact, and matching direction', () => {
+test('zone engulfing requires A+ FIB, active-zone contact, a 0.5 touch, and matching direction', () => {
   const candles: StructureCandle[] = [
     { time: 1, open: 12, high: 13, low: 9, close: 10, complete: true },
     { time: 2, open: 10.5, high: 11, low: 8, close: 9, complete: true },
@@ -180,12 +180,19 @@ test('zone engulfing requires A+ FIB, active-zone contact, and matching directio
     bottom: 7.5,
     top: 8.5,
     fibStatus: 'a-plus',
+    fibLevel50: 9,
   });
 
   assert.equal(findZoneEngulfingPattern(candles, eligible)?.type, 'T2');
   assert.equal(findZoneEngulfingPattern(candles, { ...eligible, isBuy: false }), undefined);
   assert.equal(findZoneEngulfingPattern(candles, { ...eligible, fibStatus: 'not-valid' }), undefined);
   assert.equal(findZoneEngulfingPattern(candles, { ...eligible, bottom: 20, top: 21 }), undefined);
+  assert.equal(
+    findZoneEngulfingPattern(candles, { ...eligible, fibLevel50: 8 }),
+    undefined,
+    'an earlier pattern candle touching 0.5 cannot qualify a final candle that did not touch it',
+  );
+  assert.equal(findZoneEngulfingPattern(candles, { ...eligible, fibLevel50: undefined }), undefined);
 });
 
 test('a later zone invalidation does not erase an earlier TJL1 confirmation', () => {
