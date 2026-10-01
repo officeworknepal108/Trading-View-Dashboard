@@ -78,8 +78,9 @@ export interface StructureZone {
   // band overlap, but no engulfing type is valid until its confirming candle
   // itself trades through this price.
   fibLevel50?: number;
-  // The first confirmed, direction-matching engulfing pattern whose final
-  // candle touches both this active zone and the FIB 0.5 level.
+  // The first confirmed, direction-matching engulfing pattern that touches
+  // this active zone. Primary FIB setups additionally require the final candle
+  // to touch 0.5; a valid deep-discount setup qualifies from its own zone.
   engulfingType?: EngulfingType;
   engulfingDirection?: EngulfingDirection;
   engulfingTime?: number;
@@ -473,19 +474,21 @@ export function detectEngulfingPatternAt(
   const second = candles[endIndex - 1];
   const first = candles[endIndex - 2];
   if (first && second && first.complete !== false && second.complete !== false) {
-    // Type 2: two same-direction candles, the second sweeps the first, and the
-    // third reverses through the FIRST candle's opposite extreme.
-    if (candleIsBearish(first) && candleIsBearish(second)
+    // Type 2 BUY: red first candle, green second candle whose lower wick
+    // sweeps the first low, then a third green body closes above the FIRST
+    // candle's high. SELL is the exact inverse.
+    if (candleIsBearish(first) && candleIsBullish(second)
       && second.low <= first.low && candleIsBullish(current) && current.close > first.high) {
       return { type: 'T2', direction: 'bullish', candleCount: 3, startIndex: endIndex - 2, endIndex };
     }
-    if (candleIsBullish(first) && candleIsBullish(second)
+    if (candleIsBullish(first) && candleIsBearish(second)
       && second.high >= first.high && candleIsBearish(current) && current.close < first.low) {
       return { type: 'T2', direction: 'bearish', candleCount: 3, startIndex: endIndex - 2, endIndex };
     }
 
-    // Type 3: the middle candle already reverses, sweeps the first candle, and
-    // the third continuation candle closes through the MIDDLE candle.
+    // Type 3 uses the same mixed-direction sweep, but its third continuation
+    // candle closes through only the MIDDLE candle's extreme. Type 2 is checked
+    // first so a close through the first candle is never mislabeled Type 3.
     if (candleIsBearish(first) && candleIsBullish(second)
       && second.low <= first.low && candleIsBullish(current) && current.close > second.high) {
       return { type: 'T3', direction: 'bullish', candleCount: 3, startIndex: endIndex - 2, endIndex };
@@ -511,8 +514,9 @@ export function findZoneEngulfingPattern(
   zone: StructureZone,
   type4MaxCandles = 10,
 ): EngulfingPattern | undefined {
+  const isDeepFib = zone.fibBand === '0.71-0.79' || zone.fibBand === 'deep';
   if (zone.fibStatus !== 'a-plus'
-    || zone.fibLevel50 === undefined
+    || (!isDeepFib && zone.fibLevel50 === undefined)
     || zone.status === 'pending'
     || zone.status === 'rejected') {
     return undefined;
@@ -530,9 +534,11 @@ export function findZoneEngulfingPattern(
     if (zone.invalidatedAt !== undefined && finalCandle.time >= zone.invalidatedAt) continue;
     const pattern = detectEngulfingPatternAt(candles, endIndex, type4MaxCandles);
     if (!pattern || pattern.direction !== requiredDirection) continue;
-    const finalCandleTouchesFib50 = finalCandle.low <= zone.fibLevel50
-      && finalCandle.high >= zone.fibLevel50;
-    if (!finalCandleTouchesFib50) continue;
+    if (!isDeepFib) {
+      const finalCandleTouchesFib50 = finalCandle.low <= zone.fibLevel50!
+        && finalCandle.high >= zone.fibLevel50!;
+      if (!finalCandleTouchesFib50) continue;
+    }
     const touchesActiveZone = candles
       .slice(pattern.startIndex, pattern.endIndex + 1)
       .some((candle) => (

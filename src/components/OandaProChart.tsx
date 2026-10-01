@@ -229,6 +229,7 @@ export const OandaProChart: React.FC = () => {
   const showFibRef = useRef(true);
   const showInvalidZonesRef = useRef(false);
   const redrawZonesRef = useRef<() => void>(() => undefined);
+  const overlayRedrawFrameRef = useRef<number | null>(null);
   const hasFittedRef = useRef(false);
   const replayTimeRef = useRef<number | null>(null);
   const pendingReplayViewportRef = useRef<{ fromOffset: number; toOffset: number } | null>(null);
@@ -442,9 +443,15 @@ export const OandaProChart: React.FC = () => {
     const chart = chartRef.current;
     const series = candleSeriesRef.current;
     if (!layer || !host || !chart || !series) return;
-    layer.replaceChildren();
-    if (displayCandles.length === 0) return;
+    if (displayCandles.length === 0) {
+      layer.replaceChildren();
+      return;
+    }
 
+    const fragment = document.createDocumentFragment();
+    const candleByTime = new Map<number, OandaCandle>(displayCandles.map((candle) => (
+      [Number(candle.time), candle] as [number, OandaCandle]
+    )));
     const rightEdge = Math.max(0, host.clientWidth - 72);
     for (const zone of zonesRef.current) {
       const visible = zone.category === 'mg'
@@ -533,7 +540,7 @@ export const OandaProChart: React.FC = () => {
       label.style.fontWeight = '800';
       label.style.color = inactive ? '#475569' : pending ? demand ? '#047857' : '#be123c' : isIss ? '#b45309' : isInternal ? '#6d28d9' : demand ? '#047857' : '#be123c';
       box.appendChild(label);
-      layer.appendChild(box);
+      fragment.appendChild(box);
     }
 
     if (showStructureRef.current || showIssRef.current || showInternalRef.current) {
@@ -590,7 +597,7 @@ export const OandaProChart: React.FC = () => {
       // from the candle and make it look like the point belongs elsewhere.
       if (showIssRef.current) {
         for (const marker of issMarkersRef.current) {
-          const candle = displayCandles.find((item) => Number(item.time) === Number(marker.time));
+          const candle = candleByTime.get(Number(marker.time));
           if (!candle) continue;
           const x = chart.timeScale().timeToCoordinate(marker.time as UTCTimestamp);
           const isHigh = marker.position === 'aboveBar';
@@ -637,11 +644,22 @@ export const OandaProChart: React.FC = () => {
           svg.appendChild(text);
         }
       }
-      layer.appendChild(svg);
+      fragment.appendChild(svg);
     }
+    // Swap the complete overlay in one operation so the browser does not
+    // perform layout work for every individual zone, line, and label.
+    layer.replaceChildren(fragment);
   }, [displayCandles.length, granularity]);
 
   redrawZonesRef.current = redrawZones;
+
+  const scheduleOverlayRedraw = useCallback(() => {
+    if (overlayRedrawFrameRef.current !== null) return;
+    overlayRedrawFrameRef.current = window.requestAnimationFrame(() => {
+      overlayRedrawFrameRef.current = null;
+      redrawZonesRef.current();
+    });
+  }, []);
 
   useEffect(() => {
     zonesRef.current = structure.zones;
@@ -656,9 +674,8 @@ export const OandaProChart: React.FC = () => {
     showInternalRef.current = showInternal;
     showFibRef.current = showFib;
     showInvalidZonesRef.current = showInvalidZones;
-    const frame = window.requestAnimationFrame(redrawZones);
-    return () => window.cancelAnimationFrame(frame);
-  }, [redrawZones, showFib, showInternal, showInvalidZones, showIss, showMgZones, showStructure, showSupplyDemand, structure.internalMarkers, structure.issMarkers, structure.lines, structure.markers, structure.zones]);
+    scheduleOverlayRedraw();
+  }, [redrawZones, scheduleOverlayRedraw, showFib, showInternal, showInvalidZones, showIss, showMgZones, showStructure, showSupplyDemand, structure.internalMarkers, structure.issMarkers, structure.lines, structure.markers, structure.zones]);
 
   useEffect(() => {
     if (!replayPlaying || replayIndex === null) return;
@@ -701,11 +718,10 @@ export const OandaProChart: React.FC = () => {
         }
         return payload;
       };
-      const responses: MarketDataResponse[] = await Promise.all([
-        requestCandles(granularity),
-        ...auxiliaryGranularities.map(requestCandles),
-      ]);
-      const [payload, ...auxiliaryPayloads] = responses;
+      // Prioritize the selected chart. Opening seven unofficial TradingView
+      // sockets at once made the main timeframe wait behind slower auxiliary
+      // requests even though those are only needed for VIP/trend context.
+      const payload = await requestCandles(granularity);
       if (requestId !== loadRequestIdRef.current) return;
       if (payload.candles.length === 0) throw new Error('TradingView returned no candles for OANDA:XAUUSD.');
       const nextReplayIndex = replayTime === null
@@ -716,14 +732,20 @@ export const OandaProChart: React.FC = () => {
       }
       loadedGranularityRef.current = granularity;
       setCandles(payload.candles);
-      setVipCandles(Object.fromEntries(auxiliaryGranularities.map((supportGranularity, index) => (
-        [supportGranularity, auxiliaryPayloads[index]?.candles || []]
-      ))));
       if (nextReplayIndex !== null) setReplayIndex(nextReplayIndex);
       setHoveredCandle(null);
       setSource(payload.source || 'TradingView WebSocket · OANDA:XAUUSD · unofficial');
       setLastUpdated(payload.fetchedAt || new Date().toISOString());
       setError(null);
+      setIsLoading(false);
+
+      // Supporting timeframes load after the visible chart. Their final data
+      // and all resulting structure calculations are identical to before.
+      const auxiliaryPayloads = await Promise.all(auxiliaryGranularities.map(requestCandles));
+      if (requestId !== loadRequestIdRef.current) return;
+      setVipCandles(Object.fromEntries(auxiliaryGranularities.map((supportGranularity, index) => (
+        [supportGranularity, auxiliaryPayloads[index]?.candles || []]
+      ))));
     } catch (loadError) {
       if ((loadError as Error).name !== 'AbortError') {
         setError(loadError instanceof Error ? loadError.message : 'Unable to load TradingView candles.');
@@ -828,13 +850,11 @@ export const OandaProChart: React.FC = () => {
 
     const observer = new ResizeObserver(([entry]) => {
       chart.applyOptions({ width: entry.contentRect.width, height: entry.contentRect.height });
-      window.requestAnimationFrame(() => {
-        redrawZonesRef.current();
-        syncReplaySelectionLineRef.current();
-      });
+      scheduleOverlayRedraw();
+      window.requestAnimationFrame(() => syncReplaySelectionLineRef.current());
     });
     const handleVisibleRangeChange = () => {
-      redrawZonesRef.current();
+      scheduleOverlayRedraw();
       syncReplaySelectionLineRef.current();
     };
     chart.timeScale().subscribeVisibleLogicalRangeChange(handleVisibleRangeChange);
@@ -846,13 +866,17 @@ export const OandaProChart: React.FC = () => {
     return () => {
       observer.disconnect();
       chart.timeScale().unsubscribeVisibleLogicalRangeChange(handleVisibleRangeChange);
+      if (overlayRedrawFrameRef.current !== null) {
+        window.cancelAnimationFrame(overlayRedrawFrameRef.current);
+        overlayRedrawFrameRef.current = null;
+      }
       chart.remove();
       chartRef.current = null;
       candleSeriesRef.current = null;
       volumeSeriesRef.current = null;
       markersRef.current = null;
     };
-  }, []);
+  }, [scheduleOverlayRedraw]);
 
   useEffect(() => {
     const frame = window.requestAnimationFrame(syncReplaySelectionLine);
@@ -894,8 +918,8 @@ export const OandaProChart: React.FC = () => {
       restorePresentChartView();
       hasFittedRef.current = true;
     }
-    window.requestAnimationFrame(() => redrawZonesRef.current());
-  }, [displayCandles, replayIndex, restorePresentChartView, showEngulfing, showInternal, showIss, showStructure, structure.engulfingMarkers, structure.internalMarkers, structure.issMarkers, structure.markers]);
+    scheduleOverlayRedraw();
+  }, [displayCandles, replayIndex, restorePresentChartView, scheduleOverlayRedraw, showEngulfing, showInternal, showIss, showStructure, structure.engulfingMarkers, structure.internalMarkers, structure.issMarkers, structure.markers]);
 
   useEffect(() => {
     const label = livePriceLabelRef.current;
