@@ -20,6 +20,7 @@ import {
 } from 'lucide-react';
 import { analyzeMarketStructure, StructureLine, StructureZone } from '../services/marketStructure';
 import { findReplayIndexAtOrBefore } from '../services/replay';
+import { buildAlternatingSwingFibs, SwingFibMove } from '../services/swingFib';
 
 type OandaGranularity = 'M1' | 'M5' | 'M15' | 'M30' | 'H1' | 'H4' | 'D';
 type MarketGranularity = OandaGranularity | 'W' | 'MO';
@@ -284,6 +285,7 @@ export const OandaProChart: React.FC = () => {
   const liveCountdownRef = useRef<HTMLSpanElement | null>(null);
   const replaySelectionLineRef = useRef<HTMLDivElement | null>(null);
   const zonesRef = useRef<StructureZone[]>([]);
+  const swingFibMovesRef = useRef<SwingFibMove[]>([]);
   const structureLinesRef = useRef<StructureLine[]>([]);
   const structureMarkersRef = useRef<any[]>([]);
   const issMarkersRef = useRef<any[]>([]);
@@ -415,6 +417,23 @@ export const OandaProChart: React.FC = () => {
     }),
     [displayCandles, granularity, vipSupportContexts],
   );
+
+  const swingFibMoves = useMemo(() => {
+    if (granularity !== 'H4') return [];
+    const seedLine = structure.lines
+      .filter((line) => line.type === 'swing'
+        && line.fromTime !== line.toTime
+        && line.fromPrice !== line.toPrice)
+      .sort((first, second) => first.toTime - second.toTime)[0];
+    if (!seedLine) return [];
+
+    return buildAlternatingSwingFibs(displayCandles, {
+      sourceTime: seedLine.fromTime,
+      sourcePrice: seedLine.fromPrice,
+      zeroTime: seedLine.toTime,
+      zeroPrice: seedLine.toPrice,
+    });
+  }, [displayCandles, granularity, structure.lines]);
 
   const restorePresentChartView = useCallback(() => {
     const chart = chartRef.current;
@@ -670,6 +689,27 @@ export const OandaProChart: React.FC = () => {
           fibMovesByType.set(type, typeMoves);
         }
 
+        if (fibVisibilityRef.current.swing || fibPreviousVisibilityRef.current.swing) {
+          const swingZones = swingFibMovesRef.current.map<StructureZone>((move) => ({
+            id: `swing-fib-${move.startedAt}-${move.direction}`,
+            name: move.direction === 'up' ? 'DEMAND' : 'SUPPLY',
+            category: 'supplyDemand',
+            isBuy: move.direction === 'up',
+            startTime: move.startedAt,
+            endTime: move.zeroTime,
+            top: Math.max(move.sourcePrice, move.zeroPrice),
+            bottom: Math.min(move.sourcePrice, move.zeroPrice),
+            active: true,
+            status: 'valid',
+            fibRelevant: true,
+            fibSourceTime: move.sourceTime,
+            fibSourcePrice: move.sourcePrice,
+            fibZeroTime: move.zeroTime,
+            fibZeroPrice: move.zeroPrice,
+          }));
+          fibMovesByType.set('swing', swingZones);
+        }
+
         const latestFibMoves = [...fibMovesByType.entries()].flatMap(([type, typeMoves]) => {
           const distinctMoves = new Set<string>();
           const orderedMoves = typeMoves
@@ -875,6 +915,7 @@ export const OandaProChart: React.FC = () => {
 
   useEffect(() => {
     zonesRef.current = structure.zones;
+    swingFibMovesRef.current = swingFibMoves;
     structureLinesRef.current = structure.lines;
     structureMarkersRef.current = structure.markers;
     issMarkersRef.current = structure.issMarkers;
@@ -889,7 +930,13 @@ export const OandaProChart: React.FC = () => {
     fibPreviousVisibilityRef.current = fibPreviousVisibility;
     showInvalidZonesRef.current = showInvalidZones;
     scheduleOverlayRedraw();
-  }, [fibPreviousVisibility, fibVisibility, redrawZones, scheduleOverlayRedraw, showFib, showInternal, showInvalidZones, showIss, showMgZones, showStructure, showSupplyDemand, structure.internalMarkers, structure.issMarkers, structure.lines, structure.markers, structure.zones]);
+  }, [fibPreviousVisibility, fibVisibility, redrawZones, scheduleOverlayRedraw, showFib, showInternal, showInvalidZones, showIss, showMgZones, showStructure, showSupplyDemand, structure.internalMarkers, structure.issMarkers, structure.lines, structure.markers, structure.zones, swingFibMoves]);
+
+  useEffect(() => {
+    if (granularity !== 'H4' && expandedFibOption === 'swing') {
+      setExpandedFibOption(null);
+    }
+  }, [expandedFibOption, granularity]);
 
   useEffect(() => {
     if (!replayPlaying || replayIndex === null) return;
@@ -1242,18 +1289,22 @@ export const OandaProChart: React.FC = () => {
 
   const renderFibOptionButton = (option: { key: FibVisibilityKey; label: string }) => {
     const isSingleMarking = isSingleFibMarkingKey(option.key);
+    const isUnavailable = option.key === 'swing' && granularity !== 'H4';
     const latestOn = fibVisibility[option.key];
     const previousOn = fibPreviousVisibility[option.key];
-    const status = isSingleMarking
+    const status = isUnavailable
+      ? '4H'
+      : isSingleMarking
       ? latestOn ? 'ON' : 'OFF'
       : latestOn && previousOn
         ? 'BOTH'
         : latestOn ? 'LATEST' : previousOn ? 'PREV' : 'OFF';
-    const active = latestOn || (!isSingleMarking && previousOn);
+    const active = !isUnavailable && (latestOn || (!isSingleMarking && previousOn));
     return (
       <button
         key={option.key}
         type="button"
+        disabled={isUnavailable}
         onClick={() => {
           if (isSingleMarking) {
             setFibVisibility((current) => ({
@@ -1270,13 +1321,17 @@ export const OandaProChart: React.FC = () => {
           setExpandedFibOption((current) => current === option.key ? null : option.key);
         }}
         className={`flex h-7 items-center justify-between rounded-md border px-1.5 text-[8px] font-black leading-none transition ${
-          expandedFibOption === option.key
+          isUnavailable
+            ? 'cursor-not-allowed border-slate-200 bg-slate-100 text-slate-400'
+            : expandedFibOption === option.key
             ? 'border-fuchsia-300 bg-fuchsia-100 text-fuchsia-800'
             : active
               ? 'border-fuchsia-200 bg-fuchsia-50 text-fuchsia-700'
               : 'border-slate-200 bg-slate-50 text-slate-500 hover:bg-slate-100'
         }`}
-        title={isSingleMarking
+        title={isUnavailable
+          ? 'Swing FIB marking is available only on the 4H chart'
+          : isSingleMarking
           ? `Show or hide the single current ${option.label.replace(' MARKING', '')} FIB marking`
           : `Choose latest or previous ${option.label}`}
         aria-expanded={isSingleMarking ? undefined : expandedFibOption === option.key}
