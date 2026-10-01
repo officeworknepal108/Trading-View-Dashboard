@@ -178,6 +178,24 @@ test('TJL1 FIB uses its current paired TJL2 even when the TJL2 pivot is newer', 
     findTjlFibSource(bearishTjl1, [currentTjl2, bearishTjl1, bearishTjl2])?.id,
     'bearish-tjl2',
   );
+
+  const internalTjl1 = zone({
+    id: 'internal-tjl1', name: 'Internal TJL1', category: 'internal',
+    isBuy: true, startTime: 900, tjlPairTime: 1100,
+  });
+  const internalTjl2 = zone({
+    id: 'internal-tjl2', name: 'Internal TJL2', category: 'internal',
+    isBuy: true, startTime: 1000, tjlPairTime: 1100,
+  });
+  const internalReset = zone({
+    id: 'internal-reset', name: 'Internal QML', category: 'internal',
+    startTime: 1050, chochTime: 1050,
+  });
+  assert.equal(
+    findTjlFibSource(internalTjl1, [internalTjl1, internalTjl2, internalReset])?.id,
+    'internal-tjl2',
+    'a current internal pair uses its TJL2 pivot even when that pivot precedes the reset',
+  );
 });
 
 test('ISS FIB runs from Point 0 and extends beyond Point 5 to the latest completed extreme', () => {

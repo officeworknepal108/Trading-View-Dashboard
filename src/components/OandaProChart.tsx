@@ -23,12 +23,16 @@ import { findReplayIndexAtOrBefore } from '../services/replay';
 
 type OandaGranularity = 'M1' | 'M5' | 'M15' | 'M30' | 'H1' | 'H4' | 'D';
 type MarketGranularity = OandaGranularity | 'W' | 'MO';
-type FibVisibilityKey = 'tjl1' | 'tjl2' | 'choch' | 'doubleChoch' | 'iss' | 'swing';
+type FibVisibilityKey = 'tjl1' | 'tjl2' | 'choch' | 'intChoch' | 'intTjl1' | 'intTjl2'
+  | 'doubleChoch' | 'iss' | 'swing';
 
 const DEFAULT_FIB_VISIBILITY: Record<FibVisibilityKey, boolean> = {
   tjl1: false,
   tjl2: false,
   choch: false,
+  intChoch: false,
+  intTjl1: false,
+  intTjl2: false,
   doubleChoch: false,
   iss: false,
   swing: false,
@@ -42,6 +46,22 @@ const FIB_VISIBILITY_OPTIONS: Array<{ key: FibVisibilityKey; label: string }> = 
   { key: 'iss', label: 'ISS MARKING' },
   { key: 'swing', label: 'SWING MARKING' },
 ];
+
+const INTERNAL_FIB_VISIBILITY_OPTIONS: Array<{ key: FibVisibilityKey; label: string }> = [
+  { key: 'intChoch', label: 'Int CHoCH MARKING' },
+  { key: 'intTjl1', label: 'Int TJL1 MARKING' },
+  { key: 'intTjl2', label: 'Int TJL2 MARKING' },
+];
+
+const ALL_FIB_VISIBILITY_OPTIONS = [
+  ...FIB_VISIBILITY_OPTIONS,
+  ...INTERNAL_FIB_VISIBILITY_OPTIONS,
+];
+
+function isSingleFibMarkingKey(key: FibVisibilityKey): boolean {
+  return key === 'tjl1' || key === 'tjl2' || key === 'intTjl1' || key === 'intTjl2'
+    || key === 'doubleChoch' || key === 'iss';
+}
 
 interface OandaCandle {
   time: number;
@@ -144,7 +164,12 @@ function displayFibLabel(zone: StructureZone): string {
 }
 
 function fibVisibilityKey(zone: StructureZone): FibVisibilityKey {
-  if (zone.category === 'iss' || zone.category === 'internal') return 'iss';
+  if (zone.category === 'iss') return 'iss';
+  if (zone.category === 'internal') {
+    if (zone.name === 'Internal TJL1') return 'intTjl1';
+    if (zone.name === 'Internal TJL2') return 'intTjl2';
+    return 'intChoch';
+  }
   if (zone.doubleChochTime !== undefined || zone.doubleChochStatus !== undefined) return 'doubleChoch';
   if (zone.chochTime !== undefined || zone.chochClass !== undefined) return 'choch';
   if (zone.name === 'TJL1') return 'tjl1';
@@ -159,7 +184,8 @@ function isFibMarkingVisible(
   previousVisibility: Record<FibVisibilityKey, boolean>,
 ): boolean {
   const key = fibVisibilityKey(zone);
-  if (key === 'tjl1' || key === 'tjl2' || key === 'doubleChoch' || key === 'iss') {
+  if (key === 'tjl1' || key === 'tjl2' || key === 'intTjl1' || key === 'intTjl2'
+    || key === 'doubleChoch' || key === 'iss') {
     return showFib && visibility[key];
   }
   return showFib && (visibility[key] || previousVisibility[key]);
@@ -298,6 +324,7 @@ export const OandaProChart: React.FC = () => {
   const [showInternal, setShowInternal] = useState(true);
   const [showFib, setShowFib] = useState(true);
   const [showFibOptions, setShowFibOptions] = useState(false);
+  const [showInternalFibOptions, setShowInternalFibOptions] = useState(false);
   const [expandedFibOption, setExpandedFibOption] = useState<FibVisibilityKey | null>(null);
   const [fibVisibility, setFibVisibility] = useState<Record<FibVisibilityKey, boolean>>(
     DEFAULT_FIB_VISIBILITY,
@@ -314,9 +341,8 @@ export const OandaProChart: React.FC = () => {
   const [replaySelecting, setReplaySelecting] = useState(false);
   const [replaySelectionIndex, setReplaySelectionIndex] = useState<number | null>(null);
   const [replaySpeed, setReplaySpeed] = useState(1);
-  const hasAnyFibMarking = FIB_VISIBILITY_OPTIONS.some(({ key }) => (
-    fibVisibility[key] || fibPreviousVisibility[key]
-  ));
+  const hasAnyFibMarking = Object.values(fibVisibility).some(Boolean)
+    || Object.values(fibPreviousVisibility).some(Boolean);
 
   candlesRef.current = candles;
   replaySelectingRef.current = replaySelecting;
@@ -624,7 +650,11 @@ export const OandaProChart: React.FC = () => {
           const type = fibVisibilityKey(zone);
           const isIssWaveFib = type === 'iss' && zone.name === 'ISS L3'
             && zone.issPoint0Time !== undefined;
+          const isInternalChochFib = type === 'intChoch'
+            && zone.category === 'internal'
+            && zone.chochTime !== undefined;
           if (type === 'iss' && !isIssWaveFib) continue;
+          if (type === 'intChoch' && !isInternalChochFib) continue;
           if (!zone.active && !showInvalidZonesRef.current && !isIssWaveFib) continue;
           if (!zone.fibRelevant || !isFibMarkingVisible(
             zone,
@@ -663,7 +693,8 @@ export const OandaProChart: React.FC = () => {
             });
           return [
             fibVisibilityRef.current[type] ? orderedMoves[0] : undefined,
-            type !== 'tjl1' && type !== 'tjl2' && type !== 'doubleChoch' && type !== 'iss'
+            type !== 'tjl1' && type !== 'tjl2' && type !== 'intTjl1' && type !== 'intTjl2'
+              && type !== 'doubleChoch' && type !== 'iss'
               && fibPreviousVisibilityRef.current[type]
               ? orderedMoves[1]
               : undefined,
@@ -1209,6 +1240,57 @@ export const OandaProChart: React.FC = () => {
     ));
   };
 
+  const renderFibOptionButton = (option: { key: FibVisibilityKey; label: string }) => {
+    const isSingleMarking = isSingleFibMarkingKey(option.key);
+    const latestOn = fibVisibility[option.key];
+    const previousOn = fibPreviousVisibility[option.key];
+    const status = isSingleMarking
+      ? latestOn ? 'ON' : 'OFF'
+      : latestOn && previousOn
+        ? 'BOTH'
+        : latestOn ? 'LATEST' : previousOn ? 'PREV' : 'OFF';
+    const active = latestOn || (!isSingleMarking && previousOn);
+    return (
+      <button
+        key={option.key}
+        type="button"
+        onClick={() => {
+          if (isSingleMarking) {
+            setFibVisibility((current) => ({
+              ...current,
+              [option.key]: !current[option.key],
+            }));
+            setFibPreviousVisibility((current) => ({
+              ...current,
+              [option.key]: false,
+            }));
+            setExpandedFibOption((current) => current === option.key ? null : current);
+            return;
+          }
+          setExpandedFibOption((current) => current === option.key ? null : option.key);
+        }}
+        className={`flex h-7 items-center justify-between rounded-md border px-1.5 text-[8px] font-black leading-none transition ${
+          expandedFibOption === option.key
+            ? 'border-fuchsia-300 bg-fuchsia-100 text-fuchsia-800'
+            : active
+              ? 'border-fuchsia-200 bg-fuchsia-50 text-fuchsia-700'
+              : 'border-slate-200 bg-slate-50 text-slate-500 hover:bg-slate-100'
+        }`}
+        title={isSingleMarking
+          ? `Show or hide the single current ${option.label.replace(' MARKING', '')} FIB marking`
+          : `Choose latest or previous ${option.label}`}
+        aria-expanded={isSingleMarking ? undefined : expandedFibOption === option.key}
+      >
+        <span className="whitespace-nowrap">{option.label.replace(' MARKING', '')}</span>
+        <span className={`ml-1 rounded-full px-1 py-0.5 text-[8px] ${
+          active ? 'bg-fuchsia-200 text-fuchsia-800' : 'bg-slate-200 text-slate-500'
+        }`}>
+          {status}
+        </span>
+      </button>
+    );
+  };
+
   return (
     <section className="h-full w-full bg-slate-100 p-3 sm:p-4 overflow-hidden">
       <div className="h-full w-full overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm flex flex-col">
@@ -1419,67 +1501,46 @@ export const OandaProChart: React.FC = () => {
                     </button>
                   </div>
                   <div className="grid grid-cols-2 gap-1">
-                    {FIB_VISIBILITY_OPTIONS.map((option) => {
-                      const isSingleMarking = option.key === 'tjl1'
-                        || option.key === 'tjl2'
-                        || option.key === 'doubleChoch'
-                        || option.key === 'iss';
-                      const latestOn = fibVisibility[option.key];
-                      const previousOn = fibPreviousVisibility[option.key];
-                      const status = isSingleMarking
-                        ? latestOn ? 'ON' : 'OFF'
-                        : latestOn && previousOn
-                        ? 'BOTH'
-                        : latestOn ? 'LATEST' : previousOn ? 'PREV' : 'OFF';
-                      const active = latestOn || (!isSingleMarking && previousOn);
-                      return (
-                        <button
-                          key={option.key}
-                          type="button"
-                          onClick={() => {
-                            if (isSingleMarking) {
-                              setFibVisibility((current) => ({
-                                ...current,
-                                [option.key]: !current[option.key],
-                              }));
-                              setFibPreviousVisibility((current) => ({
-                                ...current,
-                                [option.key]: false,
-                              }));
-                              setExpandedFibOption((current) => current === option.key ? null : current);
-                              return;
-                            }
-                            setExpandedFibOption((current) => current === option.key ? null : option.key);
-                          }}
-                          className={`flex h-7 items-center justify-between rounded-md border px-1.5 text-[8px] font-black leading-none transition ${
-                            expandedFibOption === option.key
-                              ? 'border-fuchsia-300 bg-fuchsia-100 text-fuchsia-800'
-                              : active
-                                ? 'border-fuchsia-200 bg-fuchsia-50 text-fuchsia-700'
-                                : 'border-slate-200 bg-slate-50 text-slate-500 hover:bg-slate-100'
-                          }`}
-                          title={isSingleMarking
-                            ? `Show or hide the single current ${option.label.replace(' MARKING', '')} FIB marking`
-                            : `Choose latest or previous ${option.label}`}
-                          aria-expanded={isSingleMarking ? undefined : expandedFibOption === option.key}
-                        >
-                          <span className="whitespace-nowrap">{option.label.replace(' MARKING', '')}</span>
-                          <span className={`ml-1 rounded-full px-1 py-0.5 text-[8px] ${
-                            active ? 'bg-fuchsia-200 text-fuchsia-800' : 'bg-slate-200 text-slate-500'
-                          }`}>
-                            {status}
-                          </span>
-                        </button>
-                      );
-                    })}
+                    {FIB_VISIBILITY_OPTIONS.map(renderFibOptionButton)}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowInternalFibOptions((visible) => !visible);
+                        if (showInternalFibOptions
+                          && expandedFibOption
+                          && INTERNAL_FIB_VISIBILITY_OPTIONS.some(({ key }) => key === expandedFibOption)) {
+                          setExpandedFibOption(null);
+                        }
+                      }}
+                      className={`flex h-7 items-center justify-between rounded-md border px-1.5 text-[8px] font-black leading-none transition ${
+                        showInternalFibOptions
+                          ? 'border-violet-300 bg-violet-100 text-violet-800'
+                          : INTERNAL_FIB_VISIBILITY_OPTIONS.some(({ key }) => (
+                            fibVisibility[key] || fibPreviousVisibility[key]
+                          ))
+                            ? 'border-violet-200 bg-violet-50 text-violet-700'
+                            : 'border-slate-200 bg-slate-50 text-slate-500 hover:bg-slate-100'
+                      }`}
+                      aria-expanded={showInternalFibOptions}
+                    >
+                      <span>INTERNAL</span>
+                      <span className="ml-1 rounded-full bg-violet-200 px-1 py-0.5 text-[8px] text-violet-800">
+                        {showInternalFibOptions ? '−' : '+'}
+                      </span>
+                    </button>
                   </div>
-                  {expandedFibOption && expandedFibOption !== 'tjl1'
-                    && expandedFibOption !== 'tjl2'
-                    && expandedFibOption !== 'doubleChoch'
-                    && expandedFibOption !== 'iss' && (
+                  {showInternalFibOptions && (
+                    <div className="mt-1.5 rounded-md border border-violet-100 bg-violet-50/60 p-1.5">
+                      <div className="mb-1 text-[8px] font-black text-violet-800">INTERNAL FIB</div>
+                      <div className="grid grid-cols-2 gap-1">
+                        {INTERNAL_FIB_VISIBILITY_OPTIONS.map(renderFibOptionButton)}
+                      </div>
+                    </div>
+                  )}
+                  {expandedFibOption && !isSingleFibMarkingKey(expandedFibOption) && (
                     <div className="mt-1.5 rounded-md border border-fuchsia-100 bg-fuchsia-50/60 p-1.5">
                       <div className="mb-1 text-[8px] font-black text-fuchsia-800">
-                        {FIB_VISIBILITY_OPTIONS.find(({ key }) => key === expandedFibOption)
+                        {ALL_FIB_VISIBILITY_OPTIONS.find(({ key }) => key === expandedFibOption)
                           ?.label.replace(' MARKING', '')} SETUP
                       </div>
                       <div className="grid grid-cols-2 gap-1">

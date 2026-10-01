@@ -787,8 +787,12 @@ export function findTjlFibSource(
       && candidate.category === zone.category
       && candidate.name === (internal ? 'Internal TJL2' : 'TJL2')
       && candidate.isBuy === zone.isBuy
-      && candidate.startTime > resetTime
-      && (zone.name === 'TJL1' && zone.tjlPairTime !== undefined
+      // A TJL pivot can precede the BOS/formation candle that confirms its
+      // pair. Structure-reset eligibility therefore follows the shared pair
+      // time, while the actual FIB anchor remains the TJL2 pivot wick/time.
+      && (candidate.tjlPairTime ?? candidate.startTime) > resetTime
+      && ((zone.name === 'TJL1' || zone.name === 'Internal TJL1')
+        && zone.tjlPairTime !== undefined
         ? candidate.tjlPairTime === zone.tjlPairTime
         : candidate.startTime < zone.startTime))
     .at(-1);
@@ -805,7 +809,7 @@ export function invalidateTjlFibBeforeLatestStructureReset(zones: StructureZone[
   for (const zone of zones) {
     if (zone.category !== 'mg'
       || (zone.name !== 'TJL1' && zone.name !== 'TJL2')
-      || zone.startTime > latestResetTime) continue;
+      || (zone.tjlPairTime ?? zone.startTime) > latestResetTime) continue;
     zone.fibRelevant = false;
     zone.fibBand = undefined;
     zone.fibStatus = undefined;
@@ -1788,6 +1792,7 @@ export function findIssFiveWaves(
       category: 'internal',
       isBuy,
       startTime: point.time,
+      tjlPairTime: formationTime,
       endTime: point.time + sourceBarSeconds * zoneVisualBars,
       activeFromTime: confirmation.status === 'valid'
         ? confirmation.confirmationTime ?? formationTime
