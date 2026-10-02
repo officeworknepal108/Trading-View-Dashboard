@@ -43,20 +43,20 @@ interface MtfMapping {
 
 export const MTF_MAPPINGS: MtfMapping[] = [
   { higher: 'M15', lower: 'M1', confirmations: ['choch'] },
-  { higher: 'M15', lower: 'M5', confirmations: ['choch', 'iss'] },
-  { higher: 'H1', lower: 'M5', confirmations: ['choch', 'iss'] },
-  { higher: 'H4', lower: 'M15', confirmations: ['choch', 'iss'] },
-  { higher: 'D', lower: 'H1', confirmations: ['choch', 'iss'] },
+  { higher: 'M15', lower: 'M5', confirmations: ['choch'] },
+  { higher: 'H1', lower: 'M5', confirmations: ['choch'] },
+  { higher: 'H4', lower: 'M15', confirmations: ['choch'] },
+  { higher: 'D', lower: 'H1', confirmations: ['choch'] },
 ];
 
 const CHOCH_ZONE_NAMES = new Set<StructureZone['name']>(['QML', 'SBR', 'RBS', 'DT', 'DB']);
-const ISS_ZONE_NAMES = new Set<StructureZone['name']>(['ISS L3', 'ISS L4']);
 
 interface ConfirmationEvent {
   kind: MtfConfirmationKind;
   time: number;
   isBuy: boolean;
   zones: StructureZone[];
+  sourceStructureTime?: number;
   fibSourcePrice?: number;
   fibZeroPrice?: number;
 }
@@ -83,6 +83,7 @@ function latestHigherTimeframeTouch(
   zones: StructureZone[],
   confirmationTime: number,
   isBuy: boolean,
+  sourceStructureTime: number,
 ): { zone: StructureZone; time: number } | undefined {
   let latest: { zone: StructureZone; time: number } | undefined;
   for (const zone of zones) {
@@ -90,11 +91,16 @@ function latestHigherTimeframeTouch(
     let insideZone = false;
     let latestTapTime: number | undefined;
     for (const candle of candles) {
-      if (candle.time > confirmationTime) break;
+      if (candle.time >= confirmationTime) break;
       const overlaps = candle.complete !== false
         && zoneWasUsableAt(zone, candle.time)
         && candleTouchesZone(candle, zone);
-      if (overlaps && !insideZone) latestTapTime = candle.time;
+      // The selected opposing TJL1/TJL2 structure must already exist when
+      // price enters the HTF zone. If price was already inside before that
+      // structure formed, only a later exit and retap can arm the setup.
+      if (overlaps && !insideZone && candle.time >= sourceStructureTime) {
+        latestTapTime = candle.time;
+      }
       insideZone = overlaps;
     }
     if (latestTapTime !== undefined && (latest === undefined || latestTapTime > latest.time)) {
@@ -115,6 +121,16 @@ function buildChochEvents(zones: StructureZone[]): ConfirmationEvent[] {
     const eventZones = zones.filter((zone) => zone.category === 'mg'
       && zone.chochTime === time
       && CHOCH_ZONE_NAMES.has(zone.name));
+    const isBuy = eventZones[0]?.isBuy ?? true;
+    // A bullish CHOCH converts the preceding selling TJL1/TJL2 into QML/RBS;
+    // a bearish CHOCH converts the preceding buying pair into QML/SBR. Their
+    // shared pair time is the identity of the exact structure that changed.
+    const sourceTjl1 = eventZones.find((zone) => zone.name === 'QML'
+      && zone.tjlPairTime !== undefined);
+    const sourceTjl2 = eventZones.find((zone) => zone.name === (isBuy ? 'RBS' : 'SBR')
+      && zone.tjlPairTime !== undefined);
+    const hasMatchingSourcePair = sourceTjl1?.tjlPairTime !== undefined
+      && sourceTjl1.tjlPairTime === sourceTjl2?.tjlPairTime;
     const anchor = eventZones.find((zone) => zone.name === 'DB' || zone.name === 'DT');
     const fibZone = eventZones.find((zone) => (
       zone.fibSourcePrice !== undefined && zone.fibZeroPrice !== undefined
@@ -122,31 +138,13 @@ function buildChochEvents(zones: StructureZone[]): ConfirmationEvent[] {
     return {
       kind: 'choch' as const,
       time,
-      isBuy: eventZones[0]?.isBuy ?? true,
+      isBuy,
       zones: eventZones,
+      sourceStructureTime: hasMatchingSourcePair ? sourceTjl1.tjlPairTime : undefined,
       fibSourcePrice: fibZone?.fibSourcePrice ?? (anchor?.isBuy ? anchor.bottom : anchor?.top),
       fibZeroPrice: fibZone?.fibZeroPrice,
     };
-  }).filter((event) => event.zones.length > 0);
-}
-
-function buildIssEvents(zones: StructureZone[]): ConfirmationEvent[] {
-  return zones
-    .filter((zone) => zone.name === 'ISS L3'
-      && zone.issCompletionTime !== undefined
-      && zone.issDirection !== undefined)
-    .map((level3) => ({
-      kind: 'iss' as const,
-      time: level3.issCompletionTime!,
-      isBuy: level3.issDirection === 'bullish',
-      zones: zones.filter((zone) => zone.category === 'iss'
-        && ISS_ZONE_NAMES.has(zone.name)
-        && zone.issCompletionTime === level3.issCompletionTime
-        && zone.isBuy === level3.isBuy),
-      fibSourcePrice: level3.fibSourcePrice ?? level3.issPoint0Price,
-      fibZeroPrice: level3.fibZeroPrice ?? level3.issPoint5Price,
-    }))
-    .filter((event) => event.zones.length > 0);
+  }).filter((event) => event.zones.length > 0 && event.sourceStructureTime !== undefined);
 }
 
 function latestTappedZone(event: ConfirmationEvent): StructureZone | undefined {
@@ -277,10 +275,7 @@ export function buildMtfRows(
     const higher = data[mapping.higher];
     const lower = data[mapping.lower];
     if (!higher || !lower) continue;
-    const allEvents = [
-      ...buildChochEvents(lower.structure.zones),
-      ...buildIssEvents(lower.structure.zones),
-    ];
+    const allEvents = buildChochEvents(lower.structure.zones);
 
     for (const kind of mapping.confirmations) {
       const candidate = allEvents
@@ -292,6 +287,7 @@ export function buildMtfRows(
             higher.structure.zones,
             event.time,
             event.isBuy,
+            event.sourceStructureTime ?? event.time,
           ),
         }))
         .filter((item): item is {

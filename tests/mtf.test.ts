@@ -23,7 +23,7 @@ function zone(overrides: Partial<StructureZone> = {}): StructureZone {
   };
 }
 
-test('MTF CHOCH row hides HTF details and promotes only an A+ engulfing', () => {
+test('MTF row follows the selected LTF CHOCH and promotes only an A+ engulfing', () => {
   const lowerCandles = [
     candle(100, 104, 105, 101, 102),
     candle(200, 103, 104, 101, 102),
@@ -31,11 +31,16 @@ test('MTF CHOCH row hides HTF details and promotes only an A+ engulfing', () => 
     candle(400, 107, 108, 103, 104),
     candle(500, 104, 110, 103, 109),
   ];
-  const higherZone = zone({ id: 'h1-demand', name: 'DEMAND', category: 'supplyDemand', bottom: 101, top: 105 });
+  const higherZone = zone({ id: 'h1-demand', name: 'DEMAND', category: 'supplyDemand', bottom: 101, top: 102 });
   const qml = zone({
     id: 'm5-qml', chochTime: 300, startTime: 100, activeFromTime: 300,
+    tjlPairTime: 50,
     bottom: 103, top: 105, tapTime: 400, tapBarsAgo: 1,
     fibSourcePrice: 100, fibZeroPrice: 110,
+  });
+  const rbs = zone({
+    id: 'm5-rbs', name: 'RBS', chochTime: 300, startTime: 150,
+    activeFromTime: 300, tjlPairTime: 50, bottom: 106, top: 107,
   });
   const db = zone({
     id: 'm5-db', name: 'DB', chochTime: 300, startTime: 100,
@@ -43,7 +48,7 @@ test('MTF CHOCH row hides HTF details and promotes only an A+ engulfing', () => 
   });
   const data: Partial<Record<'H1' | 'M5', MtfTimeframeData>> = {
     H1: { candles: lowerCandles, structure: structure([higherZone]) },
-    M5: { candles: lowerCandles, structure: structure([qml, db]) },
+    M5: { candles: lowerCandles, structure: structure([qml, rbs, db]) },
   };
 
   const row = buildMtfRows(data).find((candidate) => candidate.higherTimeframe === 'H1');
@@ -59,7 +64,7 @@ test('MTF CHOCH row hides HTF details and promotes only an A+ engulfing', () => 
   assert.equal(row?.engulfingBarsAgo, 0);
 });
 
-test('ISS is absent until formed, then uses its own Fib and L3/L4 levels', () => {
+test('ISS does not replace the required same-structure CHOCH in an MTF setup', () => {
   const lowerCandles = [
     candle(100, 104, 105, 101, 102),
     candle(200, 102, 108, 101, 107),
@@ -67,13 +72,6 @@ test('ISS is absent until formed, then uses its own Fib and L3/L4 levels', () =>
     candle(400, 104, 110, 103, 109),
   ];
   const higherZone = zone({ id: 'h1-demand', name: 'DEMAND', category: 'supplyDemand', bottom: 101, top: 105 });
-  const incompleteIss = zone({ id: 'l3-incomplete', name: 'ISS L3', category: 'iss' });
-  const base = {
-    H1: { candles: lowerCandles, structure: structure([higherZone]) },
-    M5: { candles: lowerCandles, structure: structure([incompleteIss]) },
-  };
-  assert.equal(buildMtfRows(base).some((row) => row.confirmationKind === 'iss'), false);
-
   const level3 = zone({
     id: 'l3', name: 'ISS L3', category: 'iss', startTime: 100,
     activeFromTime: 200, bottom: 103, top: 105, tapTime: 300,
@@ -87,12 +85,10 @@ test('ISS is absent until formed, then uses its own Fib and L3/L4 levels', () =>
     issDirection: 'bullish', issCompletionTime: 200,
   });
   const rows = buildMtfRows({
-    H1: base.H1,
+    H1: { candles: lowerCandles, structure: structure([higherZone]) },
     M5: { candles: lowerCandles, structure: structure([level3, level4]) },
   });
-  const iss = rows.find((row) => row.confirmationKind === 'iss');
-  assert.equal(iss?.tappedZone, 'ISS L3');
-  assert.equal(iss?.engulfingType, 'T4');
+  assert.equal(rows.some((row) => row.confirmationKind === 'iss'), false);
 });
 
 test('an engulfing outside the silent Fib A+ bands is not an MTF entry', () => {
@@ -103,16 +99,21 @@ test('an engulfing outside the silent Fib A+ bands is not an MTF entry', () => {
     candle(400, 107, 108, 106, 106.5),
     candle(500, 106.5, 110, 106, 109),
   ];
-  const higherZone = zone({ id: 'h1-demand', name: 'DEMAND', category: 'supplyDemand', bottom: 101, top: 105 });
+  const higherZone = zone({ id: 'h1-demand', name: 'DEMAND', category: 'supplyDemand', bottom: 101, top: 102 });
   const qml = zone({
     id: 'm5-qml', chochTime: 300, startTime: 100, activeFromTime: 300,
+    tjlPairTime: 50,
     bottom: 106, top: 108, tapTime: 400,
     fibSourcePrice: 100, fibZeroPrice: 110,
+  });
+  const rbs = zone({
+    id: 'm5-rbs', name: 'RBS', chochTime: 300, startTime: 150,
+    activeFromTime: 300, tjlPairTime: 50, bottom: 104, top: 105,
   });
   const db = zone({ id: 'm5-db', name: 'DB', chochTime: 300, bottom: 99, top: 100 });
   const row = buildMtfRows({
     H1: { candles: lowerCandles, structure: structure([higherZone]) },
-    M5: { candles: lowerCandles, structure: structure([qml, db]) },
+    M5: { candles: lowerCandles, structure: structure([qml, rbs, db]) },
   }).find((candidate) => candidate.confirmationKind === 'choch');
   assert.equal(row?.tappedZone, 'QML');
   assert.equal(row?.engulfingType, undefined);
@@ -131,14 +132,105 @@ test('an expired hidden HTF level cannot create an MTF setup', () => {
   });
   const qml = zone({
     id: 'm5-qml', chochTime: 300, startTime: 100, activeFromTime: 300,
+    tjlPairTime: 50,
     bottom: 103, top: 105, tapTime: 400,
     fibSourcePrice: 100, fibZeroPrice: 110,
+  });
+  const rbs = zone({
+    id: 'm5-rbs', name: 'RBS', chochTime: 300, startTime: 150,
+    activeFromTime: 300, tjlPairTime: 50, bottom: 106, top: 107,
   });
   const db = zone({ id: 'm5-db', name: 'DB', chochTime: 300, bottom: 99, top: 100 });
 
   const rows = buildMtfRows({
     H1: { candles: lowerCandles, structure: structure([expiredHigherZone]) },
-    M5: { candles: lowerCandles, structure: structure([qml, db]) },
+    M5: { candles: lowerCandles, structure: structure([qml, rbs, db]) },
   });
   assert.equal(rows.some((row) => row.higherTimeframe === 'H1'), false);
+});
+
+test('HTF tap must happen after the exact opposing LTF TJL pair exists', () => {
+  const lowerCandles = [
+    candle(100, 101, 103, 99, 102),
+    candle(200, 106, 108, 105, 107),
+    candle(300, 102, 108, 101, 107),
+  ];
+  const higherZone = zone({
+    id: 'h1-demand', name: 'DEMAND', category: 'supplyDemand',
+    bottom: 99, top: 103,
+  });
+  const qml = zone({
+    id: 'converted-selling-tjl1', name: 'QML', chochTime: 300,
+    tjlPairTime: 150, bottom: 103, top: 105,
+  });
+  const rbs = zone({
+    id: 'converted-selling-tjl2', name: 'RBS', chochTime: 300,
+    tjlPairTime: 150, bottom: 106, top: 108,
+  });
+  const db = zone({ id: 'db', name: 'DB', chochTime: 300, bottom: 99, top: 100 });
+
+  const rows = buildMtfRows({
+    H1: { candles: lowerCandles, structure: structure([higherZone]) },
+    M5: { candles: lowerCandles, structure: structure([qml, rbs, db]) },
+  });
+  assert.equal(rows.some((row) => row.confirmationKind === 'choch'), false);
+});
+
+test('CHOCH from a newer LTF structure formed after the HTF tap is rejected', () => {
+  const lowerCandles = [
+    candle(100, 106, 108, 105, 107),
+    candle(200, 101, 103, 99, 102),
+    candle(300, 102, 108, 101, 107),
+  ];
+  const higherZone = zone({
+    id: 'h1-demand', name: 'DEMAND', category: 'supplyDemand',
+    bottom: 99, top: 103,
+  });
+  const qml = zone({
+    id: 'new-selling-tjl1', name: 'QML', chochTime: 300,
+    tjlPairTime: 250, bottom: 103, top: 105,
+  });
+  const rbs = zone({
+    id: 'new-selling-tjl2', name: 'RBS', chochTime: 300,
+    tjlPairTime: 250, bottom: 106, top: 108,
+  });
+  const db = zone({ id: 'db', name: 'DB', chochTime: 300, bottom: 99, top: 100 });
+
+  const rows = buildMtfRows({
+    H1: { candles: lowerCandles, structure: structure([higherZone]) },
+    M5: { candles: lowerCandles, structure: structure([qml, rbs, db]) },
+  });
+  assert.equal(rows.some((row) => row.confirmationKind === 'choch'), false);
+});
+
+test('sell flow tracks the preceding buying TJL pair into its bearish CHOCH', () => {
+  const lowerCandles = [
+    candle(100, 103, 104, 102, 103),
+    candle(200, 108, 111, 107, 109),
+    candle(300, 109, 110, 101, 102),
+  ];
+  const higherZone = zone({
+    id: 'h1-supply', name: 'SUPPLY', category: 'supplyDemand', isBuy: false,
+    bottom: 110, top: 112,
+  });
+  const qml = zone({
+    id: 'converted-buying-tjl1', name: 'QML', isBuy: false, chochTime: 300,
+    tjlPairTime: 150, bottom: 106, top: 108,
+  });
+  const sbr = zone({
+    id: 'converted-buying-tjl2', name: 'SBR', isBuy: false, chochTime: 300,
+    tjlPairTime: 150, bottom: 103, top: 105,
+  });
+  const dt = zone({
+    id: 'dt', name: 'DT', isBuy: false, chochTime: 300,
+    bottom: 111, top: 112,
+  });
+
+  const row = buildMtfRows({
+    H1: { candles: lowerCandles, structure: structure([higherZone]) },
+    M5: { candles: lowerCandles, structure: structure([qml, sbr, dt]) },
+  }).find((candidate) => candidate.confirmationKind === 'choch');
+  assert.equal(row?.direction, 'bearish');
+  assert.equal(row?.higherTimeframeZoneId, 'h1-supply');
+  assert.equal(row?.higherTimeframeTapTime, 200);
 });
