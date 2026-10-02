@@ -22,13 +22,17 @@ export interface MtfRow {
   confirmationKind: MtfConfirmationKind;
   direction: EngulfingDirection;
   confirmationTime: number;
+  confirmationBarsAgo: number;
+  higherTimeframeZoneId: string;
   higherTimeframeZone: StructureZone['name'];
   higherTimeframeTapTime: number;
+  higherTimeframeTapBarsAgo: number;
   tappedZone?: StructureZone['name'];
   tapTime?: number;
   tapBarsAgo?: number;
   engulfingType?: EngulfingType;
   engulfingTime?: number;
+  engulfingBarsAgo?: number;
 }
 
 interface MtfMapping {
@@ -62,6 +66,10 @@ function zoneWasUsableAt(zone: StructureZone, time: number): boolean {
   return zone.status !== 'rejected'
     && zone.startTime < time
     && activeFrom <= time
+    // An MTF context must come from a level that is actually present on the
+    // HTF chart at the tap. Normal structure validity may remain stored after
+    // the fixed 30-bar drawing ends, but that hidden history is not an MTF tap.
+    && time <= zone.endTime
     && (zone.confirmationTime === undefined || zone.confirmationTime <= time)
     && (zone.invalidatedAt === undefined || zone.invalidatedAt > time);
 }
@@ -78,11 +86,19 @@ function latestHigherTimeframeTouch(
 ): { zone: StructureZone; time: number } | undefined {
   let latest: { zone: StructureZone; time: number } | undefined;
   for (const zone of zones) {
-    if (zone.isBuy !== isBuy) continue;
+    if (!zone.active || zone.status !== 'valid' || zone.isBuy !== isBuy) continue;
+    let insideZone = false;
+    let latestTapTime: number | undefined;
     for (const candle of candles) {
-      if (candle.complete === false || candle.time > confirmationTime) continue;
-      if (!zoneWasUsableAt(zone, candle.time) || !candleTouchesZone(candle, zone)) continue;
-      if (latest === undefined || candle.time > latest.time) latest = { zone, time: candle.time };
+      if (candle.time > confirmationTime) break;
+      const overlaps = candle.complete !== false
+        && zoneWasUsableAt(zone, candle.time)
+        && candleTouchesZone(candle, zone);
+      if (overlaps && !insideZone) latestTapTime = candle.time;
+      insideZone = overlaps;
+    }
+    if (latestTapTime !== undefined && (latest === undefined || latestTapTime > latest.time)) {
+      latest = { zone, time: latestTapTime };
     }
   }
   return latest;
@@ -135,7 +151,8 @@ function buildIssEvents(zones: StructureZone[]): ConfirmationEvent[] {
 
 function latestTappedZone(event: ConfirmationEvent): StructureZone | undefined {
   return event.zones
-    .filter((zone) => zone.tapTime !== undefined && zone.tapTime >= event.time)
+    .filter((zone) => zone.active && zone.status === 'valid'
+      && zone.tapTime !== undefined && zone.tapTime >= event.time)
     .sort((first, second) => second.tapTime! - first.tapTime!)[0];
 }
 
@@ -193,10 +210,12 @@ function eventToRow(
   mapping: MtfMapping,
   event: ConfirmationEvent,
   lowerCandles: StructureCandle[],
+  higherCandles: StructureCandle[],
   higherTimeframeTouch: { zone: StructureZone; time: number },
 ): MtfRow {
   const entry = event.zones
-    .filter((zone) => zone.tapTime !== undefined && zone.tapTime >= event.time)
+    .filter((zone) => zone.active && zone.status === 'valid'
+      && zone.tapTime !== undefined && zone.tapTime >= event.time)
     .map((zone) => ({ zone, engulfing: findMtfEngulfing(lowerCandles, event, zone) }))
     .filter((candidate): candidate is {
       zone: StructureZone;
@@ -207,6 +226,17 @@ function eventToRow(
   // entry, show the freshest tapped CHOCH/ISS level as the live status.
   const tappedZone = entry?.zone ?? latestTappedZone(event);
   const engulfing = entry?.engulfing;
+  const confirmationIndex = lowerCandles.findIndex((candle) => candle.time === event.time);
+  const engulfingIndex = engulfing
+    ? lowerCandles.findIndex((candle) => candle.time === engulfing.time)
+    : -1;
+  let higherTimeframeTapIndex = -1;
+  for (let index = higherCandles.length - 1; index >= 0; index -= 1) {
+    if (higherCandles[index].time <= higherTimeframeTouch.time) {
+      higherTimeframeTapIndex = index;
+      break;
+    }
+  }
   return {
     id: `${mapping.higher}-${mapping.lower}-${event.kind}-${event.time}`,
     higherTimeframe: mapping.higher,
@@ -214,13 +244,23 @@ function eventToRow(
     confirmationKind: event.kind,
     direction: event.isBuy ? 'bullish' : 'bearish',
     confirmationTime: event.time,
+    confirmationBarsAgo: confirmationIndex < 0
+      ? 0
+      : lowerCandles.length - 1 - confirmationIndex,
+    higherTimeframeZoneId: higherTimeframeTouch.zone.id,
     higherTimeframeZone: higherTimeframeTouch.zone.name,
     higherTimeframeTapTime: higherTimeframeTouch.time,
+    higherTimeframeTapBarsAgo: higherTimeframeTapIndex < 0
+      ? 0
+      : higherCandles.length - 1 - higherTimeframeTapIndex,
     tappedZone: tappedZone?.name,
     tapTime: tappedZone?.tapTime,
     tapBarsAgo: tappedZone?.tapBarsAgo,
     engulfingType: engulfing?.type,
     engulfingTime: engulfing?.time,
+    engulfingBarsAgo: engulfingIndex < 0
+      ? undefined
+      : lowerCandles.length - 1 - engulfingIndex,
   };
 }
 
@@ -263,6 +303,7 @@ export function buildMtfRows(
         mapping,
         candidate.event,
         lower.candles,
+        higher.candles,
         candidate.higherTimeframeTouch,
       ));
     }

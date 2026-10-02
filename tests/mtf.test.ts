@@ -48,11 +48,15 @@ test('MTF CHOCH row hides HTF details and promotes only an A+ engulfing', () => 
 
   const row = buildMtfRows(data).find((candidate) => candidate.higherTimeframe === 'H1');
   assert.equal(row?.lowerTimeframe, 'M5');
+  assert.equal(row?.higherTimeframeZoneId, 'h1-demand');
   assert.equal(row?.higherTimeframeZone, 'DEMAND');
+  assert.equal(row?.higherTimeframeTapBarsAgo, 4);
   assert.equal(row?.confirmationKind, 'choch');
+  assert.equal(row?.confirmationBarsAgo, 2);
   assert.equal(row?.tappedZone, 'QML');
   assert.equal(row?.tapBarsAgo, 1);
   assert.equal(row?.engulfingType, 'T4');
+  assert.equal(row?.engulfingBarsAgo, 0);
 });
 
 test('ISS is absent until formed, then uses its own Fib and L3/L4 levels', () => {
@@ -112,4 +116,29 @@ test('an engulfing outside the silent Fib A+ bands is not an MTF entry', () => {
   }).find((candidate) => candidate.confirmationKind === 'choch');
   assert.equal(row?.tappedZone, 'QML');
   assert.equal(row?.engulfingType, undefined);
+});
+
+test('an expired hidden HTF level cannot create an MTF setup', () => {
+  const lowerCandles = [
+    candle(100, 104, 105, 101, 102),
+    candle(200, 103, 104, 101, 102),
+    candle(300, 102, 108, 101, 107),
+    candle(400, 107, 108, 103, 104),
+  ];
+  const expiredHigherZone = zone({
+    id: 'expired-h1-demand', name: 'DEMAND', category: 'supplyDemand',
+    bottom: 101, top: 105, endTime: 50,
+  });
+  const qml = zone({
+    id: 'm5-qml', chochTime: 300, startTime: 100, activeFromTime: 300,
+    bottom: 103, top: 105, tapTime: 400,
+    fibSourcePrice: 100, fibZeroPrice: 110,
+  });
+  const db = zone({ id: 'm5-db', name: 'DB', chochTime: 300, bottom: 99, top: 100 });
+
+  const rows = buildMtfRows({
+    H1: { candles: lowerCandles, structure: structure([expiredHigherZone]) },
+    M5: { candles: lowerCandles, structure: structure([qml, db]) },
+  });
+  assert.equal(rows.some((row) => row.higherTimeframe === 'H1'), false);
 });

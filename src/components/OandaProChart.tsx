@@ -299,16 +299,16 @@ function mtfZoneLabel(name: StructureZone['name']): string {
   return name.startsWith('Internal ') ? name.slice('Internal '.length) : name;
 }
 
-function mtfEntryStatus(row: MtfRow): string {
-  const lower = MTF_TABLE_LABELS[row.lowerTimeframe];
-  if (!row.tappedZone) return '—';
-  const zone = mtfZoneLabel(row.tappedZone);
-  if (!row.engulfingType) return `${lower} ${zone} tapped`;
+function mtfSignalLabel(row: MtfRow): string {
+  if (!row.tappedZone) return 'Waiting for zone tap';
+  if (!row.engulfingType) return 'Waiting';
   const type = row.engulfingType.replace('T', 'Type ');
-  return `${type} ${row.direction} engulfing at ${lower} ${zone} — ${row.direction === 'bullish' ? 'BUY' : 'SELL'} MTF ENTRY`;
+  return `${type} ${row.direction === 'bullish' ? 'BUY' : 'SELL'} MTF ENTRY`;
 }
 
-const MultiTimeframeEntryTable: React.FC<{ rows: MtfRow[] }> = ({ rows }) => {
+type DisplayMtfRow = MtfRow & { setupId: string };
+
+const MultiTimeframeEntryTable: React.FC<{ rows: DisplayMtfRow[] }> = ({ rows }) => {
   const [expanded, setExpanded] = useState(true);
   return (
     <div className={`pointer-events-auto absolute right-3 top-3 z-20 overflow-hidden rounded-md border border-slate-300 bg-white/95 shadow-sm ${expanded ? 'w-[650px] max-w-[calc(100%_-_24px)]' : 'w-auto'}`}>
@@ -324,14 +324,16 @@ const MultiTimeframeEntryTable: React.FC<{ rows: MtfRow[] }> = ({ rows }) => {
         </button>
       </div>
       {expanded && (
-        <table className="w-full border-collapse text-left text-[10px]">
+        <table className="w-full table-fixed border-collapse text-left text-[9px]">
           <thead className="bg-slate-100 text-[9px] uppercase text-slate-500">
             <tr>
+              <th className="w-[50px] px-1.5 py-1 font-bold">ID</th>
               <th className="w-[68px] px-1.5 py-1 font-bold">MTF</th>
-              <th className="w-[82px] px-1.5 py-1 font-bold">HTF zone</th>
-              <th className="w-[158px] px-1.5 py-1 font-bold">LTF confirmation</th>
-              <th className="px-1.5 py-1 font-bold">Entry status</th>
-              <th className="w-[55px] px-1.5 py-1 text-right font-bold">Bars</th>
+              <th className="w-[92px] px-1.5 py-1 font-bold">Setup</th>
+              <th className="w-[102px] px-1.5 py-1 font-bold">HTF Zone Tapped</th>
+              <th className="w-[102px] px-1.5 py-1 font-bold">LTF Zone Tapped</th>
+              <th className="px-1.5 py-1 font-bold">Signal</th>
+              <th className="w-[76px] px-1.5 py-1 text-right font-bold">Bars Since Entry</th>
             </tr>
           </thead>
           <tbody>
@@ -340,27 +342,38 @@ const MultiTimeframeEntryTable: React.FC<{ rows: MtfRow[] }> = ({ rows }) => {
               const entry = row.engulfingType !== undefined;
               return (
                 <tr key={row.id} className={`border-t ${bullish ? 'border-emerald-100 bg-emerald-50/50' : 'border-rose-100 bg-rose-50/50'}`}>
+                  <td className="px-1.5 py-1 font-black whitespace-nowrap text-indigo-700">
+                    {row.setupId}
+                  </td>
                   <td className="px-1.5 py-1 font-black whitespace-nowrap text-slate-700">
                     {MTF_TABLE_LABELS[row.higherTimeframe]} → {MTF_TABLE_LABELS[row.lowerTimeframe]}
                   </td>
                   <td className={`px-1.5 py-1 font-black whitespace-nowrap ${bullish ? 'text-emerald-700' : 'text-rose-700'}`}>
-                    {MTF_TABLE_LABELS[row.higherTimeframe]} {mtfZoneLabel(row.higherTimeframeZone)}
+                    {bullish ? 'Bullish' : 'Bearish'} {row.confirmationKind === 'choch' ? 'CHOCH' : 'ISS'}
+                  </td>
+                  <td className={`px-1.5 py-1 font-black whitespace-nowrap ${bullish ? 'text-emerald-700' : 'text-rose-700'}`}>
+                    <div>{MTF_TABLE_LABELS[row.higherTimeframe]} {mtfZoneLabel(row.higherTimeframeZone)}</div>
+                    <div className="text-[7px] font-bold leading-tight text-slate-400">
+                      {row.higherTimeframeTapBarsAgo} {row.higherTimeframeTapBarsAgo === 1 ? 'bar' : 'bars'} ago
+                    </div>
                   </td>
                   <td className={`px-1.5 py-1 font-bold whitespace-nowrap ${bullish ? 'text-emerald-700' : 'text-rose-700'}`}>
-                    {MTF_TABLE_LABELS[row.lowerTimeframe]} {row.direction} {row.confirmationKind === 'choch' ? 'CHOCH done' : 'ISS formed'}
+                    {row.tappedZone
+                      ? `${MTF_TABLE_LABELS[row.lowerTimeframe]} ${mtfZoneLabel(row.tappedZone)}`
+                      : '—'}
                   </td>
                   <td className={`px-1.5 py-1 font-black ${entry ? bullish ? 'text-emerald-700' : 'text-rose-700' : 'text-slate-600'}`}>
-                    {mtfEntryStatus(row)}
+                    {mtfSignalLabel(row)}
                   </td>
                   <td className="px-1.5 py-1 text-right font-bold whitespace-nowrap text-slate-500">
-                    {row.tapBarsAgo === undefined ? '—' : `${row.tapBarsAgo} bars`}
+                    {row.engulfingBarsAgo === undefined ? '—' : `${row.engulfingBarsAgo} bars`}
                   </td>
                 </tr>
               );
             })}
             {rows.length === 0 && (
               <tr>
-                <td colSpan={5} className="px-2 py-2 text-center text-slate-400">No MTF confirmation formed</td>
+                <td colSpan={7} className="px-2 py-2 text-center text-slate-400">No active MTF setup</td>
               </tr>
             )}
           </tbody>
@@ -647,11 +660,55 @@ export const OandaProChart: React.FC = () => {
     })
   ), [tableTimeframeData]);
 
-  const mtfRows = useMemo<MtfRow[]>(
-    () => buildMtfRows(tableTimeframeData)
-      .filter((row) => row.higherTimeframe === granularity),
-    [granularity, tableTimeframeData],
+  const activeMtfRows = useMemo(() => buildMtfRows(tableTimeframeData)
+    .filter((row) => row.engulfingBarsAgo !== undefined
+      ? row.engulfingBarsAgo <= 100
+      : (row.tapBarsAgo ?? row.confirmationBarsAgo) <= 50), [tableTimeframeData]);
+
+  const mtfRows = useMemo<DisplayMtfRow[]>(() => {
+    const chartRows = activeMtfRows.filter((row) => row.higherTimeframe === granularity);
+    const setupIds = new Map<string, string>();
+    return chartRows.map((row) => {
+      const setupKey = `${row.higherTimeframeZoneId}:${row.higherTimeframeTapTime}`;
+      let setupId = setupIds.get(setupKey);
+      if (!setupId) {
+        setupId = `MTF-${setupIds.size + 1}`;
+        setupIds.set(setupKey, setupId);
+      }
+      return { ...row, setupId };
+    });
+  },
+    [activeMtfRows, granularity],
   );
+
+  const mtfEntryMarkers = useMemo(() => {
+    const markerKeys = new Set<string>();
+    return activeMtfRows.flatMap((row) => {
+    if (!row.engulfingType || row.engulfingTime === undefined) return [];
+    const onHigherTimeframe = row.higherTimeframe === granularity;
+    const onLowerTimeframe = row.lowerTimeframe === granularity;
+    if (!onHigherTimeframe && !onLowerTimeframe) return [];
+    const containingCandle = displayCandles.find((candle) => (
+      row.engulfingTime! >= candle.time
+      && row.engulfingTime! < marketCandleCloseTime(candle.time, granularity)
+    ));
+    if (!containingCandle) return [];
+    const bullish = row.direction === 'bullish';
+    const markerKey = `${containingCandle.time}:${row.engulfingType}:${row.direction}`;
+    if (markerKeys.has(markerKey)) return [];
+    markerKeys.add(markerKey);
+    return [{
+      time: containingCandle.time as UTCTimestamp,
+      position: bullish ? 'belowBar' as const : 'aboveBar' as const,
+      color: bullish ? '#059669' : '#e11d48',
+      shape: bullish ? 'arrowUp' as const : 'arrowDown' as const,
+      text: onLowerTimeframe
+        ? `MTF ${row.engulfingType}`
+        : `${MTF_TABLE_LABELS[row.lowerTimeframe]} MTF ${row.engulfingType}`,
+      size: 1,
+    }];
+    });
+  }, [activeMtfRows, displayCandles, granularity]);
 
   const latestCandle = hoveredCandle || displayCandles[displayCandles.length - 1] || null;
   const previousCandle = displayCandles.length > 1 ? displayCandles[displayCandles.length - 2] : null;
@@ -803,6 +860,12 @@ export const OandaProChart: React.FC = () => {
       }
       if (!inactive && showFibRef.current && zone.dayFibStatus === 'a-plus' && zone.dayFibBand) {
         label.textContent = `${label.textContent} · DAY FIB A+ ${zone.dayFibBand}`;
+      }
+      const mtfBadges = Array.from(new Set(mtfRows
+        .filter((row) => row.higherTimeframeZoneId === zone.id)
+        .map((row) => row.setupId)));
+      if (mtfBadges.length > 0) {
+        label.textContent = `${label.textContent} · ${mtfBadges.join(' / ')}`;
       }
       label.style.position = 'absolute';
       label.style.right = '4px';
@@ -1096,7 +1159,7 @@ export const OandaProChart: React.FC = () => {
     // Swap the complete overlay in one operation so the browser does not
     // perform layout work for every individual zone, line, and label.
     layer.replaceChildren(fragment);
-  }, [displayCandles.length, granularity]);
+  }, [displayCandles.length, granularity, mtfRows]);
 
   redrawZonesRef.current = redrawZones;
 
@@ -1380,6 +1443,7 @@ export const OandaProChart: React.FC = () => {
       ...(showStructure ? structure.markers : []),
       ...(showInternal ? structure.internalMarkers : []),
       ...(showEngulfing ? engulfingMarkers : []),
+      ...(showEngulfing ? mtfEntryMarkers : []),
     ].sort((a: any, b: any) => Number(a.time) - Number(b.time)));
     const pendingViewport = pendingReplayViewportRef.current;
     if (replayIndex !== null && pendingViewport && loadedGranularityRef.current === granularity) {
@@ -1395,7 +1459,7 @@ export const OandaProChart: React.FC = () => {
       hasFittedRef.current = true;
     }
     scheduleOverlayRedraw();
-  }, [displayCandles, engulfingMarkers, replayIndex, restorePresentChartView, scheduleOverlayRedraw, showEngulfing, showInternal, showIss, showStructure, structure.internalMarkers, structure.issMarkers, structure.markers]);
+  }, [displayCandles, engulfingMarkers, granularity, mtfEntryMarkers, replayIndex, restorePresentChartView, scheduleOverlayRedraw, showEngulfing, showInternal, showIss, showStructure, structure.internalMarkers, structure.issMarkers, structure.markers]);
 
   useEffect(() => {
     const label = livePriceLabelRef.current;
