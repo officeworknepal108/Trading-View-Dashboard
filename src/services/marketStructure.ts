@@ -110,6 +110,13 @@ export interface StructureZone {
   swingEngulfingDirection?: EngulfingDirection;
   swingEngulfingTime?: number;
   swingEngulfingCandleCount?: number;
+  // Direction-matched confluence from the current 9:15 Nepal Day FIB.
+  dayFibBand?: Extract<FibBand, '0.5-0.618' | '0.71-0.79'>;
+  dayFibStatus?: 'a-plus';
+  dayEngulfingType?: EngulfingType;
+  dayEngulfingDirection?: EngulfingDirection;
+  dayEngulfingTime?: number;
+  dayEngulfingCandleCount?: number;
 }
 
 type ChochMetadata = Pick<StructureZone,

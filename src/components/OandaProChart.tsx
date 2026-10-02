@@ -26,6 +26,7 @@ import { buildAlternatingSwingFibs, SwingFibMove } from '../services/swingFib';
 import { ChartTimeZone, formatChartTick, formatChartTime } from '../services/chartTime';
 import { buildDayFibs, DayFibMove } from '../services/dayFib';
 import { applySwingFibConfluence } from '../services/swingFibConfluence';
+import { applyDayFibConfluence } from '../services/dayFibConfluence';
 
 type OandaGranularity = 'M1' | 'M5' | 'M15' | 'M30' | 'H1' | 'H4' | 'D';
 type MarketGranularity = OandaGranularity | 'W' | 'MO';
@@ -175,6 +176,7 @@ function displayEngulfingLabel(zone: StructureZone): string | undefined {
   const labels = [
     zone.engulfingType,
     zone.swingEngulfingType ? `SW ${zone.swingEngulfingType}` : undefined,
+    zone.dayEngulfingType ? `DAY ${zone.dayEngulfingType}` : undefined,
   ].filter((label): label is string => label !== undefined);
   return labels.length > 0 ? `${labels.join(' / ')} ${zone.isBuy ? 'BULL' : 'BEAR'}` : undefined;
 }
@@ -465,6 +467,12 @@ export const OandaProChart: React.FC = () => {
     });
   }, [h4SwingSource]);
 
+  const dayFibMoves = useMemo(() => (
+    ['M1', 'M5', 'M15', 'M30'].includes(granularity)
+      ? buildDayFibs(displayCandles)
+      : []
+  ), [displayCandles, granularity]);
+
   const swingFibConfluence = useMemo(() => applySwingFibConfluence(
     displayCandles,
     structure.zones,
@@ -472,13 +480,14 @@ export const OandaProChart: React.FC = () => {
       ? swingFibMoves[swingFibMoves.length - 1]
       : undefined,
   ), [displayCandles, granularity, structure.zones, swingFibMoves]);
-  const displayZones = swingFibConfluence.zones;
-
-  const dayFibMoves = useMemo(() => (
+  const dayFibConfluence = useMemo(() => applyDayFibConfluence(
+    displayCandles,
+    swingFibConfluence.zones,
     ['M1', 'M5', 'M15', 'M30'].includes(granularity)
-      ? buildDayFibs(displayCandles)
-      : []
-  ), [displayCandles, granularity]);
+      ? dayFibMoves[dayFibMoves.length - 1]
+      : undefined,
+  ), [dayFibMoves, displayCandles, granularity, swingFibConfluence.zones]);
+  const displayZones = dayFibConfluence.zones;
 
   const restorePresentChartView = useCallback(() => {
     const chart = chartRef.current;
@@ -578,14 +587,17 @@ export const OandaProChart: React.FC = () => {
     .slice(0, 4), [displayZones, showInternal]);
   const engulfingMarkers = useMemo(() => {
     const combined = [...structure.engulfingMarkers];
-    for (const marker of swingFibConfluence.engulfingMarkers) {
+    for (const marker of [
+      ...swingFibConfluence.engulfingMarkers,
+      ...dayFibConfluence.engulfingMarkers,
+    ]) {
       const duplicatesExisting = combined.some((existing) => (
         Number(existing.time) === Number(marker.time) && existing.position === marker.position
       ));
       if (!duplicatesExisting) combined.push(marker);
     }
     return combined.sort((first, second) => Number(first.time) - Number(second.time));
-  }, [structure.engulfingMarkers, swingFibConfluence.engulfingMarkers]);
+  }, [dayFibConfluence.engulfingMarkers, structure.engulfingMarkers, swingFibConfluence.engulfingMarkers]);
   const change = latestCandle && previousCandle ? latestCandle.close - previousCandle.close : 0;
   const changePercent = latestCandle && previousCandle && previousCandle.close
     ? change / previousCandle.close * 100
@@ -688,6 +700,9 @@ export const OandaProChart: React.FC = () => {
       }
       if (!inactive && showFibRef.current && zone.swingFibStatus === 'a-plus' && zone.swingFibBand) {
         label.textContent = `${label.textContent} · SWING A+ FIB ${zone.swingFibBand}`;
+      }
+      if (!inactive && showFibRef.current && zone.dayFibStatus === 'a-plus' && zone.dayFibBand) {
+        label.textContent = `${label.textContent} · DAY FIB A+ ${zone.dayFibBand}`;
       }
       label.style.position = 'absolute';
       label.style.right = '4px';
@@ -1967,6 +1982,11 @@ export const OandaProChart: React.FC = () => {
                             SWING A+ FIB {zone.swingFibBand}
                           </span>
                         )}
+                        {showFib && zone.dayFibStatus === 'a-plus' && zone.dayFibBand && (
+                          <span className="ml-1 rounded bg-sky-100 px-1 py-0.5 text-[8px] font-black text-sky-800">
+                            DAY FIB A+ {zone.dayFibBand}
+                          </span>
+                        )}
                       </td>
                       <td className={`px-2 py-1 font-bold ${zone.isBuy ? 'text-emerald-700' : 'text-rose-700'}`}>
                         {zone.isBuy ? 'BUY' : 'SELL'}
@@ -2025,6 +2045,11 @@ export const OandaProChart: React.FC = () => {
                       {showFib && zone.swingFibStatus === 'a-plus' && zone.swingFibBand && (
                         <span className="ml-1 rounded bg-violet-100 px-1 py-0.5 text-[8px] font-black text-violet-800">
                           SWING A+ FIB {zone.swingFibBand}
+                        </span>
+                      )}
+                      {showFib && zone.dayFibStatus === 'a-plus' && zone.dayFibBand && (
+                        <span className="ml-1 rounded bg-sky-100 px-1 py-0.5 text-[8px] font-black text-sky-800">
+                          DAY FIB A+ {zone.dayFibBand}
                         </span>
                       )}
                     </td>
