@@ -27,6 +27,7 @@ import { ChartTimeZone, formatChartTick, formatChartTime } from '../services/cha
 import { buildDayFibs, DayFibMove } from '../services/dayFib';
 import { applySwingFibConfluence } from '../services/swingFibConfluence';
 import { applyDayFibConfluence } from '../services/dayFibConfluence';
+import { buildMtfRows, type MtfGranularity, type MtfRow } from '../services/mtf';
 
 type OandaGranularity = 'M1' | 'M5' | 'M15' | 'M30' | 'H1' | 'H4' | 'D';
 type MarketGranularity = OandaGranularity | 'W' | 'MO';
@@ -290,6 +291,85 @@ const MultiTimeframeTrendTable: React.FC<{ rows: TrendTableRow[]; replayActive: 
   );
 };
 
+const MTF_TABLE_LABELS: Record<MtfGranularity, string> = {
+  M1: '1m', M5: '5m', M15: '15m', H1: '1H', H4: '4H', D: '1D',
+};
+
+function mtfZoneLabel(name: StructureZone['name']): string {
+  return name.startsWith('Internal ') ? name.slice('Internal '.length) : name;
+}
+
+function mtfEntryStatus(row: MtfRow): string {
+  const lower = MTF_TABLE_LABELS[row.lowerTimeframe];
+  if (!row.tappedZone) return '—';
+  const zone = mtfZoneLabel(row.tappedZone);
+  if (!row.engulfingType) return `${lower} ${zone} tapped`;
+  const type = row.engulfingType.replace('T', 'Type ');
+  return `${type} ${row.direction} engulfing at ${lower} ${zone} — ${row.direction === 'bullish' ? 'BUY' : 'SELL'} MTF ENTRY`;
+}
+
+const MultiTimeframeEntryTable: React.FC<{ rows: MtfRow[] }> = ({ rows }) => {
+  const [expanded, setExpanded] = useState(true);
+  return (
+    <div className={`pointer-events-auto absolute right-3 top-3 z-20 overflow-hidden rounded-md border border-slate-300 bg-white/95 shadow-sm ${expanded ? 'w-[650px] max-w-[calc(100%_-_24px)]' : 'w-auto'}`}>
+      <div className="flex items-center justify-between gap-3 border-b border-slate-200 bg-indigo-50 px-2 py-1 text-[9px] font-black uppercase tracking-wide text-indigo-700">
+        <span>{expanded ? 'MTF table' : 'MTF table minimized'}</span>
+        <button
+          type="button"
+          onClick={() => setExpanded((visible) => !visible)}
+          className="rounded border border-indigo-200 bg-white px-1.5 py-0.5 text-[8px] font-black text-indigo-700 hover:bg-indigo-100"
+          title={expanded ? 'Minimize MTF table' : 'Show MTF table'}
+        >
+          {expanded ? '− MINIMIZE' : '+ SHOW TABLE'}
+        </button>
+      </div>
+      {expanded && (
+        <table className="w-full border-collapse text-left text-[10px]">
+          <thead className="bg-slate-100 text-[9px] uppercase text-slate-500">
+            <tr>
+              <th className="w-[68px] px-1.5 py-1 font-bold">MTF</th>
+              <th className="w-[82px] px-1.5 py-1 font-bold">HTF zone</th>
+              <th className="w-[158px] px-1.5 py-1 font-bold">LTF confirmation</th>
+              <th className="px-1.5 py-1 font-bold">Entry status</th>
+              <th className="w-[55px] px-1.5 py-1 text-right font-bold">Bars</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((row) => {
+              const bullish = row.direction === 'bullish';
+              const entry = row.engulfingType !== undefined;
+              return (
+                <tr key={row.id} className={`border-t ${bullish ? 'border-emerald-100 bg-emerald-50/50' : 'border-rose-100 bg-rose-50/50'}`}>
+                  <td className="px-1.5 py-1 font-black whitespace-nowrap text-slate-700">
+                    {MTF_TABLE_LABELS[row.higherTimeframe]} → {MTF_TABLE_LABELS[row.lowerTimeframe]}
+                  </td>
+                  <td className={`px-1.5 py-1 font-black whitespace-nowrap ${bullish ? 'text-emerald-700' : 'text-rose-700'}`}>
+                    {MTF_TABLE_LABELS[row.higherTimeframe]} {mtfZoneLabel(row.higherTimeframeZone)}
+                  </td>
+                  <td className={`px-1.5 py-1 font-bold whitespace-nowrap ${bullish ? 'text-emerald-700' : 'text-rose-700'}`}>
+                    {MTF_TABLE_LABELS[row.lowerTimeframe]} {row.direction} {row.confirmationKind === 'choch' ? 'CHOCH done' : 'ISS formed'}
+                  </td>
+                  <td className={`px-1.5 py-1 font-black ${entry ? bullish ? 'text-emerald-700' : 'text-rose-700' : 'text-slate-600'}`}>
+                    {mtfEntryStatus(row)}
+                  </td>
+                  <td className="px-1.5 py-1 text-right font-bold whitespace-nowrap text-slate-500">
+                    {row.tapBarsAgo === undefined ? '—' : `${row.tapBarsAgo} bars`}
+                  </td>
+                </tr>
+              );
+            })}
+            {rows.length === 0 && (
+              <tr>
+                <td colSpan={5} className="px-2 py-2 text-center text-slate-400">No MTF confirmation formed</td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      )}
+    </div>
+  );
+};
+
 export const OandaProChart: React.FC = () => {
   const hostRef = useRef<HTMLDivElement | null>(null);
   const chartRef = useRef<any>(null);
@@ -520,38 +600,58 @@ export const OandaProChart: React.FC = () => {
     });
   }, [displayCandles.length]);
 
-  const trendTableRows = useMemo<TrendTableRow[]>(() => {
+  const tableTimeframeData = useMemo(() => {
     const replayCutoff = replayIndex === null || displayCandles.length === 0
       ? undefined
       : displayCandles[displayCandles.length - 1].time
         + (displayCandles[displayCandles.length - 1].complete ? TIMEFRAME_SECONDS[granularity] : 0);
-
-    return TREND_TABLE_GRANULARITIES.map((tableGranularity) => {
+    const data: Partial<Record<MtfGranularity, {
+      candles: OandaCandle[];
+      structure: ReturnType<typeof analyzeMarketStructure>;
+    }>> = {};
+    for (const tableGranularity of TREND_TABLE_GRANULARITIES) {
       const availableCandles = tableGranularity === granularity
         ? displayCandles
         : vipCandles[tableGranularity] || [];
       const timeframeCandles = replayCutoff === undefined
         ? availableCandles
         : availableCandles.filter((candle) => candle.time <= replayCutoff);
-      const tableStructure = tableGranularity === granularity
-        ? structure
-        : analyzeMarketStructure(timeframeCandles, {
+      if (timeframeCandles.length === 0) continue;
+      data[tableGranularity] = {
+        candles: timeframeCandles,
+        structure: tableGranularity === granularity
+          ? structure
+          : analyzeMarketStructure(timeframeCandles, {
           allowSupplyDemand: ['H1', 'H4', 'D'].includes(tableGranularity),
           sourceBarSeconds: TIMEFRAME_SECONDS[tableGranularity],
           confirmationBarSeconds: TJL1_CONFIRMATION_SECONDS[tableGranularity],
           zoneVisualBars: 30,
-        });
-      const latestTimeframeCandle = timeframeCandles[timeframeCandles.length - 1];
+          }),
+      };
+    }
+    return data;
+  }, [displayCandles, granularity, replayIndex, structure, vipCandles]);
+
+  const trendTableRows = useMemo<TrendTableRow[]>(() => (
+    TREND_TABLE_GRANULARITIES.map((tableGranularity) => {
+      const timeframeData = tableTimeframeData[tableGranularity];
+      const latestTimeframeCandle = timeframeData?.candles[timeframeData.candles.length - 1];
       return {
         granularity: tableGranularity,
         label: TREND_TABLE_LABELS[tableGranularity],
-        trend: tableStructure.trend,
+        trend: timeframeData?.structure.trend ?? 'neutral',
         closesAt: latestTimeframeCandle
           ? marketCandleCloseTime(latestTimeframeCandle.time, tableGranularity)
           : undefined,
       };
-    });
-  }, [displayCandles, granularity, replayIndex, structure, vipCandles]);
+    })
+  ), [tableTimeframeData]);
+
+  const mtfRows = useMemo<MtfRow[]>(
+    () => buildMtfRows(tableTimeframeData)
+      .filter((row) => row.higherTimeframe === granularity),
+    [granularity, tableTimeframeData],
+  );
 
   const latestCandle = hoveredCandle || displayCandles[displayCandles.length - 1] || null;
   const previousCandle = displayCandles.length > 1 ? displayCandles[displayCandles.length - 2] : null;
@@ -2079,6 +2179,7 @@ export const OandaProChart: React.FC = () => {
             </table>
             </>}
           </div>
+          <MultiTimeframeEntryTable rows={mtfRows} />
           <MultiTimeframeTrendTable rows={trendTableRows} replayActive={replayIndex !== null} />
           {isLoading && candles.length === 0 && !error && (
             <div className="absolute inset-0 z-20 grid place-items-center bg-white/85">

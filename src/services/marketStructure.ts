@@ -1665,6 +1665,12 @@ export function findIssFiveWaves(
         activeFromTime: confirmedAt,
         bottom: isBullish ? wave4.price : wave4.price - (wick4 + buffer4),
         top: isBullish ? wave4.price + (wick4 + buffer4) : wave4.price, active: true, status: 'valid',
+        issPoint0Time: point0.time,
+        issPoint0Price: point0.price,
+        issPoint5Time: point5.time,
+        issPoint5Price: point5.price,
+        issDirection: direction,
+        issCompletionTime: confirmedAt,
       };
     zones.push(wave3Zone, wave4Zone);
     patterns.push({ direction, points, confirmedAt, anchor, wave3: wave3Zone, wave4: wave4Zone });
