@@ -322,7 +322,7 @@ test('Type 3 uses a mixed middle candle that sweeps the first candle', () => {
   );
 });
 
-test('Type 4 contains all middle candles inside the first candle over 5–10 candles', () => {
+test('Type 4 contains all middle candles inside the first candle over 3–10 candles', () => {
   const bullish: StructureCandle[] = [
     { time: 1, open: 12, high: 13, low: 8, close: 9, complete: true },
     { time: 2, open: 9, high: 11, low: 8.5, close: 10, complete: true },
@@ -334,8 +334,28 @@ test('Type 4 contains all middle candles inside the first candle over 5–10 can
     type: 'T4', direction: 'bullish', candleCount: 5, startIndex: 0, endIndex: 4,
   });
 
-  bullish[2] = { ...bullish[2], high: 13.5 };
+  bullish[2] = { ...bullish[2], high: 15 };
   assert.notEqual(detectEngulfingPatternAt(bullish, 4)?.type, 'T4');
+
+  const sameColorBearish: StructureCandle[] = [
+    { time: 1, open: 4187.785, high: 4189.375, low: 4183.55, close: 4183.975, complete: true },
+    { time: 2, open: 4184.025, high: 4187.79, low: 4184.025, close: 4185.385, complete: true },
+    { time: 3, open: 4185.29, high: 4188.765, low: 4184.09, close: 4185.385, complete: true },
+    { time: 4, open: 4185.44, high: 4187.29, low: 4184.65, close: 4186.35, complete: true },
+    { time: 5, open: 4186.28, high: 4186.705, low: 4181.76, close: 4183.02, complete: true },
+  ];
+  assert.deepEqual(detectEngulfingPatternAt(sameColorBearish, 4), {
+    type: 'T4', direction: 'bearish', candleCount: 5, startIndex: 0, endIndex: 4,
+  }, 'a red tap candle can confirm through a later red body closing below its low');
+
+  const oneInsideCandle: StructureCandle[] = [
+    { time: 1, open: 12, high: 13, low: 8, close: 9, complete: true },
+    { time: 2, open: 9, high: 12, low: 9, close: 11, complete: true },
+    { time: 3, open: 11, high: 14.5, low: 10, close: 14, complete: true },
+  ];
+  assert.deepEqual(detectEngulfingPatternAt(oneInsideCandle, 2), {
+    type: 'T4', direction: 'bullish', candleCount: 3, startIndex: 0, endIndex: 2,
+  }, 'one inside candle is sufficient between the tap and breakout candles');
 });
 
 test('zone engulfing requires A+ FIB, active-zone contact, the band-specific touch, and matching direction', () => {
@@ -369,11 +389,20 @@ test('zone engulfing requires A+ FIB, active-zone contact, the band-specific tou
   );
   assert.equal(findZoneEngulfingPattern(candles, { ...eligible, bottom: 20, top: 21 }), undefined);
   assert.equal(
-    findZoneEngulfingPattern(candles, { ...eligible, fibLevel50: 8 }),
-    undefined,
-    'an earlier pattern candle touching 0.5 cannot qualify a final candle that did not touch it',
+    findZoneEngulfingPattern(candles, { ...eligible, fibLevel50: 8 })?.type,
+    'T2',
+    'an earlier candle in the confirmed pattern can satisfy the minimum 0.5 touch',
   );
   assert.equal(findZoneEngulfingPattern(candles, { ...eligible, fibLevel50: undefined }), undefined);
+  assert.equal(
+    findZoneEngulfingPattern(candles, {
+      ...eligible,
+      fibBand: 'DB/DT',
+      fibLevel50: undefined,
+    })?.type,
+    'T2',
+    'an originating DB/DT FIB zone qualifies from direct zone contact',
+  );
   assert.equal(
     findZoneEngulfingPattern(candles, {
       ...eligible,
@@ -392,6 +421,42 @@ test('zone engulfing requires A+ FIB, active-zone contact, the band-specific tou
     'T2',
     'the direct 0.71-0.79 deep band can also show its engulfing type from zone contact',
   );
+
+  const markedType4: StructureCandle[] = [
+    { time: 10, open: 4187.785, high: 4189.375, low: 4183.55, close: 4183.975, complete: true },
+    { time: 11, open: 4184.025, high: 4187.79, low: 4184.025, close: 4185.385, complete: true },
+    { time: 12, open: 4185.29, high: 4188.765, low: 4184.09, close: 4185.385, complete: true },
+    { time: 13, open: 4185.44, high: 4187.29, low: 4184.65, close: 4186.35, complete: true },
+    { time: 14, open: 4186.28, high: 4186.705, low: 4181.76, close: 4183.02, complete: true },
+  ];
+  assert.equal(findZoneEngulfingPattern(markedType4, zone({
+    name: 'QML',
+    isBuy: false,
+    startTime: 0,
+    activeFromTime: 1,
+    bottom: 4188.08755,
+    top: 4190.86,
+    fibStatus: 'a-plus',
+    fibBand: '0.5-0.618',
+    fibLevel50: 4187.19,
+  }))?.type, 'T4', 'the marked tap-inside-breakout sequence qualifies through its first-candle 0.5 touch');
+
+  const markedDbDtType4: StructureCandle[] = [
+    { time: 20, open: 4187.74, high: 4196.475, low: 4187.475, close: 4194.15, complete: true },
+    { time: 21, open: 4194.215, high: 4194.255, low: 4187.58, close: 4188.77, complete: true },
+    { time: 22, open: 4188.755, high: 4189.555, low: 4183.565, close: 4185.555, complete: true },
+  ];
+  assert.equal(findZoneEngulfingPattern(markedDbDtType4, zone({
+    name: 'DT',
+    isBuy: false,
+    startTime: 0,
+    activeFromTime: 1,
+    bottom: 4194.68445,
+    top: 4196.895,
+    fibStatus: 'a-plus',
+    fibBand: 'DB/DT',
+    fibLevel50: undefined,
+  }))?.type, 'T4', 'a green DT tap, one inside candle, and red close below the tap low is bearish T4');
 });
 
 test('a later zone invalidation does not erase an earlier TJL1 confirmation', () => {

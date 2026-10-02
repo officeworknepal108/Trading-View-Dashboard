@@ -91,13 +91,13 @@ export interface StructureZone {
   issPoint5Price?: number;
   issDirection?: 'bullish' | 'bearish';
   issCompletionTime?: number;
-  // Exact 0.5 retracement used by the engulfing gate. A zone can be A+ from
-  // band overlap, but no engulfing type is valid until its confirming candle
-  // itself trades through this price.
+  // Exact 0.5 retracement used as the minimum engulfing-pattern gate. A zone
+  // can be A+ from band overlap, but at least one candle in the confirmed
+  // engulfing sequence must trade through this price.
   fibLevel50?: number;
   // The first confirmed, direction-matching engulfing pattern that touches
-  // this active zone. Primary FIB setups additionally require the final candle
-  // to touch 0.5; a valid deep-discount setup qualifies from its own zone.
+  // this active zone. Primary FIB setups additionally require the pattern to
+  // touch 0.5; a valid deep-discount setup qualifies from its own zone.
   engulfingType?: EngulfingType;
   engulfingDirection?: EngulfingDirection;
   engulfingTime?: number;
@@ -473,7 +473,7 @@ function candleIsBearish(candle: StructureCandle): boolean {
 
 /**
  * Detect the strongest confirmed engulfing pattern ending at one candle.
- * T4 is checked first because its 5–10 candle containment can also satisfy a
+ * T4 is checked first because its 3–10 candle containment can also satisfy a
  * shorter T1 pattern. T2 is checked before T1 for the same reason.
  */
 export function detectEngulfingPatternAt(
@@ -484,10 +484,12 @@ export function detectEngulfingPatternAt(
   const current = candles[endIndex];
   if (!current || current.complete === false) return undefined;
 
-  const maximumType4Count = Math.max(5, Math.min(10, Math.floor(type4MaxCandles)));
-  for (let candleCount = 5; candleCount <= maximumType4Count; candleCount += 1) {
+  const maximumType4Count = Math.max(3, Math.min(10, Math.floor(type4MaxCandles)));
+  // Prefer the longest valid sequence so the original tap candle is retained
+  // when its final candles also form a shorter nested Type 4.
+  for (let candleCount = maximumType4Count; candleCount >= 3; candleCount -= 1) {
     const startIndex = endIndex - candleCount + 1;
-    if (startIndex < 0) break;
+    if (startIndex < 0) continue;
     const first = candles[startIndex];
     const patternCandles = candles.slice(startIndex, endIndex + 1);
     if (patternCandles.some((candle) => candle.complete === false)) continue;
@@ -495,10 +497,13 @@ export function detectEngulfingPatternAt(
       candle.high <= first.high && candle.low >= first.low
     ));
     if (!middleInsideFirst) continue;
-    if (candleIsBearish(first) && candleIsBullish(current) && current.close > first.high) {
+    // The tap candle may have either color. Type 4 is defined by containment
+    // followed by the final candle's body crossing and closing beyond the tap
+    // candle's wick, in the breakout direction.
+    if (candleIsBullish(current) && current.open <= first.high && current.close > first.high) {
       return { type: 'T4', direction: 'bullish', candleCount, startIndex, endIndex };
     }
-    if (candleIsBullish(first) && candleIsBearish(current) && current.close < first.low) {
+    if (candleIsBearish(current) && current.open >= first.low && current.close < first.low) {
       return { type: 'T4', direction: 'bearish', candleCount, startIndex, endIndex };
     }
   }
@@ -547,8 +552,9 @@ export function findZoneEngulfingPattern(
   type4MaxCandles = 10,
 ): EngulfingPattern | undefined {
   const isDeepFib = zone.fibBand === '0.71-0.79' || zone.fibBand === 'deep';
+  const isDbDtFib = zone.fibBand === 'DB/DT';
   if (zone.fibStatus !== 'a-plus'
-    || (!isDeepFib && zone.fibLevel50 === undefined)
+    || (!isDeepFib && !isDbDtFib && zone.fibLevel50 === undefined)
     || zone.status !== 'valid') {
     return undefined;
   }
@@ -564,13 +570,14 @@ export function findZoneEngulfingPattern(
     if (finalCandle.complete === false || finalCandle.time < validFrom) continue;
     const pattern = detectEngulfingPatternAt(candles, endIndex, type4MaxCandles);
     if (!pattern || pattern.direction !== requiredDirection) continue;
-    if (!isDeepFib) {
-      const finalCandleTouchesFib50 = finalCandle.low <= zone.fibLevel50!
-        && finalCandle.high >= zone.fibLevel50!;
-      if (!finalCandleTouchesFib50) continue;
+    const patternCandles = candles.slice(pattern.startIndex, pattern.endIndex + 1);
+    if (!isDeepFib && !isDbDtFib) {
+      const patternTouchesFib50 = patternCandles.some((candle) => (
+        candle.low <= zone.fibLevel50! && candle.high >= zone.fibLevel50!
+      ));
+      if (!patternTouchesFib50) continue;
     }
-    const touchesActiveZone = candles
-      .slice(pattern.startIndex, pattern.endIndex + 1)
+    const touchesActiveZone = patternCandles
       .some((candle) => (
         candle.time > zone.startTime
         && candle.time >= validFrom
