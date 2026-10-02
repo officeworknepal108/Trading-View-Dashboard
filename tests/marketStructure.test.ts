@@ -357,6 +357,16 @@ test('zone engulfing requires A+ FIB, active-zone contact, the band-specific tou
   assert.equal(findZoneEngulfingPattern(candles, eligible)?.type, 'T2');
   assert.equal(findZoneEngulfingPattern(candles, { ...eligible, isBuy: false }), undefined);
   assert.equal(findZoneEngulfingPattern(candles, { ...eligible, fibStatus: 'not-valid' }), undefined);
+  assert.equal(
+    findZoneEngulfingPattern(candles, {
+      ...eligible,
+      status: 'invalidated',
+      active: false,
+      invalidatedAt: 4,
+    }),
+    undefined,
+    'an invalidated zone must not retain an engulfing type found before invalidation',
+  );
   assert.equal(findZoneEngulfingPattern(candles, { ...eligible, bottom: 20, top: 21 }), undefined);
   assert.equal(
     findZoneEngulfingPattern(candles, { ...eligible, fibLevel50: 8 }),

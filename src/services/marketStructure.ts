@@ -534,8 +534,7 @@ export function findZoneEngulfingPattern(
   const isDeepFib = zone.fibBand === '0.71-0.79' || zone.fibBand === 'deep';
   if (zone.fibStatus !== 'a-plus'
     || (!isDeepFib && zone.fibLevel50 === undefined)
-    || zone.status === 'pending'
-    || zone.status === 'rejected') {
+    || zone.status !== 'valid') {
     return undefined;
   }
   const validFrom = Math.max(
@@ -548,7 +547,6 @@ export function findZoneEngulfingPattern(
   for (let endIndex = 1; endIndex < candles.length; endIndex += 1) {
     const finalCandle = candles[endIndex];
     if (finalCandle.complete === false || finalCandle.time < validFrom) continue;
-    if (zone.invalidatedAt !== undefined && finalCandle.time >= zone.invalidatedAt) continue;
     const pattern = detectEngulfingPatternAt(candles, endIndex, type4MaxCandles);
     if (!pattern || pattern.direction !== requiredDirection) continue;
     if (!isDeepFib) {
