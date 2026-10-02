@@ -472,6 +472,25 @@ function candleIsBearish(candle: StructureCandle): boolean {
 }
 
 /**
+ * The final confirmation candle must have enough directional body strength.
+ * For a bullish confirmation only its upper wick is relevant; for a bearish
+ * confirmation only its lower wick is relevant. An equal body and wick passes.
+ */
+function confirmationCandleHasDirectionalBodyStrength(candle: StructureCandle): boolean {
+  if (candleIsBullish(candle)) {
+    const body = candle.close - candle.open;
+    const upperWick = Math.max(0, candle.high - candle.close);
+    return body >= upperWick;
+  }
+  if (candleIsBearish(candle)) {
+    const body = candle.open - candle.close;
+    const lowerWick = Math.max(0, candle.close - candle.low);
+    return body >= lowerWick;
+  }
+  return false;
+}
+
+/**
  * Detect the strongest confirmed engulfing pattern ending at one candle.
  * T4 is checked first because its 3–10 candle containment can also satisfy a
  * shorter T1 pattern. T2 is checked before T1 for the same reason.
@@ -483,6 +502,7 @@ export function detectEngulfingPatternAt(
 ): EngulfingPattern | undefined {
   const current = candles[endIndex];
   if (!current || current.complete === false) return undefined;
+  if (!confirmationCandleHasDirectionalBodyStrength(current)) return undefined;
 
   const maximumType4Count = Math.max(3, Math.min(10, Math.floor(type4MaxCandles)));
   // Prefer the longest valid sequence so the original tap candle is retained

@@ -358,6 +358,75 @@ test('Type 4 contains all middle candles inside the first candle over 3–10 can
   }, 'one inside candle is sufficient between the tap and breakout candles');
 });
 
+test('every engulfing type rejects a bullish confirmation whose upper wick exceeds its body', () => {
+  const patterns: Array<{ type: 'T1' | 'T2' | 'T3' | 'T4'; candles: StructureCandle[] }> = [
+    {
+      type: 'T1',
+      candles: [
+        { time: 1, open: 12, high: 13, low: 9, close: 10, complete: true },
+        { time: 2, open: 10, high: 14, low: 9.5, close: 13.5, complete: true },
+      ],
+    },
+    {
+      type: 'T2',
+      candles: [
+        { time: 1, open: 12, high: 13, low: 9, close: 10, complete: true },
+        { time: 2, open: 10, high: 12, low: 8, close: 11, complete: true },
+        { time: 3, open: 9, high: 14, low: 8.5, close: 13.5, complete: true },
+      ],
+    },
+    {
+      type: 'T3',
+      candles: [
+        { time: 1, open: 12, high: 13, low: 9, close: 10, complete: true },
+        { time: 2, open: 10, high: 12, low: 8, close: 11, complete: true },
+        { time: 3, open: 11, high: 13, low: 10, close: 12.5, complete: true },
+      ],
+    },
+    {
+      type: 'T4',
+      candles: [
+        { time: 1, open: 12, high: 13, low: 8, close: 9, complete: true },
+        { time: 2, open: 9, high: 12, low: 9, close: 11, complete: true },
+        { time: 3, open: 11, high: 14.5, low: 10, close: 14, complete: true },
+      ],
+    },
+  ];
+
+  for (const { type, candles } of patterns) {
+    const endIndex = candles.length - 1;
+    assert.equal(detectEngulfingPatternAt(candles, endIndex)?.type, type);
+    const weakConfirmation = candles.map((candle) => ({ ...candle }));
+    const final = weakConfirmation[endIndex];
+    final.high = final.close + (final.close - final.open) + 0.01;
+    assert.equal(
+      detectEngulfingPatternAt(weakConfirmation, endIndex),
+      undefined,
+      `${type} must be rejected when the bullish upper wick is larger than its body`,
+    );
+  }
+});
+
+test('bearish confirmation uses its lower wick and accepts a wick equal to the body', () => {
+  const bearish: StructureCandle[] = [
+    { time: 1, open: 10, high: 13, low: 9, close: 12, complete: true },
+    { time: 2, open: 12, high: 12.5, low: 5, close: 8.5, complete: true },
+  ];
+
+  assert.equal(
+    detectEngulfingPatternAt(bearish, 1)?.direction,
+    'bearish',
+    'a lower wick equal to the bearish body remains valid',
+  );
+
+  bearish[1].low = 4.99;
+  assert.equal(
+    detectEngulfingPatternAt(bearish, 1),
+    undefined,
+    'a lower wick larger than the bearish body must be rejected',
+  );
+});
+
 test('zone engulfing requires A+ FIB, active-zone contact, the band-specific touch, and matching direction', () => {
   const candles: StructureCandle[] = [
     { time: 1, open: 12, high: 13, low: 9, close: 10, complete: true },
