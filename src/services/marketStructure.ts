@@ -102,6 +102,14 @@ export interface StructureZone {
   engulfingDirection?: EngulfingDirection;
   engulfingTime?: number;
   engulfingCandleCount?: number;
+  // Direction-matched confluence from the active 4H Swing FIB. This is kept
+  // separate from the zone's own FIB classification so both can coexist.
+  swingFibBand?: Extract<FibBand, '0.5-0.618' | '0.71-0.79'>;
+  swingFibStatus?: 'a-plus';
+  swingEngulfingType?: EngulfingType;
+  swingEngulfingDirection?: EngulfingDirection;
+  swingEngulfingTime?: number;
+  swingEngulfingCandleCount?: number;
 }
 
 type ChochMetadata = Pick<StructureZone,

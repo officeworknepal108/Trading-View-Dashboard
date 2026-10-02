@@ -25,6 +25,7 @@ import { findReplayIndexAtOrBefore } from '../services/replay';
 import { buildAlternatingSwingFibs, SwingFibMove } from '../services/swingFib';
 import { ChartTimeZone, formatChartTick, formatChartTime } from '../services/chartTime';
 import { buildDayFibs, DayFibMove } from '../services/dayFib';
+import { applySwingFibConfluence } from '../services/swingFibConfluence';
 
 type OandaGranularity = 'M1' | 'M5' | 'M15' | 'M30' | 'H1' | 'H4' | 'D';
 type MarketGranularity = OandaGranularity | 'W' | 'MO';
@@ -168,6 +169,14 @@ function displayFibLabel(zone: StructureZone): string {
     return 'FIB DEEP DISCOUNT';
   }
   return `A+ FIB ${zone.fibBand}`;
+}
+
+function displayEngulfingLabel(zone: StructureZone): string | undefined {
+  const labels = [
+    zone.engulfingType,
+    zone.swingEngulfingType ? `SW ${zone.swingEngulfingType}` : undefined,
+  ].filter((label): label is string => label !== undefined);
+  return labels.length > 0 ? `${labels.join(' / ')} ${zone.isBuy ? 'BULL' : 'BEAR'}` : undefined;
 }
 
 function fibVisibilityKey(zone: StructureZone): FibVisibilityKey {
@@ -426,22 +435,44 @@ export const OandaProChart: React.FC = () => {
     [displayCandles, granularity, vipSupportContexts],
   );
 
+  const h4SwingSource = useMemo(() => {
+    if (granularity === 'D') return { candles: [] as OandaCandle[], lines: [] as StructureLine[] };
+    if (granularity === 'H4') return { candles: displayCandles, lines: structure.lines };
+    const h4Candles = vipCandles.H4 || [];
+    if (h4Candles.length === 0) return { candles: h4Candles, lines: [] as StructureLine[] };
+    const h4Structure = analyzeMarketStructure(h4Candles, {
+      allowSupplyDemand: true,
+      sourceBarSeconds: TIMEFRAME_SECONDS.H4,
+      confirmationBarSeconds: TJL1_CONFIRMATION_SECONDS.H4,
+      zoneVisualBars: 30,
+    });
+    return { candles: h4Candles, lines: h4Structure.lines };
+  }, [displayCandles, granularity, structure.lines, vipCandles]);
+
   const swingFibMoves = useMemo(() => {
-    if (granularity !== 'H4') return [];
-    const seedLine = structure.lines
+    const seedLine = h4SwingSource.lines
       .filter((line) => line.type === 'swing'
         && line.fromTime !== line.toTime
         && line.fromPrice !== line.toPrice)
       .sort((first, second) => first.toTime - second.toTime)[0];
     if (!seedLine) return [];
 
-    return buildAlternatingSwingFibs(displayCandles, {
+    return buildAlternatingSwingFibs(h4SwingSource.candles, {
       sourceTime: seedLine.fromTime,
       sourcePrice: seedLine.fromPrice,
       zeroTime: seedLine.toTime,
       zeroPrice: seedLine.toPrice,
     });
-  }, [displayCandles, granularity, structure.lines]);
+  }, [h4SwingSource]);
+
+  const swingFibConfluence = useMemo(() => applySwingFibConfluence(
+    displayCandles,
+    structure.zones,
+    ['M1', 'M5', 'M15', 'M30', 'H1'].includes(granularity)
+      ? swingFibMoves[swingFibMoves.length - 1]
+      : undefined,
+  ), [displayCandles, granularity, structure.zones, swingFibMoves]);
+  const displayZones = swingFibConfluence.zones;
 
   const dayFibMoves = useMemo(() => (
     ['M1', 'M5', 'M15', 'M30'].includes(granularity)
@@ -515,15 +546,15 @@ export const OandaProChart: React.FC = () => {
 
   const latestCandle = hoveredCandle || displayCandles[displayCandles.length - 1] || null;
   const previousCandle = displayCandles.length > 1 ? displayCandles[displayCandles.length - 2] : null;
-  const zoneTableRows = useMemo(() => structure.zones
+  const zoneTableRows = useMemo(() => displayZones
     .filter((zone) => zone.active && zone.status === 'valid'
       && (showInternal || zone.category !== 'internal')
       && zone.doubleChochStatus === undefined
       && zone.tapTime !== undefined && (zone.tapBarsAgo ?? Infinity) <= 50)
     .sort((a, b) => (b.tapTime ?? b.startTime) - (a.tapTime ?? a.startTime))
-    .slice(0, 8), [showInternal, structure.zones]);
+    .slice(0, 8), [displayZones, showInternal]);
   const latestDisplayCandleTime = displayCandles[displayCandles.length - 1]?.time;
-  const doubleChochRows = useMemo(() => structure.zones
+  const doubleChochRows = useMemo(() => displayZones
     .filter((zone) => zone.active && zone.status === 'valid'
       && zone.doubleChochStatus !== undefined
       && (zone.tapTime !== undefined
@@ -538,13 +569,23 @@ export const OandaProChart: React.FC = () => {
     .sort((a, b) => (b.tapTime ?? b.doubleChochTime ?? b.startTime)
       - (a.tapTime ?? a.doubleChochTime ?? a.startTime)
       || b.startTime - a.startTime)
-    .slice(0, 8), [granularity, latestDisplayCandleTime, structure.zones]);
-  const pendingConfirmationRows = useMemo(() => structure.zones
+    .slice(0, 8), [displayZones, granularity, latestDisplayCandleTime]);
+  const pendingConfirmationRows = useMemo(() => displayZones
     .filter((zone) => (zone.name === 'TJL1' || zone.name === 'ISS L3' || zone.name === 'Internal TJL1')
       && zone.active && zone.status === 'pending'
       && (showInternal || zone.category !== 'internal'))
     .sort((a, b) => b.startTime - a.startTime)
-    .slice(0, 4), [showInternal, structure.zones]);
+    .slice(0, 4), [displayZones, showInternal]);
+  const engulfingMarkers = useMemo(() => {
+    const combined = [...structure.engulfingMarkers];
+    for (const marker of swingFibConfluence.engulfingMarkers) {
+      const duplicatesExisting = combined.some((existing) => (
+        Number(existing.time) === Number(marker.time) && existing.position === marker.position
+      ));
+      if (!duplicatesExisting) combined.push(marker);
+    }
+    return combined.sort((first, second) => Number(first.time) - Number(second.time));
+  }, [structure.engulfingMarkers, swingFibConfluence.engulfingMarkers]);
   const change = latestCandle && previousCandle ? latestCandle.close - previousCandle.close : 0;
   const changePercent = latestCandle && previousCandle && previousCandle.close
     ? change / previousCandle.close * 100
@@ -645,6 +686,9 @@ export const OandaProChart: React.FC = () => {
         && zone.fibBand && zone.fibBand !== 'DB/DT') {
         label.textContent = `${label.textContent} · ${displayFibLabel(zone)}`;
       }
+      if (!inactive && showFibRef.current && zone.swingFibStatus === 'a-plus' && zone.swingFibBand) {
+        label.textContent = `${label.textContent} · SWING A+ FIB ${zone.swingFibBand}`;
+      }
       label.style.position = 'absolute';
       label.style.right = '4px';
       label.style.top = '2px';
@@ -703,7 +747,8 @@ export const OandaProChart: React.FC = () => {
           fibMovesByType.set(type, typeMoves);
         }
 
-        if (fibVisibilityRef.current.swing || fibPreviousVisibilityRef.current.swing) {
+        if (granularity !== 'D'
+          && (fibVisibilityRef.current.swing || fibPreviousVisibilityRef.current.swing)) {
           const swingZones = swingFibMovesRef.current.map<StructureZone>((move) => ({
             id: `swing-fib-${move.startedAt}-${move.direction}`,
             name: move.direction === 'up' ? 'DEMAND' : 'SUPPLY',
@@ -949,7 +994,7 @@ export const OandaProChart: React.FC = () => {
   }, []);
 
   useEffect(() => {
-    zonesRef.current = structure.zones;
+    zonesRef.current = displayZones;
     swingFibMovesRef.current = swingFibMoves;
     dayFibMovesRef.current = dayFibMoves;
     structureLinesRef.current = structure.lines;
@@ -966,10 +1011,10 @@ export const OandaProChart: React.FC = () => {
     fibPreviousVisibilityRef.current = fibPreviousVisibility;
     showInvalidZonesRef.current = showInvalidZones;
     scheduleOverlayRedraw();
-  }, [dayFibMoves, fibPreviousVisibility, fibVisibility, redrawZones, scheduleOverlayRedraw, showFib, showInternal, showInvalidZones, showIss, showMgZones, showStructure, showSupplyDemand, structure.internalMarkers, structure.issMarkers, structure.lines, structure.markers, structure.zones, swingFibMoves]);
+  }, [dayFibMoves, displayZones, fibPreviousVisibility, fibVisibility, redrawZones, scheduleOverlayRedraw, showFib, showInternal, showInvalidZones, showIss, showMgZones, showStructure, showSupplyDemand, structure.internalMarkers, structure.issMarkers, structure.lines, structure.markers, swingFibMoves]);
 
   useEffect(() => {
-    if (granularity !== 'H4' && expandedFibOption === 'swing') {
+    if (granularity === 'D' && expandedFibOption === 'swing') {
       setExpandedFibOption(null);
     }
   }, [expandedFibOption, granularity]);
@@ -1219,7 +1264,7 @@ export const OandaProChart: React.FC = () => {
     markersRef.current?.setMarkers([
       ...(showStructure ? structure.markers : []),
       ...(showInternal ? structure.internalMarkers : []),
-      ...(showEngulfing ? structure.engulfingMarkers : []),
+      ...(showEngulfing ? engulfingMarkers : []),
     ].sort((a: any, b: any) => Number(a.time) - Number(b.time)));
     const pendingViewport = pendingReplayViewportRef.current;
     if (replayIndex !== null && pendingViewport && loadedGranularityRef.current === granularity) {
@@ -1235,7 +1280,7 @@ export const OandaProChart: React.FC = () => {
       hasFittedRef.current = true;
     }
     scheduleOverlayRedraw();
-  }, [displayCandles, replayIndex, restorePresentChartView, scheduleOverlayRedraw, showEngulfing, showInternal, showIss, showStructure, structure.engulfingMarkers, structure.internalMarkers, structure.issMarkers, structure.markers]);
+  }, [displayCandles, engulfingMarkers, replayIndex, restorePresentChartView, scheduleOverlayRedraw, showEngulfing, showInternal, showIss, showStructure, structure.internalMarkers, structure.issMarkers, structure.markers]);
 
   useEffect(() => {
     const label = livePriceLabelRef.current;
@@ -1344,12 +1389,12 @@ export const OandaProChart: React.FC = () => {
 
   const renderFibOptionButton = (option: { key: FibVisibilityKey; label: string }) => {
     const isSingleMarking = isSingleFibMarkingKey(option.key);
-    const isUnavailable = (option.key === 'swing' && granularity !== 'H4')
+    const isUnavailable = (option.key === 'swing' && granularity === 'D')
       || (option.key === 'day' && !['M1', 'M5', 'M15', 'M30'].includes(granularity));
     const latestOn = fibVisibility[option.key];
     const previousOn = fibPreviousVisibility[option.key];
     const status = isUnavailable
-      ? '4H'
+      ? option.key === 'day' ? '≤30m' : '≤4H'
       : isSingleMarking
       ? latestOn ? 'ON' : 'OFF'
       : latestOn && previousOn
@@ -1388,7 +1433,7 @@ export const OandaProChart: React.FC = () => {
         title={isUnavailable
           ? option.key === 'day'
             ? 'Day FIB is available on the 1m, 5m, 15m, and 30m charts'
-            : 'Swing FIB marking is available only on the 4H chart'
+            : 'Show the 4H Swing FIB drawing on charts from 1m through 4H'
           : isSingleMarking
           ? `Show or hide the single current ${option.label.replace(' MARKING', '')} FIB marking`
           : `Choose latest or previous ${option.label}`}
@@ -1917,6 +1962,11 @@ export const OandaProChart: React.FC = () => {
                             FROM {zone.doubleChochOriginClass.toUpperCase()}
                           </span>
                         )}
+                        {showFib && zone.swingFibStatus === 'a-plus' && zone.swingFibBand && (
+                          <span className="ml-1 rounded bg-violet-100 px-1 py-0.5 text-[8px] font-black text-violet-800">
+                            SWING A+ FIB {zone.swingFibBand}
+                          </span>
+                        )}
                       </td>
                       <td className={`px-2 py-1 font-bold ${zone.isBuy ? 'text-emerald-700' : 'text-rose-700'}`}>
                         {zone.isBuy ? 'BUY' : 'SELL'}
@@ -1925,9 +1975,7 @@ export const OandaProChart: React.FC = () => {
                       <td className={`px-2 py-1 text-center font-black whitespace-nowrap ${
                         zone.isBuy ? 'text-emerald-700' : 'text-rose-700'
                       }`}>
-                        {showEngulfing && zone.engulfingType
-                          ? `${zone.engulfingType} ${zone.isBuy ? 'BULL' : 'BEAR'}`
-                          : '—'}
+                        {showEngulfing ? displayEngulfingLabel(zone) ?? '—' : '—'}
                       </td>
                       <td className={`px-2 py-1 text-right font-black whitespace-nowrap ${
                         pending ? 'text-amber-700' : 'text-emerald-700'
@@ -1974,6 +2022,11 @@ export const OandaProChart: React.FC = () => {
                           {displayFibLabel(zone)}
                         </span>
                       )}
+                      {showFib && zone.swingFibStatus === 'a-plus' && zone.swingFibBand && (
+                        <span className="ml-1 rounded bg-violet-100 px-1 py-0.5 text-[8px] font-black text-violet-800">
+                          SWING A+ FIB {zone.swingFibBand}
+                        </span>
+                      )}
                     </td>
                     <td className={`px-2 py-1 font-bold ${zone.isBuy ? 'text-emerald-700' : 'text-rose-700'}`}>
                       {zone.isBuy ? 'BUY' : 'SELL'}
@@ -1982,9 +2035,7 @@ export const OandaProChart: React.FC = () => {
                     <td className={`px-2 py-1 text-center font-black whitespace-nowrap ${
                       zone.isBuy ? 'text-emerald-700' : 'text-rose-700'
                     }`}>
-                      {showEngulfing && zone.engulfingType
-                        ? `${zone.engulfingType} ${zone.isBuy ? 'BULL' : 'BEAR'}`
-                        : '—'}
+                      {showEngulfing ? displayEngulfingLabel(zone) ?? '—' : '—'}
                     </td>
                     <td className="px-2 py-1 text-right font-bold whitespace-nowrap">
                       <span className="text-slate-500">{zone.tapBarsAgo} bars</span>
@@ -2033,9 +2084,9 @@ export const OandaProChart: React.FC = () => {
           <span>OHLC supplied by TradingView</span>
           <span>Structure: HH · HL · LH · LL · BOS · CHoCH</span>
           <span>Genesis Low: {formatPrice(structure.genesis?.price)}</span>
-          <span>Active MG zones: {structure.zones.filter((zone) => zone.category === 'mg' && zone.active).length}</span>
-          <span>Invalid zones: {structure.zones.filter((zone) => !zone.active).length}</span>
-          <span>S/D: {['H1', 'H4', 'D'].includes(granularity) ? structure.zones.filter((zone) => zone.category === 'supplyDemand').length : 'H1+ ONLY'}</span>
+          <span>Active MG zones: {displayZones.filter((zone) => zone.category === 'mg' && zone.active).length}</span>
+          <span>Invalid zones: {displayZones.filter((zone) => !zone.active).length}</span>
+          <span>S/D: {['H1', 'H4', 'D'].includes(granularity) ? displayZones.filter((zone) => zone.category === 'supplyDemand').length : 'H1+ ONLY'}</span>
           <span>Last candle: {latestCandle?.complete === false ? 'FORMING' : 'COMPLETE'}</span>
           <span className="ml-auto">Updated: {lastUpdated ? new Date(lastUpdated).toLocaleTimeString() : '—'}</span>
         </div>
