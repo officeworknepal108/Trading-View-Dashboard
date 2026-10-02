@@ -5,6 +5,8 @@ import {
   CrosshairMode,
   HistogramSeries,
   LineStyle,
+  type Time,
+  type TickMarkType,
   UTCTimestamp,
   createChart,
   createSeriesMarkers,
@@ -21,11 +23,13 @@ import {
 import { analyzeMarketStructure, StructureLine, StructureZone } from '../services/marketStructure';
 import { findReplayIndexAtOrBefore } from '../services/replay';
 import { buildAlternatingSwingFibs, SwingFibMove } from '../services/swingFib';
+import { ChartTimeZone, formatChartTick, formatChartTime } from '../services/chartTime';
+import { buildDayFibs, DayFibMove } from '../services/dayFib';
 
 type OandaGranularity = 'M1' | 'M5' | 'M15' | 'M30' | 'H1' | 'H4' | 'D';
 type MarketGranularity = OandaGranularity | 'W' | 'MO';
 type FibVisibilityKey = 'tjl1' | 'tjl2' | 'choch' | 'intChoch' | 'intTjl1' | 'intTjl2'
-  | 'doubleChoch' | 'iss' | 'swing';
+  | 'doubleChoch' | 'iss' | 'swing' | 'day';
 
 const DEFAULT_FIB_VISIBILITY: Record<FibVisibilityKey, boolean> = {
   tjl1: false,
@@ -37,6 +41,7 @@ const DEFAULT_FIB_VISIBILITY: Record<FibVisibilityKey, boolean> = {
   doubleChoch: false,
   iss: false,
   swing: false,
+  day: false,
 };
 
 const FIB_VISIBILITY_OPTIONS: Array<{ key: FibVisibilityKey; label: string }> = [
@@ -46,6 +51,7 @@ const FIB_VISIBILITY_OPTIONS: Array<{ key: FibVisibilityKey; label: string }> = 
   { key: 'doubleChoch', label: 'D CHoCH MARKING' },
   { key: 'iss', label: 'ISS MARKING' },
   { key: 'swing', label: 'SWING MARKING' },
+  { key: 'day', label: 'DAY FIB' },
 ];
 
 const INTERNAL_FIB_VISIBILITY_OPTIONS: Array<{ key: FibVisibilityKey; label: string }> = [
@@ -61,7 +67,7 @@ const ALL_FIB_VISIBILITY_OPTIONS = [
 
 function isSingleFibMarkingKey(key: FibVisibilityKey): boolean {
   return key === 'tjl1' || key === 'tjl2' || key === 'intTjl1' || key === 'intTjl2'
-    || key === 'doubleChoch' || key === 'iss';
+    || key === 'doubleChoch' || key === 'iss' || key === 'day';
 }
 
 interface OandaCandle {
@@ -286,6 +292,7 @@ export const OandaProChart: React.FC = () => {
   const replaySelectionLineRef = useRef<HTMLDivElement | null>(null);
   const zonesRef = useRef<StructureZone[]>([]);
   const swingFibMovesRef = useRef<SwingFibMove[]>([]);
+  const dayFibMovesRef = useRef<DayFibMove[]>([]);
   const structureLinesRef = useRef<StructureLine[]>([]);
   const structureMarkersRef = useRef<any[]>([]);
   const issMarkersRef = useRef<any[]>([]);
@@ -319,6 +326,7 @@ export const OandaProChart: React.FC = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [refreshKey, setRefreshKey] = useState(0);
+  const [chartTimeZone, setChartTimeZone] = useState<ChartTimeZone>('Asia/Kathmandu');
   const [showStructure, setShowStructure] = useState(true);
   const [showMgZones, setShowMgZones] = useState(true);
   const [showSupplyDemand, setShowSupplyDemand] = useState(true);
@@ -434,6 +442,12 @@ export const OandaProChart: React.FC = () => {
       zeroPrice: seedLine.toPrice,
     });
   }, [displayCandles, granularity, structure.lines]);
+
+  const dayFibMoves = useMemo(() => (
+    ['M1', 'M5', 'M15', 'M30'].includes(granularity)
+      ? buildDayFibs(displayCandles)
+      : []
+  ), [displayCandles, granularity]);
 
   const restorePresentChartView = useCallback(() => {
     const chart = chartRef.current;
@@ -710,6 +724,27 @@ export const OandaProChart: React.FC = () => {
           fibMovesByType.set('swing', swingZones);
         }
 
+        if (fibVisibilityRef.current.day) {
+          const dayZones = dayFibMovesRef.current.map<StructureZone>((move) => ({
+            id: `day-fib-${move.sessionDate}`,
+            name: move.direction === 'up' ? 'DEMAND' : 'SUPPLY',
+            category: 'supplyDemand',
+            isBuy: move.direction === 'up',
+            startTime: move.sourceTime,
+            endTime: move.zeroTime,
+            top: Math.max(move.sourcePrice, move.zeroPrice),
+            bottom: Math.min(move.sourcePrice, move.zeroPrice),
+            active: true,
+            status: 'valid',
+            fibRelevant: true,
+            fibSourceTime: move.sourceTime,
+            fibSourcePrice: move.sourcePrice,
+            fibZeroTime: move.zeroTime,
+            fibZeroPrice: move.zeroPrice,
+          }));
+          fibMovesByType.set('day', dayZones);
+        }
+
         const latestFibMoves = [...fibMovesByType.entries()].flatMap(([type, typeMoves]) => {
           const distinctMoves = new Set<string>();
           const orderedMoves = typeMoves
@@ -916,6 +951,7 @@ export const OandaProChart: React.FC = () => {
   useEffect(() => {
     zonesRef.current = structure.zones;
     swingFibMovesRef.current = swingFibMoves;
+    dayFibMovesRef.current = dayFibMoves;
     structureLinesRef.current = structure.lines;
     structureMarkersRef.current = structure.markers;
     issMarkersRef.current = structure.issMarkers;
@@ -930,7 +966,7 @@ export const OandaProChart: React.FC = () => {
     fibPreviousVisibilityRef.current = fibPreviousVisibility;
     showInvalidZonesRef.current = showInvalidZones;
     scheduleOverlayRedraw();
-  }, [fibPreviousVisibility, fibVisibility, redrawZones, scheduleOverlayRedraw, showFib, showInternal, showInvalidZones, showIss, showMgZones, showStructure, showSupplyDemand, structure.internalMarkers, structure.issMarkers, structure.lines, structure.markers, structure.zones, swingFibMoves]);
+  }, [dayFibMoves, fibPreviousVisibility, fibVisibility, redrawZones, scheduleOverlayRedraw, showFib, showInternal, showInvalidZones, showIss, showMgZones, showStructure, showSupplyDemand, structure.internalMarkers, structure.issMarkers, structure.lines, structure.markers, structure.zones, swingFibMoves]);
 
   useEffect(() => {
     if (granularity !== 'H4' && expandedFibOption === 'swing') {
@@ -1062,12 +1098,16 @@ export const OandaProChart: React.FC = () => {
         borderColor: '#e2e8f0',
         timeVisible: true,
         secondsVisible: false,
+        tickMarkFormatter: (time, tickMarkType) => formatChartTick(time, tickMarkType, 'Asia/Kathmandu'),
         rightOffset: 8,
         barSpacing: PRESENT_VIEW_BAR_SPACING,
         minBarSpacing: 1.5,
       },
       handleScroll: { mouseWheel: true, pressedMouseMove: true, horzTouchDrag: true, vertTouchDrag: false },
       handleScale: { axisPressedMouseMove: true, mouseWheel: true, pinch: true },
+      localization: {
+        timeFormatter: (time) => formatChartTime(time, 'Asia/Kathmandu'),
+      },
     });
     const candleSeries = chart.addSeries(CandlestickSeries, {
       upColor: '#089981',
@@ -1138,6 +1178,21 @@ export const OandaProChart: React.FC = () => {
       markersRef.current = null;
     };
   }, [scheduleOverlayRedraw]);
+
+  useEffect(() => {
+    const chart = chartRef.current;
+    if (!chart) return;
+    chart.applyOptions({
+      localization: {
+        timeFormatter: (time: Time) => formatChartTime(time, chartTimeZone),
+      },
+      timeScale: {
+        tickMarkFormatter: (time: Time, tickMarkType: TickMarkType) => (
+          formatChartTick(time, tickMarkType, chartTimeZone)
+        ),
+      },
+    });
+  }, [chartTimeZone]);
 
   useEffect(() => {
     const frame = window.requestAnimationFrame(syncReplaySelectionLine);
@@ -1289,7 +1344,8 @@ export const OandaProChart: React.FC = () => {
 
   const renderFibOptionButton = (option: { key: FibVisibilityKey; label: string }) => {
     const isSingleMarking = isSingleFibMarkingKey(option.key);
-    const isUnavailable = option.key === 'swing' && granularity !== 'H4';
+    const isUnavailable = (option.key === 'swing' && granularity !== 'H4')
+      || (option.key === 'day' && !['M1', 'M5', 'M15', 'M30'].includes(granularity));
     const latestOn = fibVisibility[option.key];
     const previousOn = fibPreviousVisibility[option.key];
     const status = isUnavailable
@@ -1330,7 +1386,9 @@ export const OandaProChart: React.FC = () => {
               : 'border-slate-200 bg-slate-50 text-slate-500 hover:bg-slate-100'
         }`}
         title={isUnavailable
-          ? 'Swing FIB marking is available only on the 4H chart'
+          ? option.key === 'day'
+            ? 'Day FIB is available on the 1m, 5m, 15m, and 30m charts'
+            : 'Swing FIB marking is available only on the 4H chart'
           : isSingleMarking
           ? `Show or hide the single current ${option.label.replace(' MARKING', '')} FIB marking`
           : `Choose latest or previous ${option.label}`}
@@ -1671,6 +1729,18 @@ export const OandaProChart: React.FC = () => {
           </div>
 
           <div className="ml-auto flex items-center gap-1.5">
+            <label className="flex items-center gap-1 rounded-md border border-slate-200 bg-white px-1.5 py-0.5 text-[9px] font-black text-slate-600">
+              TIME
+              <select
+                value={chartTimeZone}
+                onChange={(event) => setChartTimeZone(event.target.value as ChartTimeZone)}
+                className="bg-white text-[9px] font-black text-slate-700 outline-none"
+                title="Choose the timezone shown on the chart axis and crosshair"
+              >
+                <option value="Asia/Kathmandu">NEPAL (UTC+5:45)</option>
+                <option value="UTC">UTC</option>
+              </select>
+            </label>
             <div className={`flex items-center gap-1 rounded-full border px-2 py-0.5 text-[9px] font-black ${
               error
                 ? 'border-rose-200 bg-rose-50 text-rose-700'
