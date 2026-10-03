@@ -66,10 +66,8 @@ function zoneWasUsableAt(zone: StructureZone, time: number): boolean {
   return zone.status !== 'rejected'
     && zone.startTime < time
     && activeFrom <= time
-    // An MTF context must come from a level that is actually present on the
-    // HTF chart at the tap. Normal structure validity may remain stored after
-    // the fixed 30-bar drawing ends, but that hidden history is not an MTF tap.
-    && time <= zone.endTime
+    // endTime limits only the 30-bar drawing. The level remains eligible for
+    // MTF context for as long as market structure keeps it active and valid.
     && (zone.confirmationTime === undefined || zone.confirmationTime <= time)
     && (zone.invalidatedAt === undefined || zone.invalidatedAt > time);
 }
@@ -83,7 +81,6 @@ function latestHigherTimeframeTouch(
   zones: StructureZone[],
   confirmationTime: number,
   isBuy: boolean,
-  sourceStructureTime: number,
 ): { zone: StructureZone; time: number } | undefined {
   let latest: { zone: StructureZone; time: number } | undefined;
   for (const zone of zones) {
@@ -91,14 +88,18 @@ function latestHigherTimeframeTouch(
     let insideZone = false;
     let latestTapTime: number | undefined;
     for (const candle of candles) {
-      if (candle.time >= confirmationTime) break;
+      // The candle that confirms the LTF CHOCH can also be the candle that
+      // reaches the mapped HTF zone. CHOCH is known only after that candle is
+      // complete, so treating its completed range as the HTF tap does not use
+      // future information. Candles after the CHOCH still cannot arm it.
+      if (candle.time > confirmationTime) break;
       const overlaps = candle.complete !== false
         && zoneWasUsableAt(zone, candle.time)
         && candleTouchesZone(candle, zone);
-      // The selected opposing TJL1/TJL2 structure must already exist when
-      // price enters the HTF zone. If price was already inside before that
-      // structure formed, only a later exit and retap can arm the setup.
-      if (overlaps && !insideZone && candle.time >= sourceStructureTime) {
+      // The HTF tap establishes directional context first. The matching LTF
+      // structure and CHOCH may form afterward; they do not require a second
+      // HTF retap once price has already visited this valid level.
+      if (overlaps && !insideZone) {
         latestTapTime = candle.time;
       }
       insideZone = overlaps;
@@ -287,7 +288,6 @@ export function buildMtfRows(
             higher.structure.zones,
             event.time,
             event.isBuy,
-            event.sourceStructureTime ?? event.time,
           ),
         }))
         .filter((item): item is {
