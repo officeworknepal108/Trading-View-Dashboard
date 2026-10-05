@@ -37,13 +37,15 @@ const CHAT_STORAGE_KEY = 'xauusd-code-agent-chat-v1';
 const WELCOME: ChatMessage = {
   id: 'welcome',
   role: 'assistant',
-  content: 'I am your XAUUSD dashboard knowledge assistant. Ask me about any rule in the code, the current chart, an MTF setup, replay behaviour, or a completed trade.',
+  content: 'Hello, I’m your AI Trading Assistant.\nHow can I assist with your analysis today?',
 };
 
 function loadMessages(): ChatMessage[] {
   try {
     const parsed = JSON.parse(window.localStorage.getItem(CHAT_STORAGE_KEY) || '[]');
-    return Array.isArray(parsed) && parsed.length > 0 ? parsed.slice(-40) : [WELCOME];
+    return Array.isArray(parsed) && parsed.length > 0
+      ? parsed.slice(-40).map((message) => message?.id === 'welcome' ? WELCOME : message)
+      : [WELCOME];
   } catch {
     return [WELCOME];
   }
@@ -146,9 +148,11 @@ export const AiTradeAssistant: React.FC<AiTradeAssistantProps> = ({ context }) =
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className="pointer-events-auto absolute bottom-3 left-3 z-30 flex items-center gap-2 rounded-full border border-indigo-200 bg-indigo-600 px-3 py-2 text-[10px] font-black text-white shadow-lg hover:bg-indigo-700"
+        aria-label="Open Chart AI"
+        title="Open Chart AI"
+        className="pointer-events-auto absolute bottom-2 left-2 z-30 grid h-8 w-8 place-items-center rounded-full border border-indigo-200 bg-indigo-600 text-white shadow-md hover:bg-indigo-700"
       >
-        <MessageCircle className="h-4 w-4" /> ASK CHART AI
+        <MessageCircle className="h-4 w-4" />
       </button>
     );
   }

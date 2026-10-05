@@ -1,7 +1,19 @@
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import test from 'node:test';
-import { retrieveProjectKnowledge, summarizeTradeMemory } from '../src/services/agentKnowledge';
+import {
+  getInstantProjectAnswer,
+  retrieveProjectKnowledge,
+  summarizeTradeMemory,
+} from '../src/services/agentKnowledge';
+
+test('answers the common engulfing-count question without loading an AI model', () => {
+  const result = getInstantProjectAnswer('how many type of engulfing are there?');
+
+  assert.equal(result?.answer, 'There are 4 engulfing types in this dashboard: Type 1, Type 2, Type 3, and Type 4.');
+  assert.deepEqual(result?.sources, ['src/services/marketStructure.ts:500-573']);
+  assert.equal(getInstantProjectAnswer('Explain the current MTF setup'), null);
+});
 
 test('retrieves MTF implementation and regression knowledge for MTF questions', async () => {
   const chunks = await retrieveProjectKnowledge('Why must LTF CHOCH overlap the HTF tapped zone?', 8);

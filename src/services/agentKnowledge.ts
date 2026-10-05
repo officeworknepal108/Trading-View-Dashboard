@@ -31,6 +31,11 @@ export interface TradeMemorySummary {
   observedProfitRate: number | null;
 }
 
+export interface InstantProjectAnswer {
+  answer: string;
+  sources: string[];
+}
+
 const MEMORY_PATH = path.resolve(process.cwd(), 'data', 'ai-agent-memory.json');
 const KNOWLEDGE_ROOTS = ['src', 'tests'];
 const KNOWLEDGE_FILES = [
@@ -44,6 +49,19 @@ const KNOWLEDGE_FILES = [
 const SOURCE_EXTENSIONS = new Set(['.ts', '.tsx', '.md', '.txt']);
 const CHUNK_LINES = 70;
 const CHUNK_OVERLAP = 10;
+
+export function getInstantProjectAnswer(question: string): InstantProjectAnswer | null {
+  const normalized = question.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+  const asksEngulfingCount = normalized.includes('engulf')
+    && (/\bhow many\b/.test(normalized) || /\bnumber of\b/.test(normalized));
+  if (asksEngulfingCount) {
+    return {
+      answer: 'There are 4 engulfing types in this dashboard: Type 1, Type 2, Type 3, and Type 4.',
+      sources: ['src/services/marketStructure.ts:500-573'],
+    };
+  }
+  return null;
+}
 
 function terms(value: string): string[] {
   return Array.from(new Set(value.toLowerCase().split(/[^a-z0-9]+/)

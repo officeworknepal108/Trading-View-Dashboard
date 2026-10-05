@@ -19,7 +19,7 @@ the `PORT` environment variable before starting the server.
 The chart includes a conversational, read-only agent that can search the
 project's services, tests and documentation while inspecting the current chart,
 zones, MTF rows and replay state. It uses the free local Ollama backend by
-default (`AI_PROVIDER=ollama`, `OLLAMA_MODEL=qwen3:4b`), so no paid API key is
+default (`AI_PROVIDER=ollama`, `OLLAMA_MODEL=qwen3:1.7b`), so no paid API key is
 required. Ollama must be installed and the configured model downloaded.
 
 OpenAI remains optional: set `AI_PROVIDER=openai` and add `OPENAI_API_KEY` to

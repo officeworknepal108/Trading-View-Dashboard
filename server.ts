@@ -4,6 +4,7 @@ import path from 'path';
 import { createServer as createViteServer } from 'vite';
 import { fetchTradingViewCandles } from './src/services/tradingViewDatafeed';
 import {
+  getInstantProjectAnswer,
   readAgentMemory,
   retrieveProjectKnowledge,
   saveAgentMemory,
@@ -95,7 +96,7 @@ async function startServer() {
     const provider = process.env.AI_PROVIDER?.trim().toLowerCase() || 'ollama';
     const apiKey = process.env.OPENAI_API_KEY?.trim();
     const openAiModel = process.env.OPENAI_MODEL?.trim() || 'gpt-6-astra';
-    const ollamaModel = process.env.OLLAMA_MODEL?.trim() || 'qwen3:4b';
+    const ollamaModel = process.env.OLLAMA_MODEL?.trim() || 'qwen3:1.7b';
     if (provider === 'openai' && !apiKey) {
       return res.status(503).json({
         ok: false,
@@ -114,16 +115,34 @@ async function startServer() {
       return res.status(400).json({ ok: false, error: 'A question and valid chart context are required.' });
     }
 
+    const instantAnswer = getInstantProjectAnswer(question);
+    if (instantAnswer) {
+      return res.json({
+        ok: true,
+        provider: 'project-knowledge',
+        model: 'deterministic',
+        ...instantAnswer,
+        memoryProposal: null,
+      });
+    }
+
     try {
+      const compactChartContext = {
+        ...chartContext,
+        recentCandles: Array.isArray(chartContext.recentCandles) ? chartContext.recentCandles.slice(-12) : [],
+        activeZones: Array.isArray(chartContext.activeZones) ? chartContext.activeZones.slice(0, 12) : [],
+      };
       const [knowledge, memory] = await Promise.all([
-        retrieveProjectKnowledge(question, provider === 'ollama' ? 6 : 12),
+        retrieveProjectKnowledge(question, provider === 'ollama' ? 2 : 12),
         readAgentMemory(),
       ]);
       const knowledgeText = knowledge.map((chunk) => (
-        `SOURCE ${chunk.source}:${chunk.startLine}-${chunk.endLine}\n${chunk.content.slice(0, 6_000)}`
+        `SOURCE ${chunk.source}:${chunk.startLine}-${chunk.endLine}\n${chunk.content.slice(0, provider === 'ollama' ? 2_500 : 6_000)}`
       )).join('\n\n');
       const instructions = [
         'You are the conversational knowledge agent for this exact OANDA:XAUUSD dashboard.',
+        'Trading glossary: MTF means multi-timeframe, HTF means higher timeframe, LTF means lower timeframe, CHoCH means change of character, and QML means Quasimodo level. Never invent different expansions for these terms.',
+        'Core MTF invariant: an LTF CHoCH qualifies only when it belongs to and overlaps the tapped HTF zone; reject an unrelated later CHoCH outside that HTF zone.',
         'Answer using the supplied project code, regression tests, approved memory, conversation, and live chart context.',
         'The deterministic application code remains authoritative. Never invent a rule or claim the chart shows data absent from the context.',
         'When describing implemented behaviour, cite the supplied source path and line range in the answer.',
@@ -135,9 +154,9 @@ async function startServer() {
       ].join(' ');
       const agentInput = JSON.stringify({
         question,
-        conversation: history,
-        liveChartContext: chartContext,
-        approvedMemory: memory.slice(provider === 'ollama' ? -50 : -150),
+        conversation: provider === 'ollama' ? history.slice(-6) : history,
+        liveChartContext: provider === 'ollama' ? compactChartContext : chartContext,
+        approvedMemory: memory.slice(provider === 'ollama' ? -12 : -150),
         tradeOutcomeStatistics: summarizeTradeMemory(memory),
         retrievedProjectKnowledge: knowledgeText,
       });
@@ -183,7 +202,7 @@ async function startServer() {
               { role: 'system', content: instructions },
               { role: 'user', content: agentInput },
             ],
-            options: { temperature: 0.15, num_ctx: 8_192 },
+            options: { temperature: 0.1, num_ctx: 4_096, num_predict: 512 },
           }),
         });
         const payload: any = await ollamaResponse.json();
