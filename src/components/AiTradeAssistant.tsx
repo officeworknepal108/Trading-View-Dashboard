@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Bot, Check, LoaderCircle, Maximize2, MessageCircle, Send, Trash2, X } from 'lucide-react';
+import { Bot, Check, LoaderCircle, Maximize2, Send, Trash2, X } from 'lucide-react';
+import chatbotRobotIcon from '../assets/chatbot-robot.png';
 
 export interface ChartAgentContext {
   symbol: string;
@@ -150,9 +151,9 @@ export const AiTradeAssistant: React.FC<AiTradeAssistantProps> = ({ context }) =
         onClick={() => setOpen(true)}
         aria-label="Open Chart AI"
         title="Open Chart AI"
-        className="pointer-events-auto absolute bottom-2 left-2 z-30 grid h-8 w-8 place-items-center rounded-full border border-indigo-200 bg-indigo-600 text-white shadow-md hover:bg-indigo-700"
+        className="pointer-events-auto absolute -bottom-3 left-2 z-30 grid h-9 w-9 place-items-center overflow-hidden rounded-full border border-cyan-300 bg-white shadow-md transition-transform hover:scale-105"
       >
-        <MessageCircle className="h-4 w-4" />
+        <img src={chatbotRobotIcon} alt="" className="h-8 w-8 object-contain" />
       </button>
     );
   }
