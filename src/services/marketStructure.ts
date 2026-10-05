@@ -52,9 +52,9 @@ export interface StructureZone {
   // TJL1 and TJL2 created by the same BOS share this timestamp. It lets the
   // TJL1 FIB anchor to its current paired TJL2 even when that pivot is newer.
   tjlPairTime?: number;
-  // When a continuation structure sweeps the preceding same-direction TJL2
-  // before confirming its BOS, the new structure's TJL2 becomes Major
-  // Liquidity. This status is independent from every FIB confluence layer.
+  // Major Liquidity includes DBD/DTD and the second structure's TJL2 when the
+  // first structure's TJL2 was swept before the second BOS. Its trade
+  // eligibility is independent from every FIB confluence layer.
   majorLiquidity?: boolean;
   majorLiquiditySourceZoneId?: string;
   majorLiquiditySweepTime?: number;
@@ -388,13 +388,19 @@ export function doesInvalidateZone(zone: StructureZone, candle: StructureCandle)
     : bodyLow > zone.top;
 }
 
+export function markMajorLiquidityZone(zone: StructureZone, bosTime: number): boolean {
+  if (zone.name !== 'DBD' && zone.name !== 'DTD') return false;
+  zone.majorLiquidity = true;
+  zone.majorLiquidityBosTime = bosTime;
+  return true;
+}
+
 export function isTjl2LiquiditySweep(zone: StructureZone, candle: StructureCandle): boolean {
   if (zone.name !== 'TJL2' || zone.category !== 'mg' || !zone.active
     || zone.status !== 'valid' || candle.complete === false
     || candle.time < (zone.activeFromTime ?? zone.startTime)
     || doesInvalidateZone(zone, candle)) return false;
-  // A sweep takes the pivot-side wick, not merely the interior of the zone.
-  // Its completed body must preserve the level so it remains a liquidity grab.
+  // A sweep takes the pivot-side wick while the completed body preserves TJL2.
   return zone.isBuy ? candle.low <= zone.bottom : candle.high >= zone.top;
 }
 
@@ -414,6 +420,11 @@ export function promoteTjl2ToMajorLiquidity(
   zone.majorLiquiditySweepTime = sweepTime;
   zone.majorLiquidityBosTime = bosTime;
   return true;
+}
+
+function usesMajorLiquidityTradingRules(zone: StructureZone): boolean {
+  return zone.majorLiquidity === true
+    && (zone.name === 'TJL2' || zone.name === 'DBD' || zone.name === 'DTD');
 }
 
 export function findFirstZoneTapIndex(candles: StructureCandle[], zone: StructureZone): number {
@@ -613,7 +624,7 @@ export function findZoneEngulfingPattern(
   zone: StructureZone,
   type4MaxCandles = 10,
 ): EngulfingPattern | undefined {
-  const fibIndependentMajorLiquidity = zone.name === 'TJL2' && zone.majorLiquidity === true;
+  const fibIndependentMajorLiquidity = usesMajorLiquidityTradingRules(zone);
   const isDeepFib = zone.fibBand === '0.71-0.79' || zone.fibBand === 'deep';
   const isDbDtFib = zone.fibBand === 'DB/DT';
   if (zone.status !== 'valid'
@@ -659,6 +670,10 @@ function applyEngulfingConfluence(
   const markerKeys = new Set<string>();
   const markers: SeriesMarker<UTCTimestamp>[] = [];
   for (const zone of zones) {
+    const majorLiquidity = usesMajorLiquidityTradingRules(zone);
+    // A Major Liquidity tap is only an opportunity. It becomes a direct trade
+    // after one of the four accepted engulfing confirmations forms in-zone.
+    if (majorLiquidity) zone.tradeable = false;
     zone.engulfingType = undefined;
     zone.engulfingDirection = undefined;
     zone.engulfingTime = undefined;
@@ -670,6 +685,7 @@ function applyEngulfingConfluence(
     zone.engulfingDirection = pattern.direction;
     zone.engulfingTime = finalCandle.time;
     zone.engulfingCandleCount = pattern.candleCount;
+    if (majorLiquidity) zone.tradeable = true;
     const markerKey = `${pattern.direction}:${pattern.type}:${finalCandle.time}`;
     if (markerKeys.has(markerKey)) continue;
     markerKeys.add(markerKey);
@@ -1340,6 +1356,7 @@ export function analyzeMarketStructure(candles: StructureCandle[], options: {
         const sbr = convertZone(pendingDouble.extreme, 'SBR', false, candle.time);
         const dtd = addDbDtZone(doubleHigh, 'DT', false);
         dtd.name = 'DTD';
+        markMajorLiquidityZone(dtd, candle.time);
         if (doubleContext) applyDoubleChochContext(doubleContext, qmlA, qmlAA, sbr, dtd);
         pendingDouble = null;
         trend = 'bearish';
@@ -1465,6 +1482,7 @@ export function analyzeMarketStructure(candles: StructureCandle[], options: {
         const rbs = convertZone(pendingDouble.extreme, 'RBS', true, candle.time);
         const dbd = addDbDtZone(doubleLow, 'DB', true);
         dbd.name = 'DBD';
+        markMajorLiquidityZone(dbd, candle.time);
         if (doubleContext) applyDoubleChochContext(doubleContext, qmlA, qmlAA, rbs, dbd);
         pendingDouble = null;
         trend = 'bullish';

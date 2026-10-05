@@ -18,6 +18,7 @@ import {
   getConfirmationBucketStart,
   invalidateTjlFibBeforeLatestStructureReset,
   isTjl2LiquiditySweep,
+  markMajorLiquidityZone,
   promoteTjl2ToMajorLiquidity,
   resolveTjl1Confirmation,
   selectFreshVipSupportTap,
@@ -200,57 +201,69 @@ test('TJL1 FIB uses its current paired TJL2 even when the TJL2 pivot is newer', 
   );
 });
 
-test('Major Liquidity requires a preserved wick sweep of the preceding same-direction TJL2 before BOS', () => {
-  const bullishSource = zone({
-    id: 'bullish-first-tjl2', name: 'TJL2', isBuy: true,
+test('DBD and DTD are Major Liquidity while ordinary TJL2 is not', () => {
+  const dbd = zone({ id: 'dbd-major', name: 'DBD', isBuy: true });
+  const dtd = zone({ id: 'dtd-major', name: 'DTD', isBuy: false });
+  const tjl2 = zone({ id: 'ordinary-tjl2', name: 'TJL2', isBuy: true });
+
+  assert.equal(markMajorLiquidityZone(dbd, 400), true);
+  assert.deepEqual({ major: dbd.majorLiquidity, bosTime: dbd.majorLiquidityBosTime }, {
+    major: true, bosTime: 400,
+  });
+  assert.equal(markMajorLiquidityZone(dtd, 800), true);
+  assert.equal(dtd.majorLiquidity, true);
+  assert.equal(markMajorLiquidityZone(tjl2, 900), false);
+  assert.equal(tjl2.majorLiquidity, undefined);
+});
+
+test('the second-structure TJL2 becomes Major Liquidity after the first TJL2 sweep and second BOS', () => {
+  const bullishFirst = zone({
+    id: 'bull-first-tjl2', name: 'TJL2', isBuy: true,
     startTime: 100, activeFromTime: 200, bottom: 100, top: 102,
   });
   const bullishSweep: StructureCandle = {
-    time: 300, open: 103, high: 105, low: 99, close: 104, complete: true,
+    time: 300, open: 103, high: 104, low: 99, close: 101, complete: true,
   };
-  assert.equal(isTjl2LiquiditySweep(bullishSource, bullishSweep), true);
-  assert.equal(isTjl2LiquiditySweep(bullishSource, {
-    ...bullishSweep, low: 100.5,
-  }), false, 'entering the zone without taking its pivot-side wick is not a sweep');
-  assert.equal(isTjl2LiquiditySweep(bullishSource, {
-    ...bullishSweep, open: 99, close: 98,
-  }), false, 'a completed body fully beyond TJL2 invalidates instead of sweeping it');
+  assert.equal(isTjl2LiquiditySweep(bullishFirst, bullishSweep), true);
+  assert.equal(isTjl2LiquiditySweep(bullishFirst, {
+    ...bullishSweep, time: 301, low: 100.5,
+  }), false, 'a candle that does not take the first TJL2 extreme is not a sweep');
+  assert.equal(isTjl2LiquiditySweep(bullishFirst, {
+    ...bullishSweep, time: 302, open: 99.5, close: 99,
+  }), false, 'a body invalidation is not a preserved liquidity sweep');
 
-  const bullishMajor = zone({
-    id: 'bullish-second-tjl2', name: 'TJL2', isBuy: true,
-    startTime: 350, activeFromTime: 410, bottom: 98, top: 101,
+  const bullishSecond = zone({
+    id: 'bull-second-tjl2', name: 'TJL2', isBuy: true,
+    startTime: 350, activeFromTime: 401, bottom: 104, top: 106,
   });
-  assert.equal(promoteTjl2ToMajorLiquidity(bullishMajor, bullishSource, 300, 400), true);
+  assert.equal(promoteTjl2ToMajorLiquidity(bullishSecond, bullishFirst, 300, 400), true);
   assert.deepEqual({
-    majorLiquidity: bullishMajor.majorLiquidity,
-    source: bullishMajor.majorLiquiditySourceZoneId,
-    sweep: bullishMajor.majorLiquiditySweepTime,
-    bos: bullishMajor.majorLiquidityBosTime,
+    major: bullishSecond.majorLiquidity,
+    source: bullishSecond.majorLiquiditySourceZoneId,
+    sweep: bullishSecond.majorLiquiditySweepTime,
+    bos: bullishSecond.majorLiquidityBosTime,
   }, {
-    majorLiquidity: true,
-    source: 'bullish-first-tjl2',
-    sweep: 300,
-    bos: 400,
+    major: true, source: 'bull-first-tjl2', sweep: 300, bos: 400,
   });
 
-  const bearishSource = zone({
-    id: 'bearish-first-tjl2', name: 'TJL2', isBuy: false,
+  const bearishFirst = zone({
+    id: 'bear-first-tjl2', name: 'TJL2', isBuy: false,
     startTime: 500, activeFromTime: 600, bottom: 108, top: 110,
   });
   const bearishSweep: StructureCandle = {
-    time: 700, open: 107, high: 111, low: 105, close: 106, complete: true,
+    time: 700, open: 107, high: 111, low: 106, close: 109, complete: true,
   };
-  assert.equal(isTjl2LiquiditySweep(bearishSource, bearishSweep), true);
-  const bearishMajor = zone({
-    id: 'bearish-second-tjl2', name: 'TJL2', isBuy: false,
-    startTime: 750, activeFromTime: 810, bottom: 109, top: 112,
+  const bearishSecond = zone({
+    id: 'bear-second-tjl2', name: 'TJL2', isBuy: false,
+    startTime: 750, activeFromTime: 801, bottom: 104, top: 106,
   });
-  assert.equal(promoteTjl2ToMajorLiquidity(bearishMajor, bearishSource, 700, 800), true);
-  assert.equal(bearishMajor.majorLiquidity, true);
+  assert.equal(isTjl2LiquiditySweep(bearishFirst, bearishSweep), true);
+  assert.equal(promoteTjl2ToMajorLiquidity(bearishSecond, bearishFirst, 700, 800), true);
+  assert.equal(bearishSecond.majorLiquidity, true);
 
-  const sameCandleBos = zone({ id: 'same-candle-bos', name: 'TJL2', isBuy: true });
-  assert.equal(promoteTjl2ToMajorLiquidity(sameCandleBos, bullishSource, 400, 400), false,
-    'the liquidity sweep must happen before the second structure BOS');
+  const prematureSecond = zone({ id: 'premature', name: 'TJL2', isBuy: true });
+  assert.equal(promoteTjl2ToMajorLiquidity(prematureSecond, bullishFirst, 400, 400), false,
+    'the confirming second BOS must happen after the sweep');
 });
 
 test('ISS FIB runs from Point 0 and extends beyond Point 5 to the latest completed extreme', () => {
@@ -605,18 +618,75 @@ test('Major Liquidity accepts a zone-touching engulfing without any FIB alignmen
     { time: 2, open: 10, high: 14, low: 9.5, close: 13.5, complete: true },
   ];
   const majorLiquidity = zone({
-    id: 'major-liquidity', name: 'TJL2', isBuy: true, majorLiquidity: true,
+    id: 'major-liquidity', name: 'DBD', isBuy: true, majorLiquidity: true,
     startTime: 0, activeFromTime: 1, bottom: 9, top: 10,
     fibRelevant: false, fibStatus: undefined, fibBand: undefined, fibLevel50: undefined,
   });
 
   assert.equal(findZoneEngulfingPattern(candles, majorLiquidity)?.type, 'T1');
   assert.equal(findZoneEngulfingPattern(candles, {
+    ...majorLiquidity, id: 'major-tjl2', name: 'TJL2',
+  })?.type, 'T1', 'a qualified second-structure TJL2 uses the same Fib-independent entry rule');
+  assert.equal(findZoneEngulfingPattern(candles, {
     ...majorLiquidity, majorLiquidity: false,
-  }), undefined, 'an ordinary TJL2 still requires its existing A+ FIB qualification');
+  }), undefined, 'a zone without Major Liquidity status still requires its existing A+ FIB qualification');
   assert.equal(findZoneEngulfingPattern(candles, {
     ...majorLiquidity, status: 'invalidated', active: false,
   }), undefined, 'Major Liquidity still obeys normal zone invalidation');
+});
+
+test('Major Liquidity accepts every engulfing type without FIB alignment', () => {
+  const patterns: Array<{ type: 'T1' | 'T2' | 'T3' | 'T4'; candles: StructureCandle[] }> = [
+    {
+      type: 'T1',
+      candles: [
+        { time: 1, open: 12, high: 13, low: 9, close: 10, complete: true },
+        { time: 2, open: 10, high: 14, low: 9.5, close: 13.5, complete: true },
+      ],
+    },
+    {
+      type: 'T2',
+      candles: [
+        { time: 1, open: 12, high: 13, low: 9, close: 10, complete: true },
+        { time: 2, open: 10, high: 12, low: 8, close: 11, complete: true },
+        { time: 3, open: 9, high: 14, low: 8.5, close: 13.5, complete: true },
+      ],
+    },
+    {
+      type: 'T3',
+      candles: [
+        { time: 1, open: 12, high: 13, low: 9, close: 10, complete: true },
+        { time: 2, open: 10, high: 12, low: 8, close: 11, complete: true },
+        { time: 3, open: 11, high: 13, low: 10, close: 12.5, complete: true },
+      ],
+    },
+    {
+      type: 'T4',
+      candles: [
+        { time: 1, open: 12, high: 13, low: 8, close: 9, complete: true },
+        { time: 2, open: 9, high: 12, low: 9, close: 11, complete: true },
+        { time: 3, open: 11, high: 14.5, low: 10, close: 14, complete: true },
+      ],
+    },
+  ];
+
+  for (const pattern of patterns) {
+    const majorTjl2 = zone({
+      id: `major-${pattern.type}`,
+      name: 'TJL2',
+      isBuy: true,
+      majorLiquidity: true,
+      startTime: 0,
+      activeFromTime: 1,
+      bottom: 8,
+      top: 10,
+      fibRelevant: false,
+      fibStatus: undefined,
+      fibBand: undefined,
+      fibLevel50: undefined,
+    });
+    assert.equal(findZoneEngulfingPattern(pattern.candles, majorTjl2)?.type, pattern.type);
+  }
 });
 
 test('a later zone invalidation does not erase an earlier TJL1 confirmation', () => {

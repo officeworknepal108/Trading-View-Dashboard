@@ -773,8 +773,8 @@ export const OandaProChart: React.FC = () => {
         tapTime: zone.tapTime,
         tapBarsAgo: zone.tapBarsAgo,
         majorLiquidity: zone.majorLiquidity,
-        majorLiquiditySweepTime: zone.majorLiquiditySweepTime,
         majorLiquidityBosTime: zone.majorLiquidityBosTime,
+        majorLiquiditySweepTime: zone.majorLiquiditySweepTime,
         chochClass: zone.chochClass,
         tradeable: zone.tradeable,
         fibBand: zone.fibBand,
@@ -921,7 +921,7 @@ export const OandaProChart: React.FC = () => {
       const label = document.createElement('span');
       const name = isMg || isIss || isInternal ? displayZoneName(zone.name) : demand ? 'DEMAND' : 'SUPPLY';
       const labelDetails: string[] = [];
-      if (zone.name === 'TJL2' && zone.majorLiquidity) labelDetails.push('MAJOR LIQUIDITY');
+      if (zone.majorLiquidity) labelDetails.push('MAJOR LIQUIDITY');
       if (inactive) {
         if (rejected) labelDetails.push('REJECTED');
       } else if (showsDoubleChochStatus) {
@@ -2313,7 +2313,7 @@ export const OandaProChart: React.FC = () => {
                           ? `FIB A+ ${displayZoneName(zone.name)}`
                           : displayZoneName(zone.name)}
                       </span>
-                      {zone.name === 'TJL2' && zone.majorLiquidity && (
+                      {zone.majorLiquidity && (
                         <span className="ml-1 rounded bg-cyan-100 px-1 py-0.5 text-[8px] font-black text-cyan-800">
                           MAJOR LIQUIDITY
                         </span>

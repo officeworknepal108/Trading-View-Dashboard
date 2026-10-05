@@ -276,8 +276,7 @@ function eventToRow(
       : lowerCandles.length - 1 - confirmationIndex,
     higherTimeframeZoneId: higherTimeframeTouch.zone.id,
     higherTimeframeZone: higherTimeframeTouch.zone.name,
-    higherTimeframeMajorLiquidity: higherTimeframeTouch.zone.name === 'TJL2'
-      && higherTimeframeTouch.zone.majorLiquidity === true,
+    higherTimeframeMajorLiquidity: higherTimeframeTouch.zone.majorLiquidity === true,
     higherTimeframeTapTime: higherTimeframeTouch.time,
     higherTimeframeTapBarsAgo: higherTimeframeTapIndex < 0
       ? 0

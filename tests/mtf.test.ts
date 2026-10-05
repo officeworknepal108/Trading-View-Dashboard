@@ -64,7 +64,7 @@ test('MTF row follows the selected LTF CHOCH and promotes only an A+ engulfing',
   assert.equal(row?.engulfingBarsAgo, 0);
 });
 
-test('MTF prefers and identifies Major Liquidity when the mapped HTF TJL2 is tapped', () => {
+test('MTF prefers and identifies Major Liquidity when the mapped HTF DBD is tapped', () => {
   const lowerCandles = [
     candle(100, 104, 105, 101, 102),
     candle(200, 103, 104, 101, 102),
@@ -75,7 +75,7 @@ test('MTF prefers and identifies Major Liquidity when the mapped HTF TJL2 is tap
     id: 'ordinary-demand', name: 'DEMAND', category: 'supplyDemand', bottom: 101, top: 104,
   });
   const majorLiquidity = zone({
-    id: 'major-tjl2', name: 'TJL2', isBuy: true, majorLiquidity: true,
+    id: 'major-dbd', name: 'DBD', isBuy: true, majorLiquidity: true,
     bottom: 101, top: 104,
   });
   const qml = zone({
@@ -96,9 +96,20 @@ test('MTF prefers and identifies Major Liquidity when the mapped HTF TJL2 is tap
     M5: { candles: lowerCandles, structure: structure([qml, rbs, db]) },
   }).find((candidate) => candidate.higherTimeframe === 'H1');
 
-  assert.equal(row?.higherTimeframeZoneId, 'major-tjl2');
-  assert.equal(row?.higherTimeframeZone, 'TJL2');
+  assert.equal(row?.higherTimeframeZoneId, 'major-dbd');
+  assert.equal(row?.higherTimeframeZone, 'DBD');
   assert.equal(row?.higherTimeframeMajorLiquidity, true);
+
+  const tjl2Row = buildMtfRows({
+    H1: {
+      candles: lowerCandles,
+      structure: structure([{ ...majorLiquidity, id: 'major-second-tjl2', name: 'TJL2' }]),
+    },
+    M5: { candles: lowerCandles, structure: structure([qml, rbs, db]) },
+  }).find((candidate) => candidate.higherTimeframe === 'H1');
+  assert.equal(tjl2Row?.higherTimeframeZoneId, 'major-second-tjl2');
+  assert.equal(tjl2Row?.higherTimeframeZone, 'TJL2');
+  assert.equal(tjl2Row?.higherTimeframeMajorLiquidity, true);
 });
 
 test('ISS does not replace the required same-structure CHOCH in an MTF setup', () => {
@@ -338,14 +349,14 @@ test('the LTF source pair must overlap the HTF zone even when the CHOCH break ca
   assert.equal(persistedRow?.engulfingTime, 600);
 });
 
-test('sell flow tracks the preceding buying TJL pair into its bearish CHOCH', () => {
+test('sell flow applies MTF through DTD Major Liquidity and tracks its bearish CHOCH', () => {
   const lowerCandles = [
     candle(100, 103, 104, 102, 103),
     candle(200, 108, 111, 107, 109),
     candle(300, 109, 110, 101, 102),
   ];
   const higherZone = zone({
-    id: 'h1-supply', name: 'SUPPLY', category: 'supplyDemand', isBuy: false,
+    id: 'h1-major-dtd', name: 'DTD', category: 'mg', isBuy: false, majorLiquidity: true,
     bottom: 110, top: 112,
   });
   const qml = zone({
@@ -366,6 +377,8 @@ test('sell flow tracks the preceding buying TJL pair into its bearish CHOCH', ()
     M5: { candles: lowerCandles, structure: structure([qml, sbr, dt]) },
   }).find((candidate) => candidate.confirmationKind === 'choch');
   assert.equal(row?.direction, 'bearish');
-  assert.equal(row?.higherTimeframeZoneId, 'h1-supply');
+  assert.equal(row?.higherTimeframeZoneId, 'h1-major-dtd');
+  assert.equal(row?.higherTimeframeZone, 'DTD');
+  assert.equal(row?.higherTimeframeMajorLiquidity, true);
   assert.equal(row?.higherTimeframeTapTime, 200);
 });
