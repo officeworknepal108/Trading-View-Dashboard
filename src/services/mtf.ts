@@ -50,6 +50,7 @@ export const MTF_MAPPINGS: MtfMapping[] = [
 ];
 
 const CHOCH_ZONE_NAMES = new Set<StructureZone['name']>(['QML', 'SBR', 'RBS', 'DT', 'DB']);
+const CHOCH_SOURCE_ZONE_NAMES = new Set<StructureZone['name']>(['QML', 'SBR', 'RBS']);
 
 interface ConfirmationEvent {
   kind: MtfConfirmationKind;
@@ -79,12 +80,21 @@ function candleTouchesZone(candle: StructureCandle, zone: StructureZone): boolea
 function latestHigherTimeframeTouch(
   candles: StructureCandle[],
   zones: StructureZone[],
-  confirmationTime: number,
-  isBuy: boolean,
+  event: ConfirmationEvent,
 ): { zone: StructureZone; time: number } | undefined {
   let latest: { zone: StructureZone; time: number } | undefined;
   for (const zone of zones) {
-    if (!zone.active || zone.status !== 'valid' || zone.isBuy !== isBuy) continue;
+    if (!zone.active || zone.status !== 'valid' || zone.isBuy !== event.isBuy) continue;
+    // MTF is a location-specific reversal. The exact LTF TJL pair converted by
+    // this CHOCH must have formed in/overlapping the tapped HTF zone. Merely
+    // finding any same-direction CHOCH after an older HTF tap is not enough.
+    // The CHOCH break candle itself may close after price has left the HTF zone.
+    const sourcePairIsInZone = event.zones.some((sourceZone) => (
+      CHOCH_SOURCE_ZONE_NAMES.has(sourceZone.name)
+      && sourceZone.tjlPairTime === event.sourceStructureTime
+      && overlaps(sourceZone.bottom, sourceZone.top, zone.bottom, zone.top)
+    ));
+    if (!sourcePairIsInZone) continue;
     let insideZone = false;
     let latestTapTime: number | undefined;
     for (const candle of candles) {
@@ -92,7 +102,7 @@ function latestHigherTimeframeTouch(
       // reaches the mapped HTF zone. CHOCH is known only after that candle is
       // complete, so treating its completed range as the HTF tap does not use
       // future information. Candles after the CHOCH still cannot arm it.
-      if (candle.time > confirmationTime) break;
+      if (candle.time > event.time) break;
       const overlaps = candle.complete !== false
         && zoneWasUsableAt(zone, candle.time)
         && candleTouchesZone(candle, zone);
@@ -286,8 +296,7 @@ export function buildMtfRows(
           higherTimeframeTouch: latestHigherTimeframeTouch(
             lower.candles,
             higher.structure.zones,
-            event.time,
-            event.isBuy,
+            event,
           ),
         }))
         .filter((item): item is {

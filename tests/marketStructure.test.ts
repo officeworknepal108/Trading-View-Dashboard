@@ -358,7 +358,7 @@ test('Type 4 contains all middle candles inside the first candle over 3–10 can
   }, 'one inside candle is sufficient between the tap and breakout candles');
 });
 
-test('every engulfing type rejects a bullish confirmation whose upper wick exceeds its body', () => {
+test('Types 1, 2, and 4 reject a weak confirmation while Type 3 follows sweep geometry', () => {
   const patterns: Array<{ type: 'T1' | 'T2' | 'T3' | 'T4'; candles: StructureCandle[] }> = [
     {
       type: 'T1',
@@ -399,12 +399,28 @@ test('every engulfing type rejects a bullish confirmation whose upper wick excee
     const weakConfirmation = candles.map((candle) => ({ ...candle }));
     const final = weakConfirmation[endIndex];
     final.high = final.close + (final.close - final.open) + 0.01;
-    assert.equal(
-      detectEngulfingPatternAt(weakConfirmation, endIndex),
-      undefined,
-      `${type} must be rejected when the bullish upper wick is larger than its body`,
-    );
+    if (type === 'T3') {
+      assert.equal(detectEngulfingPatternAt(weakConfirmation, endIndex)?.type, 'T3');
+    } else {
+      assert.equal(
+        detectEngulfingPatternAt(weakConfirmation, endIndex),
+        undefined,
+        `${type} must be rejected when the bullish upper wick is larger than its body`,
+      );
+    }
   }
+});
+
+test('bearish Type 3 accepts the chart-confirmed continuation candle with a longer lower wick', () => {
+  const candles: StructureCandle[] = [
+    { time: 1, open: 4168.790, high: 4172.390, low: 4168.785, close: 4172.150, complete: true },
+    { time: 2, open: 4172.135, high: 4172.415, low: 4170.760, close: 4170.920, complete: true },
+    { time: 3, open: 4171.070, high: 4172.075, low: 4169.725, close: 4170.475, complete: true },
+  ];
+
+  assert.deepEqual(detectEngulfingPatternAt(candles, 2), {
+    type: 'T3', direction: 'bearish', candleCount: 3, startIndex: 0, endIndex: 2,
+  });
 });
 
 test('bearish confirmation uses its lower wick and accepts a wick equal to the body', () => {

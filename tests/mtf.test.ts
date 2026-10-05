@@ -31,7 +31,7 @@ test('MTF row follows the selected LTF CHOCH and promotes only an A+ engulfing',
     candle(400, 107, 108, 103, 104),
     candle(500, 104, 110, 103, 109),
   ];
-  const higherZone = zone({ id: 'h1-demand', name: 'DEMAND', category: 'supplyDemand', bottom: 101, top: 102 });
+  const higherZone = zone({ id: 'h1-demand', name: 'DEMAND', category: 'supplyDemand', bottom: 101, top: 104 });
   const qml = zone({
     id: 'm5-qml', chochTime: 300, startTime: 100, activeFromTime: 300,
     tjlPairTime: 50,
@@ -99,7 +99,7 @@ test('an engulfing outside the silent Fib A+ bands is not an MTF entry', () => {
     candle(400, 107, 108, 106, 106.5),
     candle(500, 106.5, 110, 106, 109),
   ];
-  const higherZone = zone({ id: 'h1-demand', name: 'DEMAND', category: 'supplyDemand', bottom: 101, top: 102 });
+  const higherZone = zone({ id: 'h1-demand', name: 'DEMAND', category: 'supplyDemand', bottom: 101, top: 107 });
   const qml = zone({
     id: 'm5-qml', chochTime: 300, startTime: 100, activeFromTime: 300,
     tjlPairTime: 50,
@@ -149,7 +149,7 @@ test('an active valid HTF level remains eligible after its 30-bar drawing ends',
   assert.equal(rows.some((row) => row.higherTimeframe === 'H1'), true);
 });
 
-test('HTF tap may establish context before the opposing LTF TJL pair exists', () => {
+test('an old HTF tap does not qualify an unrelated LTF CHOCH outside that zone', () => {
   const lowerCandles = [
     candle(100, 101, 103, 99, 102),
     candle(200, 106, 108, 105, 107),
@@ -163,7 +163,7 @@ test('HTF tap may establish context before the opposing LTF TJL pair exists', ()
   });
   const qml = zone({
     id: 'converted-selling-tjl1', name: 'QML', chochTime: 300,
-    tjlPairTime: 150, bottom: 103, top: 105,
+    tjlPairTime: 150, bottom: 104, top: 105,
   });
   const rbs = zone({
     id: 'converted-selling-tjl2', name: 'RBS', chochTime: 300,
@@ -175,10 +175,10 @@ test('HTF tap may establish context before the opposing LTF TJL pair exists', ()
     H1: { candles: lowerCandles, structure: structure([higherZone]) },
     M5: { candles: lowerCandles, structure: structure([qml, rbs, db]) },
   });
-  assert.equal(rows.some((row) => row.confirmationKind === 'choch'), true);
+  assert.equal(rows.some((row) => row.confirmationKind === 'choch'), false);
 });
 
-test('a newer LTF structure can produce CHOCH after an earlier valid HTF tap', () => {
+test('a later LTF structure outside the HTF zone is not an MTF CHOCH', () => {
   const lowerCandles = [
     candle(100, 106, 108, 105, 107),
     candle(200, 101, 103, 99, 102),
@@ -192,7 +192,7 @@ test('a newer LTF structure can produce CHOCH after an earlier valid HTF tap', (
   });
   const qml = zone({
     id: 'new-selling-tjl1', name: 'QML', chochTime: 300,
-    tjlPairTime: 250, bottom: 103, top: 105,
+    tjlPairTime: 250, bottom: 104, top: 105,
   });
   const rbs = zone({
     id: 'new-selling-tjl2', name: 'RBS', chochTime: 300,
@@ -204,7 +204,7 @@ test('a newer LTF structure can produce CHOCH after an earlier valid HTF tap', (
     H1: { candles: lowerCandles, structure: structure([higherZone]) },
     M5: { candles: lowerCandles, structure: structure([qml, rbs, db]) },
   });
-  assert.equal(rows.some((row) => row.confirmationKind === 'choch'), true);
+  assert.equal(rows.some((row) => row.confirmationKind === 'choch'), false);
 });
 
 test('the completed LTF CHOCH candle can also provide the HTF zone tap', () => {
@@ -240,6 +240,50 @@ test('the completed LTF CHOCH candle can also provide the HTF zone tap', () => {
   assert.equal(row?.direction, 'bullish');
 });
 
+test('the LTF source pair must overlap the HTF zone even when the CHOCH break candle does not', () => {
+  const lowerCandles = [
+    candle(100, 106, 108, 105, 107),
+    // Price taps the HTF sell zone while building the bullish LTF structure.
+    candle(200, 108, 112, 107, 111),
+    // The bearish CHOCH confirms below the HTF zone; this remains valid because
+    // its source QML came from inside the HTF zone.
+    candle(300, 108, 109, 101, 102),
+    candle(400, 109, 112, 108, 111),
+    candle(500, 111, 112.2, 110, 110.5),
+    candle(600, 110.6, 110.7, 108.5, 109.8),
+  ];
+  const higherZone = zone({
+    id: 'm15-tjl2', name: 'TJL2', category: 'mg', isBuy: false,
+    bottom: 110, top: 112,
+  });
+  const qml = zone({
+    id: 'm1-qml', name: 'QML', isBuy: false, chochTime: 300,
+    tjlPairTime: 200, bottom: 110, top: 111, activeFromTime: 300,
+    tapTime: 400, fibSourcePrice: 112, fibZeroPrice: 104,
+  });
+  const sbr = zone({
+    id: 'm1-sbr', name: 'SBR', isBuy: false, chochTime: 300,
+    tjlPairTime: 200, bottom: 106, top: 108,
+  });
+  const dt = zone({
+    id: 'm1-dt', name: 'DT', isBuy: false, chochTime: 300,
+    bottom: 111, top: 112,
+  });
+
+  const row = buildMtfRows({
+    M15: { candles: lowerCandles, structure: structure([higherZone]) },
+    M1: { candles: lowerCandles, structure: structure([qml, sbr, dt]) },
+  }).find((candidate) => candidate.higherTimeframe === 'M15'
+    && candidate.lowerTimeframe === 'M1');
+
+  assert.equal(row?.direction, 'bearish');
+  assert.equal(row?.higherTimeframeZoneId, 'm15-tjl2');
+  assert.equal(row?.higherTimeframeTapTime, 200);
+  assert.equal(row?.confirmationTime, 300);
+  assert.equal(row?.engulfingType, 'T3');
+  assert.equal(row?.engulfingTime, 600);
+});
+
 test('sell flow tracks the preceding buying TJL pair into its bearish CHOCH', () => {
   const lowerCandles = [
     candle(100, 103, 104, 102, 103),
@@ -252,7 +296,7 @@ test('sell flow tracks the preceding buying TJL pair into its bearish CHOCH', ()
   });
   const qml = zone({
     id: 'converted-buying-tjl1', name: 'QML', isBuy: false, chochTime: 300,
-    tjlPairTime: 150, bottom: 106, top: 108,
+    tjlPairTime: 150, bottom: 110, top: 111,
   });
   const sbr = zone({
     id: 'converted-buying-tjl2', name: 'SBR', isBuy: false, chochTime: 300,

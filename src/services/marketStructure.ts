@@ -502,7 +502,7 @@ export function detectEngulfingPatternAt(
 ): EngulfingPattern | undefined {
   const current = candles[endIndex];
   if (!current || current.complete === false) return undefined;
-  if (!confirmationCandleHasDirectionalBodyStrength(current)) return undefined;
+  const hasDirectionalBodyStrength = confirmationCandleHasDirectionalBodyStrength(current);
 
   const maximumType4Count = Math.max(3, Math.min(10, Math.floor(type4MaxCandles)));
   // Prefer the longest valid sequence so the original tap candle is retained
@@ -520,10 +520,12 @@ export function detectEngulfingPatternAt(
     // The tap candle may have either color. Type 4 is defined by containment
     // followed by the final candle's body crossing and closing beyond the tap
     // candle's wick, in the breakout direction.
-    if (candleIsBullish(current) && current.open <= first.high && current.close > first.high) {
+    if (hasDirectionalBodyStrength
+      && candleIsBullish(current) && current.open <= first.high && current.close > first.high) {
       return { type: 'T4', direction: 'bullish', candleCount, startIndex, endIndex };
     }
-    if (candleIsBearish(current) && current.open >= first.low && current.close < first.low) {
+    if (hasDirectionalBodyStrength
+      && candleIsBearish(current) && current.open >= first.low && current.close < first.low) {
       return { type: 'T4', direction: 'bearish', candleCount, startIndex, endIndex };
     }
   }
@@ -534,18 +536,22 @@ export function detectEngulfingPatternAt(
     // Type 2 BUY: red first candle, green second candle whose lower wick
     // sweeps the first low, then a third green body closes above the FIRST
     // candle's high. SELL is the exact inverse.
-    if (candleIsBearish(first) && candleIsBullish(second)
-      && second.low <= first.low && candleIsBullish(current) && current.close > first.high) {
-      return { type: 'T2', direction: 'bullish', candleCount: 3, startIndex: endIndex - 2, endIndex };
-    }
-    if (candleIsBullish(first) && candleIsBearish(second)
-      && second.high >= first.high && candleIsBearish(current) && current.close < first.low) {
-      return { type: 'T2', direction: 'bearish', candleCount: 3, startIndex: endIndex - 2, endIndex };
-    }
+    const bullishType2Geometry = candleIsBearish(first) && candleIsBullish(second)
+      && second.low <= first.low && candleIsBullish(current) && current.close > first.high;
+    if (bullishType2Geometry) return hasDirectionalBodyStrength
+      ? { type: 'T2', direction: 'bullish', candleCount: 3, startIndex: endIndex - 2, endIndex }
+      : undefined;
+    const bearishType2Geometry = candleIsBullish(first) && candleIsBearish(second)
+      && second.high >= first.high && candleIsBearish(current) && current.close < first.low;
+    if (bearishType2Geometry) return hasDirectionalBodyStrength
+      ? { type: 'T2', direction: 'bearish', candleCount: 3, startIndex: endIndex - 2, endIndex }
+      : undefined;
 
     // Type 3 uses the same mixed-direction sweep, but its third continuation
-    // candle closes through only the MIDDLE candle's extreme. Type 2 is checked
-    // first so a close through the first candle is never mislabeled Type 3.
+    // candle closes through only the MIDDLE candle's extreme. Unlike the other
+    // engulfing types, the continuation candle's directional wick may exceed
+    // its body; the sweep and close geometry define this pattern. Type 2 is
+    // checked first so a strong close through the first candle is not mislabeled.
     if (candleIsBearish(first) && candleIsBullish(second)
       && second.low <= first.low && candleIsBullish(current) && current.close > second.high) {
       return { type: 'T3', direction: 'bullish', candleCount: 3, startIndex: endIndex - 2, endIndex };
@@ -556,6 +562,7 @@ export function detectEngulfingPatternAt(
     }
   }
 
+  if (!hasDirectionalBodyStrength) return undefined;
   if (!second || second.complete === false) return undefined;
   if (candleIsBearish(second) && candleIsBullish(current) && current.close > second.high) {
     return { type: 'T1', direction: 'bullish', candleCount: 2, startIndex: endIndex - 1, endIndex };

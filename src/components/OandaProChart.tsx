@@ -27,7 +27,7 @@ import { ChartTimeZone, formatChartTick, formatChartTime } from '../services/cha
 import { buildDayFibs, DayFibMove } from '../services/dayFib';
 import { applySwingFibConfluence } from '../services/swingFibConfluence';
 import { applyDayFibConfluence } from '../services/dayFibConfluence';
-import { buildMtfRows, type MtfGranularity, type MtfRow } from '../services/mtf';
+import { MTF_MAPPINGS, buildMtfRows, type MtfGranularity, type MtfRow } from '../services/mtf';
 
 type OandaGranularity = 'M1' | 'M5' | 'M15' | 'M30' | 'H1' | 'H4' | 'D';
 type MarketGranularity = OandaGranularity | 'W' | 'MO';
@@ -311,7 +311,7 @@ type DisplayMtfRow = MtfRow & { setupId: string };
 const MultiTimeframeEntryTable: React.FC<{ rows: DisplayMtfRow[] }> = ({ rows }) => {
   const [expanded, setExpanded] = useState(true);
   return (
-    <div className={`pointer-events-auto absolute right-3 top-3 z-20 overflow-hidden rounded-md border border-slate-300 bg-white/95 shadow-sm ${expanded ? 'w-[650px] max-w-[calc(100%_-_24px)]' : 'w-auto'}`}>
+    <div className={`pointer-events-auto absolute right-3 top-3 z-20 overflow-hidden rounded-md border border-slate-300 bg-white/95 shadow-sm ${expanded ? 'w-fit max-w-[calc(100%_-_24px)]' : 'w-auto'}`}>
       <div className="flex items-center justify-between gap-3 border-b border-slate-200 bg-indigo-50 px-2 py-1 text-[9px] font-black uppercase tracking-wide text-indigo-700">
         <span>{expanded ? 'MTF table' : 'MTF table minimized'}</span>
         <button
@@ -324,16 +324,16 @@ const MultiTimeframeEntryTable: React.FC<{ rows: DisplayMtfRow[] }> = ({ rows })
         </button>
       </div>
       {expanded && (
-        <table className="w-full table-fixed border-collapse text-left text-[9px]">
+        <table className="table-auto border-collapse text-left text-[9px]">
           <thead className="bg-slate-100 text-[9px] uppercase text-slate-500">
             <tr>
-              <th className="w-[50px] px-1.5 py-1 font-bold">ID</th>
-              <th className="w-[68px] px-1.5 py-1 font-bold">MTF</th>
-              <th className="w-[92px] px-1.5 py-1 font-bold">Setup</th>
-              <th className="w-[102px] px-1.5 py-1 font-bold">HTF Zone Tapped</th>
-              <th className="w-[102px] px-1.5 py-1 font-bold">LTF Zone Tapped</th>
-              <th className="px-1.5 py-1 font-bold">Signal</th>
-              <th className="w-[76px] px-1.5 py-1 text-right font-bold">Bars Since Entry</th>
+              <th className="whitespace-nowrap px-2 py-1 font-bold">ID</th>
+              <th className="whitespace-nowrap px-2 py-1 font-bold">MTF</th>
+              <th className="whitespace-nowrap px-2 py-1 font-bold">Setup</th>
+              <th className="whitespace-nowrap px-2 py-1 font-bold">HTF Zone Tapped</th>
+              <th className="whitespace-nowrap px-2 py-1 font-bold">LTF Zone Tapped</th>
+              <th className="whitespace-nowrap px-2 py-1 font-bold">Signal</th>
+              <th className="whitespace-nowrap px-2 py-1 text-right font-bold">Bars Since Entry</th>
             </tr>
           </thead>
           <tbody>
@@ -342,30 +342,30 @@ const MultiTimeframeEntryTable: React.FC<{ rows: DisplayMtfRow[] }> = ({ rows })
               const entry = row.engulfingType !== undefined;
               return (
                 <tr key={row.id} className={`border-t ${bullish ? 'border-emerald-100 bg-emerald-50/50' : 'border-rose-100 bg-rose-50/50'}`}>
-                  <td className="px-1.5 py-1 font-black whitespace-nowrap text-indigo-700">
+                  <td className="px-2 py-1 font-black whitespace-nowrap text-indigo-700">
                     {row.setupId}
                   </td>
-                  <td className="px-1.5 py-1 font-black whitespace-nowrap text-slate-700">
+                  <td className="px-2 py-1 font-black whitespace-nowrap text-slate-700">
                     {MTF_TABLE_LABELS[row.higherTimeframe]} → {MTF_TABLE_LABELS[row.lowerTimeframe]}
                   </td>
-                  <td className={`px-1.5 py-1 font-black whitespace-nowrap ${bullish ? 'text-emerald-700' : 'text-rose-700'}`}>
+                  <td className={`px-2 py-1 font-black whitespace-nowrap ${bullish ? 'text-emerald-700' : 'text-rose-700'}`}>
                     {bullish ? 'Bullish' : 'Bearish'} {row.confirmationKind === 'choch' ? 'CHOCH' : 'ISS'}
                   </td>
-                  <td className={`px-1.5 py-1 font-black whitespace-nowrap ${bullish ? 'text-emerald-700' : 'text-rose-700'}`}>
+                  <td className={`px-2 py-1 font-black whitespace-nowrap ${bullish ? 'text-emerald-700' : 'text-rose-700'}`}>
                     <div>{MTF_TABLE_LABELS[row.higherTimeframe]} {mtfZoneLabel(row.higherTimeframeZone)}</div>
                     <div className="text-[7px] font-bold leading-tight text-slate-400">
                       {row.higherTimeframeTapBarsAgo} {row.higherTimeframeTapBarsAgo === 1 ? 'bar' : 'bars'} ago
                     </div>
                   </td>
-                  <td className={`px-1.5 py-1 font-bold whitespace-nowrap ${bullish ? 'text-emerald-700' : 'text-rose-700'}`}>
+                  <td className={`px-2 py-1 font-bold whitespace-nowrap ${bullish ? 'text-emerald-700' : 'text-rose-700'}`}>
                     {row.tappedZone
                       ? `${MTF_TABLE_LABELS[row.lowerTimeframe]} ${mtfZoneLabel(row.tappedZone)}`
                       : '—'}
                   </td>
-                  <td className={`px-1.5 py-1 font-black ${entry ? bullish ? 'text-emerald-700' : 'text-rose-700' : 'text-slate-600'}`}>
+                  <td className={`whitespace-nowrap px-2 py-1 font-black ${entry ? bullish ? 'text-emerald-700' : 'text-rose-700' : 'text-slate-600'}`}>
                     {mtfSignalLabel(row)}
                   </td>
-                  <td className="px-1.5 py-1 text-right font-bold whitespace-nowrap text-slate-500">
+                  <td className="px-2 py-1 text-right font-bold whitespace-nowrap text-slate-500">
                     {row.engulfingBarsAgo === undefined ? '—' : `${row.engulfingBarsAgo} bars`}
                   </td>
                 </tr>
@@ -492,10 +492,21 @@ export const OandaProChart: React.FC = () => {
     : candles.slice(0, Math.min(candles.length, replayIndex + 1)), [candles, replayIndex]);
 
   const vipSupportGranularities = VIP_SUPPORT_GRANULARITIES[granularity];
+  const mtfLowerGranularities = useMemo(() => MTF_MAPPINGS
+    .filter((mapping) => mapping.higher === granularity)
+    .map((mapping) => mapping.lower), [granularity]);
   const auxiliaryGranularities = useMemo(() => Array.from(new Set<MarketGranularity>([
+    // MTF cannot be evaluated until its mapped lower-timeframe candles exist.
+    // Put those feeds first so the table is not left empty behind slower trend
+    // and VIP-support requests.
+    ...mtfLowerGranularities,
     ...vipSupportGranularities,
     ...TREND_TABLE_GRANULARITIES,
-  ])).filter((value) => value !== granularity), [granularity, vipSupportGranularities]);
+  ])).filter((value) => value !== granularity), [
+    granularity,
+    mtfLowerGranularities,
+    vipSupportGranularities,
+  ]);
   const vipSupportContexts = useMemo(() => {
     if (displayCandles.length === 0) return [];
     const lastSourceCandle = displayCandles[displayCandles.length - 1];
@@ -1219,24 +1230,29 @@ export const OandaProChart: React.FC = () => {
 
   const loadCandles = useCallback(async (signal?: AbortSignal) => {
     const requestId = ++loadRequestIdRef.current;
-    const replayTime = replayTimeRef.current;
-    setIsLoading(true);
-    try {
-      const requestCandles = async (requestedGranularity: MarketGranularity) => {
+      const replayTime = replayTimeRef.current;
+      setIsLoading(true);
+      try {
+        const requestCandles = async (requestedGranularity: MarketGranularity) => {
         const query = new URLSearchParams({
           granularity: requestedGranularity,
           count: '1500',
         });
         if (replayTime !== null) query.set('endTime', String(replayTime));
-        const response = await fetch(`/api/tradingview/market-data?${query}`, {
-          signal,
-          cache: 'no-store',
-        });
-        const payload = await response.json() as MarketDataResponse;
-        if (!response.ok || !payload.ok || !Array.isArray(payload.candles)) {
-          throw new Error(payload.error || `TradingView request failed with HTTP ${response.status}`);
+        let lastError = `TradingView returned no ${GRANULARITY_LABELS[requestedGranularity]} candles.`;
+        for (let attempt = 0; attempt < 2; attempt += 1) {
+          const response = await fetch(`/api/tradingview/market-data?${query}`, {
+            signal,
+            cache: 'no-store',
+          });
+          const payload = await response.json() as MarketDataResponse;
+          if (!response.ok || !payload.ok || !Array.isArray(payload.candles)) {
+            throw new Error(payload.error || `TradingView request failed with HTTP ${response.status}`);
+          }
+          if (payload.candles.length > 0) return payload;
+          lastError = `TradingView returned no ${GRANULARITY_LABELS[requestedGranularity]} candles.`;
         }
-        return payload;
+        throw new Error(lastError);
       };
       // Prioritize the selected chart. Opening seven unofficial TradingView
       // sockets at once made the main timeframe wait behind slower auxiliary
@@ -1259,13 +1275,30 @@ export const OandaProChart: React.FC = () => {
       setError(null);
       setIsLoading(false);
 
-      // Supporting timeframes load after the visible chart. Their final data
-      // and all resulting structure calculations are identical to before.
-      const auxiliaryPayloads = await Promise.all(auxiliaryGranularities.map(requestCandles));
-      if (requestId !== loadRequestIdRef.current) return;
-      setVipCandles(Object.fromEntries(auxiliaryGranularities.map((supportGranularity, index) => (
-        [supportGranularity, auxiliaryPayloads[index]?.candles || []]
-      ))));
+      // Load the mapped LTF feeds first and publish them immediately. This
+      // prevents a missing/slow 1m request from silently hiding a valid 15m→1m
+      // setup while unrelated trend timeframes have already populated.
+      setVipCandles({});
+      const priorityGranularities = auxiliaryGranularities.filter((value) => (
+        mtfLowerGranularities.includes(value as MtfGranularity)
+      ));
+      const remainingGranularities = auxiliaryGranularities.filter((value) => (
+        !mtfLowerGranularities.includes(value as MtfGranularity)
+      ));
+      const loadAuxiliaryBatch = async (batch: MarketGranularity[]) => {
+        if (batch.length === 0) return true;
+        const batchPayloads = await Promise.all(batch.map(requestCandles));
+        if (requestId !== loadRequestIdRef.current) return false;
+        setVipCandles((current) => ({
+          ...current,
+          ...Object.fromEntries(batch.map((supportGranularity, index) => (
+            [supportGranularity, batchPayloads[index].candles]
+          ))),
+        }));
+        return true;
+      };
+      if (!await loadAuxiliaryBatch(priorityGranularities)) return;
+      await loadAuxiliaryBatch(remainingGranularities);
     } catch (loadError) {
       if ((loadError as Error).name !== 'AbortError') {
         setError(loadError instanceof Error ? loadError.message : 'Unable to load TradingView candles.');
@@ -1277,7 +1310,7 @@ export const OandaProChart: React.FC = () => {
     } finally {
       if (!signal?.aborted && requestId === loadRequestIdRef.current) setIsLoading(false);
     }
-  }, [auxiliaryGranularities, granularity]);
+  }, [auxiliaryGranularities, granularity, mtfLowerGranularities]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -2081,7 +2114,7 @@ export const OandaProChart: React.FC = () => {
               <button onClick={() => setReplaySelecting(false)} className="rounded border border-slate-200 px-2 py-1 text-[10px] font-black text-slate-500 hover:bg-slate-100">CANCEL</button>
             </div>
           )}
-          <div className={`pointer-events-auto absolute left-3 top-3 z-20 overflow-hidden rounded-md border border-slate-300 bg-white/95 shadow-sm ${showZoneTable ? 'w-[500px]' : 'w-auto'}`}>
+          <div className={`pointer-events-auto absolute left-3 top-3 z-20 overflow-hidden rounded-md border border-slate-300 bg-white/95 shadow-sm ${showZoneTable ? 'w-fit max-w-[calc(100%_-_24px)]' : 'w-auto'}`}>
             <div className="flex items-center justify-between gap-3 border-b border-slate-200 bg-violet-50 px-2 py-1 text-[9px] font-black uppercase tracking-wide text-violet-700">
               <span>{showZoneTable ? 'Zone table' : 'Zone table minimized'}</span>
               <button
@@ -2094,14 +2127,14 @@ export const OandaProChart: React.FC = () => {
               </button>
             </div>
             {showZoneTable && <>
-            <table className="w-full border-collapse text-left text-[10px]">
+            <table className="table-auto border-collapse text-left text-[10px]">
               <thead className="bg-slate-100 text-[9px] uppercase text-slate-500">
                 <tr>
-                  <th className="px-2 py-1 font-bold">Zone</th>
-                  <th className="px-2 py-1 font-bold">Type</th>
-                  <th className="px-2 py-1 font-bold">Price range</th>
-                  <th className="px-2 py-1 text-center font-bold">Engulf</th>
-                  <th className="px-2 py-1 text-right font-bold">Tap / Trade</th>
+                  <th className="whitespace-nowrap px-2 py-1 font-bold">Zone</th>
+                  <th className="whitespace-nowrap px-2 py-1 font-bold">Type</th>
+                  <th className="whitespace-nowrap px-2 py-1 font-bold">Price range</th>
+                  <th className="whitespace-nowrap px-2 py-1 text-center font-bold">Engulf</th>
+                  <th className="whitespace-nowrap px-2 py-1 text-right font-bold">Tap / Trade</th>
                 </tr>
               </thead>
               <tbody>
