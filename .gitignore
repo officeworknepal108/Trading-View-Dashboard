@@ -9,3 +9,6 @@ coverage/
 
 # Local Netlify folder
 .netlify
+
+# User-approved AI corrections and trade journal (local runtime data)
+data/ai-agent-memory.json

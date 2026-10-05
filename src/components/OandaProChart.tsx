@@ -28,6 +28,7 @@ import { buildDayFibs, DayFibMove } from '../services/dayFib';
 import { applySwingFibConfluence } from '../services/swingFibConfluence';
 import { applyDayFibConfluence } from '../services/dayFibConfluence';
 import { MTF_MAPPINGS, buildMtfRows, type MtfGranularity, type MtfRow } from '../services/mtf';
+import { AiTradeAssistant, type ChartAgentContext } from './AiTradeAssistant';
 
 type OandaGranularity = 'M1' | 'M5' | 'M15' | 'M30' | 'H1' | 'H4' | 'D';
 type MarketGranularity = OandaGranularity | 'W' | 'MO';
@@ -728,6 +729,70 @@ export const OandaProChart: React.FC = () => {
 
   const latestCandle = hoveredCandle || displayCandles[displayCandles.length - 1] || null;
   const previousCandle = displayCandles.length > 1 ? displayCandles[displayCandles.length - 2] : null;
+  const chartAgentContext = useMemo<ChartAgentContext>(() => ({
+    symbol: 'OANDA:XAUUSD',
+    chartTimeframe: granularity,
+    replayActive: replayIndex !== null,
+    replayBar: replayIndex === null ? null : replayIndex + 1,
+    structureTrend: structure.trend,
+    currentCandle: latestCandle ? {
+      time: latestCandle.time,
+      open: latestCandle.open,
+      high: latestCandle.high,
+      low: latestCandle.low,
+      close: latestCandle.close,
+      volume: latestCandle.volume,
+      complete: latestCandle.complete,
+    } : null,
+    recentCandles: displayCandles.slice(-80).map((candle) => ({
+      time: candle.time,
+      open: candle.open,
+      high: candle.high,
+      low: candle.low,
+      close: candle.close,
+      volume: candle.volume,
+      complete: candle.complete,
+    })),
+    activeZones: displayZones
+      .filter((zone) => zone.active && zone.status !== 'rejected')
+      .sort((first, second) => (second.tapTime ?? second.startTime) - (first.tapTime ?? first.startTime))
+      .slice(0, 40)
+      .map((zone) => ({
+        id: zone.id,
+        name: zone.name,
+        category: zone.category,
+        direction: zone.isBuy ? 'buy' : 'sell',
+        top: zone.top,
+        bottom: zone.bottom,
+        status: zone.status,
+        startTime: zone.startTime,
+        tapTime: zone.tapTime,
+        tapBarsAgo: zone.tapBarsAgo,
+        chochClass: zone.chochClass,
+        tradeable: zone.tradeable,
+        fibBand: zone.fibBand,
+        fibStatus: zone.fibStatus,
+        engulfingType: zone.engulfingType,
+        engulfingTime: zone.engulfingTime,
+        swingFibBand: zone.swingFibBand,
+        dayFibBand: zone.dayFibBand,
+      })),
+    mtfSetups: mtfRows.map((row) => ({ ...row })),
+    timeframeTrends: trendTableRows.map((row) => ({
+      timeframe: row.label,
+      trend: row.trend,
+      closesAt: row.closesAt,
+    })),
+  }), [
+    displayCandles,
+    displayZones,
+    granularity,
+    latestCandle,
+    mtfRows,
+    replayIndex,
+    structure.trend,
+    trendTableRows,
+  ]);
   const zoneTableRows = useMemo(() => displayZones
     .filter((zone) => zone.active && zone.status === 'valid'
       && (showInternal || zone.category !== 'internal')
@@ -2303,6 +2368,7 @@ export const OandaProChart: React.FC = () => {
             </>}
           </div>
           <MultiTimeframeEntryTable rows={mtfRows} />
+          <AiTradeAssistant context={chartAgentContext} />
           <MultiTimeframeTrendTable rows={trendTableRows} replayActive={replayIndex !== null} />
           {isLoading && candles.length === 0 && !error && (
             <div className="absolute inset-0 z-20 grid place-items-center bg-white/85">

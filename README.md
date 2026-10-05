@@ -14,6 +14,23 @@ Binance candles.
 Port 3002 is the saved default in `.env`. To use another port temporarily, set
 the `PORT` environment variable before starting the server.
 
+## Optional chart knowledge agent
+
+The chart includes a conversational, read-only agent that can search the
+project's services, tests and documentation while inspecting the current chart,
+zones, MTF rows and replay state. It uses the free local Ollama backend by
+default (`AI_PROVIDER=ollama`, `OLLAMA_MODEL=qwen3:4b`), so no paid API key is
+required. Ollama must be installed and the configured model downloaded.
+
+OpenAI remains optional: set `AI_PROVIDER=openai` and add `OPENAI_API_KEY` to
+`.env`. The key stays on the Express server and is never sent to browser code.
+
+The agent can propose a correction, lesson or completed trade result. Nothing
+is learned until the user selects **Approve & Learn**. Approved memory is stored
+locally in `data/ai-agent-memory.json`, is included in future answers, and never
+changes trading logic or places trades automatically. Trade-result learning
+records profit, loss and breakeven outcomes to reduce winner-only outcome bias.
+
 ## Current checkpoint
 
 - Active project folder: `C:\Users\ABHI\Desktop\new algo file updated`
