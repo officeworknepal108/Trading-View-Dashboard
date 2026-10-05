@@ -677,7 +677,12 @@ export const OandaProChart: React.FC = () => {
       : (row.tapBarsAgo ?? row.confirmationBarsAgo) <= 50), [tableTimeframeData]);
 
   const mtfRows = useMemo<DisplayMtfRow[]>(() => {
-    const chartRows = activeMtfRows.filter((row) => row.higherTimeframe === granularity);
+    // An MTF setup belongs to both charts in its pair. Keeping the table on
+    // only the HTF made a valid setup appear to be missing during LTF replay
+    // until the user switched back to the higher timeframe.
+    const chartRows = activeMtfRows.filter((row) => (
+      row.higherTimeframe === granularity || row.lowerTimeframe === granularity
+    ));
     const setupIds = new Map<string, string>();
     return chartRows.map((row) => {
       const setupKey = `${row.higherTimeframeZoneId}:${row.higherTimeframeTapTime}`;
