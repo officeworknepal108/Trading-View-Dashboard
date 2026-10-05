@@ -17,6 +17,8 @@ import {
   findVipSupportTapAcrossContexts,
   getConfirmationBucketStart,
   invalidateTjlFibBeforeLatestStructureReset,
+  isTjl2LiquiditySweep,
+  promoteTjl2ToMajorLiquidity,
   resolveTjl1Confirmation,
   selectFreshVipSupportTap,
   selectTwoCandleRetracementPivot,
@@ -196,6 +198,59 @@ test('TJL1 FIB uses its current paired TJL2 even when the TJL2 pivot is newer', 
     'internal-tjl2',
     'a current internal pair uses its TJL2 pivot even when that pivot precedes the reset',
   );
+});
+
+test('Major Liquidity requires a preserved wick sweep of the preceding same-direction TJL2 before BOS', () => {
+  const bullishSource = zone({
+    id: 'bullish-first-tjl2', name: 'TJL2', isBuy: true,
+    startTime: 100, activeFromTime: 200, bottom: 100, top: 102,
+  });
+  const bullishSweep: StructureCandle = {
+    time: 300, open: 103, high: 105, low: 99, close: 104, complete: true,
+  };
+  assert.equal(isTjl2LiquiditySweep(bullishSource, bullishSweep), true);
+  assert.equal(isTjl2LiquiditySweep(bullishSource, {
+    ...bullishSweep, low: 100.5,
+  }), false, 'entering the zone without taking its pivot-side wick is not a sweep');
+  assert.equal(isTjl2LiquiditySweep(bullishSource, {
+    ...bullishSweep, open: 99, close: 98,
+  }), false, 'a completed body fully beyond TJL2 invalidates instead of sweeping it');
+
+  const bullishMajor = zone({
+    id: 'bullish-second-tjl2', name: 'TJL2', isBuy: true,
+    startTime: 350, activeFromTime: 410, bottom: 98, top: 101,
+  });
+  assert.equal(promoteTjl2ToMajorLiquidity(bullishMajor, bullishSource, 300, 400), true);
+  assert.deepEqual({
+    majorLiquidity: bullishMajor.majorLiquidity,
+    source: bullishMajor.majorLiquiditySourceZoneId,
+    sweep: bullishMajor.majorLiquiditySweepTime,
+    bos: bullishMajor.majorLiquidityBosTime,
+  }, {
+    majorLiquidity: true,
+    source: 'bullish-first-tjl2',
+    sweep: 300,
+    bos: 400,
+  });
+
+  const bearishSource = zone({
+    id: 'bearish-first-tjl2', name: 'TJL2', isBuy: false,
+    startTime: 500, activeFromTime: 600, bottom: 108, top: 110,
+  });
+  const bearishSweep: StructureCandle = {
+    time: 700, open: 107, high: 111, low: 105, close: 106, complete: true,
+  };
+  assert.equal(isTjl2LiquiditySweep(bearishSource, bearishSweep), true);
+  const bearishMajor = zone({
+    id: 'bearish-second-tjl2', name: 'TJL2', isBuy: false,
+    startTime: 750, activeFromTime: 810, bottom: 109, top: 112,
+  });
+  assert.equal(promoteTjl2ToMajorLiquidity(bearishMajor, bearishSource, 700, 800), true);
+  assert.equal(bearishMajor.majorLiquidity, true);
+
+  const sameCandleBos = zone({ id: 'same-candle-bos', name: 'TJL2', isBuy: true });
+  assert.equal(promoteTjl2ToMajorLiquidity(sameCandleBos, bullishSource, 400, 400), false,
+    'the liquidity sweep must happen before the second structure BOS');
 });
 
 test('ISS FIB runs from Point 0 and extends beyond Point 5 to the latest completed extreme', () => {
@@ -542,6 +597,26 @@ test('zone engulfing requires A+ FIB, active-zone contact, the band-specific tou
     fibBand: 'DB/DT',
     fibLevel50: undefined,
   }))?.type, 'T4', 'a green DT tap, one inside candle, and red close below the tap low is bearish T4');
+});
+
+test('Major Liquidity accepts a zone-touching engulfing without any FIB alignment', () => {
+  const candles: StructureCandle[] = [
+    { time: 1, open: 12, high: 13, low: 9, close: 10, complete: true },
+    { time: 2, open: 10, high: 14, low: 9.5, close: 13.5, complete: true },
+  ];
+  const majorLiquidity = zone({
+    id: 'major-liquidity', name: 'TJL2', isBuy: true, majorLiquidity: true,
+    startTime: 0, activeFromTime: 1, bottom: 9, top: 10,
+    fibRelevant: false, fibStatus: undefined, fibBand: undefined, fibLevel50: undefined,
+  });
+
+  assert.equal(findZoneEngulfingPattern(candles, majorLiquidity)?.type, 'T1');
+  assert.equal(findZoneEngulfingPattern(candles, {
+    ...majorLiquidity, majorLiquidity: false,
+  }), undefined, 'an ordinary TJL2 still requires its existing A+ FIB qualification');
+  assert.equal(findZoneEngulfingPattern(candles, {
+    ...majorLiquidity, status: 'invalidated', active: false,
+  }), undefined, 'Major Liquidity still obeys normal zone invalidation');
 });
 
 test('a later zone invalidation does not erase an earlier TJL1 confirmation', () => {

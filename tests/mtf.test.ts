@@ -64,6 +64,43 @@ test('MTF row follows the selected LTF CHOCH and promotes only an A+ engulfing',
   assert.equal(row?.engulfingBarsAgo, 0);
 });
 
+test('MTF prefers and identifies Major Liquidity when the mapped HTF TJL2 is tapped', () => {
+  const lowerCandles = [
+    candle(100, 104, 105, 101, 102),
+    candle(200, 103, 104, 101, 102),
+    candle(300, 102, 108, 101, 107),
+    candle(400, 107, 108, 103, 104),
+  ];
+  const ordinary = zone({
+    id: 'ordinary-demand', name: 'DEMAND', category: 'supplyDemand', bottom: 101, top: 104,
+  });
+  const majorLiquidity = zone({
+    id: 'major-tjl2', name: 'TJL2', isBuy: true, majorLiquidity: true,
+    bottom: 101, top: 104,
+  });
+  const qml = zone({
+    id: 'm5-qml', chochTime: 300, startTime: 100, activeFromTime: 300,
+    tjlPairTime: 50, bottom: 103, top: 105,
+  });
+  const rbs = zone({
+    id: 'm5-rbs', name: 'RBS', chochTime: 300, startTime: 150,
+    activeFromTime: 300, tjlPairTime: 50, bottom: 102, top: 104,
+  });
+  const db = zone({
+    id: 'm5-db', name: 'DB', chochTime: 300, startTime: 100,
+    activeFromTime: 300, bottom: 99, top: 100,
+  });
+
+  const row = buildMtfRows({
+    H1: { candles: lowerCandles, structure: structure([ordinary, majorLiquidity]) },
+    M5: { candles: lowerCandles, structure: structure([qml, rbs, db]) },
+  }).find((candidate) => candidate.higherTimeframe === 'H1');
+
+  assert.equal(row?.higherTimeframeZoneId, 'major-tjl2');
+  assert.equal(row?.higherTimeframeZone, 'TJL2');
+  assert.equal(row?.higherTimeframeMajorLiquidity, true);
+});
+
 test('ISS does not replace the required same-structure CHOCH in an MTF setup', () => {
   const lowerCandles = [
     candle(100, 104, 105, 101, 102),

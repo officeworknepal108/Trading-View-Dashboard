@@ -296,8 +296,9 @@ const MTF_TABLE_LABELS: Record<MtfGranularity, string> = {
   M1: '1m', M5: '5m', M15: '15m', H1: '1H', H4: '4H', D: '1D',
 };
 
-function mtfZoneLabel(name: StructureZone['name']): string {
-  return name.startsWith('Internal ') ? name.slice('Internal '.length) : name;
+function mtfZoneLabel(name: StructureZone['name'], majorLiquidity = false): string {
+  const label = name.startsWith('Internal ') ? name.slice('Internal '.length) : name;
+  return majorLiquidity ? `${label} · Major Liquidity` : label;
 }
 
 function mtfSignalLabel(row: MtfRow): string {
@@ -353,7 +354,10 @@ const MultiTimeframeEntryTable: React.FC<{ rows: DisplayMtfRow[] }> = ({ rows })
                     {bullish ? 'Bullish' : 'Bearish'} {row.confirmationKind === 'choch' ? 'CHOCH' : 'ISS'}
                   </td>
                   <td className={`px-2 py-1 font-black whitespace-nowrap ${bullish ? 'text-emerald-700' : 'text-rose-700'}`}>
-                    <div>{MTF_TABLE_LABELS[row.higherTimeframe]} {mtfZoneLabel(row.higherTimeframeZone)}</div>
+                    <div>{MTF_TABLE_LABELS[row.higherTimeframe]} {mtfZoneLabel(
+                      row.higherTimeframeZone,
+                      row.higherTimeframeMajorLiquidity,
+                    )}</div>
                     <div className="text-[7px] font-bold leading-tight text-slate-400">
                       {row.higherTimeframeTapBarsAgo} {row.higherTimeframeTapBarsAgo === 1 ? 'bar' : 'bars'} ago
                     </div>
@@ -768,6 +772,9 @@ export const OandaProChart: React.FC = () => {
         startTime: zone.startTime,
         tapTime: zone.tapTime,
         tapBarsAgo: zone.tapBarsAgo,
+        majorLiquidity: zone.majorLiquidity,
+        majorLiquiditySweepTime: zone.majorLiquiditySweepTime,
+        majorLiquidityBosTime: zone.majorLiquidityBosTime,
         chochClass: zone.chochClass,
         tradeable: zone.tradeable,
         fibBand: zone.fibBand,
@@ -914,6 +921,7 @@ export const OandaProChart: React.FC = () => {
       const label = document.createElement('span');
       const name = isMg || isIss || isInternal ? displayZoneName(zone.name) : demand ? 'DEMAND' : 'SUPPLY';
       const labelDetails: string[] = [];
+      if (zone.name === 'TJL2' && zone.majorLiquidity) labelDetails.push('MAJOR LIQUIDITY');
       if (inactive) {
         if (rejected) labelDetails.push('REJECTED');
       } else if (showsDoubleChochStatus) {
@@ -2058,7 +2066,7 @@ export const OandaProChart: React.FC = () => {
               className={`rounded-md border px-2 py-1 text-[10px] font-black transition ${
                 showEngulfing ? 'border-blue-200 bg-blue-50 text-blue-700' : 'border-slate-200 bg-white text-slate-500'
               }`}
-              title="Show or hide confirmed Type 1–4 engulfing signals in A+ FIB zones"
+              title="Show or hide confirmed Type 1–4 engulfing signals in A+ FIB or Major Liquidity zones"
             >
               ENGULFING {showEngulfing ? 'ON' : 'OFF'}
             </button>
@@ -2305,6 +2313,11 @@ export const OandaProChart: React.FC = () => {
                           ? `FIB A+ ${displayZoneName(zone.name)}`
                           : displayZoneName(zone.name)}
                       </span>
+                      {zone.name === 'TJL2' && zone.majorLiquidity && (
+                        <span className="ml-1 rounded bg-cyan-100 px-1 py-0.5 text-[8px] font-black text-cyan-800">
+                          MAJOR LIQUIDITY
+                        </span>
+                      )}
                       {zone.chochClass && (
                         <span className={`ml-1 rounded px-1 py-0.5 text-[8px] font-black ${
                           zone.chochClass === 'vip'

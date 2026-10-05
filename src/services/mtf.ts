@@ -25,6 +25,7 @@ export interface MtfRow {
   confirmationBarsAgo: number;
   higherTimeframeZoneId: string;
   higherTimeframeZone: StructureZone['name'];
+  higherTimeframeMajorLiquidity?: boolean;
   higherTimeframeTapTime: number;
   higherTimeframeTapBarsAgo: number;
   tappedZone?: StructureZone['name'];
@@ -114,7 +115,9 @@ function latestHigherTimeframeTouch(
       }
       insideZone = overlaps;
     }
-    if (latestTapTime !== undefined && (latest === undefined || latestTapTime > latest.time)) {
+    if (latestTapTime !== undefined && (latest === undefined || latestTapTime > latest.time
+      || (latestTapTime === latest.time && zone.majorLiquidity === true
+        && latest.zone.majorLiquidity !== true))) {
       latest = { zone, time: latestTapTime };
     }
   }
@@ -273,6 +276,8 @@ function eventToRow(
       : lowerCandles.length - 1 - confirmationIndex,
     higherTimeframeZoneId: higherTimeframeTouch.zone.id,
     higherTimeframeZone: higherTimeframeTouch.zone.name,
+    higherTimeframeMajorLiquidity: higherTimeframeTouch.zone.name === 'TJL2'
+      && higherTimeframeTouch.zone.majorLiquidity === true,
     higherTimeframeTapTime: higherTimeframeTouch.time,
     higherTimeframeTapBarsAgo: higherTimeframeTapIndex < 0
       ? 0

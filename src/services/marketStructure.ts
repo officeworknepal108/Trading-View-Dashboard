@@ -52,6 +52,13 @@ export interface StructureZone {
   // TJL1 and TJL2 created by the same BOS share this timestamp. It lets the
   // TJL1 FIB anchor to its current paired TJL2 even when that pivot is newer.
   tjlPairTime?: number;
+  // When a continuation structure sweeps the preceding same-direction TJL2
+  // before confirming its BOS, the new structure's TJL2 becomes Major
+  // Liquidity. This status is independent from every FIB confluence layer.
+  majorLiquidity?: boolean;
+  majorLiquiditySourceZoneId?: string;
+  majorLiquiditySweepTime?: number;
+  majorLiquidityBosTime?: number;
   invalidatedAt?: number;
   tapTime?: number;
   tapBarsAgo?: number;
@@ -381,6 +388,34 @@ export function doesInvalidateZone(zone: StructureZone, candle: StructureCandle)
     : bodyLow > zone.top;
 }
 
+export function isTjl2LiquiditySweep(zone: StructureZone, candle: StructureCandle): boolean {
+  if (zone.name !== 'TJL2' || zone.category !== 'mg' || !zone.active
+    || zone.status !== 'valid' || candle.complete === false
+    || candle.time < (zone.activeFromTime ?? zone.startTime)
+    || doesInvalidateZone(zone, candle)) return false;
+  // A sweep takes the pivot-side wick, not merely the interior of the zone.
+  // Its completed body must preserve the level so it remains a liquidity grab.
+  return zone.isBuy ? candle.low <= zone.bottom : candle.high >= zone.top;
+}
+
+export function promoteTjl2ToMajorLiquidity(
+  zone: StructureZone,
+  sweptZone: StructureZone,
+  sweepTime: number,
+  bosTime: number,
+): boolean {
+  const sweepStartedAfterSourceFormation = sweepTime >= (sweptZone.activeFromTime ?? sweptZone.startTime);
+  if (zone.name !== 'TJL2' || sweptZone.name !== 'TJL2'
+    || zone.category !== 'mg' || sweptZone.category !== 'mg'
+    || zone.isBuy !== sweptZone.isBuy || !sweepStartedAfterSourceFormation
+    || sweepTime >= bosTime) return false;
+  zone.majorLiquidity = true;
+  zone.majorLiquiditySourceZoneId = sweptZone.id;
+  zone.majorLiquiditySweepTime = sweepTime;
+  zone.majorLiquidityBosTime = bosTime;
+  return true;
+}
+
 export function findFirstZoneTapIndex(candles: StructureCandle[], zone: StructureZone): number {
   // Confirmation-controlled zones cannot record a trade tap while pending.
   if (requiresMappedConfirmation(zone) && zone.status !== 'valid') return -1;
@@ -578,11 +613,12 @@ export function findZoneEngulfingPattern(
   zone: StructureZone,
   type4MaxCandles = 10,
 ): EngulfingPattern | undefined {
+  const fibIndependentMajorLiquidity = zone.name === 'TJL2' && zone.majorLiquidity === true;
   const isDeepFib = zone.fibBand === '0.71-0.79' || zone.fibBand === 'deep';
   const isDbDtFib = zone.fibBand === 'DB/DT';
-  if (zone.fibStatus !== 'a-plus'
-    || (!isDeepFib && !isDbDtFib && zone.fibLevel50 === undefined)
-    || zone.status !== 'valid') {
+  if (zone.status !== 'valid'
+    || (!fibIndependentMajorLiquidity && (zone.fibStatus !== 'a-plus'
+      || (!isDeepFib && !isDbDtFib && zone.fibLevel50 === undefined)))) {
     return undefined;
   }
   const validFrom = Math.max(
@@ -598,7 +634,7 @@ export function findZoneEngulfingPattern(
     const pattern = detectEngulfingPatternAt(candles, endIndex, type4MaxCandles);
     if (!pattern || pattern.direction !== requiredDirection) continue;
     const patternCandles = candles.slice(pattern.startIndex, pattern.endIndex + 1);
-    if (!isDeepFib && !isDbDtFib) {
+    if (!fibIndependentMajorLiquidity && !isDeepFib && !isDbDtFib) {
       const patternTouchesFib50 = patternCandles.some((candle) => (
         candle.low <= zone.fibLevel50! && candle.high >= zone.fibLevel50!
       ));
@@ -1002,6 +1038,7 @@ export function analyzeMarketStructure(candles: StructureCandle[], options: {
   let lastBearishLow: StructurePoint | null = null;
   let currentTrendTjl1: StructureZone | null = null;
   let currentTrendTjl2: StructureZone | null = null;
+  let currentTrendTjl2SweepTime: number | undefined;
   let lastVipSupportTapTimeUsed: number | undefined;
   let pendingDouble: {
     direction: 'bullish' | 'bearish';
@@ -1146,6 +1183,10 @@ export function analyzeMarketStructure(candles: StructureCandle[], options: {
     source.tapTime = undefined;
     source.tapBarsAgo = undefined;
     source.invalidatedAt = undefined;
+    source.majorLiquidity = undefined;
+    source.majorLiquiditySourceZoneId = undefined;
+    source.majorLiquiditySweepTime = undefined;
+    source.majorLiquidityBosTime = undefined;
     return source;
   };
 
@@ -1249,6 +1290,11 @@ export function analyzeMarketStructure(candles: StructureCandle[], options: {
     const candle = candles[index];
     const previous = candles[index - 1];
 
+    if (currentTrendTjl2SweepTime === undefined && currentTrendTjl2
+      && isTjl2LiquiditySweep(currentTrendTjl2, candle)) {
+      currentTrendTjl2SweepTime = candle.time;
+    }
+
     for (const zone of zones) {
       if (!zone.active) continue;
       // TJL1 is protected until its first mapped higher-timeframe candle has
@@ -1300,6 +1346,7 @@ export function analyzeMarketStructure(candles: StructureCandle[], options: {
         protectedPoint = doubleHigh;
         currentTrendTjl1 = null;
         currentTrendTjl2 = null;
+        currentTrendTjl2SweepTime = undefined;
         pathStart = doubleHigh;
         activeHigh = null;
         activeLow = null;
@@ -1339,9 +1386,15 @@ export function analyzeMarketStructure(candles: StructureCandle[], options: {
         addSwing(confirmedLow, 'bullish');
         addLevel('bos', 'bullish', confirmedHigh, index, 'BOS');
 
+        const sweptTjl2 = currentTrendTjl2;
+        const sweepTime = currentTrendTjl2SweepTime;
         currentTrendTjl1 = addTjlZone(confirmedHigh, 'TJL1', true, 'high', candle.time + sourceBarSeconds);
         currentTrendTjl2 = addTjlZone(confirmedLow, 'TJL2', true, 'low', candle.time + sourceBarSeconds);
         linkTjlPair(currentTrendTjl1, currentTrendTjl2);
+        if (sweptTjl2 && sweepTime !== undefined) {
+          promoteTjl2ToMajorLiquidity(currentTrendTjl2, sweptTjl2, sweepTime, candle.time);
+        }
+        currentTrendTjl2SweepTime = undefined;
         lastBullishHigh = confirmedHigh;
         if (options.allowSupplyDemand) {
           const originIndex = findOrderBlock(candles, confirmedHigh.index, index, true);
@@ -1384,6 +1437,7 @@ export function analyzeMarketStructure(candles: StructureCandle[], options: {
         protectedPoint = newProtectedHigh;
         currentTrendTjl1 = null;
         currentTrendTjl2 = null;
+        currentTrendTjl2SweepTime = undefined;
         pathStart = newProtectedHigh;
         activeHigh = null;
         activeLow = null;
@@ -1417,6 +1471,7 @@ export function analyzeMarketStructure(candles: StructureCandle[], options: {
         protectedPoint = doubleLow;
         currentTrendTjl1 = null;
         currentTrendTjl2 = null;
+        currentTrendTjl2SweepTime = undefined;
         pathStart = doubleLow;
         activeHigh = null;
         activeLow = null;
@@ -1455,9 +1510,15 @@ export function analyzeMarketStructure(candles: StructureCandle[], options: {
         addSwing(confirmedHigh, 'bearish');
         addLevel('bos', 'bearish', confirmedLow, index, 'BOS');
 
+        const sweptTjl2 = currentTrendTjl2;
+        const sweepTime = currentTrendTjl2SweepTime;
         currentTrendTjl1 = addTjlZone(confirmedLow, 'TJL1', false, 'low', candle.time + sourceBarSeconds);
         currentTrendTjl2 = addTjlZone(confirmedHigh, 'TJL2', false, 'high', candle.time + sourceBarSeconds);
         linkTjlPair(currentTrendTjl1, currentTrendTjl2);
+        if (sweptTjl2 && sweepTime !== undefined) {
+          promoteTjl2ToMajorLiquidity(currentTrendTjl2, sweptTjl2, sweepTime, candle.time);
+        }
+        currentTrendTjl2SweepTime = undefined;
         lastBearishLow = confirmedLow;
         if (options.allowSupplyDemand) {
           const originIndex = findOrderBlock(candles, confirmedLow.index, index, false);
@@ -1500,6 +1561,7 @@ export function analyzeMarketStructure(candles: StructureCandle[], options: {
         protectedPoint = newProtectedLow;
         currentTrendTjl1 = null;
         currentTrendTjl2 = null;
+        currentTrendTjl2SweepTime = undefined;
         pathStart = newProtectedLow;
         activeHigh = null;
         activeLow = null;
