@@ -194,14 +194,28 @@ function findMtfEngulfing(
   event: ConfirmationEvent,
   zone: StructureZone,
 ): { type: EngulfingType; time: number } | undefined {
-  const fibBand = fibBandForZone(event, zone);
-  if (!fibBand || zone.tapTime === undefined) return undefined;
+  if (zone.tapTime === undefined) return undefined;
   const requiredDirection: EngulfingDirection = event.isBuy ? 'bullish' : 'bearish';
   const validFrom = Math.max(event.time, zone.tapTime, zone.activeFromTime ?? zone.startTime);
+  // Fib qualification and engulfing confirmation are historical facts. The
+  // structure engine stores the first qualified pattern on the zone. Prefer
+  // that record so a later extension of the CHOCH Fib zero cannot move the
+  // bands and retroactively turn a confirmed MTF entry back into "Waiting".
+  if (zone.engulfingType !== undefined
+    && zone.engulfingTime !== undefined
+    && zone.engulfingDirection === requiredDirection
+    && zone.engulfingTime >= validFrom
+    && (zone.invalidatedAt === undefined || zone.engulfingTime < zone.invalidatedAt)) {
+    return { type: zone.engulfingType, time: zone.engulfingTime };
+  }
+
+  const fibBand = fibBandForZone(event, zone);
+  if (!fibBand) return undefined;
 
   for (let endIndex = 1; endIndex < candles.length; endIndex += 1) {
     const finalCandle = candles[endIndex];
     if (finalCandle.complete === false || finalCandle.time < validFrom) continue;
+    if (zone.invalidatedAt !== undefined && finalCandle.time >= zone.invalidatedAt) break;
     const pattern = detectEngulfingPatternAt(candles, endIndex);
     if (!pattern || pattern.direction !== requiredDirection) continue;
     const patternCandles = candles.slice(pattern.startIndex, pattern.endIndex + 1);
@@ -223,8 +237,9 @@ function eventToRow(
   higherTimeframeTouch: { zone: StructureZone; time: number },
 ): MtfRow {
   const entry = event.zones
-    .filter((zone) => zone.active && zone.status === 'valid'
-      && zone.tapTime !== undefined && zone.tapTime >= event.time)
+    .filter((zone) => zone.status !== 'rejected'
+      && zone.tapTime !== undefined && zone.tapTime >= event.time
+      && (zone.invalidatedAt === undefined || zone.tapTime < zone.invalidatedAt))
     .map((zone) => ({ zone, engulfing: findMtfEngulfing(lowerCandles, event, zone) }))
     .filter((candidate): candidate is {
       zone: StructureZone;

@@ -282,6 +282,23 @@ test('the LTF source pair must overlap the HTF zone even when the CHOCH break ca
   assert.equal(row?.confirmationTime, 300);
   assert.equal(row?.engulfingType, 'T3');
   assert.equal(row?.engulfingTime, 600);
+
+  const extendedFibQml = {
+    ...qml,
+    // A later move extension shifts the live Fib bands away from this QML,
+    // but it must not erase the Type 3 that qualified at candle 600.
+    fibZeroPrice: 80,
+    engulfingType: 'T3' as const,
+    engulfingDirection: 'bearish' as const,
+    engulfingTime: 600,
+  };
+  const persistedRow = buildMtfRows({
+    M15: { candles: lowerCandles, structure: structure([higherZone]) },
+    M1: { candles: lowerCandles, structure: structure([extendedFibQml, sbr, dt]) },
+  }).find((candidate) => candidate.higherTimeframe === 'M15'
+    && candidate.lowerTimeframe === 'M1');
+  assert.equal(persistedRow?.engulfingType, 'T3');
+  assert.equal(persistedRow?.engulfingTime, 600);
 });
 
 test('sell flow tracks the preceding buying TJL pair into its bearish CHOCH', () => {

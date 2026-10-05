@@ -848,48 +848,65 @@ export const OandaProChart: React.FC = () => {
 
       const label = document.createElement('span');
       const name = isMg || isIss || isInternal ? displayZoneName(zone.name) : demand ? 'DEMAND' : 'SUPPLY';
-      label.textContent = inactive
-        ? rejected ? `${name} · REJECTED` : name
-        : `${name}${pending ? ' · PENDING' : zone.name === 'TJL1' ? ' · VALID' : ''}`;
+      const labelDetails: string[] = [];
       if (inactive) {
-        label.textContent = rejected ? `${name} \u00b7 REJECTED` : name;
+        if (rejected) labelDetails.push('REJECTED');
       } else if (showsDoubleChochStatus) {
-        label.textContent = zone.doubleChochStatus === 'pending'
-          ? `${name} · DOUBLE CHoCH · PENDING ${confirmationLabel} ${zone.doubleChochConfirmationDirection === 'up' ? 'ABOVE' : 'BELOW'}`
-          : `${name} · VALID DOUBLE CHoCH`;
+        if (zone.doubleChochStatus === 'pending') {
+          labelDetails.push(
+            'DOUBLE CHoCH',
+            `PENDING ${confirmationLabel} ${zone.doubleChochConfirmationDirection === 'up' ? 'ABOVE' : 'BELOW'}`,
+          );
+        } else {
+          labelDetails.push('VALID DOUBLE CHoCH');
+        }
       } else if (zone.name === 'TJL1' || zone.name === 'ISS L3' || zone.name === 'Internal TJL1') {
-        label.textContent = pending
-          ? `${name} · PENDING ${confirmationLabel} ${zone.isBuy ? 'ABOVE' : 'BELOW'}`
-          : `VALID ${name}`;
-      } else if (zone.name === 'TJL2') {
-        label.textContent = 'TJL2';
+        labelDetails.push(pending
+          ? `PENDING ${confirmationLabel} ${zone.isBuy ? 'ABOVE' : 'BELOW'}`
+          : 'VALID');
       } else if (isInternal && zone.chochClass) {
         const internalClass = zone.chochClass === 'pending' ? 'WAIT' : zone.chochClass.toUpperCase();
-        label.textContent = `${name} · INT CHoCH · ${internalClass}`;
+        labelDetails.push('INT CHoCH', internalClass);
+      } else if (pending) {
+        labelDetails.push('PENDING');
       }
       if (!inactive && showFibRef.current && zone.fibStatus === 'a-plus'
         && zone.fibBand && zone.fibBand !== 'DB/DT') {
-        label.textContent = `${label.textContent} · ${displayFibLabel(zone)}`;
+        labelDetails.push(displayFibLabel(zone));
       }
       if (!inactive && showFibRef.current && zone.swingFibStatus === 'a-plus' && zone.swingFibBand) {
-        label.textContent = `${label.textContent} · SWING A+ FIB ${zone.swingFibBand}`;
+        labelDetails.push(`SWING A+ FIB ${zone.swingFibBand}`);
       }
       if (!inactive && showFibRef.current && zone.dayFibStatus === 'a-plus' && zone.dayFibBand) {
-        label.textContent = `${label.textContent} · DAY FIB A+ ${zone.dayFibBand}`;
+        labelDetails.push(`DAY FIB A+ ${zone.dayFibBand}`);
       }
       const mtfBadges = Array.from(new Set(mtfRows
         .filter((row) => row.higherTimeframeZoneId === zone.id)
         .map((row) => row.setupId)));
       if (mtfBadges.length > 0) {
-        label.textContent = `${label.textContent} · ${mtfBadges.join(' / ')}`;
+        labelDetails.push(mtfBadges.join(' / '));
       }
       label.style.position = 'absolute';
       label.style.right = '4px';
       label.style.top = '2px';
-      label.style.fontSize = '9px';
       label.style.lineHeight = '12px';
-      label.style.fontWeight = '800';
       label.style.color = inactive ? '#475569' : pending ? demand ? '#047857' : '#be123c' : isIss ? '#b45309' : isInternal ? '#6d28d9' : demand ? '#047857' : '#be123c';
+      label.style.textAlign = 'right';
+
+      const nameText = document.createElement('span');
+      nameText.textContent = name;
+      nameText.style.fontSize = '9px';
+      nameText.style.fontWeight = '800';
+      label.appendChild(nameText);
+
+      if (labelDetails.length > 0) {
+        const detailText = document.createElement('span');
+        detailText.textContent = ` · ${labelDetails.join(' · ')}`;
+        detailText.style.fontSize = '8px';
+        detailText.style.fontWeight = '400';
+        detailText.style.opacity = '0.82';
+        label.appendChild(detailText);
+      }
       box.appendChild(label);
       fragment.appendChild(box);
     }
@@ -1557,6 +1574,10 @@ export const OandaProChart: React.FC = () => {
     setReplayIndex(nextReplayIndex);
     setReplaySelecting(false);
     hasFittedRef.current = false;
+    // The selected HTF candle can be much older than the rolling 1,500-bar
+    // LTF window already in memory. Reload at the replay timestamp immediately
+    // so mapped 1m/5m CHOCH data is available without a timeframe switch.
+    setRefreshKey((value) => value + 1);
   };
 
   const exitReplay = () => {
