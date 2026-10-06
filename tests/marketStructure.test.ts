@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
   activateZoneAfterChoch,
+  applyTradeableZoneEngulfingFallback,
   applyIssFibAnchors,
   classifyChoch,
   classifyDoubleChoch,
@@ -11,6 +12,7 @@ import {
   findDeepFibInvalidationTime,
   findTjlFibSource,
   findZoneEngulfingPattern,
+  findTradeableZoneEngulfingPattern,
   findIssFiveWaves,
   findFirstZoneTapIndex,
   findVipSupportTap,
@@ -342,6 +344,41 @@ test('engulfing detector recognizes bullish and bearish Type 1 patterns only aft
   assert.equal(detectEngulfingPatternAt(bearish, 1)?.direction, 'bearish');
   bullish[1].complete = false;
   assert.equal(detectEngulfingPatternAt(bullish, 1), undefined);
+});
+
+test('tradeable-zone fallback uses 30m engulfing only when the chart timeframe has none', () => {
+  const thirtyMinuteCandles: StructureCandle[] = [
+    { time: 1800, open: 12, high: 13, low: 9, close: 10, complete: true },
+    { time: 3600, open: 10, high: 14, low: 9.5, close: 13.5, complete: true },
+  ];
+  const buyZone = zone({
+    isBuy: true,
+    startTime: 0,
+    activeFromTime: 1800,
+    bottom: 9,
+    top: 13,
+    tradeable: true,
+  });
+
+  assert.equal(findTradeableZoneEngulfingPattern(thirtyMinuteCandles, buyZone)?.type, 'T1');
+  const [fallback] = applyTradeableZoneEngulfingFallback(thirtyMinuteCandles, [buyZone], '30M');
+  assert.equal(fallback.fallbackEngulfingType, 'T1');
+  assert.equal(fallback.fallbackEngulfingDirection, 'bullish');
+  assert.equal(fallback.fallbackEngulfingTime, 3600);
+  assert.equal(fallback.fallbackEngulfingTimeframe, '30M');
+
+  const [nativeWins] = applyTradeableZoneEngulfingFallback(thirtyMinuteCandles, [{
+    ...buyZone,
+    engulfingType: 'T2',
+    engulfingDirection: 'bullish',
+    engulfingTime: 2700,
+  }], '30M');
+  assert.equal(nativeWins.engulfingType, 'T2');
+  assert.equal(nativeWins.fallbackEngulfingType, undefined);
+  assert.equal(
+    findTradeableZoneEngulfingPattern(thirtyMinuteCandles, { ...buyZone, tradeable: false }),
+    undefined,
+  );
 });
 
 test('Type 2 uses an opposite-color sweep candle and closes beyond the first candle', () => {

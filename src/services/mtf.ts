@@ -33,6 +33,7 @@ export interface MtfRow {
   tapBarsAgo?: number;
   engulfingType?: EngulfingType;
   engulfingTime?: number;
+  engulfingCandleCount?: number;
   engulfingBarsAgo?: number;
 }
 
@@ -196,7 +197,7 @@ function findMtfEngulfing(
   candles: StructureCandle[],
   event: ConfirmationEvent,
   zone: StructureZone,
-): { type: EngulfingType; time: number } | undefined {
+): { type: EngulfingType; time: number; candleCount: number } | undefined {
   if (zone.tapTime === undefined) return undefined;
   const requiredDirection: EngulfingDirection = event.isBuy ? 'bullish' : 'bearish';
   const validFrom = Math.max(event.time, zone.tapTime, zone.activeFromTime ?? zone.startTime);
@@ -209,7 +210,11 @@ function findMtfEngulfing(
     && zone.engulfingDirection === requiredDirection
     && zone.engulfingTime >= validFrom
     && (zone.invalidatedAt === undefined || zone.engulfingTime < zone.invalidatedAt)) {
-    return { type: zone.engulfingType, time: zone.engulfingTime };
+    return {
+      type: zone.engulfingType,
+      time: zone.engulfingTime,
+      candleCount: zone.engulfingCandleCount ?? 2,
+    };
   }
 
   const fibBand = fibBandForZone(event, zone);
@@ -227,7 +232,9 @@ function findMtfEngulfing(
       && candleTouchesZone(candle, zone)
       && overlaps(candle.low, candle.high, fibBand[0], fibBand[1])
     ));
-    if (touchesTappedZoneInsideFib) return { type: pattern.type, time: finalCandle.time };
+    if (touchesTappedZoneInsideFib) {
+      return { type: pattern.type, time: finalCandle.time, candleCount: pattern.candleCount };
+    }
   }
   return undefined;
 }
@@ -246,7 +253,7 @@ function eventToRow(
     .map((zone) => ({ zone, engulfing: findMtfEngulfing(lowerCandles, event, zone) }))
     .filter((candidate): candidate is {
       zone: StructureZone;
-      engulfing: { type: EngulfingType; time: number };
+      engulfing: { type: EngulfingType; time: number; candleCount: number };
     } => candidate.engulfing !== undefined)
     .sort((first, second) => second.engulfing.time - first.engulfing.time)[0];
   // A valid entry takes precedence over a newer unqualified tap. Without an
@@ -286,6 +293,7 @@ function eventToRow(
     tapBarsAgo: tappedZone?.tapBarsAgo,
     engulfingType: engulfing?.type,
     engulfingTime: engulfing?.time,
+    engulfingCandleCount: engulfing?.candleCount,
     engulfingBarsAgo: engulfingIndex < 0
       ? undefined
       : lowerCandles.length - 1 - engulfingIndex,

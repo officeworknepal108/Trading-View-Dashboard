@@ -109,6 +109,14 @@ export interface StructureZone {
   engulfingDirection?: EngulfingDirection;
   engulfingTime?: number;
   engulfingCandleCount?: number;
+  // Optional higher-timeframe fallback used only when this zone has no
+  // qualifying engulfing on the chart timeframe. Keep its source explicit so
+  // it can never be mistaken for a native-timeframe signal.
+  fallbackEngulfingType?: EngulfingType;
+  fallbackEngulfingDirection?: EngulfingDirection;
+  fallbackEngulfingTime?: number;
+  fallbackEngulfingCandleCount?: number;
+  fallbackEngulfingTimeframe?: string;
   // Direction-matched confluence from the active 4H Swing FIB. This is kept
   // separate from the zone's own FIB classification so both can coexist.
   swingFibBand?: Extract<FibBand, '0.5-0.618' | '0.71-0.79'>;
@@ -661,6 +669,67 @@ export function findZoneEngulfingPattern(
     if (touchesActiveZone) return pattern;
   }
   return undefined;
+}
+
+export function findTradeableZoneEngulfingPattern(
+  candles: StructureCandle[],
+  zone: StructureZone,
+  type4MaxCandles = 10,
+): EngulfingPattern | undefined {
+  if (!zone.active || zone.status !== 'valid' || zone.tradeable === false) return undefined;
+  const validFrom = Math.max(
+    zone.startTime,
+    zone.activeFromTime ?? zone.startTime,
+    zone.confirmationTime ?? zone.startTime,
+  );
+  const requiredDirection: EngulfingDirection = zone.isBuy ? 'bullish' : 'bearish';
+
+  for (let endIndex = 1; endIndex < candles.length; endIndex += 1) {
+    const finalCandle = candles[endIndex];
+    if (finalCandle.complete === false || finalCandle.time < validFrom) continue;
+    const pattern = detectEngulfingPatternAt(candles, endIndex, type4MaxCandles);
+    if (!pattern || pattern.direction !== requiredDirection) continue;
+    const touchesActiveZone = candles
+      .slice(pattern.startIndex, pattern.endIndex + 1)
+      .some((candle) => (
+        candle.time > zone.startTime
+        && candle.time >= validFrom
+        && candle.high >= zone.bottom
+        && candle.low <= zone.top
+      ));
+    if (touchesActiveZone) return pattern;
+  }
+  return undefined;
+}
+
+export function applyTradeableZoneEngulfingFallback(
+  candles: StructureCandle[],
+  zones: StructureZone[],
+  timeframe: string,
+): StructureZone[] {
+  return zones.map((sourceZone) => {
+    const zone = { ...sourceZone };
+    zone.fallbackEngulfingType = undefined;
+    zone.fallbackEngulfingDirection = undefined;
+    zone.fallbackEngulfingTime = undefined;
+    zone.fallbackEngulfingCandleCount = undefined;
+    zone.fallbackEngulfingTimeframe = undefined;
+
+    const hasChartTimeframeEngulfing = zone.engulfingType !== undefined
+      || zone.swingEngulfingType !== undefined
+      || zone.dayEngulfingType !== undefined;
+    if (hasChartTimeframeEngulfing) return zone;
+
+    const pattern = findTradeableZoneEngulfingPattern(candles, zone);
+    if (!pattern) return zone;
+    const finalCandle = candles[pattern.endIndex];
+    zone.fallbackEngulfingType = pattern.type;
+    zone.fallbackEngulfingDirection = pattern.direction;
+    zone.fallbackEngulfingTime = finalCandle.time;
+    zone.fallbackEngulfingCandleCount = pattern.candleCount;
+    zone.fallbackEngulfingTimeframe = timeframe;
+    return zone;
+  });
 }
 
 function applyEngulfingConfluence(

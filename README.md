@@ -31,6 +31,21 @@ locally in `data/ai-agent-memory.json`, is included in future answers, and never
 changes trading logic or places trades automatically. Trade-result learning
 records profit, loss and breakeven outcomes to reduce winner-only outcome bias.
 
+## Engulfing trade levels
+
+Tradeable 1m, 5m, and 15m zones use the chart timeframe engulfing first and
+then one mapped fallback: 1m→5m, 5m→15m, and 15m→30m. The finalized trade
+matrix is 1m/1m at 1:3, 1m/5m at 1:2, 5m/5m at 1:2, 5m/15m at 1:1,
+15m/15m at 1:2, and 15m/30m at 1:1. The corresponding maximum Entry-to-SL
+distances are 50, 100, 100, 200, 200, and 300 pips. Buffers are applied
+internally (10 pips for 1m/5m engulfings and 20 pips for 15m/30m engulfings).
+
+An Entry is calculated on the first chart candle after the engulfing closes.
+The normal zone and MTF tables remain unchanged until that Entry exists; then
+they add a detail row with Entry, SL, TP, R:R, actual SL pips, and the Pending,
+Active, Risk Free, TP Hit, or SL Hit state. Internal buffers and maximum-risk
+caps are deliberately not displayed.
+
 ## Current checkpoint
 
 - Active project folder: `C:\Users\ABHI\Desktop\new algo file updated`

@@ -20,7 +20,12 @@ import {
   Wifi,
   WifiOff,
 } from 'lucide-react';
-import { analyzeMarketStructure, StructureLine, StructureZone } from '../services/marketStructure';
+import {
+  analyzeMarketStructure,
+  applyTradeableZoneEngulfingFallback,
+  StructureLine,
+  StructureZone,
+} from '../services/marketStructure';
 import { findReplayIndexAtOrBefore } from '../services/replay';
 import { buildAlternatingSwingFibs, SwingFibMove } from '../services/swingFib';
 import { ChartTimeZone, formatChartTick, formatChartTime } from '../services/chartTime';
@@ -28,6 +33,17 @@ import { buildDayFibs, DayFibMove } from '../services/dayFib';
 import { applySwingFibConfluence } from '../services/swingFibConfluence';
 import { applyDayFibConfluence } from '../services/dayFibConfluence';
 import { MTF_MAPPINGS, buildMtfRows, type MtfGranularity, type MtfRow } from '../services/mtf';
+import {
+  calculateTradeLevels,
+  formatTradeTimeframe,
+  getDirectTradeRule,
+  getMtfTradeRule,
+  resolveZoneEngulfingSignal,
+  type EngulfingTradeSignal,
+  type TradeLevels,
+  type TradeRule,
+  type TradeTimeframe,
+} from '../services/tradeLevels';
 import { AiTradeAssistant, type ChartAgentContext } from './AiTradeAssistant';
 
 type OandaGranularity = 'M1' | 'M5' | 'M15' | 'M30' | 'H1' | 'H4' | 'D';
@@ -93,6 +109,18 @@ interface MarketDataResponse {
   error?: string;
 }
 
+interface TrackedDirectTradeSetup {
+  scope: string;
+  zone: StructureZone;
+  signal: EngulfingTradeSignal;
+  rule: TradeRule;
+}
+
+interface TradeOverlay {
+  id: string;
+  trade: TradeLevels;
+}
+
 const TIMEFRAMES: Array<{ value: OandaGranularity; label: string }> = [
   { value: 'M1', label: '1m' },
   { value: 'M5', label: '5m' },
@@ -139,6 +167,12 @@ const VIP_SUPPORT_GRANULARITIES: Record<OandaGranularity, MarketGranularity[]> =
   D: ['W', 'MO'],
 };
 
+const DIRECT_ENGULFING_FALLBACK: Partial<Record<OandaGranularity, OandaGranularity>> = {
+  M1: 'M5',
+  M5: 'M15',
+  M15: 'M30',
+};
+
 const GRANULARITY_LABELS: Record<MarketGranularity, string> = {
   M1: '1m', M5: '5m', M15: '15m', M30: '30m', H1: '1h', H4: '4h', D: '1D', W: '1W', MO: '1M',
 };
@@ -163,6 +197,44 @@ function formatPrice(value: number | undefined): string {
   }) : '—';
 }
 
+function tradeStatusLabel(trade: TradeLevels): string {
+  if (trade.status === 'pending') return 'PENDING';
+  if (trade.status === 'active') return `RF ${formatPrice(trade.riskFree)} · ACTIVE`;
+  if (trade.status === 'risk-free') return 'RISK FREE';
+  if (trade.status === 'tp-hit') {
+    return trade.rewardRisk === 1 ? 'TP HIT · RISK FREE' : 'TP HIT';
+  }
+  return 'SL HIT';
+}
+
+const TradeDetailsRow: React.FC<{
+  trade: TradeLevels;
+  colSpan: number;
+  mtf?: boolean;
+}> = ({ trade, colSpan, mtf = false }) => (
+  <tr className="border-t border-indigo-100 bg-indigo-50/70">
+    <td colSpan={colSpan} className="px-2 py-1">
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 whitespace-nowrap text-[9px] font-black text-slate-700">
+        {mtf && <span className="rounded bg-indigo-100 px-1 py-0.5 text-indigo-700">MTF</span>}
+        <span className="text-blue-700">ENTRY <span className="tabular-nums font-semibold text-slate-700">{formatPrice(trade.entry)}</span></span>
+        <span className="text-rose-700">SL <span className="tabular-nums font-semibold text-slate-700">{formatPrice(trade.stopLoss)}</span></span>
+        <span className="text-emerald-700">TP <span className="tabular-nums font-semibold text-slate-700">{formatPrice(trade.takeProfit)}</span></span>
+        <span>R:R 1:{trade.rewardRisk}</span>
+        <span>SL {trade.riskPips} PIPS</span>
+        <span className={trade.status === 'sl-hit'
+          ? 'text-rose-700'
+          : trade.status === 'pending'
+            ? 'text-amber-700'
+            : 'text-emerald-700'}>
+          {trade.status === 'active' ? <>
+            RF <span className="tabular-nums font-semibold text-slate-700">{formatPrice(trade.riskFree)}</span> · ACTIVE
+          </> : tradeStatusLabel(trade)}
+        </span>
+      </div>
+    </td>
+  </tr>
+);
+
 function displayZoneName(name: string): string {
   return name.startsWith('Internal ') ? `Int ${name.slice('Internal '.length)}` : name;
 }
@@ -180,7 +252,10 @@ function displayEngulfingLabel(zone: StructureZone): string | undefined {
     zone.swingEngulfingType ? `SW ${zone.swingEngulfingType}` : undefined,
     zone.dayEngulfingType ? `DAY ${zone.dayEngulfingType}` : undefined,
   ].filter((label): label is string => label !== undefined);
-  return labels.length > 0 ? `${labels.join(' / ')} ${zone.isBuy ? 'BULL' : 'BEAR'}` : undefined;
+  if (labels.length > 0) return `${labels.join(' / ')} ${zone.isBuy ? 'BULL' : 'BEAR'}`;
+  return zone.fallbackEngulfingType && zone.fallbackEngulfingTimeframe
+    ? `${formatTradeTimeframe(zone.fallbackEngulfingTimeframe)} ${zone.fallbackEngulfingType} ${zone.isBuy ? 'BULL' : 'BEAR'}`
+    : undefined;
 }
 
 function fibVisibilityKey(zone: StructureZone): FibVisibilityKey {
@@ -301,14 +376,20 @@ function mtfZoneLabel(name: StructureZone['name'], majorLiquidity = false): stri
   return majorLiquidity ? `${label} · Major Liquidity` : label;
 }
 
-function mtfSignalLabel(row: MtfRow): string {
+function mtfSignalLabel(row: MtfRow, hasCalculatedEntry: boolean): string {
   if (!row.tappedZone) return 'Waiting for zone tap';
   if (!row.engulfingType) return 'Waiting';
   const type = row.engulfingType.replace('T', 'Type ');
-  return `${type} ${row.direction === 'bullish' ? 'BUY' : 'SELL'} MTF ENTRY`;
+  return `${type} ${row.direction === 'bullish' ? 'BUY' : 'SELL'} ${
+    hasCalculatedEntry ? 'MTF ENTRY' : 'CONFIRMED'
+  }`;
 }
 
-type DisplayMtfRow = MtfRow & { setupId: string };
+type DisplayMtfRow = MtfRow & {
+  setupId: string;
+  trade?: TradeLevels;
+  tradeBarsAgo?: number;
+};
 
 const MultiTimeframeEntryTable: React.FC<{ rows: DisplayMtfRow[] }> = ({ rows }) => {
   const [expanded, setExpanded] = useState(true);
@@ -343,7 +424,8 @@ const MultiTimeframeEntryTable: React.FC<{ rows: DisplayMtfRow[] }> = ({ rows })
               const bullish = row.direction === 'bullish';
               const entry = row.engulfingType !== undefined;
               return (
-                <tr key={row.id} className={`border-t ${bullish ? 'border-emerald-100 bg-emerald-50/50' : 'border-rose-100 bg-rose-50/50'}`}>
+                <React.Fragment key={row.id}>
+                <tr className={`border-t ${bullish ? 'border-emerald-100 bg-emerald-50/50' : 'border-rose-100 bg-rose-50/50'}`}>
                   <td className="px-2 py-1 font-black whitespace-nowrap text-indigo-700">
                     {row.setupId}
                   </td>
@@ -368,12 +450,14 @@ const MultiTimeframeEntryTable: React.FC<{ rows: DisplayMtfRow[] }> = ({ rows })
                       : '—'}
                   </td>
                   <td className={`whitespace-nowrap px-2 py-1 font-black ${entry ? bullish ? 'text-emerald-700' : 'text-rose-700' : 'text-slate-600'}`}>
-                    {mtfSignalLabel(row)}
+                    {mtfSignalLabel(row, row.trade !== undefined)}
                   </td>
                   <td className="px-2 py-1 text-right font-bold whitespace-nowrap text-slate-500">
-                    {row.engulfingBarsAgo === undefined ? '—' : `${row.engulfingBarsAgo} bars`}
+                    {row.tradeBarsAgo === undefined ? '—' : `${row.tradeBarsAgo} bars`}
                   </td>
                 </tr>
+                {row.trade && <TradeDetailsRow trade={row.trade} colSpan={7} mtf />}
+                </React.Fragment>
               );
             })}
             {rows.length === 0 && (
@@ -415,6 +499,8 @@ export const OandaProChart: React.FC = () => {
   const fibVisibilityRef = useRef<Record<FibVisibilityKey, boolean>>(DEFAULT_FIB_VISIBILITY);
   const fibPreviousVisibilityRef = useRef<Record<FibVisibilityKey, boolean>>(DEFAULT_FIB_VISIBILITY);
   const showInvalidZonesRef = useRef(false);
+  const showTradeLevelsRef = useRef(true);
+  const tradeOverlaysRef = useRef<TradeOverlay[]>([]);
   const redrawZonesRef = useRef<() => void>(() => undefined);
   const overlayRedrawFrameRef = useRef<number | null>(null);
   const hasFittedRef = useRef(false);
@@ -453,6 +539,7 @@ export const OandaProChart: React.FC = () => {
   );
   const [showEngulfing, setShowEngulfing] = useState(true);
   const [showInvalidZones, setShowInvalidZones] = useState(false);
+  const [showTradeLevels, setShowTradeLevels] = useState(true);
   const [showIndicatorControls, setShowIndicatorControls] = useState(false);
   const [showZoneTable, setShowZoneTable] = useState(true);
   const [replayIndex, setReplayIndex] = useState<number | null>(null);
@@ -460,6 +547,9 @@ export const OandaProChart: React.FC = () => {
   const [replaySelecting, setReplaySelecting] = useState(false);
   const [replaySelectionIndex, setReplaySelectionIndex] = useState<number | null>(null);
   const [replaySpeed, setReplaySpeed] = useState(1);
+  const [trackedDirectTradeSetups, setTrackedDirectTradeSetups] = useState<
+  Map<string, TrackedDirectTradeSetup>
+  >(new Map());
   const hasAnyFibMarking = Object.values(fibVisibility).some(Boolean)
     || Object.values(fibPreviousVisibility).some(Boolean);
 
@@ -507,6 +597,9 @@ export const OandaProChart: React.FC = () => {
     ...mtfLowerGranularities,
     ...vipSupportGranularities,
     ...TREND_TABLE_GRANULARITIES,
+    ...(DIRECT_ENGULFING_FALLBACK[granularity]
+      ? [DIRECT_ENGULFING_FALLBACK[granularity] as OandaGranularity]
+      : []),
   ])).filter((value) => value !== granularity), [
     granularity,
     mtfLowerGranularities,
@@ -596,7 +689,101 @@ export const OandaProChart: React.FC = () => {
       ? dayFibMoves[dayFibMoves.length - 1]
       : undefined,
   ), [dayFibMoves, displayCandles, granularity, swingFibConfluence.zones]);
-  const displayZones = dayFibConfluence.zones;
+  const displayZones = useMemo(() => {
+    const fallbackGranularity = DIRECT_ENGULFING_FALLBACK[granularity];
+    if (!fallbackGranularity) return dayFibConfluence.zones;
+    const latestChartCandle = displayCandles[displayCandles.length - 1];
+    if (!latestChartCandle) return dayFibConfluence.zones;
+    const cutoff = latestChartCandle.time
+      + (latestChartCandle.complete ? TIMEFRAME_SECONDS[granularity] : 0);
+    const fallbackCandles = (vipCandles[fallbackGranularity] || []).filter((candle) => (
+      candle.complete && marketCandleCloseTime(candle.time, fallbackGranularity) <= cutoff
+    ));
+    return applyTradeableZoneEngulfingFallback(
+      fallbackCandles,
+      dayFibConfluence.zones,
+      fallbackGranularity,
+    );
+  }, [dayFibConfluence.zones, displayCandles, granularity, vipCandles]);
+
+  const tradeTrackingScope = `${granularity}:${replayIndex === null ? 'live' : 'replay'}`;
+  const currentDirectTradeSetups = useMemo(() => {
+    const setups = new Map<string, TrackedDirectTradeSetup>();
+    const zoneTimeframe = granularity as TradeTimeframe;
+    for (const zone of displayZones) {
+      if (!zone.active || zone.status !== 'valid' || zone.tradeable === false) continue;
+      const signal = resolveZoneEngulfingSignal(zone, zoneTimeframe);
+      if (!signal) continue;
+      const rule = getDirectTradeRule(zoneTimeframe, signal.timeframe);
+      if (!rule) continue;
+      setups.set(`${tradeTrackingScope}:${zone.id}`, {
+        scope: tradeTrackingScope,
+        zone: { ...zone },
+        signal,
+        rule,
+      });
+    }
+    return setups;
+  }, [displayZones, granularity, tradeTrackingScope]);
+
+  useEffect(() => {
+    setTrackedDirectTradeSetups(new Map<string, TrackedDirectTradeSetup>());
+  }, [granularity, replayIndex === null]);
+
+  useEffect(() => {
+    if (currentDirectTradeSetups.size === 0) return;
+    setTrackedDirectTradeSetups((existing) => {
+      let changed = false;
+      const next = new Map<string, TrackedDirectTradeSetup>(existing);
+      for (const [key, setup] of currentDirectTradeSetups) {
+        const previous = next.get(key);
+        if (!previous
+          || previous.signal.time !== setup.signal.time
+          || previous.signal.type !== setup.signal.type
+          || previous.signal.timeframe !== setup.signal.timeframe) {
+          next.set(key, setup);
+          changed = true;
+        }
+      }
+      return changed ? next : existing;
+    });
+  }, [currentDirectTradeSetups]);
+
+  const directZoneTrades = useMemo(() => {
+    const trades = new Map<string, TradeLevels>();
+    const latestChartCandle = displayCandles[displayCandles.length - 1];
+    if (!latestChartCandle) return trades;
+    const cutoff = latestChartCandle.time
+      + (latestChartCandle.complete ? TIMEFRAME_SECONDS[granularity] : 0);
+    const setups = new Map<string, TrackedDirectTradeSetup>();
+    for (const setup of trackedDirectTradeSetups.values()) {
+      if (setup.scope === tradeTrackingScope) setups.set(setup.zone.id, setup);
+    }
+    for (const setup of currentDirectTradeSetups.values()) setups.set(setup.zone.id, setup);
+
+    for (const setup of setups.values()) {
+      const sourceCandles = setup.signal.timeframe === granularity
+        ? displayCandles
+        : (vipCandles[setup.signal.timeframe] || []).filter((candle) => (
+          marketCandleCloseTime(candle.time, setup.signal.timeframe) <= cutoff
+        ));
+      const trade = calculateTradeLevels({
+        sourceCandles,
+        executionCandles: displayCandles,
+        signal: setup.signal,
+        rule: setup.rule,
+      });
+      if (trade) trades.set(setup.zone.id, trade);
+    }
+    return trades;
+  }, [
+    currentDirectTradeSetups,
+    displayCandles,
+    granularity,
+    trackedDirectTradeSetups,
+    tradeTrackingScope,
+    vipCandles,
+  ]);
 
   const restorePresentChartView = useCallback(() => {
     const chart = chartRef.current;
@@ -696,11 +883,57 @@ export const OandaProChart: React.FC = () => {
         setupId = `MTF-${setupIds.size + 1}`;
         setupIds.set(setupKey, setupId);
       }
-      return { ...row, setupId };
+      let trade: TradeLevels | undefined;
+      const lowerTimeframeData = tableTimeframeData[row.lowerTimeframe];
+      if (row.engulfingType && row.engulfingTime !== undefined && lowerTimeframeData) {
+        const signal: EngulfingTradeSignal = {
+          type: row.engulfingType,
+          direction: row.direction,
+          time: row.engulfingTime,
+          candleCount: row.engulfingCandleCount ?? 2,
+          timeframe: row.lowerTimeframe,
+        };
+        const rule = getMtfTradeRule(row.higherTimeframe, row.lowerTimeframe);
+        if (rule) {
+          trade = calculateTradeLevels({
+            sourceCandles: lowerTimeframeData.candles,
+            executionCandles: lowerTimeframeData.candles,
+            signal,
+            rule,
+          });
+        }
+      }
+      const tradeIndex = trade && lowerTimeframeData
+        ? lowerTimeframeData.candles.findIndex((candle) => candle.time === trade.calculatedAt)
+        : -1;
+      const tradeBarsAgo = tradeIndex >= 0 && lowerTimeframeData
+        ? lowerTimeframeData.candles.length - 1 - tradeIndex
+        : undefined;
+      return { ...row, setupId, trade, tradeBarsAgo };
     });
   },
-    [activeMtfRows, granularity],
+    [activeMtfRows, granularity, tableTimeframeData],
   );
+
+  const tradeOverlays = useMemo<TradeOverlay[]>(() => {
+    const overlays = new Map<string, TradeOverlay>();
+    const addTrade = (id: string, trade: TradeLevels) => {
+      const signature = [
+        trade.calculatedAt,
+        trade.entry,
+        trade.stopLoss,
+        trade.takeProfit,
+      ].join(':');
+      if (!overlays.has(signature)) overlays.set(signature, { id, trade });
+    };
+    for (const [zoneId, trade] of directZoneTrades) addTrade(`ZONE-${zoneId}`, trade);
+    for (const row of mtfRows) {
+      if (row.trade) addTrade(row.setupId, row.trade);
+    }
+    return Array.from(overlays.values())
+      .sort((first, second) => first.trade.calculatedAt - second.trade.calculatedAt)
+      .slice(-4);
+  }, [directZoneTrades, mtfRows]);
 
   const mtfEntryMarkers = useMemo(() => {
     const markerKeys = new Set<string>();
@@ -761,7 +994,9 @@ export const OandaProChart: React.FC = () => {
       .filter((zone) => zone.active && zone.status !== 'rejected')
       .sort((first, second) => (second.tapTime ?? second.startTime) - (first.tapTime ?? first.startTime))
       .slice(0, 40)
-      .map((zone) => ({
+      .map((zone) => {
+        const trade = directZoneTrades.get(zone.id);
+        return ({
         id: zone.id,
         name: zone.name,
         category: zone.category,
@@ -781,9 +1016,20 @@ export const OandaProChart: React.FC = () => {
         fibStatus: zone.fibStatus,
         engulfingType: zone.engulfingType,
         engulfingTime: zone.engulfingTime,
+        fallbackEngulfingType: zone.fallbackEngulfingType,
+        fallbackEngulfingTime: zone.fallbackEngulfingTime,
+        fallbackEngulfingTimeframe: zone.fallbackEngulfingTimeframe,
         swingFibBand: zone.swingFibBand,
         dayFibBand: zone.dayFibBand,
-      })),
+        entry: trade?.entry,
+        stopLoss: trade?.stopLoss,
+        takeProfit: trade?.takeProfit,
+        riskFree: trade?.riskFree,
+        riskPips: trade?.riskPips,
+        rewardRisk: trade?.rewardRisk,
+        tradeStatus: trade?.status,
+      });
+      }),
     mtfSetups: mtfRows.map((row) => ({ ...row })),
     timeframeTrends: trendTableRows.map((row) => ({
       timeframe: row.label,
@@ -793,6 +1039,7 @@ export const OandaProChart: React.FC = () => {
   }), [
     displayCandles,
     displayZones,
+    directZoneTrades,
     granularity,
     latestCandle,
     mtfRows,
@@ -807,6 +1054,29 @@ export const OandaProChart: React.FC = () => {
       && zone.tapTime !== undefined && (zone.tapBarsAgo ?? Infinity) <= 50)
     .sort((a, b) => (b.tapTime ?? b.startTime) - (a.tapTime ?? a.startTime))
     .slice(0, 8), [displayZones, showInternal]);
+  const completedTradeZoneRows = useMemo(() => {
+    const activeZoneIds = new Set(displayZones
+      .filter((zone) => zone.active && zone.status === 'valid')
+      .map((zone) => zone.id));
+    const rows = new Map<string, StructureZone>();
+    for (const setup of trackedDirectTradeSetups.values()) {
+      if (setup.scope !== tradeTrackingScope || activeZoneIds.has(setup.zone.id)) continue;
+      const trade = directZoneTrades.get(setup.zone.id);
+      if (trade?.status !== 'sl-hit' && trade?.status !== 'tp-hit' && trade?.status !== 'risk-free') continue;
+      rows.set(
+        setup.zone.id,
+        displayZones.find((zone) => zone.id === setup.zone.id) ?? setup.zone,
+      );
+    }
+    return Array.from(rows.values())
+    .sort((a, b) => (b.invalidatedAt ?? b.startTime) - (a.invalidatedAt ?? a.startTime))
+    .slice(0, 4);
+  }, [
+    directZoneTrades,
+    displayZones,
+    trackedDirectTradeSetups,
+    tradeTrackingScope,
+  ]);
   const latestDisplayCandleTime = displayCandles[displayCandles.length - 1]?.time;
   const doubleChochRows = useMemo(() => displayZones
     .filter((zone) => zone.active && zone.status === 'valid'
@@ -841,8 +1111,40 @@ export const OandaProChart: React.FC = () => {
       ));
       if (!duplicatesExisting) combined.push(marker);
     }
+    const fallbackGranularity = DIRECT_ENGULFING_FALLBACK[granularity];
+    if (fallbackGranularity) {
+      for (const zone of displayZones) {
+        if (!zone.fallbackEngulfingType || zone.fallbackEngulfingTime === undefined) continue;
+        const confirmationTime = zone.fallbackEngulfingTime + TIMEFRAME_SECONDS[fallbackGranularity];
+        const containingCandle = displayCandles.find((candle) => (
+          confirmationTime > candle.time
+          && confirmationTime <= marketCandleCloseTime(candle.time, granularity)
+        ));
+        if (!containingCandle) continue;
+        const bullish = zone.fallbackEngulfingDirection === 'bullish';
+        const marker = {
+          time: containingCandle.time as UTCTimestamp,
+          position: bullish ? 'belowBar' as const : 'aboveBar' as const,
+          color: bullish ? '#059669' : '#e11d48',
+          shape: bullish ? 'arrowUp' as const : 'arrowDown' as const,
+          text: `${formatTradeTimeframe(fallbackGranularity)} ${zone.fallbackEngulfingType}`,
+          size: 1,
+        };
+        const duplicatesExisting = combined.some((existing) => (
+          Number(existing.time) === Number(marker.time) && existing.position === marker.position
+        ));
+        if (!duplicatesExisting) combined.push(marker);
+      }
+    }
     return combined.sort((first, second) => Number(first.time) - Number(second.time));
-  }, [dayFibConfluence.engulfingMarkers, structure.engulfingMarkers, swingFibConfluence.engulfingMarkers]);
+  }, [
+    dayFibConfluence.engulfingMarkers,
+    displayCandles,
+    displayZones,
+    granularity,
+    structure.engulfingMarkers,
+    swingFibConfluence.engulfingMarkers,
+  ]);
   const change = latestCandle && previousCandle ? latestCandle.close - previousCandle.close : 0;
   const changePercent = latestCandle && previousCandle && previousCandle.close
     ? change / previousCandle.close * 100
@@ -1262,6 +1564,63 @@ export const OandaProChart: React.FC = () => {
       }
       fragment.appendChild(svg);
     }
+    if (showTradeLevelsRef.current) {
+      for (const overlay of tradeOverlaysRef.current) {
+        const { trade } = overlay;
+        const anchor = displayCandles.find((candle) => (
+          trade.calculatedAt >= candle.time
+          && trade.calculatedAt < marketCandleCloseTime(candle.time, granularity)
+        )) ?? displayCandles.find((candle) => candle.time >= trade.calculatedAt);
+        if (!anchor) continue;
+        const rawLeft = chart.timeScale().timeToCoordinate(anchor.time as UTCTimestamp);
+        const entryY = series.priceToCoordinate(trade.entry);
+        const stopY = series.priceToCoordinate(trade.stopLoss);
+        const targetY = series.priceToCoordinate(trade.takeProfit);
+        if (rawLeft === null || entryY === null || stopY === null || targetY === null) continue;
+        const left = Math.max(0, rawLeft);
+        const width = Math.min(120, rightEdge - left);
+        if (width < 8 || left >= rightEdge) continue;
+        const completed = trade.status === 'tp-hit' || trade.status === 'sl-hit';
+
+        const makeRange = (firstY: number, secondY: number, reward: boolean) => {
+          const range = document.createElement('div');
+          range.style.position = 'absolute';
+          range.style.left = `${left}px`;
+          range.style.top = `${Math.min(firstY, secondY)}px`;
+          range.style.width = `${width}px`;
+          range.style.height = `${Math.max(1, Math.abs(secondY - firstY))}px`;
+          range.style.background = reward ? 'rgba(16, 185, 129, 0.18)' : 'rgba(244, 63, 94, 0.16)';
+          range.style.border = `1px solid ${reward ? 'rgba(5, 150, 105, 0.34)' : 'rgba(225, 29, 72, 0.32)'}`;
+          range.style.opacity = completed ? '0.62' : '1';
+          return range;
+        };
+        fragment.appendChild(makeRange(entryY, targetY, true));
+        fragment.appendChild(makeRange(entryY, stopY, false));
+
+        const entryLine = document.createElement('div');
+        entryLine.style.position = 'absolute';
+        entryLine.style.left = `${left}px`;
+        entryLine.style.top = `${entryY}px`;
+        entryLine.style.width = `${width}px`;
+        entryLine.style.borderTop = '1px solid rgba(30, 64, 175, 0.75)';
+        fragment.appendChild(entryLine);
+
+        const badge = document.createElement('div');
+        badge.style.position = 'absolute';
+        badge.style.left = `${left + 2}px`;
+        badge.style.top = `${entryY - 10}px`;
+        badge.style.padding = '1px 4px';
+        badge.style.borderRadius = '3px';
+        badge.style.background = trade.signal.direction === 'bullish' ? '#16a34a' : '#e11d48';
+        badge.style.color = '#ffffff';
+        badge.style.fontSize = '8px';
+        badge.style.fontWeight = '800';
+        badge.style.lineHeight = '12px';
+        badge.textContent = `1:${trade.rewardRisk}`;
+        fragment.appendChild(badge);
+      }
+    }
+
     // Swap the complete overlay in one operation so the browser does not
     // perform layout work for every individual zone, line, and label.
     layer.replaceChildren(fragment);
@@ -1294,8 +1653,10 @@ export const OandaProChart: React.FC = () => {
     fibVisibilityRef.current = fibVisibility;
     fibPreviousVisibilityRef.current = fibPreviousVisibility;
     showInvalidZonesRef.current = showInvalidZones;
+    showTradeLevelsRef.current = showTradeLevels;
+    tradeOverlaysRef.current = tradeOverlays;
     scheduleOverlayRedraw();
-  }, [dayFibMoves, displayZones, fibPreviousVisibility, fibVisibility, redrawZones, scheduleOverlayRedraw, showFib, showInternal, showInvalidZones, showIss, showMgZones, showStructure, showSupplyDemand, structure.internalMarkers, structure.issMarkers, structure.lines, structure.markers, swingFibMoves]);
+  }, [dayFibMoves, displayZones, fibPreviousVisibility, fibVisibility, redrawZones, scheduleOverlayRedraw, showFib, showInternal, showInvalidZones, showIss, showMgZones, showStructure, showSupplyDemand, showTradeLevels, structure.internalMarkers, structure.issMarkers, structure.lines, structure.markers, swingFibMoves, tradeOverlays]);
 
   useEffect(() => {
     if (granularity === 'D' && expandedFibOption === 'swing') {
@@ -1370,12 +1731,12 @@ export const OandaProChart: React.FC = () => {
       setError(null);
       setIsLoading(false);
 
-      // Load the mapped LTF feeds first and publish them immediately. This
-      // prevents a missing/slow 1m request from silently hiding a valid 15m→1m
-      // setup while unrelated trend timeframes have already populated.
+      // Load mapped LTF feeds and the direct chart's engulfing fallback first,
+      // then publish them before unrelated trend/support timeframes.
       setVipCandles({});
       const priorityGranularities = auxiliaryGranularities.filter((value) => (
         mtfLowerGranularities.includes(value as MtfGranularity)
+        || value === DIRECT_ENGULFING_FALLBACK[granularity]
       ));
       const remainingGranularities = auxiliaryGranularities.filter((value) => (
         !mtfLowerGranularities.includes(value as MtfGranularity)
@@ -2066,9 +2427,20 @@ export const OandaProChart: React.FC = () => {
               className={`rounded-md border px-2 py-1 text-[10px] font-black transition ${
                 showEngulfing ? 'border-blue-200 bg-blue-50 text-blue-700' : 'border-slate-200 bg-white text-slate-500'
               }`}
-              title="Show or hide confirmed Type 1–4 engulfing signals in A+ FIB or Major Liquidity zones"
+              title="Show or hide confirmed Type 1–4 engulfing signals and their mapped fallback timeframe"
             >
               ENGULFING {showEngulfing ? 'ON' : 'OFF'}
+            </button>
+            <button
+              onClick={() => setShowTradeLevels((value) => !value)}
+              className={`rounded-md border px-2 py-1 text-[10px] font-black transition ${
+                showTradeLevels
+                  ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
+                  : 'border-slate-200 bg-white text-slate-500'
+              }`}
+              title="Show or hide the Entry-to-TP reward box and Entry-to-SL risk box"
+            >
+              TRADE LEVELS {showTradeLevels ? 'ON' : 'OFF'}
             </button>
             <button
               onClick={() => setShowInvalidZones((value) => !value)}
@@ -2254,8 +2626,10 @@ export const OandaProChart: React.FC = () => {
                   const pending = zone.doubleChochStatus === 'pending';
                   const confirmationLabel = TJL1_CONFIRMATION_LABELS[granularity].toUpperCase();
                   const confirmationSide = zone.doubleChochConfirmationDirection === 'up' ? 'ABOVE' : 'BELOW';
+                  const trade = directZoneTrades.get(zone.id);
                   return (
-                    <tr key={`double-${zone.id}`} className={`border-t text-slate-700 ${
+                    <React.Fragment key={`double-${zone.id}`}>
+                    <tr className={`border-t text-slate-700 ${
                       pending ? 'border-amber-100 bg-amber-50/70' : 'border-emerald-100 bg-emerald-50/50'
                     }`}>
                       <td className="px-2 py-1 font-black text-slate-800">
@@ -2303,10 +2677,15 @@ export const OandaProChart: React.FC = () => {
                             : `${zone.tapBarsAgo} bars · ${confirmationLabel} CONFIRMED · TRADE`}
                       </td>
                     </tr>
+                    {trade && <TradeDetailsRow trade={trade} colSpan={5} />}
+                    </React.Fragment>
                   );
                 })}
-                {zoneTableRows.map((zone) => (
-                  <tr key={zone.id} className="border-t border-slate-100 text-slate-700">
+                {zoneTableRows.map((zone) => {
+                  const trade = directZoneTrades.get(zone.id);
+                  return (
+                  <React.Fragment key={zone.id}>
+                  <tr className="border-t border-slate-100 text-slate-700">
                     <td className="px-2 py-1 font-black text-slate-800">
                       <span>
                         {showFib && zone.fibBand === 'DB/DT'
@@ -2370,8 +2749,37 @@ export const OandaProChart: React.FC = () => {
                       </span>
                     </td>
                   </tr>
-                ))}
-                {pendingConfirmationRows.length === 0 && doubleChochRows.length === 0 && zoneTableRows.length === 0 && (
+                  {trade && <TradeDetailsRow trade={trade} colSpan={5} />}
+                  </React.Fragment>
+                  );
+                })}
+                {completedTradeZoneRows.map((zone) => {
+                  const trade = directZoneTrades.get(zone.id)!;
+                  return (
+                    <React.Fragment key={`completed-${zone.id}`}>
+                      <tr className="border-t border-slate-200 bg-slate-50 text-slate-600">
+                        <td className="px-2 py-1 font-black">{displayZoneName(zone.name)}</td>
+                        <td className={`px-2 py-1 font-bold ${zone.isBuy ? 'text-emerald-700' : 'text-rose-700'}`}>
+                          {zone.isBuy ? 'BUY' : 'SELL'}
+                        </td>
+                        <td className="whitespace-nowrap px-2 py-1">
+                          {formatPrice(zone.bottom)} – {formatPrice(zone.top)}
+                        </td>
+                        <td className="whitespace-nowrap px-2 py-1 text-center font-black">
+                          {displayEngulfingLabel(zone) ?? '—'}
+                        </td>
+                        <td className={`whitespace-nowrap px-2 py-1 text-right font-black ${
+                          trade.status === 'sl-hit' ? 'text-rose-700' : 'text-emerald-700'
+                        }`}>
+                          {tradeStatusLabel(trade)}
+                        </td>
+                      </tr>
+                      <TradeDetailsRow trade={trade} colSpan={5} />
+                    </React.Fragment>
+                  );
+                })}
+                {pendingConfirmationRows.length === 0 && doubleChochRows.length === 0
+                  && zoneTableRows.length === 0 && completedTradeZoneRows.length === 0 && (
                   <tr>
                     <td colSpan={5} className="px-2 py-2 text-center text-slate-400">No active zone rows</td>
                   </tr>
