@@ -134,6 +134,12 @@ interface AccuracyTradeRecord {
   result: TradeResult;
   completedAt: number;
   source: 'ENGULFING' | 'MTF';
+  direction: TradeLevels['signal']['direction'];
+  signalTimeframe: TradeTimeframe;
+  entry: number;
+  stopLoss: number;
+  takeProfit: number;
+  rewardRisk: number;
 }
 
 const TIMEFRAMES: Array<{ value: OandaGranularity; label: string }> = [
@@ -553,10 +559,24 @@ function accuracyCounts(records: AccuracyTradeRecord[]) {
   }), { sl: 0, rf: 0, tp: 0 });
 }
 
+function formatAccuracyTradeTime(time: number, timeZone: ChartTimeZone): string {
+  return new Intl.DateTimeFormat('en-GB', {
+    timeZone,
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+    hourCycle: 'h23',
+  }).format(new Date(time * 1000)).replace(',', '');
+}
+
 const EngulfingAccuracyTable: React.FC<{
   records: AccuracyTradeRecord[];
   timeframe: OandaGranularity;
-}> = ({ records, timeframe }) => {
+  showAllTrades: boolean;
+  timeZone: ChartTimeZone;
+}> = ({ records, timeframe, showAllTrades, timeZone }) => {
   const timeframeCounts = accuracyCounts(records);
   const extraZoneRows: string[] = Array.from(new Set<string>(
     records.map((record) => record.zoneName),
@@ -589,28 +609,100 @@ const EngulfingAccuracyTable: React.FC<{
   );
 
   return (
-    <div className="pointer-events-auto absolute left-3 top-1/2 z-20 -translate-y-1/2 overflow-hidden rounded-md border border-slate-300 bg-white/95 shadow-md">
-      <div className="border-b border-slate-300 bg-indigo-50 px-2 py-1 text-[9px] font-black uppercase tracking-wide text-indigo-700">
-        Engulfing accuracy · last {Math.min(records.length, 50)}/50 trades
+    <div className={`pointer-events-auto absolute z-20 overflow-hidden rounded-md border border-slate-300 bg-white/95 shadow-md ${
+      showAllTrades
+        ? 'bottom-3 left-3 top-3 flex w-fit max-w-[calc(100%_-_24px)] flex-col'
+        : 'left-3 top-1/2 max-w-[calc(100%_-_24px)] -translate-y-1/2'
+    }`}>
+      <div className="shrink-0 border-b border-slate-300 bg-indigo-50 px-2 py-1 text-[9px] font-black uppercase tracking-wide text-indigo-700">
+        Engulfing accuracy · {records.length} completed trade{records.length === 1 ? '' : 's'}
       </div>
-      <table className="border-collapse text-center text-[9px]">
-        <thead>{header('Timeframe')}</thead>
-        <tbody>
-          {resultRow(GRANULARITY_LABELS[timeframe].toUpperCase(), timeframeCounts)}
-          {header('Trade source')}
-          {resultRow('ENGULFING', accuracyCounts(
-            records.filter((record) => record.source === 'ENGULFING'),
-          ))}
-          {resultRow('MTF', accuracyCounts(
-            records.filter((record) => record.source === 'MTF'),
-          ))}
-          {header('Zone type')}
-          {zoneRows.map((zoneName) => resultRow(
-            zoneName,
-            accuracyCounts(records.filter((record) => record.zoneName === zoneName)),
-          ))}
-        </tbody>
-      </table>
+      <div className={showAllTrades ? 'flex min-h-0 flex-1' : ''}>
+        <div className={showAllTrades ? 'w-[290px] shrink-0 overflow-auto border-r border-slate-300' : ''}>
+          <table className="w-full border-collapse text-center text-[9px]">
+            <thead>{header('Timeframe')}</thead>
+            <tbody>
+              {resultRow(GRANULARITY_LABELS[timeframe].toUpperCase(), timeframeCounts)}
+              {header('Trade source')}
+              {resultRow('ENGULFING', accuracyCounts(
+                records.filter((record) => record.source === 'ENGULFING'),
+              ))}
+              {resultRow('MTF', accuracyCounts(
+                records.filter((record) => record.source === 'MTF'),
+              ))}
+              {header('Zone type')}
+              {zoneRows.map((zoneName) => resultRow(
+                zoneName,
+                accuracyCounts(records.filter((record) => record.zoneName === zoneName)),
+              ))}
+            </tbody>
+          </table>
+        </div>
+        {showAllTrades && (
+          <div className="min-w-0 max-w-[calc(100vw-338px)] flex-1 overflow-auto">
+            <div className="sticky left-0 top-0 z-20 border-b border-indigo-200 bg-indigo-100 px-2 py-1 text-[9px] font-black uppercase tracking-wide text-indigo-800">
+              All completed trades · newest first
+            </div>
+            <table className="min-w-[740px] border-collapse text-center text-[9px]">
+              <thead className="sticky top-[21px] z-10 bg-slate-600 uppercase text-white">
+              <tr>
+                <th className="px-1.5 py-1">#</th>
+                <th className="whitespace-nowrap px-1.5 py-1 text-left">Completed</th>
+                <th className="px-1.5 py-1">TF</th>
+                <th className="px-1.5 py-1">Source</th>
+                <th className="whitespace-nowrap px-1.5 py-1 text-left">Zone</th>
+                <th className="px-1.5 py-1">Side</th>
+                <th className="px-1.5 py-1">Result</th>
+                <th className="px-1.5 py-1">Entry</th>
+                <th className="px-1.5 py-1">SL</th>
+                <th className="px-1.5 py-1">TP</th>
+                <th className="px-1.5 py-1">R:R</th>
+              </tr>
+              </thead>
+              <tbody>
+                {records.map((record, index) => (
+                  <tr key={record.id} className="border-t border-slate-200 odd:bg-white even:bg-slate-50">
+                  <td className="px-1.5 py-1 text-slate-500">{index + 1}</td>
+                  <td className="whitespace-nowrap px-1.5 py-1 text-left text-slate-600">
+                    {formatAccuracyTradeTime(record.completedAt, timeZone)}
+                  </td>
+                  <td className="px-1.5 py-1 font-bold text-slate-700">
+                    {formatTradeTimeframe(record.signalTimeframe)}
+                  </td>
+                  <td className="px-1.5 py-1 font-bold text-slate-600">{record.source}</td>
+                  <td className="whitespace-nowrap px-1.5 py-1 text-left font-bold text-slate-700">
+                    {record.zoneName}
+                  </td>
+                  <td className={`px-1.5 py-1 font-black ${
+                    record.direction === 'bullish' ? 'text-emerald-700' : 'text-rose-700'
+                  }`}>
+                    {record.direction === 'bullish' ? 'BUY' : 'SELL'}
+                  </td>
+                  <td className={`px-1.5 py-1 font-black ${
+                    record.result === 'tp'
+                      ? 'text-emerald-700'
+                      : record.result === 'rf' ? 'text-amber-600' : 'text-rose-700'
+                  }`}>
+                    {record.result.toUpperCase()}
+                  </td>
+                  <td className="whitespace-nowrap px-1.5 py-1 text-slate-700">{formatPrice(record.entry)}</td>
+                  <td className="whitespace-nowrap px-1.5 py-1 text-slate-700">{formatPrice(record.stopLoss)}</td>
+                  <td className="whitespace-nowrap px-1.5 py-1 text-slate-700">{formatPrice(record.takeProfit)}</td>
+                  <td className="px-1.5 py-1 font-bold text-slate-700">1:{record.rewardRisk}</td>
+                  </tr>
+                ))}
+                {records.length === 0 && (
+                  <tr>
+                    <td colSpan={11} className="px-2 py-3 text-center text-slate-400">
+                      No completed trades in the loaded chart history
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
     </div>
   );
 };
@@ -684,6 +776,8 @@ export const OandaProChart: React.FC = () => {
   const [showInvalidZones, setShowInvalidZones] = useState(false);
   const [showTradeLevels, setShowTradeLevels] = useState(true);
   const [showAccuracyTable, setShowAccuracyTable] = useState(false);
+  const [showAccuracyOptions, setShowAccuracyOptions] = useState(false);
+  const [showAllAccuracyTrades, setShowAllAccuracyTrades] = useState(false);
   const [showIndicatorControls, setShowIndicatorControls] = useState(false);
   const [showZoneTable, setShowZoneTable] = useState(true);
   const [replayIndex, setReplayIndex] = useState<number | null>(null);
@@ -1077,6 +1171,12 @@ export const OandaProChart: React.FC = () => {
         result: trade.result,
         completedAt: trade.resolvedAt ?? trade.calculatedAt,
         source,
+        direction: trade.signal.direction,
+        signalTimeframe: trade.signal.timeframe,
+        entry: trade.entry,
+        stopLoss: trade.stopLoss,
+        takeProfit: trade.takeProfit,
+        rewardRisk: trade.rewardRisk,
       });
     };
 
@@ -1156,8 +1256,7 @@ export const OandaProChart: React.FC = () => {
       addRecord(id, row.tappedZone ?? row.higherTimeframeZone, 'MTF', row.trade);
     }
     return Array.from(records.values())
-      .sort((first, second) => second.completedAt - first.completedAt)
-      .slice(0, 50);
+      .sort((first, second) => second.completedAt - first.completedAt);
   }, [
     currentDirectTradeSetups,
     displayCandles,
@@ -2630,17 +2729,65 @@ export const OandaProChart: React.FC = () => {
             >
               TRADE LEVELS {showTradeLevels ? 'ON' : 'OFF'}
             </button>
-            <button
-              onClick={() => setShowAccuracyTable((value) => !value)}
-              className={`whitespace-nowrap rounded-md border px-1.5 py-0.5 text-[8px] font-black leading-tight transition ${
-                showAccuracyTable
-                  ? 'border-indigo-200 bg-indigo-50 text-indigo-700'
-                  : 'border-slate-200 bg-white text-slate-500'
-              }`}
-              title="Show or hide completed engulfing SL, RF, TP, total, and accuracy results"
-            >
-              ACCURACY TABLE {showAccuracyTable ? 'ON' : 'OFF'}
-            </button>
+            <div className="relative flex">
+              <button
+                type="button"
+                onClick={() => setShowAccuracyTable((value) => !value)}
+                className={`whitespace-nowrap rounded-l-md border border-r-0 px-1.5 py-0.5 text-[8px] font-black leading-tight transition ${
+                  showAccuracyTable
+                    ? 'border-indigo-200 bg-indigo-50 text-indigo-700'
+                    : 'border-slate-200 bg-white text-slate-500'
+                }`}
+                title="Show or hide completed engulfing SL, RF, TP, total, and accuracy results"
+              >
+                ACCURACY TABLE {showAccuracyTable ? 'ON' : 'OFF'}
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowAccuracyOptions((value) => !value)}
+                className={`rounded-r-md border px-1 py-0.5 text-[8px] font-black leading-tight transition ${
+                  showAccuracyOptions
+                    ? 'border-indigo-300 bg-indigo-100 text-indigo-800'
+                    : showAccuracyTable
+                      ? 'border-indigo-200 bg-indigo-50 text-indigo-700'
+                      : 'border-slate-200 bg-white text-slate-500'
+                }`}
+                title="Accuracy table options"
+                aria-label="Accuracy table options"
+                aria-expanded={showAccuracyOptions}
+              >
+                ▾
+              </button>
+              {showAccuracyOptions && (
+                <div className="absolute right-0 top-full z-50 mt-1 w-40 rounded-md border border-indigo-200 bg-white p-1.5 shadow-lg">
+                  <div className="mb-1 px-1 text-[8px] font-black uppercase tracking-wide text-indigo-700">
+                    Accuracy options
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowAllAccuracyTrades((value) => !value);
+                      setShowAccuracyTable(true);
+                    }}
+                    className={`flex w-full items-center justify-between whitespace-nowrap rounded border px-1.5 py-1 text-[8px] font-black leading-none ${
+                      showAllAccuracyTrades
+                        ? 'border-indigo-300 bg-indigo-100 text-indigo-800'
+                        : 'border-slate-200 bg-white text-slate-500'
+                    }`}
+                    title="Show or hide every completed trade in the loaded chart history"
+                  >
+                    <span>SHOW ALL TRADES</span>
+                    <span className={`ml-1 rounded-full px-1 py-0.5 text-[8px] ${
+                      showAllAccuracyTrades
+                        ? 'bg-indigo-200 text-indigo-900'
+                        : 'bg-slate-200 text-slate-500'
+                    }`}>
+                      {showAllAccuracyTrades ? 'ON' : 'OFF'}
+                    </span>
+                  </button>
+                </div>
+              )}
+            </div>
             <button
               onClick={() => setShowInvalidZones((value) => !value)}
               className={`whitespace-nowrap rounded-md border px-1.5 py-0.5 text-[8px] font-black leading-tight transition ${
@@ -3001,7 +3148,12 @@ export const OandaProChart: React.FC = () => {
             </>}
           </div>
           {showAccuracyTable && (
-            <EngulfingAccuracyTable records={accuracyTradeRecords} timeframe={granularity} />
+            <EngulfingAccuracyTable
+              records={accuracyTradeRecords}
+              timeframe={granularity}
+              showAllTrades={showAllAccuracyTrades}
+              timeZone={chartTimeZone}
+            />
           )}
           <MultiTimeframeEntryTable rows={mtfRows} />
           <MultiTimeframeTrendTable rows={trendTableRows} replayActive={replayIndex !== null} />
