@@ -50,7 +50,10 @@ caps are deliberately not displayed.
 
 The optional Engulfing Accuracy table is OFF by default. When enabled it counts
 only resolved trades as SL, protected RF exits, or TP, and calculates accuracy
-as TP divided by all resolved outcomes.
+as TP divided by all resolved outcomes. Its statistics use a rolling window of
+the 50 most recently completed direct-engulfing and MTF trades, reconstructed
+from the loaded candle history. Historical reconstruction runs only while the
+table is enabled so the normal chart remains responsive.
 
 ## Current checkpoint
 

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { buildMtfRows, type MtfTimeframeData } from '../src/services/mtf';
+import { buildMtfHistoryRows, buildMtfRows, type MtfTimeframeData } from '../src/services/mtf';
 import type { MarketStructureResult, StructureCandle, StructureZone } from '../src/services/marketStructure';
 
 function candle(time: number, open: number, high: number, low: number, close: number): StructureCandle {
@@ -46,9 +46,24 @@ test('MTF row follows the selected LTF CHOCH and promotes only an A+ engulfing',
     id: 'm5-db', name: 'DB', chochTime: 300, startTime: 100,
     activeFromTime: 300, bottom: 99, top: 100,
   });
+  const oldQml = zone({
+    id: 'old-m5-qml', chochTime: 200, startTime: 50, activeFromTime: 200,
+    tjlPairTime: 25, bottom: 103, top: 105, tapTime: 200, tapBarsAgo: 3,
+    fibSourcePrice: 100, fibZeroPrice: 110,
+  });
+  const oldRbs = zone({
+    id: 'old-m5-rbs', name: 'RBS', chochTime: 200, startTime: 75,
+    activeFromTime: 200, tjlPairTime: 25, bottom: 103, top: 104,
+  });
+  const oldDb = zone({
+    id: 'old-m5-db', name: 'DB', chochTime: 200, startTime: 50,
+    activeFromTime: 200, bottom: 99, top: 100,
+  });
   const data: Partial<Record<'H1' | 'M5', MtfTimeframeData>> = {
     H1: { candles: lowerCandles, structure: structure([higherZone]) },
-    M5: { candles: lowerCandles, structure: structure([qml, rbs, db]) },
+    M5: { candles: lowerCandles, structure: structure([
+      oldQml, oldRbs, oldDb, qml, rbs, db,
+    ]) },
   };
 
   const row = buildMtfRows(data).find((candidate) => candidate.higherTimeframe === 'H1');
@@ -63,6 +78,9 @@ test('MTF row follows the selected LTF CHOCH and promotes only an A+ engulfing',
   assert.equal(row?.engulfingType, 'T4');
   assert.equal(row?.engulfingBarsAgo, 0);
   assert.equal(row?.engulfingDeepDiscount, false);
+  assert.equal(buildMtfHistoryRows(data).filter((candidate) => (
+    candidate.higherTimeframe === 'H1' && candidate.lowerTimeframe === 'M5'
+  )).length, 2, 'history retains the older MTF setup that the compact table omits');
 });
 
 test('MTF prefers and identifies Major Liquidity when the mapped HTF DBD is tapped', () => {

@@ -32,7 +32,13 @@ import { ChartTimeZone, formatChartTick, formatChartTime } from '../services/cha
 import { buildDayFibs, DayFibMove } from '../services/dayFib';
 import { applySwingFibConfluence } from '../services/swingFibConfluence';
 import { applyDayFibConfluence } from '../services/dayFibConfluence';
-import { MTF_MAPPINGS, buildMtfRows, type MtfGranularity, type MtfRow } from '../services/mtf';
+import {
+  MTF_MAPPINGS,
+  buildMtfHistoryRows,
+  buildMtfRows,
+  type MtfGranularity,
+  type MtfRow,
+} from '../services/mtf';
 import {
   calculateTradeLevels,
   formatTradeTimeframe,
@@ -127,6 +133,8 @@ interface AccuracyTradeRecord {
   id: string;
   zoneName: string;
   result: TradeResult;
+  completedAt: number;
+  source: 'ENGULFING' | 'MTF';
 }
 
 const TIMEFRAMES: Array<{ value: OandaGranularity; label: string }> = [
@@ -560,12 +568,19 @@ const EngulfingAccuracyTable: React.FC<{
   return (
     <div className="pointer-events-auto absolute left-3 top-1/2 z-20 -translate-y-1/2 overflow-hidden rounded-md border border-slate-300 bg-white/95 shadow-md">
       <div className="border-b border-slate-300 bg-indigo-50 px-2 py-1 text-[9px] font-black uppercase tracking-wide text-indigo-700">
-        Engulfing accuracy
+        Engulfing accuracy · last {Math.min(records.length, 50)}/50 trades
       </div>
       <table className="border-collapse text-center text-[9px]">
         <thead>{header('Timeframe')}</thead>
         <tbody>
           {resultRow(GRANULARITY_LABELS[timeframe].toUpperCase(), timeframeCounts)}
+          {header('Trade source')}
+          {resultRow('ENGULFING', accuracyCounts(
+            records.filter((record) => record.source === 'ENGULFING'),
+          ))}
+          {resultRow('MTF', accuracyCounts(
+            records.filter((record) => record.source === 'MTF'),
+          ))}
           {header('Zone type')}
           {zoneRows.map((zoneName) => resultRow(
             zoneName,
@@ -1024,7 +1039,81 @@ export const OandaProChart: React.FC = () => {
   );
 
   const accuracyTradeRecords = useMemo<AccuracyTradeRecord[]>(() => {
+    if (!showAccuracyTable) return [];
     const records = new Map<string, AccuracyTradeRecord>();
+    const addRecord = (
+      id: string,
+      zoneName: string,
+      source: AccuracyTradeRecord['source'],
+      trade: TradeLevels | undefined,
+    ) => {
+      if (!trade?.result) return;
+      records.set(id, {
+        id,
+        zoneName,
+        result: trade.result,
+        completedAt: trade.resolvedAt ?? trade.calculatedAt,
+        source,
+      });
+    };
+
+    // Reconstruct direct engulfing outcomes from every historical zone that
+    // retained a qualified signal, including zones invalidated after entry.
+    for (const zone of displayZones) {
+      if (zone.status === 'rejected' || zone.tradeable === false) continue;
+      const signal = resolveZoneEngulfingSignal(zone, granularity);
+      if (!signal) continue;
+      const rule = getDirectTradeRule(granularity, signal.timeframe);
+      if (!rule) continue;
+      const sourceCandles = signal.timeframe === granularity
+        ? displayCandles
+        : vipCandles[signal.timeframe] || [];
+      const trade = calculateTradeLevels({
+        sourceCandles,
+        executionCandles: displayCandles,
+        signal,
+        rule,
+        omitStopBuffer: isDeepDiscountTradeSignal(zone, signal),
+      });
+      addRecord(
+        `DIRECT:${zone.id}:${signal.time}:${trade?.entry ?? 'NA'}`,
+        zone.name,
+        'ENGULFING',
+        trade,
+      );
+    }
+
+    // Unlike the compact live MTF table, history evaluates every eligible
+    // mapped CHOCH event in the loaded candle window.
+    for (const row of buildMtfHistoryRows(tableTimeframeData)) {
+      if (!row.engulfingType || row.engulfingTime === undefined) continue;
+      const lowerTimeframeData = tableTimeframeData[row.lowerTimeframe];
+      const rule = getMtfTradeRule(row.higherTimeframe, row.lowerTimeframe);
+      if (!lowerTimeframeData || !rule) continue;
+      const signal: EngulfingTradeSignal = {
+        type: row.engulfingType,
+        direction: row.direction,
+        time: row.engulfingTime,
+        candleCount: row.engulfingCandleCount ?? 2,
+        timeframe: row.lowerTimeframe,
+      };
+      const trade = calculateTradeLevels({
+        sourceCandles: lowerTimeframeData.candles,
+        executionCandles: lowerTimeframeData.candles,
+        signal,
+        rule,
+        omitStopBuffer: row.engulfingDeepDiscount === true,
+      });
+      addRecord(
+        `MTF:${row.id}:${signal.time}:${trade?.entry ?? 'NA'}`,
+        row.tappedZone ?? row.higherTimeframeZone,
+        'MTF',
+        trade,
+      );
+    }
+
+    // Merge session-tracked records as a safety net for trades whose zones
+    // have just rolled out of the current reconstructed structure collection.
     const directSetups = new Map<string, TrackedDirectTradeSetup>();
     for (const setup of trackedDirectTradeSetups.values()) {
       if (setup.scope === tradeTrackingScope) directSetups.set(setup.zone.id, setup);
@@ -1034,26 +1123,30 @@ export const OandaProChart: React.FC = () => {
     }
     for (const [zoneId, trade] of directZoneTrades) {
       const setup = directSetups.get(zoneId);
-      if (!trade.result || !setup) continue;
-      const id = `DIRECT:${zoneId}:${trade.calculatedAt}:${trade.entry}`;
-      records.set(id, { id, zoneName: setup.zone.name, result: trade.result });
+      if (!setup) continue;
+      const id = `DIRECT:${zoneId}:${setup.signal.time}:${trade.entry}`;
+      addRecord(id, setup.zone.name, 'ENGULFING', trade);
     }
     for (const row of mtfRows) {
-      if (!row.trade?.result) continue;
-      const id = `MTF:${row.id}:${row.trade.calculatedAt}:${row.trade.entry}`;
-      records.set(id, {
-        id,
-        zoneName: row.tappedZone ?? row.higherTimeframeZone,
-        result: row.trade.result,
-      });
+      if (!row.trade) continue;
+      const id = `MTF:${row.id}:${row.engulfingTime}:${row.trade.entry}`;
+      addRecord(id, row.tappedZone ?? row.higherTimeframeZone, 'MTF', row.trade);
     }
-    return Array.from(records.values());
+    return Array.from(records.values())
+      .sort((first, second) => second.completedAt - first.completedAt)
+      .slice(0, 50);
   }, [
     currentDirectTradeSetups,
+    displayCandles,
+    displayZones,
     directZoneTrades,
+    granularity,
     mtfRows,
+    showAccuracyTable,
+    tableTimeframeData,
     trackedDirectTradeSetups,
     tradeTrackingScope,
+    vipCandles,
   ]);
 
   const tradeOverlays = useMemo<TradeOverlay[]>(() => {

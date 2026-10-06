@@ -320,8 +320,10 @@ function eventToRow(
  * checks intentionally remain internal; only the mapped confirmation, tapped
  * lower-timeframe level, and qualified entry are returned for display.
  */
-export function buildMtfRows(
+function buildMtfRowsInternal(
   data: Partial<Record<MtfGranularity, MtfTimeframeData>>,
+  maximumEventsToInspect: number,
+  maximumRowsPerMapping: number,
 ): MtfRow[] {
   const rows: MtfRow[] = [];
   for (const mapping of MTF_MAPPINGS) {
@@ -331,8 +333,10 @@ export function buildMtfRows(
     const allEvents = buildChochEvents(lower.structure.zones);
 
     for (const kind of mapping.confirmations) {
-      const candidate = allEvents
+      const candidates = allEvents
         .filter((event) => event.kind === kind)
+        .sort((first, second) => second.time - first.time)
+        .slice(0, maximumEventsToInspect)
         .map((event) => ({
           event,
           higherTimeframeTouch: latestHigherTimeframeTouch(
@@ -344,16 +348,32 @@ export function buildMtfRows(
         .filter((item): item is {
           event: ConfirmationEvent;
           higherTimeframeTouch: { zone: StructureZone; time: number };
-        } => item.higherTimeframeTouch !== undefined)
-        .sort((first, second) => second.event.time - first.event.time)[0];
-      if (candidate) rows.push(eventToRow(
-        mapping,
-        candidate.event,
-        lower.candles,
-        higher.candles,
-        candidate.higherTimeframeTouch,
-      ));
+        } => item.higherTimeframeTouch !== undefined);
+      for (const candidate of candidates.slice(0, maximumRowsPerMapping)) {
+        rows.push(eventToRow(
+          mapping,
+          candidate.event,
+          lower.candles,
+          higher.candles,
+          candidate.higherTimeframeTouch,
+        ));
+      }
     }
   }
   return rows.sort((first, second) => second.confirmationTime - first.confirmationTime);
+}
+
+export function buildMtfRows(
+  data: Partial<Record<MtfGranularity, MtfTimeframeData>>,
+): MtfRow[] {
+  return buildMtfRowsInternal(data, Number.POSITIVE_INFINITY, 1);
+}
+
+export function buildMtfHistoryRows(
+  data: Partial<Record<MtfGranularity, MtfTimeframeData>>,
+): MtfRow[] {
+  // The five mappings contribute up to sixty recent candidates before direct
+  // engulfing trades are merged, enough for the combined newest-50 sample
+  // while keeping the optional browser-side backfill bounded.
+  return buildMtfRowsInternal(data, 12, 12);
 }

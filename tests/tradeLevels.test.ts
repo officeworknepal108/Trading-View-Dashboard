@@ -127,16 +127,22 @@ test('completed outcomes classify SL, protected RF exit, and same-candle TP prio
     rule: getDirectTradeRule('M1', 'M1')!,
   });
 
-  assert.equal(calculate([
+  const slTrade = calculate([
     { time: 120, open: 11, high: 12, low: 7, close: 8, complete: true },
-  ])?.result, 'sl');
-  assert.equal(calculate([
+  ]);
+  assert.equal(slTrade?.result, 'sl');
+  assert.equal(slTrade?.resolvedAt, 120);
+  const rfTrade = calculate([
     { time: 120, open: 11, high: 15, low: 10, close: 14, complete: true },
     { time: 180, open: 14, high: 14, low: 7, close: 8, complete: true },
-  ])?.result, 'rf');
-  assert.equal(calculate([
+  ]);
+  assert.equal(rfTrade?.result, 'rf');
+  assert.equal(rfTrade?.resolvedAt, 180);
+  const tpTrade = calculate([
     { time: 120, open: 11, high: 21, low: 7, close: 18, complete: true },
-  ])?.result, 'tp');
+  ]);
+  assert.equal(tpTrade?.result, 'tp');
+  assert.equal(tpTrade?.resolvedAt, 120);
 });
 
 test('MTF entry uses the actual engulfing timeframe rule when the pair has no direct rule', () => {

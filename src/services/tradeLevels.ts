@@ -37,6 +37,7 @@ export interface TradeLevels {
   calculatedAt: number;
   filledAt?: number;
   result?: TradeResult;
+  resolvedAt?: number;
   signal: EngulfingTradeSignal;
 }
 
@@ -201,6 +202,7 @@ export function calculateTradeLevels(options: {
   let reachedRiskFree = false;
   let status: TradeStatus = immediate ? 'active' : 'pending';
   let result: TradeResult | undefined;
+  let resolvedAt: number | undefined;
 
   for (let index = entryIndex; index < executionCandles.length; index += 1) {
     const candle = executionCandles[index];
@@ -219,12 +221,14 @@ export function calculateTradeLevels(options: {
       status = 'tp-hit';
       reachedRiskFree = true;
       result = 'tp';
+      resolvedAt = candle.time;
       break;
     }
     reachedRiskFree = reachedRiskFree || riskFreeHit;
     if (slHit) {
       status = reachedRiskFree ? 'risk-free' : 'sl-hit';
       result = reachedRiskFree ? 'rf' : 'sl';
+      resolvedAt = candle.time;
       break;
     }
     if (reachedRiskFree) status = 'risk-free';
@@ -242,6 +246,7 @@ export function calculateTradeLevels(options: {
     calculatedAt: entryCandle.time,
     filledAt,
     result,
+    resolvedAt,
     signal,
   };
 }
