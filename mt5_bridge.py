@@ -38,6 +38,8 @@ POLL_SECONDS = max(0.5, float(os.getenv("MT5_POLL_SECONDS", "1")))
 ALLOW_LIVE_EXECUTION = os.getenv("MT5_ALLOW_LIVE_EXECUTION", "NO").upper() == "YES"
 BRIDGE_ID = os.getenv("MT5_BRIDGE_ID", f"kalbairab-{uuid.getnode():x}")
 STATE_FILE = ROOT / ".mt5_bridge_state.json"
+CONNECTED_ACCOUNT = ""
+CONNECTED_SERVER = ""
 
 SESSION = requests.Session()
 if BRIDGE_TOKEN:
@@ -67,6 +69,7 @@ def save_state(state: dict[str, dict[str, Any]]) -> None:
 
 
 def initialize_mt5() -> None:
+    global CONNECTED_ACCOUNT, CONNECTED_SERVER
     arguments: dict[str, Any] = {}
     if MT5_PATH:
         arguments["path"] = MT5_PATH
@@ -80,15 +83,21 @@ def initialize_mt5() -> None:
         raise RuntimeError(f"MT5 account/terminal unavailable: {mt5.last_error()}")
     if not terminal.connected:
         raise RuntimeError("MT5 terminal is not connected to the broker.")
+    CONNECTED_ACCOUNT = str(account.login)
+    CONNECTED_SERVER = str(account.server)
     print(f"Connected: account {account.login} | {account.server} | equity {account.equity:.2f}")
 
 
 def heartbeat(config: dict[str, Any], message: str = "Bridge ready") -> None:
+    global CONNECTED_ACCOUNT, CONNECTED_SERVER
     account = mt5.account_info()
+    if account:
+        CONNECTED_ACCOUNT = str(account.login)
+        CONNECTED_SERVER = str(account.server)
     api("POST", "/api/mt5/heartbeat", json={
         "bridgeId": BRIDGE_ID,
-        "account": str(account.login) if account else "",
-        "server": account.server if account else "",
+        "account": CONNECTED_ACCOUNT,
+        "server": CONNECTED_SERVER,
         "brokerSymbol": config.get("brokerSymbol", "XAUUSDm"),
         "message": message,
     })
