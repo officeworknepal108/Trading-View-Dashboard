@@ -9,6 +9,17 @@ export interface StructureCandle {
   complete?: boolean;
 }
 
+function hasFullBodyClosedBeyond(
+  candle: StructureCandle,
+  level: number,
+  direction: 'up' | 'down',
+): boolean {
+  if (candle.complete === false) return false;
+  return direction === 'up'
+    ? Math.min(candle.open, candle.close) > level
+    : Math.max(candle.open, candle.close) < level;
+}
+
 export type ChochClass = 'pending' | 'valid' | 'air' | 'vip';
 export type DoubleChochStatus = 'pending' | 'valid';
 export type DoubleChochOriginClass = Extract<ChochClass, 'valid' | 'air' | 'vip'>;
@@ -1407,7 +1418,7 @@ export function analyzeMarketStructure(candles: StructureCandle[], options: {
     if (trend === 'bullish') {
       if (pendingDouble?.direction === 'bullish'
         && candle.time > pendingDouble.startedAt
-        && candle.close < pendingDouble.extreme.bottom) {
+        && hasFullBodyClosedBeyond(candle, pendingDouble.extreme.bottom, 'down')) {
         const originContext = pendingDouble.context;
         const doubleContext = buildDoubleChochContext(
           originContext,
@@ -1496,9 +1507,7 @@ export function analyzeMarketStructure(candles: StructureCandle[], options: {
         if (pendingDouble?.direction === 'bullish') pendingDouble = null;
       }
 
-      if (index > 1
-        && candle.close < protectedPoint.price
-        && previous.close < protectedPoint.price) {
+      if (index > 1 && hasFullBodyClosedBeyond(candle, protectedPoint.price, 'down')) {
         addLevel('choch', 'bearish', protectedPoint, index, 'CHoCH');
         // If the two-red retracement already confirmed an SH, CHoCH must
         // promote that exact wick. Re-scanning through the break candle can
@@ -1533,7 +1542,7 @@ export function analyzeMarketStructure(candles: StructureCandle[], options: {
     } else {
       if (pendingDouble?.direction === 'bearish'
         && candle.time > pendingDouble.startedAt
-        && candle.close > pendingDouble.extreme.top) {
+        && hasFullBodyClosedBeyond(candle, pendingDouble.extreme.top, 'up')) {
         const originContext = pendingDouble.context;
         const doubleContext = buildDoubleChochContext(
           originContext,
@@ -1621,9 +1630,7 @@ export function analyzeMarketStructure(candles: StructureCandle[], options: {
         if (pendingDouble?.direction === 'bearish') pendingDouble = null;
       }
 
-      if (index > 1
-        && candle.close > protectedPoint.price
-        && previous.close > protectedPoint.price) {
+      if (index > 1 && hasFullBodyClosedBeyond(candle, protectedPoint.price, 'up')) {
         addLevel('choch', 'bullish', protectedPoint, index, 'CHoCH');
         // If the two-green retracement already confirmed an SL, CHoCH must
         // promote that exact wick. The DB zone therefore starts at the same
@@ -2183,11 +2190,10 @@ export function findIssFiveWaves(
           hasPostIssInternalBos = true;
           initialIssPairAvailable = false;
         }
-        // Internal CHoCH is confirmed by the first body close through the
-        // protected Point-4 level. Requiring a second close can miss the true
-        // displacement candle when price immediately retests the broken level.
+        // Internal CHoCH requires one completed candle whose entire body is
+        // beyond the protected level. Its wick may cross back through it.
         if ((hasPostIssInternalBos || initialIssPairAvailable)
-          && candle.close < protectedPoint.price) {
+          && hasFullBodyClosedBeyond(candle, protectedPoint.price, 'down')) {
           seedDirectChochPair();
           const newProtectedHigh = activeHigh ?? extreme(candles, protectedPoint.index, index, 'high');
           const lastTjl1 = currentTjl1;
@@ -2246,7 +2252,7 @@ export function findIssFiveWaves(
           initialIssPairAvailable = false;
         }
         if ((hasPostIssInternalBos || initialIssPairAvailable)
-          && candle.close > protectedPoint.price) {
+          && hasFullBodyClosedBeyond(candle, protectedPoint.price, 'up')) {
           seedDirectChochPair();
           const newProtectedLow = activeLow ?? extreme(candles, protectedPoint.index, index, 'low');
           const lastTjl1 = currentTjl1;

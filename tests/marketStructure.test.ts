@@ -1021,10 +1021,17 @@ test('completed ISS delays internal TJLs until continuation and accepts both dir
   assert.equal(justCompleted.zones.some((item) => item.name === 'Internal TJL2'), false,
     'ISS completion must not duplicate L3/L4 as internal TJL zones');
 
-  const firstLegChoch = findIssFiveWaves([
+  const crossingBodyOnly = findIssFiveWaves([
     ...candles.slice(0, 17),
     { time: 1700, open: 116, high: 118, low: 112, close: 113 },
-    { time: 1800, open: 113, high: 114, low: 108, close: 110 },
+  ], [anchor], 100, 30, 400);
+  assert.equal(crossingBodyOnly.lines.some((line) => line.type === 'internal-choch'), false,
+    'a body that crosses the protected level is not an internal CHoCH');
+
+  const firstLegChoch = findIssFiveWaves([
+    ...candles.slice(0, 17),
+    { time: 1700, open: 113, high: 118, low: 108, close: 110 },
+    { time: 1800, open: 110, high: 114, low: 108, close: 109 },
   ], [anchor], 100, 30, 400);
   const firstQml = firstLegChoch.zones.find((item) => item.name === 'Internal QML');
   const firstSbr = firstLegChoch.zones.find((item) => item.name === 'Internal SBR');
@@ -1047,8 +1054,8 @@ test('completed ISS delays internal TJLs until continuation and accepts both dir
   const noPostIssBos = findIssFiveWaves([
     ...candles.slice(0, 16),
     { time: 1600, open: 118, high: 122, low: 117, close: 121 },
-    { time: 1700, open: 116, high: 118, low: 112, close: 113 },
-    { time: 1800, open: 113, high: 114, low: 108, close: 110 },
+    { time: 1700, open: 110, high: 118, low: 108, close: 109 },
+    { time: 1800, open: 109, high: 114, low: 107, close: 108 },
   ], [anchor], 100, 30, 400);
   assert.equal(noPostIssBos.lines.some((line) => line.type === 'internal-choch'), true,
     'a direct Point-5 reversal through Point 4 is a valid internal CHoCH');

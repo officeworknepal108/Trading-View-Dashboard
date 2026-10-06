@@ -52,7 +52,6 @@ import {
   type TradeRule,
   type TradeTimeframe,
 } from '../services/tradeLevels';
-import { AiTradeAssistant, type ChartAgentContext } from './AiTradeAssistant';
 
 type OandaGranularity = 'M1' | 'M5' | 'M15' | 'M30' | 'H1' | 'H4' | 'D';
 type MarketGranularity = OandaGranularity | 'W' | 'MO';
@@ -230,8 +229,32 @@ function tradeStatusLabel(trade: TradeLevels): string {
   return 'SL HIT';
 }
 
+const TradeStatusText: React.FC<{ trade: TradeLevels }> = ({ trade }) => {
+  const riskFreePrice = (
+    <span className="tabular-nums text-[9px] font-semibold text-slate-700">
+      {formatPrice(trade.riskFree)}
+    </span>
+  );
+
+  if (trade.status === 'active') return <>RF {riskFreePrice} · ACTIVE</>;
+  if (trade.status === 'risk-free') return <>RF {riskFreePrice} · RISK FREE</>;
+  if (trade.status === 'tp-hit' && trade.rewardRisk === 1) return <>TP HIT · RF {riskFreePrice}</>;
+  return <>{tradeStatusLabel(trade)}</>;
+};
+
 function isCompletedTrade(trade: TradeLevels | undefined): boolean {
   return trade?.result !== undefined;
+}
+
+function shouldShowTradeInZoneTable(
+  trade: TradeLevels | undefined,
+  chartCandles: OandaCandle[],
+): boolean {
+  if (!isCompletedTrade(trade)) return true;
+  if (trade?.resolvedAt === undefined) return false;
+  const resolvedIndex = chartCandles.findIndex((candle) => candle.time === trade.resolvedAt);
+  if (resolvedIndex < 0) return false;
+  return chartCandles.length - 1 - resolvedIndex <= 1;
 }
 
 const TradeDetailsRow: React.FC<{
@@ -253,9 +276,7 @@ const TradeDetailsRow: React.FC<{
           : trade.status === 'pending'
             ? 'text-amber-700'
             : 'text-emerald-700'}>
-          {trade.status === 'active' ? <>
-            RF <span className="tabular-nums font-semibold text-slate-700">{formatPrice(trade.riskFree)}</span> · ACTIVE
-          </> : tradeStatusLabel(trade)}
+          <TradeStatusText trade={trade} />
         </span>
       </div>
     </td>
@@ -1203,94 +1224,14 @@ export const OandaProChart: React.FC = () => {
 
   const latestCandle = hoveredCandle || displayCandles[displayCandles.length - 1] || null;
   const previousCandle = displayCandles.length > 1 ? displayCandles[displayCandles.length - 2] : null;
-  const chartAgentContext = useMemo<ChartAgentContext>(() => ({
-    symbol: 'OANDA:XAUUSD',
-    chartTimeframe: granularity,
-    replayActive: replayIndex !== null,
-    replayBar: replayIndex === null ? null : replayIndex + 1,
-    structureTrend: structure.trend,
-    currentCandle: latestCandle ? {
-      time: latestCandle.time,
-      open: latestCandle.open,
-      high: latestCandle.high,
-      low: latestCandle.low,
-      close: latestCandle.close,
-      volume: latestCandle.volume,
-      complete: latestCandle.complete,
-    } : null,
-    recentCandles: displayCandles.slice(-80).map((candle) => ({
-      time: candle.time,
-      open: candle.open,
-      high: candle.high,
-      low: candle.low,
-      close: candle.close,
-      volume: candle.volume,
-      complete: candle.complete,
-    })),
-    activeZones: displayZones
-      .filter((zone) => zone.active && zone.status !== 'rejected')
-      .sort((first, second) => (second.tapTime ?? second.startTime) - (first.tapTime ?? first.startTime))
-      .slice(0, 40)
-      .map((zone) => {
-        const trade = directZoneTrades.get(zone.id);
-        return ({
-        id: zone.id,
-        name: zone.name,
-        category: zone.category,
-        direction: zone.isBuy ? 'buy' : 'sell',
-        top: zone.top,
-        bottom: zone.bottom,
-        status: zone.status,
-        startTime: zone.startTime,
-        tapTime: zone.tapTime,
-        tapBarsAgo: zone.tapBarsAgo,
-        majorLiquidity: zone.majorLiquidity,
-        majorLiquidityBosTime: zone.majorLiquidityBosTime,
-        majorLiquiditySweepTime: zone.majorLiquiditySweepTime,
-        chochClass: zone.chochClass,
-        tradeable: zone.tradeable,
-        fibBand: zone.fibBand,
-        fibStatus: zone.fibStatus,
-        engulfingType: zone.engulfingType,
-        engulfingTime: zone.engulfingTime,
-        fallbackEngulfingType: zone.fallbackEngulfingType,
-        fallbackEngulfingTime: zone.fallbackEngulfingTime,
-        fallbackEngulfingTimeframe: zone.fallbackEngulfingTimeframe,
-        swingFibBand: zone.swingFibBand,
-        dayFibBand: zone.dayFibBand,
-        entry: trade?.entry,
-        stopLoss: trade?.stopLoss,
-        takeProfit: trade?.takeProfit,
-        riskFree: trade?.riskFree,
-        riskPips: trade?.riskPips,
-        rewardRisk: trade?.rewardRisk,
-        tradeStatus: trade?.status,
-      });
-      }),
-    mtfSetups: mtfRows.map((row) => ({ ...row })),
-    timeframeTrends: trendTableRows.map((row) => ({
-      timeframe: row.label,
-      trend: row.trend,
-      closesAt: row.closesAt,
-    })),
-  }), [
-    displayCandles,
-    displayZones,
-    directZoneTrades,
-    granularity,
-    latestCandle,
-    mtfRows,
-    replayIndex,
-    structure.trend,
-    trendTableRows,
-  ]);
   const zoneTableRows = useMemo(() => displayZones
     .filter((zone) => zone.active && zone.status === 'valid'
       && (showInternal || zone.category !== 'internal')
       && zone.doubleChochStatus === undefined
-      && zone.tapTime !== undefined && (zone.tapBarsAgo ?? Infinity) <= 50)
+      && zone.tapTime !== undefined && (zone.tapBarsAgo ?? Infinity) <= 50
+      && shouldShowTradeInZoneTable(directZoneTrades.get(zone.id), displayCandles))
     .sort((a, b) => (b.tapTime ?? b.startTime) - (a.tapTime ?? a.startTime))
-    .slice(0, 8), [displayZones, showInternal]);
+    .slice(0, 8), [directZoneTrades, displayCandles, displayZones, showInternal]);
   const completedTradeZoneRows = useMemo(() => {
     const activeZoneIds = new Set(displayZones
       .filter((zone) => zone.active && zone.status === 'valid')
@@ -1300,6 +1241,7 @@ export const OandaProChart: React.FC = () => {
       if (setup.scope !== tradeTrackingScope || activeZoneIds.has(setup.zone.id)) continue;
       const trade = directZoneTrades.get(setup.zone.id);
       if (trade?.status !== 'sl-hit' && trade?.status !== 'tp-hit' && trade?.status !== 'risk-free') continue;
+      if (!shouldShowTradeInZoneTable(trade, displayCandles)) continue;
       rows.set(
         setup.zone.id,
         displayZones.find((zone) => zone.id === setup.zone.id) ?? setup.zone,
@@ -1310,6 +1252,7 @@ export const OandaProChart: React.FC = () => {
     .slice(0, 4);
   }, [
     directZoneTrades,
+    displayCandles,
     displayZones,
     trackedDirectTradeSetups,
     tradeTrackingScope,
@@ -1318,6 +1261,7 @@ export const OandaProChart: React.FC = () => {
   const doubleChochRows = useMemo(() => displayZones
     .filter((zone) => zone.active && zone.status === 'valid'
       && zone.doubleChochStatus !== undefined
+      && shouldShowTradeInZoneTable(directZoneTrades.get(zone.id), displayCandles)
       && (zone.tapTime !== undefined
         ? (zone.tapBarsAgo ?? Infinity) <= 50
         : zone.doubleChochStatus === 'pending'
@@ -1330,7 +1274,7 @@ export const OandaProChart: React.FC = () => {
     .sort((a, b) => (b.tapTime ?? b.doubleChochTime ?? b.startTime)
       - (a.tapTime ?? a.doubleChochTime ?? a.startTime)
       || b.startTime - a.startTime)
-    .slice(0, 8), [displayZones, granularity, latestDisplayCandleTime]);
+    .slice(0, 8), [directZoneTrades, displayCandles, displayZones, granularity, latestDisplayCandleTime]);
   const pendingConfirmationRows = useMemo(() => displayZones
     .filter((zone) => (zone.name === 'TJL1' || zone.name === 'ISS L3' || zone.name === 'Internal TJL1')
       && zone.active && zone.status === 'pending'
@@ -1968,9 +1912,11 @@ export const OandaProChart: React.FC = () => {
       setError(null);
       setIsLoading(false);
 
+      // Keep the last valid auxiliary candles visible while their replacements
+      // load. Clearing them here made confirmed engulfing signals and their
+      // trade rows disappear briefly on every 15-second refresh.
       // Load mapped LTF feeds and the direct chart's engulfing fallback first,
       // then publish them before unrelated trend/support timeframes.
-      setVipCandles({});
       const priorityGranularities = auxiliaryGranularities.filter((value) => (
         mtfLowerGranularities.includes(value as MtfGranularity)
         || value === DIRECT_ENGULFING_FALLBACK[granularity]
@@ -2461,11 +2407,11 @@ export const OandaProChart: React.FC = () => {
             )}
           </div>
 
-          <div className="flex items-center gap-1 border-l border-slate-200 pl-2">
+          <div className="flex items-center gap-0.5 border-l border-slate-200 pl-1">
             <button
               type="button"
               onClick={() => setShowIndicatorControls((visible) => !visible)}
-              className="rounded-md border border-slate-300 bg-slate-50 px-2 py-1 text-[10px] font-black text-slate-600 transition hover:bg-slate-100"
+              className="whitespace-nowrap rounded-md border border-slate-300 bg-slate-50 px-1.5 py-0.5 text-[8px] font-black leading-tight text-slate-600 transition hover:bg-slate-100"
               title={showIndicatorControls ? 'Minimize indicator controls' : 'Show indicator controls'}
             >
               {showIndicatorControls ? 'INDICATORS − MINIMIZE' : 'INDICATORS + SHOW CONTROLS'}
@@ -2473,7 +2419,7 @@ export const OandaProChart: React.FC = () => {
             {showIndicatorControls && <>
             <button
               onClick={() => setShowStructure((value) => !value)}
-              className={`rounded-md border px-2 py-1 text-[10px] font-black transition ${
+              className={`whitespace-nowrap rounded-md border px-1.5 py-0.5 text-[8px] font-black leading-tight transition ${
                 showStructure
                   ? 'border-indigo-200 bg-indigo-50 text-indigo-700'
                   : 'border-slate-200 bg-white text-slate-500'
@@ -2484,7 +2430,7 @@ export const OandaProChart: React.FC = () => {
             </button>
             <button
               onClick={() => setShowMgZones((value) => !value)}
-              className={`rounded-md border px-2 py-1 text-[10px] font-black transition ${
+              className={`whitespace-nowrap rounded-md border px-1.5 py-0.5 text-[8px] font-black leading-tight transition ${
                 showMgZones
                   ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
                   : 'border-slate-200 bg-white text-slate-500'
@@ -2495,7 +2441,7 @@ export const OandaProChart: React.FC = () => {
             </button>
             <button
               onClick={() => setShowSupplyDemand((value) => !value)}
-              className={`rounded-md border px-2 py-1 text-[10px] font-black transition ${
+              className={`whitespace-nowrap rounded-md border px-1.5 py-0.5 text-[8px] font-black leading-tight transition ${
                 showSupplyDemand
                   ? 'border-cyan-200 bg-cyan-50 text-cyan-700'
                   : 'border-slate-200 bg-white text-slate-500'
@@ -2506,7 +2452,7 @@ export const OandaProChart: React.FC = () => {
             </button>
             <button
               onClick={() => setShowIss((value) => !value)}
-              className={`rounded-md border px-2 py-1 text-[10px] font-black transition ${
+              className={`whitespace-nowrap rounded-md border px-1.5 py-0.5 text-[8px] font-black leading-tight transition ${
                 showIss ? 'border-amber-200 bg-amber-50 text-amber-700' : 'border-slate-200 bg-white text-slate-500'
               }`}
               title="Show or hide ISS 0–5 wave markings"
@@ -2515,7 +2461,7 @@ export const OandaProChart: React.FC = () => {
             </button>
             <button
               onClick={() => setShowInternal((value) => !value)}
-              className={`rounded-md border px-2 py-1 text-[10px] font-black transition ${
+              className={`whitespace-nowrap rounded-md border px-1.5 py-0.5 text-[8px] font-black leading-tight transition ${
                 showInternal ? 'border-violet-200 bg-violet-50 text-violet-700' : 'border-slate-200 bg-white text-slate-500'
               }`}
               title="Show or hide post-ISS internal structure, zones, BOS and CHoCH"
@@ -2525,7 +2471,7 @@ export const OandaProChart: React.FC = () => {
             <div className="relative flex">
               <button
                 onClick={() => setShowFib((value) => !value)}
-                className={`rounded-l-md border border-r-0 px-2 py-1 text-[10px] font-black transition ${
+                className={`whitespace-nowrap rounded-l-md border border-r-0 px-1.5 py-0.5 text-[8px] font-black leading-tight transition ${
                   showFib ? 'border-fuchsia-200 bg-fuchsia-50 text-fuchsia-700' : 'border-slate-200 bg-white text-slate-500'
                 }`}
                 title="Master switch for all Fibonacci confluence markings"
@@ -2535,7 +2481,7 @@ export const OandaProChart: React.FC = () => {
               <button
                 type="button"
                 onClick={() => setShowFibOptions((visible) => !visible)}
-                className={`rounded-r-md border px-1.5 py-1 text-[10px] font-black transition ${
+                className={`rounded-r-md border px-1 py-0.5 text-[8px] font-black leading-tight transition ${
                   showFibOptions
                     ? 'border-fuchsia-300 bg-fuchsia-100 text-fuchsia-800'
                     : showFib
@@ -2666,7 +2612,7 @@ export const OandaProChart: React.FC = () => {
             </div>
             <button
               onClick={() => setShowEngulfing((value) => !value)}
-              className={`rounded-md border px-2 py-1 text-[10px] font-black transition ${
+              className={`whitespace-nowrap rounded-md border px-1.5 py-0.5 text-[8px] font-black leading-tight transition ${
                 showEngulfing ? 'border-blue-200 bg-blue-50 text-blue-700' : 'border-slate-200 bg-white text-slate-500'
               }`}
               title="Show or hide confirmed Type 1–4 engulfing signals and their mapped fallback timeframe"
@@ -2675,7 +2621,7 @@ export const OandaProChart: React.FC = () => {
             </button>
             <button
               onClick={() => setShowTradeLevels((value) => !value)}
-              className={`rounded-md border px-2 py-1 text-[10px] font-black transition ${
+              className={`whitespace-nowrap rounded-md border px-1.5 py-0.5 text-[8px] font-black leading-tight transition ${
                 showTradeLevels
                   ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
                   : 'border-slate-200 bg-white text-slate-500'
@@ -2686,7 +2632,7 @@ export const OandaProChart: React.FC = () => {
             </button>
             <button
               onClick={() => setShowAccuracyTable((value) => !value)}
-              className={`rounded-md border px-2 py-1 text-[10px] font-black transition ${
+              className={`whitespace-nowrap rounded-md border px-1.5 py-0.5 text-[8px] font-black leading-tight transition ${
                 showAccuracyTable
                   ? 'border-indigo-200 bg-indigo-50 text-indigo-700'
                   : 'border-slate-200 bg-white text-slate-500'
@@ -2697,7 +2643,7 @@ export const OandaProChart: React.FC = () => {
             </button>
             <button
               onClick={() => setShowInvalidZones((value) => !value)}
-              className={`rounded-md border px-2 py-1 text-[10px] font-black transition ${
+              className={`whitespace-nowrap rounded-md border px-1.5 py-0.5 text-[8px] font-black leading-tight transition ${
                 showInvalidZones
                   ? 'border-slate-400 bg-slate-200 text-slate-700'
                   : 'border-slate-200 bg-white text-slate-500'
@@ -2926,7 +2872,7 @@ export const OandaProChart: React.FC = () => {
                           : pending ? 'text-amber-700' : 'text-emerald-700'
                       }`}>
                         {isCompletedTrade(trade)
-                          ? tradeStatusLabel(trade!)
+                          ? <TradeStatusText trade={trade!} />
                           : pending
                           ? `WAIT ${confirmationLabel} ${confirmationSide} · NO TRADE`
                           : zone.tapTime === undefined
@@ -3005,7 +2951,7 @@ export const OandaProChart: React.FC = () => {
                     }`}>
                       {isCompletedTrade(trade) ? (
                         <span className={trade?.status === 'sl-hit' ? 'text-rose-700' : 'text-emerald-700'}>
-                          {tradeStatusLabel(trade!)}
+                          <TradeStatusText trade={trade!} />
                         </span>
                       ) : <>
                         <span className="text-slate-500">{zone.tapBarsAgo} bars</span>
@@ -3038,7 +2984,7 @@ export const OandaProChart: React.FC = () => {
                         <td className={`whitespace-nowrap px-2 py-1 text-right font-black ${
                           trade.status === 'sl-hit' ? 'text-rose-700' : 'text-emerald-700'
                         }`}>
-                          {tradeStatusLabel(trade)}
+                          <TradeStatusText trade={trade} />
                         </td>
                       </tr>
                     </React.Fragment>
@@ -3058,7 +3004,6 @@ export const OandaProChart: React.FC = () => {
             <EngulfingAccuracyTable records={accuracyTradeRecords} timeframe={granularity} />
           )}
           <MultiTimeframeEntryTable rows={mtfRows} />
-          <AiTradeAssistant context={chartAgentContext} />
           <MultiTimeframeTrendTable rows={trendTableRows} replayActive={replayIndex !== null} />
           {isLoading && candles.length === 0 && !error && (
             <div className="absolute inset-0 z-20 grid place-items-center bg-white/85">
