@@ -35,6 +35,7 @@ export interface MtfRow {
   engulfingTime?: number;
   engulfingCandleCount?: number;
   engulfingBarsAgo?: number;
+  engulfingDeepDiscount?: boolean;
 }
 
 interface MtfMapping {
@@ -176,28 +177,30 @@ function overlaps(firstLow: number, firstHigh: number, secondLow: number, second
 function fibBandForZone(
   event: ConfirmationEvent,
   zone: StructureZone,
-): [number, number] | undefined {
+): { range: [number, number]; deepDiscount: boolean } | undefined {
   // CHOCH DB/DT is the originating A+ level in the existing MG Fib model.
   if (event.kind === 'choch' && (zone.name === 'DB' || zone.name === 'DT')) {
-    return [zone.bottom, zone.top];
+    return { range: [zone.bottom, zone.top], deepDiscount: false };
   }
   if (event.fibSourcePrice === undefined || event.fibZeroPrice === undefined
     || event.fibSourcePrice === event.fibZeroPrice) return undefined;
   const level = (ratio: number) => (
     event.fibZeroPrice! + (event.fibSourcePrice! - event.fibZeroPrice!) * ratio
   );
-  const bands: Array<[number, number]> = [
-    [level(0.5), level(0.618)],
-    [level(0.71), level(0.79)],
+  const bands: Array<{ range: [number, number]; deepDiscount: boolean }> = [
+    { range: [level(0.5), level(0.618)], deepDiscount: false },
+    { range: [level(0.71), level(0.79)], deepDiscount: true },
   ];
-  return bands.find(([first, second]) => overlaps(zone.bottom, zone.top, first, second));
+  return bands.find(({ range: [first, second] }) => (
+    overlaps(zone.bottom, zone.top, first, second)
+  ));
 }
 
 function findMtfEngulfing(
   candles: StructureCandle[],
   event: ConfirmationEvent,
   zone: StructureZone,
-): { type: EngulfingType; time: number; candleCount: number } | undefined {
+): { type: EngulfingType; time: number; candleCount: number; deepDiscount: boolean } | undefined {
   if (zone.tapTime === undefined) return undefined;
   const requiredDirection: EngulfingDirection = event.isBuy ? 'bullish' : 'bearish';
   const validFrom = Math.max(event.time, zone.tapTime, zone.activeFromTime ?? zone.startTime);
@@ -214,6 +217,7 @@ function findMtfEngulfing(
       type: zone.engulfingType,
       time: zone.engulfingTime,
       candleCount: zone.engulfingCandleCount ?? 2,
+      deepDiscount: zone.fibBand === '0.71-0.79' || zone.fibBand === 'deep',
     };
   }
 
@@ -230,10 +234,15 @@ function findMtfEngulfing(
     const touchesTappedZoneInsideFib = patternCandles.some((candle) => (
       candle.time >= validFrom
       && candleTouchesZone(candle, zone)
-      && overlaps(candle.low, candle.high, fibBand[0], fibBand[1])
+      && overlaps(candle.low, candle.high, fibBand.range[0], fibBand.range[1])
     ));
     if (touchesTappedZoneInsideFib) {
-      return { type: pattern.type, time: finalCandle.time, candleCount: pattern.candleCount };
+      return {
+        type: pattern.type,
+        time: finalCandle.time,
+        candleCount: pattern.candleCount,
+        deepDiscount: fibBand.deepDiscount,
+      };
     }
   }
   return undefined;
@@ -253,7 +262,12 @@ function eventToRow(
     .map((zone) => ({ zone, engulfing: findMtfEngulfing(lowerCandles, event, zone) }))
     .filter((candidate): candidate is {
       zone: StructureZone;
-      engulfing: { type: EngulfingType; time: number; candleCount: number };
+      engulfing: {
+        type: EngulfingType;
+        time: number;
+        candleCount: number;
+        deepDiscount: boolean;
+      };
     } => candidate.engulfing !== undefined)
     .sort((first, second) => second.engulfing.time - first.engulfing.time)[0];
   // A valid entry takes precedence over a newer unqualified tap. Without an
@@ -294,6 +308,7 @@ function eventToRow(
     engulfingType: engulfing?.type,
     engulfingTime: engulfing?.time,
     engulfingCandleCount: engulfing?.candleCount,
+    engulfingDeepDiscount: engulfing?.deepDiscount,
     engulfingBarsAgo: engulfingIndex < 0
       ? undefined
       : lowerCandles.length - 1 - engulfingIndex,

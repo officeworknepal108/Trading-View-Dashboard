@@ -39,12 +39,18 @@ matrix is 1m/1m at 1:3, 1m/5m at 1:2, 5m/5m at 1:2, 5m/15m at 1:1,
 15m/15m at 1:2, and 15m/30m at 1:1. The corresponding maximum Entry-to-SL
 distances are 50, 100, 100, 200, 200, and 300 pips. Buffers are applied
 internally (10 pips for 1m/5m engulfings and 20 pips for 15m/30m engulfings).
+When the actual entry originates from the 0.71–0.79 or extended Deep Discount
+FIB band, SL is placed at the engulfing liquidity with no added buffer.
 
 An Entry is calculated on the first chart candle after the engulfing closes.
 The normal zone and MTF tables remain unchanged until that Entry exists; then
 they add a detail row with Entry, SL, TP, R:R, actual SL pips, and the Pending,
 Active, Risk Free, TP Hit, or SL Hit state. Internal buffers and maximum-risk
 caps are deliberately not displayed.
+
+The optional Engulfing Accuracy table is OFF by default. When enabled it counts
+only resolved trades as SL, protected RF exits, or TP, and calculates accuracy
+as TP divided by all resolved outcomes.
 
 ## Current checkpoint
 

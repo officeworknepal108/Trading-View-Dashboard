@@ -4,9 +4,10 @@ import {
   calculateTradeLevels,
   getDirectTradeRule,
   getMtfTradeRule,
+  isDeepDiscountTradeSignal,
   type EngulfingTradeSignal,
 } from '../src/services/tradeLevels';
-import type { StructureCandle } from '../src/services/marketStructure';
+import type { StructureCandle, StructureZone } from '../src/services/marketStructure';
 
 const bullishSignal: EngulfingTradeSignal = {
   type: 'T1',
@@ -51,6 +52,44 @@ test('immediate entry calculates SL, 1R, 3R TP, and actual risk pips', () => {
   assert.equal(trade?.status, 'active');
 });
 
+test('deep-discount entry places SL at liquidity without the timeframe buffer', () => {
+  const sourceCandles: StructureCandle[] = [
+    { time: 0, open: 12, high: 13, low: 9, close: 10, complete: true },
+    { time: 60, open: 10, high: 14, low: 9.5, close: 13.5, complete: true },
+  ];
+  const trade = calculateTradeLevels({
+    sourceCandles,
+    executionCandles: [
+      ...sourceCandles,
+      { time: 120, open: 11, high: 12, low: 10.5, close: 11.5, complete: false },
+    ],
+    signal: bullishSignal,
+    rule: getDirectTradeRule('M1', 'M1')!,
+    omitStopBuffer: true,
+  });
+
+  assert.equal(trade?.stopLoss, 9);
+  assert.equal(trade?.riskPips, 20);
+  assert.equal(trade?.takeProfit, 17);
+});
+
+test('only the FIB source that produced the entry controls the deep-discount buffer rule', () => {
+  const zone = {
+    fibBand: '0.5-0.618',
+    swingFibBand: '0.71-0.79',
+    engulfingType: 'T1',
+    engulfingTime: 60,
+    swingEngulfingType: 'T2',
+    swingEngulfingTime: 120,
+  } as StructureZone;
+  assert.equal(isDeepDiscountTradeSignal(zone, bullishSignal), false);
+  assert.equal(isDeepDiscountTradeSignal(zone, {
+    ...bullishSignal,
+    type: 'T2',
+    time: 120,
+  }), true);
+});
+
 test('oversized setup creates a capped pending entry and becomes risk-free at 1R', () => {
   const sourceCandles: StructureCandle[] = [
     { time: 0, open: 12, high: 13, low: 9, close: 10, complete: true },
@@ -73,6 +112,31 @@ test('oversized setup creates a capped pending entry and becomes risk-free at 1R
   assert.equal(trade?.pendingAtCreation, true);
   assert.equal(trade?.filledAt, 180);
   assert.equal(trade?.status, 'risk-free');
+  assert.equal(trade?.result, undefined, 'reaching 1R alone is not a completed RF result');
+});
+
+test('completed outcomes classify SL, protected RF exit, and same-candle TP priority', () => {
+  const sourceCandles: StructureCandle[] = [
+    { time: 0, open: 12, high: 13, low: 9, close: 10, complete: true },
+    { time: 60, open: 10, high: 14, low: 9.5, close: 13.5, complete: true },
+  ];
+  const calculate = (futureCandles: StructureCandle[]) => calculateTradeLevels({
+    sourceCandles,
+    executionCandles: [...sourceCandles, ...futureCandles],
+    signal: bullishSignal,
+    rule: getDirectTradeRule('M1', 'M1')!,
+  });
+
+  assert.equal(calculate([
+    { time: 120, open: 11, high: 12, low: 7, close: 8, complete: true },
+  ])?.result, 'sl');
+  assert.equal(calculate([
+    { time: 120, open: 11, high: 15, low: 10, close: 14, complete: true },
+    { time: 180, open: 14, high: 14, low: 7, close: 8, complete: true },
+  ])?.result, 'rf');
+  assert.equal(calculate([
+    { time: 120, open: 11, high: 21, low: 7, close: 18, complete: true },
+  ])?.result, 'tp');
 });
 
 test('MTF entry uses the actual engulfing timeframe rule when the pair has no direct rule', () => {

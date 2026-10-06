@@ -7,6 +7,7 @@ import type {
 
 export type TradeTimeframe = 'M1' | 'M5' | 'M15' | 'M30' | 'H1' | 'H4' | 'D';
 export type TradeStatus = 'pending' | 'active' | 'risk-free' | 'tp-hit' | 'sl-hit';
+export type TradeResult = 'sl' | 'rf' | 'tp';
 
 export interface TradeRule {
   zoneTimeframe: TradeTimeframe;
@@ -35,6 +36,7 @@ export interface TradeLevels {
   pendingAtCreation: boolean;
   calculatedAt: number;
   filledAt?: number;
+  result?: TradeResult;
   signal: EngulfingTradeSignal;
 }
 
@@ -134,6 +136,27 @@ export function resolveZoneEngulfingSignal(
   return undefined;
 }
 
+function isDeepFibBand(band: StructureZone['fibBand'] | StructureZone['swingFibBand']
+  | StructureZone['dayFibBand']): boolean {
+  return band === '0.71-0.79' || band === 'deep';
+}
+
+export function isDeepDiscountTradeSignal(
+  zone: StructureZone,
+  signal: EngulfingTradeSignal,
+): boolean {
+  if (signal.time === zone.engulfingTime && signal.type === zone.engulfingType) {
+    return isDeepFibBand(zone.fibBand);
+  }
+  if (signal.time === zone.swingEngulfingTime && signal.type === zone.swingEngulfingType) {
+    return isDeepFibBand(zone.swingFibBand);
+  }
+  if (signal.time === zone.dayEngulfingTime && signal.type === zone.dayEngulfingType) {
+    return isDeepFibBand(zone.dayFibBand);
+  }
+  return isDeepFibBand(zone.fibBand);
+}
+
 function roundPips(value: number): number {
   return Math.round(value * 100) / 100;
 }
@@ -143,8 +166,9 @@ export function calculateTradeLevels(options: {
   executionCandles: StructureCandle[];
   signal: EngulfingTradeSignal;
   rule: TradeRule;
+  omitStopBuffer?: boolean;
 }): TradeLevels | undefined {
-  const { sourceCandles, executionCandles, signal, rule } = options;
+  const { sourceCandles, executionCandles, signal, rule, omitStopBuffer = false } = options;
   const signalIndex = sourceCandles.findIndex((candle) => candle.time === signal.time);
   if (signalIndex < 0) return undefined;
   const startIndex = signalIndex - signal.candleCount + 1;
@@ -156,7 +180,7 @@ export function calculateTradeLevels(options: {
   const liquidity = isBuy
     ? Math.min(...patternCandles.map((candle) => candle.low))
     : Math.max(...patternCandles.map((candle) => candle.high));
-  const buffer = rule.stopBufferPips * TRADE_PIP_SIZE;
+  const buffer = (omitStopBuffer ? 0 : rule.stopBufferPips) * TRADE_PIP_SIZE;
   const maximumRisk = rule.maximumRiskPips * TRADE_PIP_SIZE;
   const stopLoss = isBuy ? liquidity - buffer : liquidity + buffer;
   const confirmationClose = signal.time + TIMEFRAME_SECONDS[signal.timeframe];
@@ -176,6 +200,7 @@ export function calculateTradeLevels(options: {
   let filledAt = immediate ? entryCandle.time : undefined;
   let reachedRiskFree = false;
   let status: TradeStatus = immediate ? 'active' : 'pending';
+  let result: TradeResult | undefined;
 
   for (let index = entryIndex; index < executionCandles.length; index += 1) {
     const candle = executionCandles[index];
@@ -193,11 +218,13 @@ export function calculateTradeLevels(options: {
     if (tpHit) {
       status = 'tp-hit';
       reachedRiskFree = true;
+      result = 'tp';
       break;
     }
     reachedRiskFree = reachedRiskFree || riskFreeHit;
     if (slHit) {
       status = reachedRiskFree ? 'risk-free' : 'sl-hit';
+      result = reachedRiskFree ? 'rf' : 'sl';
       break;
     }
     if (reachedRiskFree) status = 'risk-free';
@@ -214,6 +241,7 @@ export function calculateTradeLevels(options: {
     pendingAtCreation: !immediate,
     calculatedAt: entryCandle.time,
     filledAt,
+    result,
     signal,
   };
 }

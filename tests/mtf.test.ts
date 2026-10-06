@@ -62,6 +62,7 @@ test('MTF row follows the selected LTF CHOCH and promotes only an A+ engulfing',
   assert.equal(row?.tapBarsAgo, 1);
   assert.equal(row?.engulfingType, 'T4');
   assert.equal(row?.engulfingBarsAgo, 0);
+  assert.equal(row?.engulfingDeepDiscount, false);
 });
 
 test('MTF prefers and identifies Major Liquidity when the mapped HTF DBD is tapped', () => {

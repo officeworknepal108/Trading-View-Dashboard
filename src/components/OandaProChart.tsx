@@ -38,9 +38,11 @@ import {
   formatTradeTimeframe,
   getDirectTradeRule,
   getMtfTradeRule,
+  isDeepDiscountTradeSignal,
   resolveZoneEngulfingSignal,
   type EngulfingTradeSignal,
   type TradeLevels,
+  type TradeResult,
   type TradeRule,
   type TradeTimeframe,
 } from '../services/tradeLevels';
@@ -121,6 +123,12 @@ interface TradeOverlay {
   trade: TradeLevels;
 }
 
+interface AccuracyTradeRecord {
+  id: string;
+  zoneName: string;
+  result: TradeResult;
+}
+
 const TIMEFRAMES: Array<{ value: OandaGranularity; label: string }> = [
   { value: 'M1', label: '1m' },
   { value: 'M5', label: '5m' },
@@ -132,6 +140,11 @@ const TIMEFRAMES: Array<{ value: OandaGranularity; label: string }> = [
 ];
 
 const TREND_TABLE_GRANULARITIES: OandaGranularity[] = ['M1', 'M5', 'M15', 'H1', 'H4', 'D'];
+
+const ACCURACY_ZONE_ROWS = [
+  'TJL1', 'TJL2', 'QML', 'QML(A+)', 'QML(A++)', 'SBR', 'RBS', 'DB', 'DT', 'DBD', 'DTD',
+  'Internal QML', 'Internal SBR', 'Internal RBS', 'ISS L3', 'ISS L4',
+];
 
 const TREND_TABLE_LABELS: Record<OandaGranularity, string> = {
   M1: '1 MIN', M5: '5 MIN', M15: '15 MIN', M30: '30 MIN', H1: '1 HOUR', H4: '4 HOUR', D: '1 DAY',
@@ -208,7 +221,7 @@ function tradeStatusLabel(trade: TradeLevels): string {
 }
 
 function isCompletedTrade(trade: TradeLevels | undefined): boolean {
-  return trade?.status === 'tp-hit' || trade?.status === 'sl-hit';
+  return trade?.result !== undefined;
 }
 
 const TradeDetailsRow: React.FC<{
@@ -501,6 +514,69 @@ const MultiTimeframeEntryTable: React.FC<{ rows: DisplayMtfRow[] }> = ({ rows })
   );
 };
 
+function accuracyCounts(records: AccuracyTradeRecord[]) {
+  return records.reduce((counts, record) => ({
+    sl: counts.sl + (record.result === 'sl' ? 1 : 0),
+    rf: counts.rf + (record.result === 'rf' ? 1 : 0),
+    tp: counts.tp + (record.result === 'tp' ? 1 : 0),
+  }), { sl: 0, rf: 0, tp: 0 });
+}
+
+const EngulfingAccuracyTable: React.FC<{
+  records: AccuracyTradeRecord[];
+  timeframe: OandaGranularity;
+}> = ({ records, timeframe }) => {
+  const timeframeCounts = accuracyCounts(records);
+  const extraZoneRows: string[] = Array.from(new Set<string>(
+    records.map((record) => record.zoneName),
+  ))
+    .filter((zoneName) => !ACCURACY_ZONE_ROWS.includes(zoneName));
+  const zoneRows = [...ACCURACY_ZONE_ROWS, ...extraZoneRows];
+  const resultRow = (title: string, counts: ReturnType<typeof accuracyCounts>) => {
+    const total = counts.sl + counts.rf + counts.tp;
+    const accuracy = total > 0 ? `${Math.round((counts.tp * 10_000) / total) / 100}%` : '—';
+    return (
+      <tr key={title} className="border-t border-slate-200 bg-white/95">
+        <td className="whitespace-nowrap px-1.5 py-0.5 text-left font-bold text-slate-700">{title}</td>
+        <td className="px-1.5 py-0.5 font-black text-rose-700">{counts.sl}</td>
+        <td className="px-1.5 py-0.5 font-black text-amber-600">{counts.rf}</td>
+        <td className="px-1.5 py-0.5 font-black text-emerald-700">{counts.tp}</td>
+        <td className="px-1.5 py-0.5 font-bold text-slate-700">{total}</td>
+        <td className="px-1.5 py-0.5 font-black text-indigo-700">{accuracy}</td>
+      </tr>
+    );
+  };
+  const header = (firstColumn: string) => (
+    <tr className="bg-slate-500 text-[8px] uppercase text-white">
+      <th className="whitespace-nowrap px-1.5 py-0.5 text-left">{firstColumn}</th>
+      <th className="px-1.5 py-0.5">SL</th>
+      <th className="px-1.5 py-0.5">RF</th>
+      <th className="px-1.5 py-0.5">TP</th>
+      <th className="px-1.5 py-0.5">Total</th>
+      <th className="whitespace-nowrap px-1.5 py-0.5">Accuracy%</th>
+    </tr>
+  );
+
+  return (
+    <div className="pointer-events-auto absolute left-3 top-1/2 z-20 -translate-y-1/2 overflow-hidden rounded-md border border-slate-300 bg-white/95 shadow-md">
+      <div className="border-b border-slate-300 bg-indigo-50 px-2 py-1 text-[9px] font-black uppercase tracking-wide text-indigo-700">
+        Engulfing accuracy
+      </div>
+      <table className="border-collapse text-center text-[9px]">
+        <thead>{header('Timeframe')}</thead>
+        <tbody>
+          {resultRow(GRANULARITY_LABELS[timeframe].toUpperCase(), timeframeCounts)}
+          {header('Zone type')}
+          {zoneRows.map((zoneName) => resultRow(
+            zoneName,
+            accuracyCounts(records.filter((record) => record.zoneName === zoneName)),
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+};
+
 export const OandaProChart: React.FC = () => {
   const hostRef = useRef<HTMLDivElement | null>(null);
   const chartRef = useRef<any>(null);
@@ -569,6 +645,7 @@ export const OandaProChart: React.FC = () => {
   const [showEngulfing, setShowEngulfing] = useState(true);
   const [showInvalidZones, setShowInvalidZones] = useState(false);
   const [showTradeLevels, setShowTradeLevels] = useState(true);
+  const [showAccuracyTable, setShowAccuracyTable] = useState(false);
   const [showIndicatorControls, setShowIndicatorControls] = useState(false);
   const [showZoneTable, setShowZoneTable] = useState(true);
   const [replayIndex, setReplayIndex] = useState<number | null>(null);
@@ -801,6 +878,7 @@ export const OandaProChart: React.FC = () => {
         executionCandles: displayCandles,
         signal: setup.signal,
         rule: setup.rule,
+        omitStopBuffer: isDeepDiscountTradeSignal(setup.zone, setup.signal),
       });
       if (trade) trades.set(setup.zone.id, trade);
     }
@@ -929,6 +1007,7 @@ export const OandaProChart: React.FC = () => {
             executionCandles: lowerTimeframeData.candles,
             signal,
             rule,
+            omitStopBuffer: row.engulfingDeepDiscount === true,
           });
         }
       }
@@ -943,6 +1022,39 @@ export const OandaProChart: React.FC = () => {
   },
     [activeMtfRows, granularity, tableTimeframeData],
   );
+
+  const accuracyTradeRecords = useMemo<AccuracyTradeRecord[]>(() => {
+    const records = new Map<string, AccuracyTradeRecord>();
+    const directSetups = new Map<string, TrackedDirectTradeSetup>();
+    for (const setup of trackedDirectTradeSetups.values()) {
+      if (setup.scope === tradeTrackingScope) directSetups.set(setup.zone.id, setup);
+    }
+    for (const setup of currentDirectTradeSetups.values()) {
+      directSetups.set(setup.zone.id, setup);
+    }
+    for (const [zoneId, trade] of directZoneTrades) {
+      const setup = directSetups.get(zoneId);
+      if (!trade.result || !setup) continue;
+      const id = `DIRECT:${zoneId}:${trade.calculatedAt}:${trade.entry}`;
+      records.set(id, { id, zoneName: setup.zone.name, result: trade.result });
+    }
+    for (const row of mtfRows) {
+      if (!row.trade?.result) continue;
+      const id = `MTF:${row.id}:${row.trade.calculatedAt}:${row.trade.entry}`;
+      records.set(id, {
+        id,
+        zoneName: row.tappedZone ?? row.higherTimeframeZone,
+        result: row.trade.result,
+      });
+    }
+    return Array.from(records.values());
+  }, [
+    currentDirectTradeSetups,
+    directZoneTrades,
+    mtfRows,
+    trackedDirectTradeSetups,
+    tradeTrackingScope,
+  ]);
 
   const tradeOverlays = useMemo<TradeOverlay[]>(() => {
     const overlays = new Map<string, TradeOverlay>();
@@ -2478,6 +2590,17 @@ export const OandaProChart: React.FC = () => {
               TRADE LEVELS {showTradeLevels ? 'ON' : 'OFF'}
             </button>
             <button
+              onClick={() => setShowAccuracyTable((value) => !value)}
+              className={`rounded-md border px-2 py-1 text-[10px] font-black transition ${
+                showAccuracyTable
+                  ? 'border-indigo-200 bg-indigo-50 text-indigo-700'
+                  : 'border-slate-200 bg-white text-slate-500'
+              }`}
+              title="Show or hide completed engulfing SL, RF, TP, total, and accuracy results"
+            >
+              ACCURACY TABLE {showAccuracyTable ? 'ON' : 'OFF'}
+            </button>
+            <button
               onClick={() => setShowInvalidZones((value) => !value)}
               className={`rounded-md border px-2 py-1 text-[10px] font-black transition ${
                 showInvalidZones
@@ -2836,6 +2959,9 @@ export const OandaProChart: React.FC = () => {
             </table>
             </>}
           </div>
+          {showAccuracyTable && (
+            <EngulfingAccuracyTable records={accuracyTradeRecords} timeframe={granularity} />
+          )}
           <MultiTimeframeEntryTable rows={mtfRows} />
           <AiTradeAssistant context={chartAgentContext} />
           <MultiTimeframeTrendTable rows={trendTableRows} replayActive={replayIndex !== null} />
