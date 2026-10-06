@@ -3,8 +3,8 @@
 A React candlestick dashboard that requests `OANDA:XAUUSD` candles through
 TradingView's unofficial WebSocket protocol. It overlays MG market structure,
 TJL/QML zones, higher-timeframe TJL1 confirmation, supply/demand, ISS five-wave
-structure, and bar replay. It does not place trades or substitute synthetic or
-Binance candles.
+structure, bar replay, and an optional local MetaTrader 5 execution bridge. MT5
+automation is disabled and in Dry Run mode by default.
 
 ## Setup
 
@@ -54,6 +54,34 @@ as TP divided by all resolved outcomes. Its statistics use a rolling window of
 the 50 most recently completed direct-engulfing and MTF trades, reconstructed
 from the loaded candle history. Historical reconstruction runs only while the
 table is enabled so the normal chart remains responsive.
+
+## Optional MT5 automatic execution
+
+The dashboard can queue fresh, confirmed XAUUSD trades for a local MT5 terminal.
+It monitors the implemented direct rules for 1m, 5m, 15m and 1H zones (including
+their mapped 5m, 15m and 30m confirmations) plus the existing MTF mappings.
+Replay trades, completed trades and signals older
+than the configured freshness limit are never queued. Signals with identical
+direction, engulfing time and trade levels are deduplicated; overlapping zones
+are retained as confluence instead of opening duplicate positions.
+The server refreshes one timeframe at a time in the background, so monitoring
+continues when the browser is closed without bursting requests at TradingView.
+
+1. Use an Exness demo account first and enable AutoTrading in MT5.
+2. Install the bridge packages: `py -m pip install MetaTrader5 requests python-dotenv`.
+3. Copy `.env.mt5.example` to `.env.mt5` and configure the terminal path/account.
+4. Set the same long random `MT5_BRIDGE_TOKEN` in `.env` and `.env.mt5`.
+5. Start the dashboard, then run `py mt5_bridge.py` in a second terminal.
+6. Open the **MT5** menu in the dashboard and enable the queue. Keep Dry Run ON
+   until the full signal flow is verified.
+7. For demo order placement, set `MT5_ALLOW_LIVE_EXECUTION=YES` in `.env.mt5`,
+   restart the bridge, and turn Dry Run OFF in the dashboard.
+
+The bridge calculates volume with MT5's broker-reported tick value, respects
+the broker volume step, rejects excessive spread/daily loss/open exposure,
+places LIMIT orders for pending entries, and moves SL to the actual fill price
+when the configured risk-free level is reached. Runtime signals, settings,
+credentials and bridge state remain local and are excluded from Git.
 
 ## Current checkpoint
 

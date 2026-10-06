@@ -5,6 +5,29 @@ import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { createServer as createViteServer } from 'vite';
 import { fetchTradingViewCandles } from './src/services/tradingViewDatafeed';
 import {
+  isExecutableTrade,
+  tradeToMt5Signal,
+  Mt5AutomationConfig,
+  type Mt5SignalInput,
+  Mt5SignalStatus,
+  Mt5StoredSignal,
+} from './src/services/mt5Automation';
+import {
+  analyzeMarketStructure,
+  applyTradeableZoneEngulfingFallback,
+  type StructureCandle,
+} from './src/services/marketStructure';
+import { buildMtfRows, type MtfGranularity, type MtfTimeframeData } from './src/services/mtf';
+import {
+  calculateTradeLevels,
+  getDirectTradeRule,
+  getMtfTradeRule,
+  isDeepDiscountTradeSignal,
+  resolveZoneEngulfingSignal,
+  type EngulfingTradeSignal,
+  type TradeTimeframe,
+} from './src/services/tradeLevels';
+import {
   getInstantProjectAnswer,
   readAgentMemory,
   retrieveProjectKnowledge,
@@ -14,6 +37,323 @@ import {
 
 const GRANULARITIES = new Set(['M1', 'M5', 'M15', 'M30', 'H1', 'H4', 'D', 'W', 'MO']);
 const JOURNAL_FILE = path.resolve(process.cwd(), 'data', 'trade-journal.json');
+const MT5_SIGNALS_FILE = path.resolve(process.cwd(), 'data', 'mt5-signals.json');
+const MT5_CONFIG_FILE = path.resolve(process.cwd(), 'data', 'mt5-automation.json');
+const MT5_TERMINAL_STATUSES = new Set<Mt5SignalStatus>([
+  'TP', 'SL', 'RF', 'CANCELLED', 'REJECTED', 'EXPIRED', 'SIMULATED',
+]);
+
+const DEFAULT_MT5_CONFIG: Mt5AutomationConfig = {
+  enabled: false,
+  dryRun: true,
+  symbol: 'XAUUSD',
+  brokerSymbol: 'XAUUSDm',
+  riskPercent: 0.25,
+  maximumOpenTrades: 1,
+  maximumDailyLossPercent: 1,
+  maximumSpreadPoints: 80,
+  signalMaxAgeSeconds: 120,
+  pendingExpiryMinutes: 240,
+  moveStopToBreakEvenAtR: 1,
+};
+
+const AUTOMATION_TIMEFRAMES: TradeTimeframe[] = ['M1', 'M5', 'M15', 'M30', 'H1', 'H4', 'D'];
+const AUTOMATION_DIRECT_TIMEFRAMES: TradeTimeframe[] = ['M1', 'M5', 'M15', 'H1'];
+const AUTOMATION_FALLBACKS: Partial<Record<TradeTimeframe, TradeTimeframe[]>> = {
+  M1: ['M5'], M5: ['M15'], M15: ['M30'], H1: ['M15', 'M30'],
+};
+const AUTOMATION_VIP_SUPPORT: Partial<Record<TradeTimeframe, TradeTimeframe[]>> = {
+  M1: ['M5', 'M15'], M5: ['M15', 'H1'], M15: ['H1', 'H4'], M30: ['H1', 'H4'],
+  H1: ['H4', 'D'],
+};
+const AUTOMATION_SECONDS: Record<TradeTimeframe, number> = {
+  M1: 60, M5: 300, M15: 900, M30: 1800, H1: 3600, H4: 14400, D: 86400,
+};
+const AUTOMATION_CONFIRMATION_SECONDS: Partial<Record<TradeTimeframe, number>> = {
+  M1: 300, M5: 900, M15: 3600, M30: 3600, H1: 14400, H4: 86400, D: 604800,
+};
+
+interface Mt5BridgeHeartbeat {
+  bridgeId: string;
+  account?: string;
+  server?: string;
+  brokerSymbol?: string;
+  message?: string;
+  lastHeartbeatAt: number;
+}
+
+let mt5BridgeHeartbeat: Mt5BridgeHeartbeat | undefined;
+let mt5MutationQueue: Promise<unknown> = Promise.resolve();
+const automationCandleCache: Partial<Record<TradeTimeframe, StructureCandle[]>> = {};
+let automationNextTimeframeIndex = 0;
+
+function serializeMt5Mutation<T>(operation: () => Promise<T>): Promise<T> {
+  const queued = mt5MutationQueue.then(operation, operation);
+  mt5MutationQueue = queued.then(() => undefined, () => undefined);
+  return queued;
+}
+
+async function readMt5Signals(): Promise<Mt5StoredSignal[]> {
+  try {
+    const content = await readFile(MT5_SIGNALS_FILE, 'utf8');
+    const parsed = JSON.parse(content);
+    return Array.isArray(parsed?.signals) ? parsed.signals : [];
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return [];
+    throw error;
+  }
+}
+
+async function writeMt5Signals(signals: Mt5StoredSignal[]): Promise<void> {
+  await mkdir(path.dirname(MT5_SIGNALS_FILE), { recursive: true });
+  await writeFile(MT5_SIGNALS_FILE, `${JSON.stringify({ signals }, null, 2)}\n`, 'utf8');
+}
+
+async function readMt5Config(): Promise<Mt5AutomationConfig> {
+  try {
+    const content = await readFile(MT5_CONFIG_FILE, 'utf8');
+    return { ...DEFAULT_MT5_CONFIG, ...JSON.parse(content) };
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return DEFAULT_MT5_CONFIG;
+    throw error;
+  }
+}
+
+async function writeMt5Config(config: Mt5AutomationConfig): Promise<void> {
+  await mkdir(path.dirname(MT5_CONFIG_FILE), { recursive: true });
+  await writeFile(MT5_CONFIG_FILE, `${JSON.stringify(config, null, 2)}\n`, 'utf8');
+}
+
+function isLoopbackRequest(req: express.Request): boolean {
+  return req.ip === '127.0.0.1' || req.ip === '::1' || req.ip === '::ffff:127.0.0.1';
+}
+
+function mt5BridgeAuthorized(req: express.Request): boolean {
+  const expected = process.env.MT5_BRIDGE_TOKEN?.trim();
+  if (!expected) return isLoopbackRequest(req);
+  return req.get('authorization') === `Bearer ${expected}`;
+}
+
+function validFinitePrice(value: unknown): value is number {
+  return typeof value === 'number' && Number.isFinite(value) && value > 0;
+}
+
+function validateMt5Signal(candidate: any): string | undefined {
+  if (!candidate || typeof candidate !== 'object') return 'A signal object is required.';
+  if (typeof candidate.id !== 'string' || !candidate.id.trim() || candidate.id.length > 500) return 'Invalid signal ID.';
+  if (candidate.symbol !== 'XAUUSD') return 'Only XAUUSD is supported.';
+  if (!['BUY', 'SELL'].includes(candidate.direction)) return 'Invalid direction.';
+  if (!['MARKET', 'LIMIT'].includes(candidate.orderType)) return 'Invalid order type.';
+  if (!['ENGULFING', 'MTF'].includes(candidate.source)) return 'Invalid signal source.';
+  if (!validFinitePrice(candidate.entry) || !validFinitePrice(candidate.stopLoss)
+    || !validFinitePrice(candidate.takeProfit) || !validFinitePrice(candidate.riskFree)) {
+    return 'Entry, SL, TP and risk-free prices must be positive numbers.';
+  }
+  if (candidate.direction === 'BUY'
+    && !(candidate.stopLoss < candidate.entry && candidate.takeProfit > candidate.entry)) {
+    return 'BUY signal levels are not correctly ordered.';
+  }
+  if (candidate.direction === 'SELL'
+    && !(candidate.takeProfit < candidate.entry && candidate.stopLoss > candidate.entry)) {
+    return 'SELL signal levels are not correctly ordered.';
+  }
+  if (!Number.isFinite(candidate.signalAt) || !Number.isFinite(candidate.calculatedAt)
+    || !Number.isFinite(candidate.expiresAt)) return 'Invalid signal timestamps.';
+  return undefined;
+}
+
+function sanitizeMt5Config(candidate: any, current: Mt5AutomationConfig): Mt5AutomationConfig {
+  const clamp = (value: unknown, fallback: number, minimum: number, maximum: number) => {
+    const numeric = Number(value);
+    return Number.isFinite(numeric) ? Math.max(minimum, Math.min(maximum, numeric)) : fallback;
+  };
+  return {
+    ...current,
+    enabled: candidate?.enabled === true,
+    dryRun: candidate?.dryRun !== false,
+    brokerSymbol: typeof candidate?.brokerSymbol === 'string'
+      ? candidate.brokerSymbol.trim().slice(0, 30) || current.brokerSymbol
+      : current.brokerSymbol,
+    riskPercent: clamp(candidate?.riskPercent, current.riskPercent, 0.01, 2),
+    maximumOpenTrades: Math.round(clamp(candidate?.maximumOpenTrades, current.maximumOpenTrades, 1, 10)),
+    maximumDailyLossPercent: clamp(candidate?.maximumDailyLossPercent, current.maximumDailyLossPercent, 0.1, 10),
+    maximumSpreadPoints: Math.round(clamp(candidate?.maximumSpreadPoints, current.maximumSpreadPoints, 1, 1000)),
+    signalMaxAgeSeconds: Math.round(clamp(candidate?.signalMaxAgeSeconds, current.signalMaxAgeSeconds, 15, 3600)),
+    pendingExpiryMinutes: Math.round(clamp(candidate?.pendingExpiryMinutes, current.pendingExpiryMinutes, 1, 1440)),
+    moveStopToBreakEvenAtR: clamp(candidate?.moveStopToBreakEvenAtR, current.moveStopToBreakEvenAtR, 0.5, 5),
+  };
+}
+
+async function enqueueMt5Signal(
+  candidate: Mt5SignalInput,
+  config: Mt5AutomationConfig,
+): Promise<{ signal: Mt5StoredSignal; duplicate: boolean }> {
+  const error = validateMt5Signal(candidate);
+  if (error) throw new Error(error);
+  const now = Math.floor(Date.now() / 1000);
+  if (candidate.calculatedAt < now - config.signalMaxAgeSeconds) {
+    throw new Error('Signal is too old for automatic execution.');
+  }
+  return serializeMt5Mutation(async () => {
+    const signals = await readMt5Signals();
+    const existing = signals.find((signal) => signal.id === candidate.id);
+    if (existing) {
+      const zones = new Set([existing.zoneName, ...(existing.confluenceZones ?? []), candidate.zoneName,
+        ...(candidate.confluenceZones ?? [])]);
+      existing.confluenceZones = Array.from(zones).filter(Boolean).slice(0, 20);
+      existing.updatedAt = now;
+      await writeMt5Signals(signals);
+      return { signal: existing, duplicate: true };
+    }
+    const signal: Mt5StoredSignal = {
+      ...candidate,
+      id: candidate.id.trim(),
+      zoneName: String(candidate.zoneName || 'Unknown').slice(0, 100),
+      engulfingType: String(candidate.engulfingType || '').slice(0, 30),
+      confluenceZones: candidate.confluenceZones?.map(String).slice(0, 20),
+      status: 'QUEUED',
+      createdAt: now,
+      updatedAt: now,
+    };
+    signals.push(signal);
+    await writeMt5Signals(signals.slice(-5_000));
+    return { signal, duplicate: false };
+  });
+}
+
+function analyzeAutomationTimeframe(
+  timeframe: TradeTimeframe,
+  candles: StructureCandle[],
+  rawStructures: Partial<Record<TradeTimeframe, ReturnType<typeof analyzeMarketStructure>>>,
+) {
+  const vipSupport = (AUTOMATION_VIP_SUPPORT[timeframe] ?? []).flatMap((supportTimeframe) => {
+    const structure = rawStructures[supportTimeframe];
+    return structure ? [{ timeframe: supportTimeframe, zones: structure.zones }] : [];
+  });
+  return analyzeMarketStructure(candles, {
+    allowSupplyDemand: ['H1', 'H4', 'D'].includes(timeframe),
+    sourceBarSeconds: AUTOMATION_SECONDS[timeframe],
+    confirmationBarSeconds: AUTOMATION_CONFIRMATION_SECONDS[timeframe],
+    zoneVisualBars: 30,
+    vipSupport,
+  });
+}
+
+async function scanMt5AutomationSignals(): Promise<number> {
+  const config = await readMt5Config();
+  if (!config.enabled) return 0;
+  const refreshTimeframe = AUTOMATION_TIMEFRAMES[automationNextTimeframeIndex];
+  automationNextTimeframeIndex = (automationNextTimeframeIndex + 1) % AUTOMATION_TIMEFRAMES.length;
+  automationCandleCache[refreshTimeframe] = await fetchTradingViewCandles({
+    exchange: 'OANDA', symbol: 'XAUUSD', granularity: refreshTimeframe, count: 1500,
+  });
+  if (AUTOMATION_TIMEFRAMES.some((timeframe) => !automationCandleCache[timeframe]?.length)) return 0;
+  const candles = automationCandleCache as Record<TradeTimeframe, StructureCandle[]>;
+  const rawStructures: Partial<Record<TradeTimeframe, ReturnType<typeof analyzeMarketStructure>>> = {};
+  for (const timeframe of AUTOMATION_TIMEFRAMES) {
+    rawStructures[timeframe] = analyzeMarketStructure(candles[timeframe], {
+      allowSupplyDemand: ['H1', 'H4', 'D'].includes(timeframe),
+      sourceBarSeconds: AUTOMATION_SECONDS[timeframe],
+      confirmationBarSeconds: AUTOMATION_CONFIRMATION_SECONDS[timeframe],
+      zoneVisualBars: 30,
+    });
+  }
+  const structures: Partial<Record<TradeTimeframe, ReturnType<typeof analyzeMarketStructure>>> = {};
+  for (const timeframe of AUTOMATION_TIMEFRAMES) {
+    structures[timeframe] = analyzeAutomationTimeframe(timeframe, candles[timeframe], rawStructures);
+  }
+  const candidates: Mt5SignalInput[] = [];
+  const now = Math.floor(Date.now() / 1000);
+
+  for (const zoneTimeframe of AUTOMATION_DIRECT_TIMEFRAMES) {
+    const sourceCandles = candles[zoneTimeframe];
+    const latest = sourceCandles[sourceCandles.length - 1];
+    if (!latest) continue;
+    const cutoff = latest.time + (latest.complete === false ? 0 : AUTOMATION_SECONDS[zoneTimeframe]);
+    let zones = (structures[zoneTimeframe]?.zones ?? []).map((zone) => ({ ...zone }));
+    for (const fallbackTimeframe of AUTOMATION_FALLBACKS[zoneTimeframe] ?? []) {
+      const fallbackCandles = candles[fallbackTimeframe].filter((candle) => (
+        candle.complete !== false && candle.time + AUTOMATION_SECONDS[fallbackTimeframe] <= cutoff
+      ));
+      zones = applyTradeableZoneEngulfingFallback(
+        fallbackCandles,
+        zones,
+        fallbackTimeframe,
+        zoneTimeframe === 'H1',
+      );
+    }
+    for (const zone of zones) {
+      if (!zone.active || zone.status !== 'valid' || zone.tradeable === false) continue;
+      const signal = resolveZoneEngulfingSignal(zone, zoneTimeframe);
+      if (!signal) continue;
+      const rule = getDirectTradeRule(zoneTimeframe, signal.timeframe);
+      if (!rule) continue;
+      const executionCandles = AUTOMATION_SECONDS[signal.timeframe] < AUTOMATION_SECONDS[zoneTimeframe]
+        ? candles[signal.timeframe]
+        : sourceCandles;
+      const trade = calculateTradeLevels({
+        sourceCandles: candles[signal.timeframe],
+        executionCandles,
+        signal,
+        rule,
+        omitStopBuffer: isDeepDiscountTradeSignal(zone, signal),
+      });
+      if (!trade || !isExecutableTrade(trade)) continue;
+      candidates.push(tradeToMt5Signal({
+        source: 'ENGULFING', zoneName: zone.name, zoneTimeframe, trade, now,
+        pendingExpiryMinutes: config.pendingExpiryMinutes,
+      }));
+    }
+  }
+
+  const mtfData: Partial<Record<MtfGranularity, MtfTimeframeData>> = {};
+  for (const timeframe of ['M1', 'M5', 'M15', 'H1', 'H4', 'D'] as MtfGranularity[]) {
+    const structure = structures[timeframe];
+    if (structure) mtfData[timeframe] = { candles: candles[timeframe], structure };
+  }
+  for (const row of buildMtfRows(mtfData)) {
+    if (!row.engulfingType || row.engulfingTime === undefined) continue;
+    const rule = getMtfTradeRule(row.higherTimeframe, row.lowerTimeframe);
+    if (!rule) continue;
+    const signal: EngulfingTradeSignal = {
+      type: row.engulfingType,
+      direction: row.direction,
+      time: row.engulfingTime,
+      candleCount: row.engulfingCandleCount ?? 2,
+      timeframe: row.lowerTimeframe,
+    };
+    const trade = calculateTradeLevels({
+      sourceCandles: candles[row.lowerTimeframe],
+      executionCandles: candles[row.lowerTimeframe],
+      signal,
+      rule,
+      omitStopBuffer: row.engulfingDeepDiscount === true,
+    });
+    if (!trade || !isExecutableTrade(trade)) continue;
+    candidates.push(tradeToMt5Signal({
+      source: 'MTF', zoneName: row.tappedZone ?? row.higherTimeframeZone,
+      zoneTimeframe: row.higherTimeframe, trade, now,
+      pendingExpiryMinutes: config.pendingExpiryMinutes,
+    }));
+  }
+
+  const grouped = new Map<string, Mt5SignalInput>();
+  for (const candidate of candidates) {
+    if (candidate.calculatedAt < now - config.signalMaxAgeSeconds) continue;
+    const existing = grouped.get(candidate.id);
+    if (existing) {
+      existing.confluenceZones = Array.from(new Set([
+        existing.zoneName, ...(existing.confluenceZones ?? []), candidate.zoneName,
+      ]));
+    } else grouped.set(candidate.id, candidate);
+  }
+  let queued = 0;
+  for (const candidate of grouped.values()) {
+    const result = await enqueueMt5Signal(candidate, config);
+    if (!result.duplicate) queued += 1;
+  }
+  return queued;
+}
 
 interface StoredJournalTrade {
   id: string;
@@ -60,6 +400,143 @@ async function startServer() {
       unofficial: true,
       fallbackEnabled: false,
     });
+  });
+
+  app.get('/api/mt5/status', async (_req, res) => {
+    try {
+      const [config, signals] = await Promise.all([readMt5Config(), readMt5Signals()]);
+      const counts = signals.reduce<Record<string, number>>((summary, signal) => {
+        summary[signal.status] = (summary[signal.status] ?? 0) + 1;
+        return summary;
+      }, {});
+      const heartbeatAge = mt5BridgeHeartbeat
+        ? Date.now() - mt5BridgeHeartbeat.lastHeartbeatAt
+        : Number.POSITIVE_INFINITY;
+      return res.json({
+        ok: true,
+        config,
+        bridge: {
+          ...(mt5BridgeHeartbeat ?? {}),
+          connected: heartbeatAge < 15_000,
+        },
+        counts,
+        recentSignals: signals.slice(-25).reverse(),
+      });
+    } catch (error) {
+      return res.status(500).json({ ok: false, error: error instanceof Error ? error.message : 'Unable to read MT5 status.' });
+    }
+  });
+
+  app.put('/api/mt5/config', async (req, res) => {
+    if (!isLoopbackRequest(req)) return res.status(403).json({ ok: false, error: 'MT5 settings are local-only.' });
+    try {
+      const current = await readMt5Config();
+      const config = sanitizeMt5Config(req.body, current);
+      await writeMt5Config(config);
+      return res.json({ ok: true, config });
+    } catch (error) {
+      return res.status(500).json({ ok: false, error: error instanceof Error ? error.message : 'Unable to save MT5 settings.' });
+    }
+  });
+
+  app.post('/api/mt5/signals', async (req, res) => {
+    if (!isLoopbackRequest(req)) return res.status(403).json({ ok: false, error: 'MT5 signals are local-only.' });
+    try {
+      const error = validateMt5Signal(req.body);
+      if (error) return res.status(400).json({ ok: false, error });
+      const now = Math.floor(Date.now() / 1000);
+      const config = await readMt5Config();
+      if (!config.enabled) return res.status(409).json({ ok: false, error: 'MT5 automation is disabled.' });
+      if (req.body.calculatedAt < now - config.signalMaxAgeSeconds) {
+        return res.status(409).json({ ok: false, error: 'Signal is too old for automatic execution.' });
+      }
+      const result = await enqueueMt5Signal(req.body as Mt5SignalInput, config);
+      return res.status(result.duplicate ? 200 : 201).json({ ok: true, ...result });
+    } catch (error) {
+      return res.status(500).json({ ok: false, error: error instanceof Error ? error.message : 'Unable to queue MT5 signal.' });
+    }
+  });
+
+  app.post('/api/mt5/heartbeat', (req, res) => {
+    if (!mt5BridgeAuthorized(req)) return res.status(401).json({ ok: false, error: 'Bridge authorization failed.' });
+    const bridgeId = typeof req.body?.bridgeId === 'string' ? req.body.bridgeId.trim().slice(0, 100) : '';
+    if (!bridgeId) return res.status(400).json({ ok: false, error: 'Bridge ID is required.' });
+    mt5BridgeHeartbeat = {
+      bridgeId,
+      account: String(req.body?.account ?? '').slice(0, 40) || undefined,
+      server: String(req.body?.server ?? '').slice(0, 80) || undefined,
+      brokerSymbol: String(req.body?.brokerSymbol ?? '').slice(0, 30) || undefined,
+      message: String(req.body?.message ?? '').slice(0, 300) || undefined,
+      lastHeartbeatAt: Date.now(),
+    };
+    return res.json({ ok: true, serverTime: Date.now() });
+  });
+
+  app.post('/api/mt5/signals/claim', async (req, res) => {
+    if (!mt5BridgeAuthorized(req)) return res.status(401).json({ ok: false, error: 'Bridge authorization failed.' });
+    try {
+      const bridgeId = typeof req.body?.bridgeId === 'string' ? req.body.bridgeId.trim().slice(0, 100) : '';
+      if (!bridgeId) return res.status(400).json({ ok: false, error: 'Bridge ID is required.' });
+      const config = await readMt5Config();
+      if (!config.enabled) return res.json({ ok: true, signal: null, config });
+      const now = Math.floor(Date.now() / 1000);
+      const signal = await serializeMt5Mutation(async () => {
+        const signals = await readMt5Signals();
+        for (const item of signals) {
+          if (item.status === 'CLAIMED' && item.claimedAt && item.claimedAt < now - 30) {
+            item.status = 'QUEUED';
+            item.bridgeId = undefined;
+          }
+          if (!MT5_TERMINAL_STATUSES.has(item.status) && item.expiresAt <= now) {
+            item.status = 'EXPIRED';
+            item.updatedAt = now;
+            item.message = 'Signal expired before execution.';
+          }
+        }
+        const next = signals.find((item) => item.status === 'QUEUED');
+        if (next) {
+          next.status = 'CLAIMED';
+          next.claimedAt = now;
+          next.updatedAt = now;
+          next.bridgeId = bridgeId;
+        }
+        await writeMt5Signals(signals);
+        return next ?? null;
+      });
+      return res.json({ ok: true, signal, config });
+    } catch (error) {
+      return res.status(500).json({ ok: false, error: error instanceof Error ? error.message : 'Unable to claim MT5 signal.' });
+    }
+  });
+
+  app.post('/api/mt5/signals/:id/status', async (req, res) => {
+    if (!mt5BridgeAuthorized(req)) return res.status(401).json({ ok: false, error: 'Bridge authorization failed.' });
+    const allowed = new Set<Mt5SignalStatus>([
+      'QUEUED', 'PLACED', 'ACTIVE', 'RISK_FREE', 'TP', 'SL', 'RF', 'CANCELLED', 'REJECTED', 'SIMULATED',
+    ]);
+    const status = req.body?.status as Mt5SignalStatus;
+    if (!allowed.has(status)) return res.status(400).json({ ok: false, error: 'Invalid MT5 signal status.' });
+    try {
+      const updated = await serializeMt5Mutation(async () => {
+        const signals = await readMt5Signals();
+        const signal = signals.find((item) => item.id === req.params.id);
+        if (!signal) return undefined;
+        signal.status = status;
+        signal.updatedAt = Math.floor(Date.now() / 1000);
+        for (const field of ['brokerTicket', 'brokerPosition', 'executionPrice', 'volume'] as const) {
+          const value = Number(req.body?.[field]);
+          if (Number.isFinite(value)) signal[field] = value;
+        }
+        if (typeof req.body?.message === 'string') signal.message = req.body.message.slice(0, 500);
+        await writeMt5Signals(signals);
+        return signal;
+      });
+      return updated
+        ? res.json({ ok: true, signal: updated })
+        : res.status(404).json({ ok: false, error: 'Signal not found.' });
+    } catch (error) {
+      return res.status(500).json({ ok: false, error: error instanceof Error ? error.message : 'Unable to update MT5 signal.' });
+    }
   });
 
   app.get('/api/journal/trades', async (_req, res) => {
@@ -334,6 +811,23 @@ async function startServer() {
   app.listen(port, '0.0.0.0', () => {
     console.log(`TradingView OANDA Candle Dashboard running on http://localhost:${port}`);
   });
+
+  let automationScanRunning = false;
+  const runAutomationScan = async () => {
+    if (automationScanRunning) return;
+    automationScanRunning = true;
+    try {
+      const queued = await scanMt5AutomationSignals();
+      if (queued > 0) console.log(`MT5 automation queued ${queued} fresh signal${queued === 1 ? '' : 's'}.`);
+    } catch (error) {
+      console.error('MT5 automation scan failed:', error instanceof Error ? error.message : error);
+    } finally {
+      automationScanRunning = false;
+    }
+  };
+  const scanTimer = setInterval(() => void runAutomationScan(), 5_000);
+  scanTimer.unref();
+  setTimeout(() => void runAutomationScan(), 2_000).unref();
 }
 
 void startServer();

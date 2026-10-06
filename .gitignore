@@ -6,6 +6,7 @@ coverage/
 *.log
 .env*
 !.env.example
+!.env.mt5.example
 
 # Local Netlify folder
 .netlify
@@ -13,3 +14,8 @@ coverage/
 # User-approved AI corrections and trade journal (local runtime data)
 data/ai-agent-memory.json
 data/trade-journal.json
+data/mt5-signals.json
+data/mt5-automation.json
+.env.mt5
+.mt5_bridge_state.json
+__pycache__/
