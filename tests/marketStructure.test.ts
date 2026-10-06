@@ -375,6 +375,32 @@ test('tradeable-zone fallback uses 30m engulfing only when the chart timeframe h
   }], '30M');
   assert.equal(nativeWins.engulfingType, 'T2');
   assert.equal(nativeWins.fallbackEngulfingType, undefined);
+
+  const [lowerTimeframePreferred] = applyTradeableZoneEngulfingFallback(thirtyMinuteCandles, [{
+    ...buyZone,
+    engulfingType: 'T2',
+    engulfingDirection: 'bullish',
+    engulfingTime: 2700,
+  }], 'M15', true);
+  assert.equal(lowerTimeframePreferred.fallbackEngulfingType, 'T1');
+  assert.equal(lowerTimeframePreferred.fallbackEngulfingTimeframe, 'M15');
+
+  const [firstFallbackWins] = applyTradeableZoneEngulfingFallback(
+    thirtyMinuteCandles,
+    [lowerTimeframePreferred],
+    'M30',
+    true,
+  );
+  assert.equal(firstFallbackWins.fallbackEngulfingTimeframe, 'M15');
+
+  const [secondFallbackUsed] = applyTradeableZoneEngulfingFallback([], [buyZone], 'M15', true);
+  const [thirtyMinuteUsed] = applyTradeableZoneEngulfingFallback(
+    thirtyMinuteCandles,
+    [secondFallbackUsed],
+    'M30',
+    true,
+  );
+  assert.equal(thirtyMinuteUsed.fallbackEngulfingTimeframe, 'M30');
   assert.equal(
     findTradeableZoneEngulfingPattern(thirtyMinuteCandles, { ...buyZone, tradeable: false }),
     undefined,

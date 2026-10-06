@@ -717,19 +717,23 @@ export function applyTradeableZoneEngulfingFallback(
   candles: StructureCandle[],
   zones: StructureZone[],
   timeframe: string,
+  allowWithChartTimeframeEngulfing = false,
 ): StructureZone[] {
   return zones.map((sourceZone) => {
     const zone = { ...sourceZone };
-    zone.fallbackEngulfingType = undefined;
-    zone.fallbackEngulfingDirection = undefined;
-    zone.fallbackEngulfingTime = undefined;
-    zone.fallbackEngulfingCandleCount = undefined;
-    zone.fallbackEngulfingTimeframe = undefined;
-
     const hasChartTimeframeEngulfing = zone.engulfingType !== undefined
       || zone.swingEngulfingType !== undefined
       || zone.dayEngulfingType !== undefined;
-    if (hasChartTimeframeEngulfing) return zone;
+    if (hasChartTimeframeEngulfing && !allowWithChartTimeframeEngulfing) {
+      zone.fallbackEngulfingType = undefined;
+      zone.fallbackEngulfingDirection = undefined;
+      zone.fallbackEngulfingTime = undefined;
+      zone.fallbackEngulfingCandleCount = undefined;
+      zone.fallbackEngulfingTimeframe = undefined;
+      return zone;
+    }
+    // Preserve a result from an earlier, higher-priority fallback timeframe.
+    if (zone.fallbackEngulfingType !== undefined) return zone;
 
     const pattern = findTradeableZoneEngulfingPattern(candles, zone);
     if (!pattern) return zone;

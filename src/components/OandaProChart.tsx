@@ -193,10 +193,11 @@ const VIP_SUPPORT_GRANULARITIES: Record<OandaGranularity, MarketGranularity[]> =
   D: ['W', 'MO'],
 };
 
-const DIRECT_ENGULFING_FALLBACK: Partial<Record<OandaGranularity, OandaGranularity>> = {
-  M1: 'M5',
-  M5: 'M15',
-  M15: 'M30',
+const DIRECT_ENGULFING_FALLBACKS: Partial<Record<OandaGranularity, OandaGranularity[]>> = {
+  M1: ['M5'],
+  M5: ['M15'],
+  M15: ['M30'],
+  H1: ['M15', 'M30'],
 };
 
 const GRANULARITY_LABELS: Record<MarketGranularity, string> = {
@@ -835,9 +836,7 @@ export const OandaProChart: React.FC = () => {
     ...mtfLowerGranularities,
     ...vipSupportGranularities,
     ...TREND_TABLE_GRANULARITIES,
-    ...(DIRECT_ENGULFING_FALLBACK[granularity]
-      ? [DIRECT_ENGULFING_FALLBACK[granularity] as OandaGranularity]
-      : []),
+    ...(DIRECT_ENGULFING_FALLBACKS[granularity] ?? []),
   ])).filter((value) => value !== granularity), [
     granularity,
     mtfLowerGranularities,
@@ -928,20 +927,23 @@ export const OandaProChart: React.FC = () => {
       : undefined,
   ), [dayFibMoves, displayCandles, granularity, swingFibConfluence.zones]);
   const displayZones = useMemo(() => {
-    const fallbackGranularity = DIRECT_ENGULFING_FALLBACK[granularity];
-    if (!fallbackGranularity) return dayFibConfluence.zones;
+    const fallbackGranularities = DIRECT_ENGULFING_FALLBACKS[granularity] ?? [];
+    if (fallbackGranularities.length === 0) return dayFibConfluence.zones;
     const latestChartCandle = displayCandles[displayCandles.length - 1];
     if (!latestChartCandle) return dayFibConfluence.zones;
     const cutoff = latestChartCandle.time
       + (latestChartCandle.complete ? TIMEFRAME_SECONDS[granularity] : 0);
-    const fallbackCandles = (vipCandles[fallbackGranularity] || []).filter((candle) => (
-      candle.complete && marketCandleCloseTime(candle.time, fallbackGranularity) <= cutoff
-    ));
-    return applyTradeableZoneEngulfingFallback(
-      fallbackCandles,
-      dayFibConfluence.zones,
-      fallbackGranularity,
-    );
+    return fallbackGranularities.reduce((zones, fallbackGranularity) => {
+      const fallbackCandles = (vipCandles[fallbackGranularity] || []).filter((candle) => (
+        candle.complete && marketCandleCloseTime(candle.time, fallbackGranularity) <= cutoff
+      ));
+      return applyTradeableZoneEngulfingFallback(
+        fallbackCandles,
+        zones,
+        fallbackGranularity,
+        granularity === 'H1',
+      );
+    }, dayFibConfluence.zones);
   }, [dayFibConfluence.zones, displayCandles, granularity, vipCandles]);
 
   const tradeTrackingScope = `${granularity}:${replayIndex === null ? 'live' : 'replay'}`;
@@ -1005,9 +1007,13 @@ export const OandaProChart: React.FC = () => {
         : (vipCandles[setup.signal.timeframe] || []).filter((candle) => (
           marketCandleCloseTime(candle.time, setup.signal.timeframe) <= cutoff
         ));
+      const executionCandles = TIMEFRAME_SECONDS[setup.signal.timeframe]
+        < TIMEFRAME_SECONDS[granularity]
+        ? sourceCandles
+        : displayCandles;
       const trade = calculateTradeLevels({
         sourceCandles,
-        executionCandles: displayCandles,
+        executionCandles,
         signal: setup.signal,
         rule: setup.rule,
         omitStopBuffer: isDeepDiscountTradeSignal(setup.zone, setup.signal),
@@ -1191,9 +1197,13 @@ export const OandaProChart: React.FC = () => {
       const sourceCandles = signal.timeframe === granularity
         ? displayCandles
         : vipCandles[signal.timeframe] || [];
+      const executionCandles = TIMEFRAME_SECONDS[signal.timeframe]
+        < TIMEFRAME_SECONDS[granularity]
+        ? sourceCandles
+        : displayCandles;
       const trade = calculateTradeLevels({
         sourceCandles,
-        executionCandles: displayCandles,
+        executionCandles,
         signal,
         rule,
         omitStopBuffer: isDeepDiscountTradeSignal(zone, signal),
@@ -1391,10 +1401,10 @@ export const OandaProChart: React.FC = () => {
       ));
       if (!duplicatesExisting) combined.push(marker);
     }
-    const fallbackGranularity = DIRECT_ENGULFING_FALLBACK[granularity];
-    if (fallbackGranularity) {
-      for (const zone of displayZones) {
-        if (!zone.fallbackEngulfingType || zone.fallbackEngulfingTime === undefined) continue;
+    for (const zone of displayZones) {
+      if (!zone.fallbackEngulfingType || zone.fallbackEngulfingTime === undefined
+        || !zone.fallbackEngulfingTimeframe) continue;
+        const fallbackGranularity = zone.fallbackEngulfingTimeframe as MarketGranularity;
         const confirmationTime = zone.fallbackEngulfingTime + TIMEFRAME_SECONDS[fallbackGranularity];
         const containingCandle = displayCandles.find((candle) => (
           confirmationTime > candle.time
@@ -1414,7 +1424,6 @@ export const OandaProChart: React.FC = () => {
           Number(existing.time) === Number(marker.time) && existing.position === marker.position
         ));
         if (!duplicatesExisting) combined.push(marker);
-      }
     }
     return combined.sort((first, second) => Number(first.time) - Number(second.time));
   }, [
@@ -2018,7 +2027,7 @@ export const OandaProChart: React.FC = () => {
       // then publish them before unrelated trend/support timeframes.
       const priorityGranularities = auxiliaryGranularities.filter((value) => (
         mtfLowerGranularities.includes(value as MtfGranularity)
-        || value === DIRECT_ENGULFING_FALLBACK[granularity]
+        || (DIRECT_ENGULFING_FALLBACKS[granularity] ?? []).includes(value as OandaGranularity)
       ));
       const remainingGranularities = auxiliaryGranularities.filter((value) => (
         !priorityGranularities.includes(value)

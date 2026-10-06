@@ -60,6 +60,8 @@ const DIRECT_RULES: Record<string, Omit<TradeRule, 'zoneTimeframe' | 'engulfingT
   'M5:M15': { rewardRisk: 1, stopBufferPips: 20, maximumRiskPips: 200 },
   'M15:M15': { rewardRisk: 2, stopBufferPips: 20, maximumRiskPips: 200 },
   'M15:M30': { rewardRisk: 1, stopBufferPips: 20, maximumRiskPips: 300 },
+  'H1:M15': { rewardRisk: 2, stopBufferPips: 20, maximumRiskPips: 200 },
+  'H1:M30': { rewardRisk: 2, stopBufferPips: 20, maximumRiskPips: 300 },
 };
 
 const MTF_ENGULFING_RULES: Partial<Record<TradeTimeframe,
@@ -96,6 +98,18 @@ export function resolveZoneEngulfingSignal(
   zone: StructureZone,
   chartTimeframe: TradeTimeframe,
 ): EngulfingTradeSignal | undefined {
+  // A fallback can intentionally be preferred even when the zone also has a
+  // chart-timeframe engulfing (for example, 1H entries confirmed on 15M/30M).
+  if (zone.fallbackEngulfingType && zone.fallbackEngulfingDirection
+    && zone.fallbackEngulfingTime !== undefined && zone.fallbackEngulfingTimeframe) {
+    return {
+      type: zone.fallbackEngulfingType,
+      direction: zone.fallbackEngulfingDirection,
+      time: zone.fallbackEngulfingTime,
+      candleCount: zone.fallbackEngulfingCandleCount ?? 2,
+      timeframe: zone.fallbackEngulfingTimeframe as TradeTimeframe,
+    };
+  }
   if (zone.engulfingType && zone.engulfingDirection && zone.engulfingTime !== undefined) {
     return {
       type: zone.engulfingType,
@@ -122,16 +136,6 @@ export function resolveZoneEngulfingSignal(
       time: zone.dayEngulfingTime,
       candleCount: zone.dayEngulfingCandleCount ?? 2,
       timeframe: chartTimeframe,
-    };
-  }
-  if (zone.fallbackEngulfingType && zone.fallbackEngulfingDirection
-    && zone.fallbackEngulfingTime !== undefined && zone.fallbackEngulfingTimeframe) {
-    return {
-      type: zone.fallbackEngulfingType,
-      direction: zone.fallbackEngulfingDirection,
-      time: zone.fallbackEngulfingTime,
-      candleCount: zone.fallbackEngulfingCandleCount ?? 2,
-      timeframe: zone.fallbackEngulfingTimeframe as TradeTimeframe,
     };
   }
   return undefined;
