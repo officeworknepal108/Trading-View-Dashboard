@@ -207,6 +207,10 @@ function tradeStatusLabel(trade: TradeLevels): string {
   return 'SL HIT';
 }
 
+function isCompletedTrade(trade: TradeLevels | undefined): boolean {
+  return trade?.status === 'tp-hit' || trade?.status === 'sl-hit';
+}
+
 const TradeDetailsRow: React.FC<{
   trade: TradeLevels;
   colSpan: number;
@@ -296,6 +300,21 @@ function formatCandleCountdown(secondsRemaining: number): string {
     : `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
 }
 
+function candleCountdownSeconds(
+  closesAt: number | undefined,
+  granularity: OandaGranularity,
+  nowSeconds: number,
+): number {
+  const duration = TIMEFRAME_SECONDS[granularity];
+  if (closesAt === undefined) {
+    const elapsedInCandle = ((nowSeconds % duration) + duration) % duration;
+    return duration - elapsedInCandle;
+  }
+  if (closesAt > nowSeconds) return closesAt - nowSeconds;
+  const elapsedAfterClose = nowSeconds - closesAt;
+  return duration - (elapsedAfterClose % duration);
+}
+
 interface TrendTableRow {
   granularity: OandaGranularity;
   label: string;
@@ -353,9 +372,13 @@ const MultiTimeframeTrendTable: React.FC<{ rows: TrendTableRow[]; replayActive: 
                     {isBullish ? '▲ BULLISH' : isBearish ? '▼ BEARISH' : '— NEUTRAL'}
                   </td>
                   <td className="px-1 py-0.5 font-medium tabular-nums text-slate-600">
-                    {replayActive || row.closesAt === undefined
+                    {replayActive
                       ? '—'
-                      : formatCandleCountdown(row.closesAt - nowSeconds)}
+                      : formatCandleCountdown(candleCountdownSeconds(
+                        row.closesAt,
+                        row.granularity,
+                        nowSeconds,
+                      ))}
                   </td>
                 </tr>
               );
@@ -376,12 +399,13 @@ function mtfZoneLabel(name: StructureZone['name'], majorLiquidity = false): stri
   return majorLiquidity ? `${label} · Major Liquidity` : label;
 }
 
-function mtfSignalLabel(row: MtfRow, hasCalculatedEntry: boolean): string {
+function mtfSignalLabel(row: MtfRow, trade: TradeLevels | undefined): string {
+  if (isCompletedTrade(trade)) return tradeStatusLabel(trade);
   if (!row.tappedZone) return 'Waiting for zone tap';
   if (!row.engulfingType) return 'Waiting';
   const type = row.engulfingType.replace('T', 'Type ');
   return `${type} ${row.direction === 'bullish' ? 'BUY' : 'SELL'} ${
-    hasCalculatedEntry ? 'MTF ENTRY' : 'CONFIRMED'
+    trade ? 'MTF ENTRY' : 'CONFIRMED'
   }`;
 }
 
@@ -449,14 +473,19 @@ const MultiTimeframeEntryTable: React.FC<{ rows: DisplayMtfRow[] }> = ({ rows })
                       ? `${MTF_TABLE_LABELS[row.lowerTimeframe]} ${mtfZoneLabel(row.tappedZone)}`
                       : '—'}
                   </td>
-                  <td className={`whitespace-nowrap px-2 py-1 font-black ${entry ? bullish ? 'text-emerald-700' : 'text-rose-700' : 'text-slate-600'}`}>
-                    {mtfSignalLabel(row, row.trade !== undefined)}
+                  <td className={`whitespace-nowrap px-2 py-1 font-black ${
+                    row.trade?.status === 'sl-hit'
+                      ? 'text-rose-700'
+                      : entry ? bullish ? 'text-emerald-700' : 'text-rose-700' : 'text-slate-600'
+                  }`}>
+                    {mtfSignalLabel(row, row.trade)}
                   </td>
                   <td className="px-2 py-1 text-right font-bold whitespace-nowrap text-slate-500">
                     {row.tradeBarsAgo === undefined ? '—' : `${row.tradeBarsAgo} bars`}
                   </td>
                 </tr>
-                {row.trade && <TradeDetailsRow trade={row.trade} colSpan={7} mtf />}
+                {row.trade && !isCompletedTrade(row.trade)
+                  && <TradeDetailsRow trade={row.trade} colSpan={7} mtf />}
                 </React.Fragment>
               );
             })}
@@ -918,6 +947,7 @@ export const OandaProChart: React.FC = () => {
   const tradeOverlays = useMemo<TradeOverlay[]>(() => {
     const overlays = new Map<string, TradeOverlay>();
     const addTrade = (id: string, trade: TradeLevels) => {
+      if (isCompletedTrade(trade)) return;
       const signature = [
         trade.calculatedAt,
         trade.entry,
@@ -1739,17 +1769,22 @@ export const OandaProChart: React.FC = () => {
         || value === DIRECT_ENGULFING_FALLBACK[granularity]
       ));
       const remainingGranularities = auxiliaryGranularities.filter((value) => (
-        !mtfLowerGranularities.includes(value as MtfGranularity)
+        !priorityGranularities.includes(value)
       ));
       const loadAuxiliaryBatch = async (batch: MarketGranularity[]) => {
         if (batch.length === 0) return true;
-        const batchPayloads = await Promise.all(batch.map(requestCandles));
+        const batchPayloads = await Promise.allSettled(batch.map(requestCandles));
         if (requestId !== loadRequestIdRef.current) return false;
+        const loadedEntries = batch.flatMap((supportGranularity, index) => {
+          const result = batchPayloads[index];
+          return result.status === 'fulfilled'
+            ? [[supportGranularity, result.value.candles] as const]
+            : [];
+        });
+        if (loadedEntries.length === 0) return true;
         setVipCandles((current) => ({
           ...current,
-          ...Object.fromEntries(batch.map((supportGranularity, index) => (
-            [supportGranularity, batchPayloads[index].candles]
-          ))),
+          ...Object.fromEntries(loadedEntries),
         }));
         return true;
       };
@@ -2668,16 +2703,21 @@ export const OandaProChart: React.FC = () => {
                         {showEngulfing ? displayEngulfingLabel(zone) ?? '—' : '—'}
                       </td>
                       <td className={`px-2 py-1 text-right font-black whitespace-nowrap ${
-                        pending ? 'text-amber-700' : 'text-emerald-700'
+                        trade?.status === 'sl-hit'
+                          ? 'text-rose-700'
+                          : pending ? 'text-amber-700' : 'text-emerald-700'
                       }`}>
-                        {pending
+                        {isCompletedTrade(trade)
+                          ? tradeStatusLabel(trade!)
+                          : pending
                           ? `WAIT ${confirmationLabel} ${confirmationSide} · NO TRADE`
                           : zone.tapTime === undefined
                             ? 'VALID DOUBLE CHoCH · NO TRADE'
                             : `${zone.tapBarsAgo} bars · ${confirmationLabel} CONFIRMED · TRADE`}
                       </td>
                     </tr>
-                    {trade && <TradeDetailsRow trade={trade} colSpan={5} />}
+                    {trade && !isCompletedTrade(trade)
+                      && <TradeDetailsRow trade={trade} colSpan={5} />}
                     </React.Fragment>
                   );
                 })}
@@ -2742,14 +2782,23 @@ export const OandaProChart: React.FC = () => {
                     }`}>
                       {showEngulfing ? displayEngulfingLabel(zone) ?? '—' : '—'}
                     </td>
-                    <td className="px-2 py-1 text-right font-bold whitespace-nowrap">
-                      <span className="text-slate-500">{zone.tapBarsAgo} bars</span>
-                      <span className={zone.tradeable === false ? 'ml-1 text-rose-700' : 'ml-1 text-emerald-700'}>
-                        - {zone.tradeable === false ? 'NO TRADE' : 'TRADE'}
-                      </span>
+                    <td className={`px-2 py-1 text-right font-bold whitespace-nowrap ${
+                      trade?.status === 'sl-hit' ? 'text-rose-700' : ''
+                    }`}>
+                      {isCompletedTrade(trade) ? (
+                        <span className={trade?.status === 'sl-hit' ? 'text-rose-700' : 'text-emerald-700'}>
+                          {tradeStatusLabel(trade!)}
+                        </span>
+                      ) : <>
+                        <span className="text-slate-500">{zone.tapBarsAgo} bars</span>
+                        <span className={zone.tradeable === false ? 'ml-1 text-rose-700' : 'ml-1 text-emerald-700'}>
+                          - {zone.tradeable === false ? 'NO TRADE' : 'TRADE'}
+                        </span>
+                      </>}
                     </td>
                   </tr>
-                  {trade && <TradeDetailsRow trade={trade} colSpan={5} />}
+                  {trade && !isCompletedTrade(trade)
+                    && <TradeDetailsRow trade={trade} colSpan={5} />}
                   </React.Fragment>
                   );
                 })}
@@ -2774,7 +2823,6 @@ export const OandaProChart: React.FC = () => {
                           {tradeStatusLabel(trade)}
                         </td>
                       </tr>
-                      <TradeDetailsRow trade={trade} colSpan={5} />
                     </React.Fragment>
                   );
                 })}
