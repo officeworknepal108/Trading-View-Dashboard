@@ -843,6 +843,7 @@ export const OandaProChart: React.FC = () => {
   const [savedJournalTrades, setSavedJournalTrades] = useState<AccuracyTradeRecord[]>([]);
   const [mt5Status, setMt5Status] = useState<Mt5AutomationStatus | null>(null);
   const [mt5SettingsOpen, setMt5SettingsOpen] = useState(false);
+  const [mt5BridgeControlError, setMt5BridgeControlError] = useState<string | null>(null);
   const [showIndicatorControls, setShowIndicatorControls] = useState(false);
   const [showZoneTable, setShowZoneTable] = useState(true);
   const [replayIndex, setReplayIndex] = useState<number | null>(null);
@@ -901,6 +902,18 @@ export const OandaProChart: React.FC = () => {
       setMt5Status((current) => current ? { ...current, config: payload.config! } : current);
     }
   }, [mt5Status]);
+
+  const controlMt5Bridge = useCallback(async (action: 'start' | 'stop') => {
+    setMt5BridgeControlError(null);
+    try {
+      const response = await fetch(`/api/mt5/bridge/${action}`, { method: 'POST' });
+      const payload = await response.json() as { ok?: boolean; error?: string };
+      if (!response.ok || !payload.ok) throw new Error(payload.error || `Unable to ${action} bridge.`);
+      window.setTimeout(() => void refreshMt5Status(), 500);
+    } catch (error) {
+      setMt5BridgeControlError(error instanceof Error ? error.message : 'Bridge control failed.');
+    }
+  }, [refreshMt5Status]);
 
   const syncReplaySelectionLine = useCallback(() => {
     const line = replaySelectionLineRef.current;
@@ -2893,10 +2906,34 @@ export const OandaProChart: React.FC = () => {
                     <div className="font-black text-slate-800">MT5 AUTO EXECUTION</div>
                     <div className={mt5Status.bridge.connected ? 'text-emerald-700' : 'text-rose-700'}>
                       Bridge {mt5Status.bridge.connected ? 'connected' : 'disconnected'}
+                      {mt5Status.bridge.managedByServer ? ' · local server' : ''}
                     </div>
                   </div>
                   <button type="button" onClick={() => setMt5SettingsOpen(false)} className="text-slate-400">✕</button>
                 </div>
+                <div className="mb-2 flex gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => void controlMt5Bridge('start')}
+                    disabled={mt5Status.bridge.connected || mt5Status.bridge.processRunning}
+                    className="flex-1 rounded border border-emerald-200 bg-emerald-50 px-2 py-1 font-black text-emerald-700 disabled:cursor-not-allowed disabled:opacity-40"
+                  >
+                    START BRIDGE
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void controlMt5Bridge('stop')}
+                    disabled={!mt5Status.bridge.processRunning}
+                    className="flex-1 rounded border border-rose-200 bg-rose-50 px-2 py-1 font-black text-rose-700 disabled:cursor-not-allowed disabled:opacity-40"
+                  >
+                    STOP BRIDGE
+                  </button>
+                </div>
+                {mt5BridgeControlError && (
+                  <div className="mb-2 rounded border border-rose-200 bg-rose-50 p-1.5 text-rose-700">
+                    {mt5BridgeControlError}
+                  </div>
+                )}
                 <label className="mb-2 flex items-center justify-between font-bold text-slate-700">
                   Enable signal queue
                   <input
@@ -2947,8 +2984,18 @@ export const OandaProChart: React.FC = () => {
                 <div className="rounded bg-slate-50 p-2 leading-relaxed text-slate-600">
                   Symbol: <b>{mt5Status.config.brokerSymbol}</b><br />
                   Queue: <b>{mt5Status.counts.QUEUED ?? 0}</b> · Active: <b>{mt5Status.counts.ACTIVE ?? 0}</b><br />
+                  Process: <b>{mt5Status.bridge.processRunning
+                    ? `RUNNING · PID ${mt5Status.bridge.processId ?? '—'}`
+                    : mt5Status.bridge.connected ? 'MANUALLY STARTED' : 'STOPPED'}</b><br />
                   Live orders also require <b>MT5_ALLOW_LIVE_EXECUTION=YES</b> in .env.mt5.
                 </div>
+                {(mt5Status.bridge.logs?.length ?? 0) > 0 && (
+                  <div className="mt-2 max-h-24 overflow-auto rounded bg-slate-950 p-2 font-mono text-[8px] leading-relaxed text-slate-200">
+                    {mt5Status.bridge.logs!.slice(-8).map((line, index) => (
+                      <div key={`${index}:${line}`} className="whitespace-pre-wrap break-words">{line}</div>
+                    ))}
+                  </div>
+                )}
               </div>
             )}
           </div>

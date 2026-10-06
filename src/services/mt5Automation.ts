@@ -58,11 +58,17 @@ export interface Mt5AutomationStatus {
   bridge: {
     connected: boolean;
     bridgeId?: string;
+    processId?: number;
+    managedByServer?: boolean;
+    processRunning?: boolean;
+    processStartedAt?: number;
+    processExitCode?: number | null;
     account?: string;
     server?: string;
     brokerSymbol?: string;
     lastHeartbeatAt?: number;
     message?: string;
+    logs?: string[];
   };
   counts: Record<string, number>;
   recentSignals: Mt5StoredSignal[];

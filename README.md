@@ -71,7 +71,9 @@ continues when the browser is closed without bursting requests at TradingView.
 2. Install the bridge packages: `py -m pip install MetaTrader5 requests python-dotenv`.
 3. Copy `.env.mt5.example` to `.env.mt5` and configure the terminal path/account.
 4. Set the same long random `MT5_BRIDGE_TOKEN` in `.env` and `.env.mt5`.
-5. Start the dashboard, then run `py mt5_bridge.py` in a second terminal.
+5. Start the dashboard. When the signal queue is enabled, the local server
+   starts `mt5_bridge.py` invisibly and shows its status and recent logs in the
+   **MT5** menu. The batch file remains available only as a manual fallback.
 6. Open the **MT5** menu in the dashboard and enable the queue. Keep Dry Run ON
    until the full signal flow is verified.
 7. For demo order placement, set `MT5_ALLOW_LIVE_EXECUTION=YES` in `.env.mt5`,
@@ -82,6 +84,8 @@ the broker volume step, rejects excessive spread/daily loss/open exposure,
 places LIMIT orders for pending entries, and moves SL to the actual fill price
 when the configured risk-free level is reached. Runtime signals, settings,
 credentials and bridge state remain local and are excluded from Git.
+Use **START BRIDGE** and **STOP BRIDGE** in the dashboard to manage the hidden
+local process; only one server-managed bridge is allowed at a time.
 
 ## Current checkpoint
 

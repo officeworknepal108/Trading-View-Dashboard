@@ -96,6 +96,7 @@ def heartbeat(config: dict[str, Any], message: str = "Bridge ready") -> None:
         CONNECTED_SERVER = str(account.server)
     api("POST", "/api/mt5/heartbeat", json={
         "bridgeId": BRIDGE_ID,
+        "processId": os.getpid(),
         "account": CONNECTED_ACCOUNT,
         "server": CONNECTED_SERVER,
         "brokerSymbol": config.get("brokerSymbol", "XAUUSDm"),

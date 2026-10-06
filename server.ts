@@ -1,6 +1,7 @@
 import 'dotenv/config';
 import express from 'express';
 import path from 'path';
+import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { createServer as createViteServer } from 'vite';
 import { fetchTradingViewCandles } from './src/services/tradingViewDatafeed';
@@ -75,6 +76,7 @@ const AUTOMATION_CONFIRMATION_SECONDS: Partial<Record<TradeTimeframe, number>> =
 
 interface Mt5BridgeHeartbeat {
   bridgeId: string;
+  processId?: number;
   account?: string;
   server?: string;
   brokerSymbol?: string;
@@ -86,6 +88,70 @@ let mt5BridgeHeartbeat: Mt5BridgeHeartbeat | undefined;
 let mt5MutationQueue: Promise<unknown> = Promise.resolve();
 const automationCandleCache: Partial<Record<TradeTimeframe, StructureCandle[]>> = {};
 let automationNextTimeframeIndex = 0;
+let managedMt5Bridge: ChildProcessWithoutNullStreams | undefined;
+let managedMt5BridgeProcessId: number | undefined;
+let managedMt5BridgeStartedAt: number | undefined;
+let managedMt5BridgeExitCode: number | null | undefined;
+const managedMt5BridgeLogs: string[] = [];
+
+function appendManagedBridgeLog(chunk: string, channel: 'OUT' | 'ERR'): void {
+  for (const line of chunk.split(/\r?\n/).map((value) => value.trim()).filter(Boolean)) {
+    managedMt5BridgeLogs.push(`${new Date().toLocaleTimeString()} ${channel} ${line}`);
+  }
+  if (managedMt5BridgeLogs.length > 100) {
+    managedMt5BridgeLogs.splice(0, managedMt5BridgeLogs.length - 100);
+  }
+}
+
+function managedBridgeIsRunning(): boolean {
+  return managedMt5Bridge !== undefined && managedMt5Bridge.exitCode === null
+    && !managedMt5Bridge.killed;
+}
+
+function startManagedMt5Bridge(): { started: boolean; processId?: number; error?: string } {
+  if (managedBridgeIsRunning()) {
+    return { started: false, processId: managedMt5Bridge?.pid };
+  }
+  const scriptPath = path.resolve(process.cwd(), 'mt5_bridge.py');
+  const pythonCommand = process.env.MT5_PYTHON?.trim() || 'python';
+  try {
+    managedMt5BridgeExitCode = undefined;
+    appendManagedBridgeLog(`Starting ${path.basename(scriptPath)} with ${pythonCommand}.`, 'OUT');
+    const child = spawn(pythonCommand, ['-u', scriptPath], {
+      cwd: process.cwd(),
+      env: process.env,
+      windowsHide: true,
+      stdio: ['pipe', 'pipe', 'pipe'],
+    });
+    managedMt5Bridge = child;
+    managedMt5BridgeProcessId = child.pid;
+    managedMt5BridgeStartedAt = Date.now();
+    child.stdout.setEncoding('utf8');
+    child.stderr.setEncoding('utf8');
+    child.stdout.on('data', (chunk: string) => appendManagedBridgeLog(chunk, 'OUT'));
+    child.stderr.on('data', (chunk: string) => appendManagedBridgeLog(chunk, 'ERR'));
+    child.on('error', (error) => {
+      appendManagedBridgeLog(`Bridge process error: ${error.message}`, 'ERR');
+    });
+    child.on('exit', (code, signal) => {
+      managedMt5BridgeExitCode = code;
+      appendManagedBridgeLog(`Bridge stopped (${signal || `exit ${code ?? 'unknown'}`}).`, code ? 'ERR' : 'OUT');
+      if (managedMt5Bridge === child) managedMt5Bridge = undefined;
+    });
+    return { started: true, processId: child.pid };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Unable to start the MT5 bridge.';
+    appendManagedBridgeLog(message, 'ERR');
+    return { started: false, error: message };
+  }
+}
+
+function stopManagedMt5Bridge(): boolean {
+  if (!managedBridgeIsRunning() || !managedMt5Bridge) return false;
+  appendManagedBridgeLog('Stop requested from the dashboard.', 'OUT');
+  managedMt5Bridge.kill();
+  return true;
+}
 
 function serializeMt5Mutation<T>(operation: () => Promise<T>): Promise<T> {
   const queued = mt5MutationQueue.then(operation, operation);
@@ -412,12 +478,21 @@ async function startServer() {
       const heartbeatAge = mt5BridgeHeartbeat
         ? Date.now() - mt5BridgeHeartbeat.lastHeartbeatAt
         : Number.POSITIVE_INFINITY;
+      const connected = heartbeatAge < 15_000;
+      const managedProcessId = managedMt5Bridge?.pid ?? managedMt5BridgeProcessId;
       return res.json({
         ok: true,
         config,
         bridge: {
           ...(mt5BridgeHeartbeat ?? {}),
-          connected: heartbeatAge < 15_000,
+          connected,
+          processId: mt5BridgeHeartbeat?.processId ?? managedProcessId,
+          managedByServer: connected && managedProcessId !== undefined
+            && mt5BridgeHeartbeat?.processId === managedProcessId,
+          processRunning: managedBridgeIsRunning(),
+          processStartedAt: managedMt5BridgeStartedAt,
+          processExitCode: managedMt5BridgeExitCode,
+          logs: managedMt5BridgeLogs.slice(-30),
         },
         counts,
         recentSignals: signals.slice(-25).reverse(),
@@ -433,6 +508,15 @@ async function startServer() {
       const current = await readMt5Config();
       const config = sanitizeMt5Config(req.body, current);
       await writeMt5Config(config);
+      const heartbeatConnected = mt5BridgeHeartbeat !== undefined
+        && Date.now() - mt5BridgeHeartbeat.lastHeartbeatAt < 15_000;
+      const externalHeartbeatConnected = heartbeatConnected
+        && mt5BridgeHeartbeat?.processId !== managedMt5BridgeProcessId;
+      if (config.enabled && !managedBridgeIsRunning() && !externalHeartbeatConnected) {
+        startManagedMt5Bridge();
+      } else if (!config.enabled) {
+        stopManagedMt5Bridge();
+      }
       return res.json({ ok: true, config });
     } catch (error) {
       return res.status(500).json({ ok: false, error: error instanceof Error ? error.message : 'Unable to save MT5 settings.' });
@@ -463,6 +547,7 @@ async function startServer() {
     if (!bridgeId) return res.status(400).json({ ok: false, error: 'Bridge ID is required.' });
     mt5BridgeHeartbeat = {
       bridgeId,
+      processId: Number.isInteger(Number(req.body?.processId)) ? Number(req.body.processId) : undefined,
       account: String(req.body?.account ?? '').slice(0, 40) || undefined,
       server: String(req.body?.server ?? '').slice(0, 80) || undefined,
       brokerSymbol: String(req.body?.brokerSymbol ?? '').slice(0, 30) || undefined,
@@ -470,6 +555,28 @@ async function startServer() {
       lastHeartbeatAt: Date.now(),
     };
     return res.json({ ok: true, serverTime: Date.now() });
+  });
+
+  app.post('/api/mt5/bridge/start', async (req, res) => {
+    if (!isLoopbackRequest(req)) return res.status(403).json({ ok: false, error: 'MT5 bridge controls are local-only.' });
+    const heartbeatConnected = mt5BridgeHeartbeat !== undefined
+      && Date.now() - mt5BridgeHeartbeat.lastHeartbeatAt < 15_000;
+    if (heartbeatConnected && mt5BridgeHeartbeat?.processId !== managedMt5BridgeProcessId) {
+      return res.status(409).json({
+        ok: false,
+        error: 'A manually started MT5 bridge is already connected. Close it before starting the server-managed bridge.',
+      });
+    }
+    const result = startManagedMt5Bridge();
+    return result.error
+      ? res.status(500).json({ ok: false, error: result.error })
+      : res.json({ ok: true, ...result });
+  });
+
+  app.post('/api/mt5/bridge/stop', (req, res) => {
+    if (!isLoopbackRequest(req)) return res.status(403).json({ ok: false, error: 'MT5 bridge controls are local-only.' });
+    const stopped = stopManagedMt5Bridge();
+    return res.json({ ok: true, stopped });
   });
 
   app.post('/api/mt5/signals/claim', async (req, res) => {
@@ -811,6 +918,23 @@ async function startServer() {
   app.listen(port, '0.0.0.0', () => {
     console.log(`TradingView OANDA Candle Dashboard running on http://localhost:${port}`);
   });
+
+  setTimeout(() => {
+    void readMt5Config().then((config) => {
+      const heartbeatConnected = mt5BridgeHeartbeat !== undefined
+        && Date.now() - mt5BridgeHeartbeat.lastHeartbeatAt < 15_000;
+      if (config.enabled && !managedBridgeIsRunning() && !heartbeatConnected) startManagedMt5Bridge();
+    }).catch((error) => appendManagedBridgeLog(
+      `Unable to read auto-start settings: ${error instanceof Error ? error.message : error}`,
+      'ERR',
+    ));
+  }, 1_000).unref();
+
+  const stopBridgeOnShutdown = () => {
+    stopManagedMt5Bridge();
+  };
+  process.once('SIGINT', stopBridgeOnShutdown);
+  process.once('SIGTERM', stopBridgeOnShutdown);
 
   let automationScanRunning = false;
   const runAutomationScan = async () => {
