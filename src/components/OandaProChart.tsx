@@ -221,9 +221,11 @@ function formatPrice(value: number | undefined): string {
 function tradeStatusLabel(trade: TradeLevels): string {
   if (trade.status === 'pending') return 'PENDING';
   if (trade.status === 'active') return `RF ${formatPrice(trade.riskFree)} · ACTIVE`;
-  if (trade.status === 'risk-free') return 'RISK FREE';
+  if (trade.status === 'risk-free') return `RF ${formatPrice(trade.riskFree)} · RISK FREE`;
   if (trade.status === 'tp-hit') {
-    return trade.rewardRisk === 1 ? 'TP HIT · RISK FREE' : 'TP HIT';
+    return trade.rewardRisk === 1
+      ? `TP HIT · RF ${formatPrice(trade.riskFree)}`
+      : 'TP HIT';
   }
   return 'SL HIT';
 }
