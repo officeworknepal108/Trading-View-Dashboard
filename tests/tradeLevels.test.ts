@@ -115,6 +115,26 @@ test('oversized setup creates a capped pending entry and becomes risk-free at 1R
   assert.equal(trade?.result, undefined, 'reaching 1R alone is not a completed RF result');
 });
 
+test('pending capped entry expires when target is reached before entry is filled', () => {
+  const sourceCandles: StructureCandle[] = [
+    { time: 0, open: 12, high: 13, low: 9, close: 10, complete: true },
+    { time: 60, open: 10, high: 14, low: 9.5, close: 13.5, complete: true },
+  ];
+  const trade = calculateTradeLevels({
+    sourceCandles,
+    executionCandles: [
+      ...sourceCandles,
+      // Entry is capped at 13. The candle reaches the 28 target while its
+      // low stays above entry, so no trade was filled and the setup expires.
+      { time: 120, open: 20, high: 29, low: 14, close: 28.5, complete: true },
+    ],
+    signal: bullishSignal,
+    rule: getDirectTradeRule('M1', 'M1')!,
+  });
+
+  assert.equal(trade, undefined);
+});
+
 test('completed outcomes classify SL, protected RF exit, and same-candle TP priority', () => {
   const sourceCandles: StructureCandle[] = [
     { time: 0, open: 12, high: 13, low: 9, close: 10, complete: true },

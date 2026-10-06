@@ -1189,8 +1189,8 @@ export const OandaProChart: React.FC = () => {
       if (row.trade) addTrade(row.setupId, row.trade);
     }
     return Array.from(overlays.values())
-      .sort((first, second) => first.trade.calculatedAt - second.trade.calculatedAt)
-      .slice(-4);
+      .sort((first, second) => second.trade.calculatedAt - first.trade.calculatedAt)
+      .slice(0, 1);
   }, [directZoneTrades, mtfRows]);
 
   const mtfEntryMarkers = useMemo(() => {

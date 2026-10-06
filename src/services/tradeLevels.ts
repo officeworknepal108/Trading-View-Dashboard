@@ -208,7 +208,15 @@ export function calculateTradeLevels(options: {
     const candle = executionCandles[index];
     if (!filled) {
       const entryTouched = isBuy ? candle.low <= entry : candle.high >= entry;
-      if (!entryTouched) continue;
+      if (!entryTouched) {
+        // A capped order that misses entry must not remain pending forever
+        // after price has already completed the projected move to target.
+        const targetReachedWithoutEntry = isBuy
+          ? candle.high >= takeProfit
+          : candle.low <= takeProfit;
+        if (targetReachedWithoutEntry) return undefined;
+        continue;
+      }
       filled = true;
       filledAt = candle.time;
       status = 'active';
