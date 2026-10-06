@@ -52,6 +52,7 @@ import {
   type TradeRule,
   type TradeTimeframe,
 } from '../services/tradeLevels';
+import { TradeJournal, type JournalTradeRecord } from './TradeJournal';
 
 type OandaGranularity = 'M1' | 'M5' | 'M15' | 'M30' | 'H1' | 'H4' | 'D';
 type MarketGranularity = OandaGranularity | 'W' | 'MO';
@@ -128,19 +129,7 @@ interface TradeOverlay {
   trade: TradeLevels;
 }
 
-interface AccuracyTradeRecord {
-  id: string;
-  zoneName: string;
-  result: TradeResult;
-  completedAt: number;
-  source: 'ENGULFING' | 'MTF';
-  direction: TradeLevels['signal']['direction'];
-  signalTimeframe: TradeTimeframe;
-  entry: number;
-  stopLoss: number;
-  takeProfit: number;
-  rewardRisk: number;
-}
+type AccuracyTradeRecord = JournalTradeRecord;
 
 const TIMEFRAMES: Array<{ value: OandaGranularity; label: string }> = [
   { value: 'M1', label: '1m' },
@@ -389,7 +378,7 @@ const MultiTimeframeTrendTable: React.FC<{ rows: TrendTableRow[]; replayActive: 
   }, [expanded, replayActive]);
 
   return (
-    <div className={`pointer-events-auto absolute bottom-3 right-20 z-20 overflow-hidden rounded-md border border-slate-300 bg-white/95 shadow-sm ${expanded ? 'w-[238px]' : 'w-auto'}`}>
+    <div data-journal-exclude="true" className={`pointer-events-auto absolute bottom-3 right-20 z-20 overflow-hidden rounded-md border border-slate-300 bg-white/95 shadow-sm ${expanded ? 'w-[238px]' : 'w-auto'}`}>
       <div className="flex items-center justify-between gap-2 border-b border-slate-300 bg-slate-100 px-1.5 py-0.5 text-[8px] font-black uppercase tracking-wide text-slate-600">
         <span>{expanded ? 'Trend table' : 'Trend table minimized'}</span>
         <button
@@ -469,7 +458,7 @@ type DisplayMtfRow = MtfRow & {
 const MultiTimeframeEntryTable: React.FC<{ rows: DisplayMtfRow[] }> = ({ rows }) => {
   const [expanded, setExpanded] = useState(true);
   return (
-    <div className={`pointer-events-auto absolute right-3 top-3 z-20 overflow-hidden rounded-md border border-slate-300 bg-white/95 shadow-sm ${expanded ? 'w-fit max-w-[calc(100%_-_24px)]' : 'w-auto'}`}>
+    <div data-journal-exclude="true" className={`pointer-events-auto absolute right-3 top-3 z-20 overflow-hidden rounded-md border border-slate-300 bg-white/95 shadow-sm ${expanded ? 'w-fit max-w-[calc(100%_-_24px)]' : 'w-auto'}`}>
       <div className="flex items-center justify-between gap-3 border-b border-slate-200 bg-indigo-50 px-2 py-1 text-[9px] font-black uppercase tracking-wide text-indigo-700">
         <span>{expanded ? 'MTF table' : 'MTF table minimized'}</span>
         <button
@@ -572,12 +561,63 @@ function formatAccuracyTradeTime(time: number, timeZone: ChartTimeZone): string 
   }).format(new Date(time * 1000)).replace(',', '');
 }
 
+const JOURNAL_SCREENSHOT_PREFIX = 'trade-journal-screenshot:';
+
+async function resizeJournalScreenshot(dataUrl: string, maximumWidth = 1200): Promise<string> {
+  const image = new Image();
+  image.src = dataUrl;
+  await new Promise<void>((resolve, reject) => {
+    image.onload = () => resolve();
+    image.onerror = () => reject(new Error('Unable to prepare the journal screenshot.'));
+  });
+  if (image.width <= maximumWidth) return dataUrl;
+  const scale = maximumWidth / image.width;
+  const canvas = document.createElement('canvas');
+  canvas.width = maximumWidth;
+  canvas.height = Math.max(1, Math.round(image.height * scale));
+  const context = canvas.getContext('2d');
+  if (!context) return dataUrl;
+  context.drawImage(image, 0, 0, canvas.width, canvas.height);
+  return canvas.toDataURL('image/jpeg', 0.76);
+}
+
+function readPendingJournalScreenshot(tradeId: string): string | undefined {
+  try {
+    return window.localStorage.getItem(`${JOURNAL_SCREENSHOT_PREFIX}${tradeId}`) || undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function journalFibMetadata(
+  zone: StructureZone,
+  signal: EngulfingTradeSignal,
+): Pick<JournalTradeRecord, 'fibSource' | 'fibBand' | 'fibLevels'> {
+  let fibSource = zone.majorLiquidity ? 'MAJOR LIQUIDITY' : 'ZONE FIB';
+  let fibBand = zone.fibBand;
+  if (signal.time === zone.swingEngulfingTime && signal.type === zone.swingEngulfingType) {
+    fibSource = '4H SWING FIB';
+    fibBand = zone.swingFibBand;
+  } else if (signal.time === zone.dayEngulfingTime && signal.type === zone.dayEngulfingType) {
+    fibSource = 'DAY FIB';
+    fibBand = zone.dayFibBand;
+  }
+  const fibLevels = zone.fibSourcePrice !== undefined && zone.fibZeroPrice !== undefined
+    ? [0.5, 0.618, 0.71, 0.79].map((level) => ({
+      label: String(level),
+      price: zone.fibZeroPrice! + (zone.fibSourcePrice! - zone.fibZeroPrice!) * level,
+    }))
+    : undefined;
+  return { fibSource, fibBand, fibLevels };
+}
+
 const EngulfingAccuracyTable: React.FC<{
   records: AccuracyTradeRecord[];
+  allRecords: AccuracyTradeRecord[];
   timeframe: OandaGranularity;
   showAllTrades: boolean;
   timeZone: ChartTimeZone;
-}> = ({ records, timeframe, showAllTrades, timeZone }) => {
+}> = ({ records, allRecords, timeframe, showAllTrades, timeZone }) => {
   const timeframeCounts = accuracyCounts(records);
   const extraZoneRows: string[] = Array.from(new Set<string>(
     records.map((record) => record.zoneName),
@@ -610,7 +650,7 @@ const EngulfingAccuracyTable: React.FC<{
   );
 
   return (
-    <div className={`pointer-events-auto absolute z-20 overflow-hidden rounded-md border border-slate-300 bg-white/95 shadow-md ${
+    <div data-journal-exclude="true" className={`pointer-events-auto absolute z-20 overflow-hidden rounded-md border border-slate-300 bg-white/95 shadow-md ${
       showAllTrades
         ? 'bottom-3 left-3 top-3 flex w-fit max-w-[calc(100%_-_24px)] flex-col'
         : 'left-3 top-1/2 max-w-[calc(100%_-_24px)] -translate-y-1/2'
@@ -661,7 +701,7 @@ const EngulfingAccuracyTable: React.FC<{
               </tr>
               </thead>
               <tbody>
-                {records.map((record, index) => (
+              {allRecords.map((record, index) => (
                   <tr key={record.id} className="border-t border-slate-200 odd:bg-white even:bg-slate-50">
                   <td className="px-1.5 py-1 text-slate-500">{index + 1}</td>
                   <td className="whitespace-nowrap px-1.5 py-1 text-left text-slate-600">
@@ -692,7 +732,7 @@ const EngulfingAccuracyTable: React.FC<{
                   <td className="px-1.5 py-1 font-bold text-slate-700">1:{record.rewardRisk}</td>
                   </tr>
                 ))}
-                {records.length === 0 && (
+              {allRecords.length === 0 && (
                   <tr>
                     <td colSpan={11} className="px-2 py-3 text-center text-slate-400">
                       No completed trades in the loaded chart history
@@ -710,6 +750,7 @@ const EngulfingAccuracyTable: React.FC<{
 
 export const OandaProChart: React.FC = () => {
   const hostRef = useRef<HTMLDivElement | null>(null);
+  const chartPaneRef = useRef<HTMLDivElement | null>(null);
   const chartRef = useRef<any>(null);
   const candleSeriesRef = useRef<any>(null);
   const volumeSeriesRef = useRef<any>(null);
@@ -719,6 +760,8 @@ export const OandaProChart: React.FC = () => {
   const livePriceValueRef = useRef<HTMLSpanElement | null>(null);
   const liveCountdownRef = useRef<HTMLSpanElement | null>(null);
   const replaySelectionLineRef = useRef<HTMLDivElement | null>(null);
+  const journalSyncSignatureRef = useRef('');
+  const capturedTradeSetupsRef = useRef(new Set<string>());
   const zonesRef = useRef<StructureZone[]>([]);
   const swingFibMovesRef = useRef<SwingFibMove[]>([]);
   const dayFibMovesRef = useRef<DayFibMove[]>([]);
@@ -779,6 +822,10 @@ export const OandaProChart: React.FC = () => {
   const [showAccuracyTable, setShowAccuracyTable] = useState(false);
   const [showAccuracyOptions, setShowAccuracyOptions] = useState(false);
   const [showAllAccuracyTrades, setShowAllAccuracyTrades] = useState(false);
+  const [showJournal, setShowJournal] = useState(() => (
+    new URLSearchParams(window.location.search).get('journal') === '1'
+  ));
+  const [savedJournalTrades, setSavedJournalTrades] = useState<AccuracyTradeRecord[]>([]);
   const [showIndicatorControls, setShowIndicatorControls] = useState(false);
   const [showZoneTable, setShowZoneTable] = useState(true);
   const [replayIndex, setReplayIndex] = useState<number | null>(null);
@@ -795,6 +842,19 @@ export const OandaProChart: React.FC = () => {
   candlesRef.current = candles;
   replaySelectingRef.current = replaySelecting;
   replaySelectionIndexRef.current = replaySelectionIndex;
+
+  useEffect(() => {
+    let cancelled = false;
+    void fetch('/api/journal/trades', { cache: 'no-store' })
+      .then(async (response) => {
+        const payload = await response.json() as { ok?: boolean; trades?: AccuracyTradeRecord[] };
+        if (!cancelled && response.ok && payload.ok && Array.isArray(payload.trades)) {
+          setSavedJournalTrades(payload.trades);
+        }
+      })
+      .catch(() => undefined);
+    return () => { cancelled = true; };
+  }, []);
 
   const syncReplaySelectionLine = useCallback(() => {
     const line = replaySelectionLineRef.current;
@@ -1162,27 +1222,36 @@ export const OandaProChart: React.FC = () => {
   );
 
   const accuracyTradeRecords = useMemo<AccuracyTradeRecord[]>(() => {
-    if (!showAccuracyTable) return [];
     const records = new Map<string, AccuracyTradeRecord>();
     const addRecord = (
       id: string,
       zoneName: string,
+      zoneTimeframe: TradeTimeframe,
       source: AccuracyTradeRecord['source'],
       trade: TradeLevels | undefined,
+      journalDetails: Partial<JournalTradeRecord> = {},
     ) => {
       if (!trade?.result) return;
+      const screenshotDataUrl = readPendingJournalScreenshot(id);
       records.set(id, {
+        ...records.get(id),
         id,
         zoneName,
+        zoneTimeframe,
         result: trade.result,
         completedAt: trade.resolvedAt ?? trade.calculatedAt,
         source,
         direction: trade.signal.direction,
         signalTimeframe: trade.signal.timeframe,
+        engulfingType: trade.signal.type,
         entry: trade.entry,
         stopLoss: trade.stopLoss,
         takeProfit: trade.takeProfit,
         rewardRisk: trade.rewardRisk,
+        riskPips: trade.riskPips,
+        signalAt: trade.signal.time,
+        ...journalDetails,
+        ...(screenshotDataUrl ? { screenshotDataUrl } : {}),
       });
     };
 
@@ -1211,8 +1280,10 @@ export const OandaProChart: React.FC = () => {
       addRecord(
         `DIRECT:${zone.id}:${signal.time}:${trade?.entry ?? 'NA'}`,
         zone.name,
+        granularity,
         'ENGULFING',
         trade,
+        journalFibMetadata(zone, signal),
       );
     }
 
@@ -1240,8 +1311,13 @@ export const OandaProChart: React.FC = () => {
       addRecord(
         `MTF:${row.id}:${signal.time}:${trade?.entry ?? 'NA'}`,
         row.tappedZone ?? row.higherTimeframeZone,
+        row.higherTimeframe,
         'MTF',
         trade,
+        {
+          fibSource: 'MTF FIB',
+          fibBand: row.engulfingDeepDiscount ? '0.71-0.79' : '0.5-0.618',
+        },
       );
     }
 
@@ -1258,12 +1334,18 @@ export const OandaProChart: React.FC = () => {
       const setup = directSetups.get(zoneId);
       if (!setup) continue;
       const id = `DIRECT:${zoneId}:${setup.signal.time}:${trade.entry}`;
-      addRecord(id, setup.zone.name, 'ENGULFING', trade);
+      addRecord(id, setup.zone.name, granularity, 'ENGULFING', trade);
     }
     for (const row of mtfRows) {
       if (!row.trade) continue;
       const id = `MTF:${row.id}:${row.engulfingTime}:${row.trade.entry}`;
-      addRecord(id, row.tappedZone ?? row.higherTimeframeZone, 'MTF', row.trade);
+      addRecord(
+        id,
+        row.tappedZone ?? row.higherTimeframeZone,
+        row.higherTimeframe,
+        'MTF',
+        row.trade,
+      );
     }
     return Array.from(records.values())
       .sort((first, second) => second.completedAt - first.completedAt);
@@ -1274,12 +1356,55 @@ export const OandaProChart: React.FC = () => {
     directZoneTrades,
     granularity,
     mtfRows,
-    showAccuracyTable,
     tableTimeframeData,
     trackedDirectTradeSetups,
     tradeTrackingScope,
     vipCandles,
   ]);
+
+  useEffect(() => {
+    if (accuracyTradeRecords.length === 0) return;
+    const signature = accuracyTradeRecords
+      .map((record) => `${record.id}:${record.result}:${record.completedAt}`)
+      .sort()
+      .join('|');
+    if (signature === journalSyncSignatureRef.current) return;
+    journalSyncSignatureRef.current = signature;
+    void fetch('/api/journal/trades', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ trades: accuracyTradeRecords }),
+    }).then(async (response) => {
+      if (!response.ok) {
+        journalSyncSignatureRef.current = '';
+        return;
+      }
+      const payload = await response.json() as { ok?: boolean; trades?: AccuracyTradeRecord[] };
+      if (payload.ok && Array.isArray(payload.trades)) {
+        setSavedJournalTrades(payload.trades);
+        for (const record of accuracyTradeRecords) {
+          if (!record.screenshotDataUrl) continue;
+          try {
+            window.localStorage.removeItem(`${JOURNAL_SCREENSHOT_PREFIX}${record.id}`);
+          } catch {
+            // The server copy is durable; local cleanup is only a quota optimization.
+          }
+        }
+      }
+    }).catch(() => {
+      journalSyncSignatureRef.current = '';
+    });
+  }, [accuracyTradeRecords]);
+
+  const allSavedAccuracyRecords = savedJournalTrades.length > 0
+    ? savedJournalTrades
+    : accuracyTradeRecords;
+  const timeframeAccuracyRecords = useMemo(() => allSavedAccuracyRecords
+    .filter((record) => record.zoneTimeframe === granularity)
+    .sort((first, second) => second.completedAt - first.completedAt), [
+      allSavedAccuracyRecords,
+      granularity,
+    ]);
 
   const tradeOverlays = useMemo<TradeOverlay[]>(() => {
     const overlays = new Map<string, TradeOverlay>();
@@ -1293,9 +1418,13 @@ export const OandaProChart: React.FC = () => {
       ].join(':');
       if (!overlays.has(signature)) overlays.set(signature, { id, trade });
     };
-    for (const [zoneId, trade] of directZoneTrades) addTrade(`ZONE-${zoneId}`, trade);
+    for (const [zoneId, trade] of directZoneTrades) {
+      addTrade(`DIRECT:${zoneId}:${trade.signal.time}:${trade.entry}`, trade);
+    }
     for (const row of mtfRows) {
-      if (row.trade) addTrade(row.setupId, row.trade);
+      if (row.trade) {
+        addTrade(`MTF:${row.id}:${row.engulfingTime}:${row.trade.entry}`, row.trade);
+      }
     }
     return Array.from(overlays.values())
       .sort((first, second) => second.trade.calculatedAt - first.trade.calculatedAt)
@@ -1948,6 +2077,62 @@ export const OandaProChart: React.FC = () => {
   }, [dayFibMoves, displayZones, fibPreviousVisibility, fibVisibility, redrawZones, scheduleOverlayRedraw, showFib, showInternal, showInvalidZones, showIss, showMgZones, showStructure, showSupplyDemand, showTradeLevels, structure.internalMarkers, structure.issMarkers, structure.lines, structure.markers, swingFibMoves, tradeOverlays]);
 
   useEffect(() => {
+    const overlay = tradeOverlays[0];
+    const pane = chartPaneRef.current;
+    if (!overlay || !pane || capturedTradeSetupsRef.current.has(overlay.id)) return undefined;
+    const storageKey = `${JOURNAL_SCREENSHOT_PREFIX}${overlay.id}`;
+    try {
+      if (window.localStorage.getItem(storageKey)) {
+        capturedTradeSetupsRef.current.add(overlay.id);
+        return undefined;
+      }
+    } catch {
+      // Capture can still be attempted even when local storage is restricted.
+    }
+    capturedTradeSetupsRef.current.add(overlay.id);
+    const timer = window.setTimeout(() => {
+      const capture = async () => {
+        const previousShowFib = showFibRef.current;
+        const previousShowTradeLevels = showTradeLevelsRef.current;
+        const previousFibVisibility = fibVisibilityRef.current;
+        const previousFibPreviousVisibility = fibPreviousVisibilityRef.current;
+        try {
+          showFibRef.current = true;
+          showTradeLevelsRef.current = true;
+          fibVisibilityRef.current = Object.fromEntries(
+            ALL_FIB_VISIBILITY_OPTIONS.map((option) => [option.key, true]),
+          ) as Record<FibVisibilityKey, boolean>;
+          fibPreviousVisibilityRef.current = DEFAULT_FIB_VISIBILITY;
+          redrawZonesRef.current();
+          await new Promise<void>((resolve) => window.requestAnimationFrame(() => resolve()));
+          const { toJpeg } = await import('html-to-image');
+          const screenshot = await toJpeg(pane, {
+            backgroundColor: '#ffffff',
+            cacheBust: false,
+            pixelRatio: 1,
+            quality: 0.8,
+            filter: (node) => !(
+              node instanceof HTMLElement && node.dataset.journalExclude === 'true'
+            ),
+          });
+          const resized = await resizeJournalScreenshot(screenshot);
+          window.localStorage.setItem(storageKey, resized);
+        } catch {
+          capturedTradeSetupsRef.current.delete(overlay.id);
+        } finally {
+          showFibRef.current = previousShowFib;
+          showTradeLevelsRef.current = previousShowTradeLevels;
+          fibVisibilityRef.current = previousFibVisibility;
+          fibPreviousVisibilityRef.current = previousFibPreviousVisibility;
+          redrawZonesRef.current();
+        }
+      };
+      void capture();
+    }, 450);
+    return () => window.clearTimeout(timer);
+  }, [tradeOverlays]);
+
+  useEffect(() => {
     if (granularity === 'D' && expandedFibOption === 'swing') {
       setExpandedFibOption(null);
     }
@@ -2515,7 +2700,10 @@ export const OandaProChart: React.FC = () => {
             )}
           </div>
 
-          <div className="flex items-center gap-0.5 border-l border-slate-200 pl-1">
+          <div className={`${showIndicatorControls
+            ? 'order-last flex w-full flex-wrap items-center gap-0.5 border-t border-slate-100 pt-1'
+            : 'flex items-center gap-0.5 border-l border-slate-200 pl-1'
+          }`}>
             <button
               type="button"
               onClick={() => setShowIndicatorControls((visible) => !visible)}
@@ -2719,6 +2907,22 @@ export const OandaProChart: React.FC = () => {
               )}
             </div>
             <button
+              type="button"
+              onClick={() => {
+                setShowJournal(true);
+                setShowAccuracyTable(false);
+                setShowAccuracyOptions(false);
+              }}
+              className={`whitespace-nowrap rounded-md border px-1.5 py-0.5 text-[8px] font-black leading-tight transition ${
+                showJournal
+                  ? 'border-violet-300 bg-violet-100 text-violet-800'
+                  : 'border-violet-200 bg-violet-50 text-violet-700'
+              }`}
+              title="Open the saved trading journal and export Excel or Word reports"
+            >
+              JOURNAL
+            </button>
+            <button
               onClick={() => setShowEngulfing((value) => !value)}
               className={`whitespace-nowrap rounded-md border px-1.5 py-0.5 text-[8px] font-black leading-tight transition ${
                 showEngulfing ? 'border-blue-200 bg-blue-50 text-blue-700' : 'border-slate-200 bg-white text-slate-500'
@@ -2811,7 +3015,7 @@ export const OandaProChart: React.FC = () => {
             </>}
           </div>
 
-          <div className="ml-auto flex items-center gap-1.5">
+          <div className="ml-auto flex max-w-full flex-wrap items-center justify-end gap-1.5">
             <label className="flex items-center gap-1 rounded-md border border-slate-200 bg-white px-1.5 py-0.5 text-[9px] font-black text-slate-600">
               TIME
               <select
@@ -2884,7 +3088,7 @@ export const OandaProChart: React.FC = () => {
           </span>
         </div>
 
-        <div className="relative flex-1 min-h-0 bg-white">
+        <div ref={chartPaneRef} className="relative flex-1 min-h-0 bg-white">
           <div ref={hostRef} className="absolute inset-0" />
           <div ref={zoneLayerRef} className="pointer-events-none absolute inset-0 z-10 overflow-hidden" />
           <div
@@ -2940,7 +3144,7 @@ export const OandaProChart: React.FC = () => {
               <button onClick={() => setReplaySelecting(false)} className="rounded border border-slate-200 px-2 py-1 text-[10px] font-black text-slate-500 hover:bg-slate-100">CANCEL</button>
             </div>
           )}
-          <div className={`pointer-events-auto absolute left-3 top-3 z-20 overflow-hidden rounded-md border border-slate-300 bg-white/95 shadow-sm ${showZoneTable ? 'w-fit max-w-[calc(100%_-_24px)]' : 'w-auto'}`}>
+          <div data-journal-exclude="true" className={`pointer-events-auto absolute left-3 top-3 z-20 overflow-hidden rounded-md border border-slate-300 bg-white/95 shadow-sm ${showZoneTable ? 'w-fit max-w-[calc(100%_-_24px)]' : 'w-auto'}`}>
             <div className="flex items-center justify-between gap-3 border-b border-slate-200 bg-violet-50 px-2 py-1 text-[9px] font-black uppercase tracking-wide text-violet-700">
               <span>{showZoneTable ? 'Zone table' : 'Zone table minimized'}</span>
               <button
@@ -3158,10 +3362,18 @@ export const OandaProChart: React.FC = () => {
           </div>
           {showAccuracyTable && (
             <EngulfingAccuracyTable
-              records={accuracyTradeRecords}
+              records={timeframeAccuracyRecords}
+              allRecords={allSavedAccuracyRecords}
               timeframe={granularity}
               showAllTrades={showAllAccuracyTrades}
               timeZone={chartTimeZone}
+            />
+          )}
+          {showJournal && (
+            <TradeJournal
+              records={accuracyTradeRecords}
+              timeZone={chartTimeZone}
+              onClose={() => setShowJournal(false)}
             />
           )}
           <MultiTimeframeEntryTable rows={mtfRows} />

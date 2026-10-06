@@ -1,6 +1,7 @@
 import 'dotenv/config';
 import express from 'express';
 import path from 'path';
+import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { createServer as createViteServer } from 'vite';
 import { fetchTradingViewCandles } from './src/services/tradingViewDatafeed';
 import {
@@ -12,12 +13,41 @@ import {
 } from './src/services/agentKnowledge';
 
 const GRANULARITIES = new Set(['M1', 'M5', 'M15', 'M30', 'H1', 'H4', 'D', 'W', 'MO']);
+const JOURNAL_FILE = path.resolve(process.cwd(), 'data', 'trade-journal.json');
+
+interface StoredJournalTrade {
+  id: string;
+  completedAt: number;
+  [key: string]: unknown;
+}
+
+async function readJournalTrades(): Promise<StoredJournalTrade[]> {
+  try {
+    const content = await readFile(JOURNAL_FILE, 'utf8');
+    const parsed = JSON.parse(content);
+    return Array.isArray(parsed?.trades)
+      ? parsed.trades.filter((trade: unknown): trade is StoredJournalTrade => (
+        typeof trade === 'object' && trade !== null
+        && typeof (trade as StoredJournalTrade).id === 'string'
+        && Number.isFinite((trade as StoredJournalTrade).completedAt)
+      ))
+      : [];
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return [];
+    throw error;
+  }
+}
+
+async function writeJournalTrades(trades: StoredJournalTrade[]): Promise<void> {
+  await mkdir(path.dirname(JOURNAL_FILE), { recursive: true });
+  await writeFile(JOURNAL_FILE, `${JSON.stringify({ trades }, null, 2)}\n`, 'utf8');
+}
 
 async function startServer() {
   const app = express();
   const port = Number(process.env.PORT || 3000);
   app.disable('x-powered-by');
-  app.use(express.json());
+  app.use(express.json({ limit: '12mb' }));
 
   app.get('/api/health', (_req, res) => {
     res.setHeader('Cache-Control', 'no-store');
@@ -30,6 +60,46 @@ async function startServer() {
       unofficial: true,
       fallbackEnabled: false,
     });
+  });
+
+  app.get('/api/journal/trades', async (_req, res) => {
+    try {
+      const trades = await readJournalTrades();
+      res.setHeader('Cache-Control', 'no-store');
+      return res.json({ ok: true, trades });
+    } catch (error) {
+      return res.status(500).json({
+        ok: false,
+        error: error instanceof Error ? error.message : 'Unable to read the trade journal.',
+      });
+    }
+  });
+
+  app.post('/api/journal/trades', async (req, res) => {
+    try {
+      const incoming = Array.isArray(req.body?.trades) ? req.body.trades : [];
+      if (incoming.length === 0 || incoming.length > 2_000) {
+        return res.status(400).json({ ok: false, error: 'One or more journal trades are required.' });
+      }
+      const existing = await readJournalTrades();
+      const merged = new Map(existing.map((trade) => [trade.id, trade]));
+      for (const candidate of incoming) {
+        if (!candidate || typeof candidate !== 'object') continue;
+        const id = typeof candidate.id === 'string' ? candidate.id.trim().slice(0, 500) : '';
+        const completedAt = Number(candidate.completedAt);
+        if (!id || !Number.isFinite(completedAt) || completedAt <= 0) continue;
+        merged.set(id, { ...merged.get(id), ...candidate, id, completedAt });
+      }
+      const trades = Array.from(merged.values())
+        .sort((first, second) => second.completedAt - first.completedAt);
+      await writeJournalTrades(trades);
+      return res.json({ ok: true, trades });
+    } catch (error) {
+      return res.status(500).json({
+        ok: false,
+        error: error instanceof Error ? error.message : 'Unable to save the trade journal.',
+      });
+    }
   });
 
   app.get('/api/tradingview/market-data', async (req, res) => {

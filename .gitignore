@@ -12,3 +12,4 @@ coverage/
 
 # User-approved AI corrections and trade journal (local runtime data)
 data/ai-agent-memory.json
+data/trade-journal.json
