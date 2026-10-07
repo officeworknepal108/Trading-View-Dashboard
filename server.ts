@@ -240,7 +240,7 @@ function sanitizeMt5Config(candidate: any, current: Mt5AutomationConfig): Mt5Aut
     brokerSymbol: typeof candidate?.brokerSymbol === 'string'
       ? candidate.brokerSymbol.trim().slice(0, 30) || current.brokerSymbol
       : current.brokerSymbol,
-    riskPercent: clamp(candidate?.riskPercent, current.riskPercent, 0.01, 2),
+    riskPercent: clamp(candidate?.riskPercent, current.riskPercent, 0.01, 5),
     maximumOpenTrades: Math.round(clamp(candidate?.maximumOpenTrades, current.maximumOpenTrades, 1, 10)),
     maximumDailyLossPercent: clamp(candidate?.maximumDailyLossPercent, current.maximumDailyLossPercent, 0.1, 10),
     maximumSpreadPoints: Math.round(clamp(candidate?.maximumSpreadPoints, current.maximumSpreadPoints, 1, 1000)),

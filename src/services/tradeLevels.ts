@@ -25,6 +25,24 @@ export interface EngulfingTradeSignal {
   timeframe: TradeTimeframe;
 }
 
+export type MarketTrend = 'bullish' | 'bearish' | 'neutral';
+
+export interface EngulfingVolumeAssessment {
+  applicable: boolean;
+  passes: boolean;
+  bestQuality: boolean;
+  firstVolume?: number;
+  secondVolume?: number;
+  thirdVolume?: number;
+}
+
+export interface DirectEntryPolicyDecision {
+  allowed: boolean;
+  reason: 'unchanged' | 'higher-timeframe-alignment' | 'volume-counter-trend' | 'blocked';
+  rule?: TradeRule;
+  volume: EngulfingVolumeAssessment;
+}
+
 export interface TradeLevels {
   entry: number;
   stopLoss: number;
@@ -42,6 +60,97 @@ export interface TradeLevels {
 }
 
 export const TRADE_PIP_SIZE = 0.1;
+
+function validVolume(candle: StructureCandle | undefined): number | undefined {
+  return candle && Number.isFinite(candle.volume) && candle.volume! >= 0
+    ? candle.volume
+    : undefined;
+}
+
+/**
+ * Evaluate only the agreed engulfing-volume relationships.
+ * T1: V2 < V1.
+ * T2/T3: V3 < V2; best quality additionally requires V3 < V1.
+ * T4 is intentionally outside this rule.
+ */
+export function assessEngulfingVolumeLogic(
+  candles: StructureCandle[],
+  signal: EngulfingTradeSignal,
+): EngulfingVolumeAssessment {
+  if (!['T1', 'T2', 'T3'].includes(signal.type)) {
+    return { applicable: false, passes: false, bestQuality: false };
+  }
+
+  const endIndex = candles.findIndex((candle) => candle.time === signal.time);
+  if (endIndex < 0) return { applicable: true, passes: false, bestQuality: false };
+
+  if (signal.type === 'T1') {
+    const firstVolume = validVolume(candles[endIndex - 1]);
+    const secondVolume = validVolume(candles[endIndex]);
+    const passes = firstVolume !== undefined
+      && secondVolume !== undefined
+      && secondVolume < firstVolume;
+    return {
+      applicable: true,
+      passes,
+      bestQuality: false,
+      firstVolume,
+      secondVolume,
+    };
+  }
+
+  const firstVolume = validVolume(candles[endIndex - 2]);
+  const secondVolume = validVolume(candles[endIndex - 1]);
+  const thirdVolume = validVolume(candles[endIndex]);
+  const passes = secondVolume !== undefined
+    && thirdVolume !== undefined
+    && thirdVolume < secondVolume;
+  return {
+    applicable: true,
+    passes,
+    bestQuality: passes
+      && firstVolume !== undefined
+      && thirdVolume !== undefined
+      && thirdVolume < firstVolume,
+    firstVolume,
+    secondVolume,
+    thirdVolume,
+  };
+}
+
+/**
+ * M1 direct entries alone use the higher-timeframe gate. A valid T1-T3 volume
+ * setup can bypass a missing/opposing M5+M15 alignment, but is capped at 1R.
+ * Every other direct timeframe passes through unchanged.
+ */
+export function resolveDirectEntryPolicy(options: {
+  zoneTimeframe: TradeTimeframe;
+  signal: EngulfingTradeSignal;
+  sourceCandles: StructureCandle[];
+  baseRule: TradeRule;
+  m5Trend?: MarketTrend;
+  m15Trend?: MarketTrend;
+}): DirectEntryPolicyDecision {
+  const { zoneTimeframe, signal, sourceCandles, baseRule, m5Trend, m15Trend } = options;
+  const volume = assessEngulfingVolumeLogic(sourceCandles, signal);
+  if (zoneTimeframe !== 'M1' || signal.timeframe !== 'M1') {
+    return { allowed: true, reason: 'unchanged', rule: baseRule, volume };
+  }
+
+  const aligned = m5Trend === signal.direction && m15Trend === signal.direction;
+  if (aligned) {
+    return { allowed: true, reason: 'higher-timeframe-alignment', rule: baseRule, volume };
+  }
+  if (volume.passes) {
+    return {
+      allowed: true,
+      reason: 'volume-counter-trend',
+      rule: { ...baseRule, rewardRisk: 1 },
+      volume,
+    };
+  }
+  return { allowed: false, reason: 'blocked', volume };
+}
 
 const TIMEFRAME_SECONDS: Record<TradeTimeframe, number> = {
   M1: 60,

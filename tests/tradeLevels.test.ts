@@ -1,10 +1,12 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
+  assessEngulfingVolumeLogic,
   calculateTradeLevels,
   getDirectTradeRule,
   getMtfTradeRule,
   isDeepDiscountTradeSignal,
+  resolveDirectEntryPolicy,
   type EngulfingTradeSignal,
 } from '../src/services/tradeLevels';
 import type { StructureCandle, StructureZone } from '../src/services/marketStructure';
@@ -16,6 +18,150 @@ const bullishSignal: EngulfingTradeSignal = {
   candleCount: 2,
   timeframe: 'M1',
 };
+
+function volumeCandle(time: number, volume?: number): StructureCandle {
+  return { time, open: 10, high: 12, low: 9, close: 11, volume, complete: true };
+}
+
+test('Type 1 volume logic requires the second volume to be strictly smaller than the first', () => {
+  assert.deepEqual(
+    assessEngulfingVolumeLogic(
+      [volumeCandle(0, 120), volumeCandle(60, 80)],
+      bullishSignal,
+    ),
+    {
+      applicable: true,
+      passes: true,
+      bestQuality: false,
+      firstVolume: 120,
+      secondVolume: 80,
+    },
+  );
+  assert.equal(assessEngulfingVolumeLogic(
+    [volumeCandle(0, 120), volumeCandle(60, 120)],
+    bullishSignal,
+  ).passes, false);
+  assert.equal(assessEngulfingVolumeLogic(
+    [volumeCandle(0, 80), volumeCandle(60, 120)],
+    bullishSignal,
+  ).passes, false);
+});
+
+test('Type 2 and Type 3 require V3 below V2 and mark V3 below V1 as best quality', () => {
+  for (const type of ['T2', 'T3'] as const) {
+    const signal: EngulfingTradeSignal = {
+      ...bullishSignal,
+      type,
+      time: 120,
+      candleCount: 3,
+    };
+    const valid = assessEngulfingVolumeLogic(
+      [volumeCandle(0, 50), volumeCandle(60, 120), volumeCandle(120, 80)],
+      signal,
+    );
+    assert.equal(valid.passes, true);
+    assert.equal(valid.bestQuality, false);
+
+    const best = assessEngulfingVolumeLogic(
+      [volumeCandle(0, 100), volumeCandle(60, 120), volumeCandle(120, 40)],
+      signal,
+    );
+    assert.equal(best.passes, true);
+    assert.equal(best.bestQuality, true);
+
+    assert.equal(assessEngulfingVolumeLogic(
+      [volumeCandle(0, 100), volumeCandle(60, 80), volumeCandle(120, 80)],
+      signal,
+    ).passes, false);
+  }
+});
+
+test('volume logic excludes Type 4 and fails safely when required volume is missing', () => {
+  assert.deepEqual(assessEngulfingVolumeLogic([], {
+    ...bullishSignal,
+    type: 'T4',
+  }), { applicable: false, passes: false, bestQuality: false });
+  assert.equal(assessEngulfingVolumeLogic(
+    [volumeCandle(0, 120), volumeCandle(60)],
+    bullishSignal,
+  ).passes, false);
+});
+
+test('direct M1 policy keeps aligned trades, uses 1R for the volume exception, and blocks invalid exceptions', () => {
+  const baseRule = getDirectTradeRule('M1', 'M1')!;
+  const validVolume = [volumeCandle(0, 120), volumeCandle(60, 80)];
+  const invalidVolume = [volumeCandle(0, 80), volumeCandle(60, 120)];
+
+  const aligned = resolveDirectEntryPolicy({
+    zoneTimeframe: 'M1',
+    signal: bullishSignal,
+    sourceCandles: invalidVolume,
+    baseRule,
+    m5Trend: 'bullish',
+    m15Trend: 'bullish',
+  });
+  assert.equal(aligned.allowed, true);
+  assert.equal(aligned.rule?.rewardRisk, 3);
+
+  const exception = resolveDirectEntryPolicy({
+    zoneTimeframe: 'M1',
+    signal: bullishSignal,
+    sourceCandles: validVolume,
+    baseRule,
+    m5Trend: 'bearish',
+    m15Trend: 'bearish',
+  });
+  assert.equal(exception.allowed, true);
+  assert.equal(exception.reason, 'volume-counter-trend');
+  assert.equal(exception.rule?.rewardRisk, 1);
+
+  const blocked = resolveDirectEntryPolicy({
+    zoneTimeframe: 'M1',
+    signal: bullishSignal,
+    sourceCandles: invalidVolume,
+    baseRule,
+    m5Trend: 'bearish',
+    m15Trend: 'bearish',
+  });
+  assert.equal(blocked.allowed, false);
+  assert.equal(blocked.rule, undefined);
+
+  const bearishException = resolveDirectEntryPolicy({
+    zoneTimeframe: 'M1',
+    signal: { ...bullishSignal, direction: 'bearish' },
+    sourceCandles: validVolume,
+    baseRule,
+    m5Trend: 'bullish',
+    m15Trend: 'bullish',
+  });
+  assert.equal(bearishException.allowed, true);
+  assert.equal(bearishException.rule?.rewardRisk, 1);
+
+  const disagreementWithoutVolume = resolveDirectEntryPolicy({
+    zoneTimeframe: 'M1',
+    signal: bullishSignal,
+    sourceCandles: invalidVolume,
+    baseRule,
+    m5Trend: 'bullish',
+    m15Trend: 'neutral',
+  });
+  assert.equal(disagreementWithoutVolume.allowed, false);
+});
+
+test('direct M5 entries remain unchanged by the M1 policy', () => {
+  const baseRule = getDirectTradeRule('M5', 'M5')!;
+  const decision = resolveDirectEntryPolicy({
+    zoneTimeframe: 'M5',
+    signal: { ...bullishSignal, timeframe: 'M5' },
+    sourceCandles: [],
+    baseRule,
+    m5Trend: 'bearish',
+    m15Trend: 'bearish',
+  });
+  assert.equal(decision.allowed, true);
+  assert.equal(decision.reason, 'unchanged');
+  assert.equal(decision.rule?.rewardRisk, 2);
+});
 
 test('finalized direct trade matrix returns the agreed R:R, buffer, and risk caps', () => {
   assert.deepEqual(getDirectTradeRule('M1', 'M1'), {

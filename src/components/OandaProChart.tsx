@@ -45,6 +45,7 @@ import {
   getDirectTradeRule,
   getMtfTradeRule,
   isDeepDiscountTradeSignal,
+  resolveDirectEntryPolicy,
   resolveZoneEngulfingSignal,
   type EngulfingTradeSignal,
   type TradeLevels,
@@ -214,6 +215,44 @@ function marketCandleCloseTime(time: number, granularity: MarketGranularity): nu
     start.getUTCFullYear(), start.getUTCMonth() + 1, start.getUTCDate(),
     start.getUTCHours(), start.getUTCMinutes(), start.getUTCSeconds(),
   ) / 1000;
+}
+
+function completedTrendAt(
+  candles: OandaCandle[],
+  granularity: OandaGranularity,
+  cutoff: number,
+): 'bullish' | 'bearish' | 'neutral' {
+  const completedCandles = candles.filter((candle) => (
+    candle.complete && marketCandleCloseTime(candle.time, granularity) <= cutoff
+  ));
+  if (completedCandles.length === 0) return 'neutral';
+  return analyzeMarketStructure(completedCandles, {
+    allowSupplyDemand: ['H1', 'H4', 'D'].includes(granularity),
+    sourceBarSeconds: TIMEFRAME_SECONDS[granularity],
+    confirmationBarSeconds: TJL1_CONFIRMATION_SECONDS[granularity],
+    zoneVisualBars: 30,
+  }).trend;
+}
+
+function resolveRuleForDirectEntry(options: {
+  zoneTimeframe: TradeTimeframe;
+  signal: EngulfingTradeSignal;
+  sourceCandles: OandaCandle[];
+  baseRule: TradeRule;
+  m5Candles: OandaCandle[];
+  m15Candles: OandaCandle[];
+}): TradeRule | undefined {
+  const { zoneTimeframe, signal, sourceCandles, baseRule, m5Candles, m15Candles } = options;
+  if (zoneTimeframe !== 'M1' || signal.timeframe !== 'M1') return baseRule;
+  const signalClose = signal.time + TIMEFRAME_SECONDS.M1;
+  return resolveDirectEntryPolicy({
+    zoneTimeframe,
+    signal,
+    sourceCandles,
+    baseRule,
+    m5Trend: completedTrendAt(m5Candles, 'M5', signalClose),
+    m15Trend: completedTrendAt(m15Candles, 'M15', signalClose),
+  }).rule;
 }
 
 const TJL1_CONFIRMATION_LABELS: Record<OandaGranularity, string> = {
@@ -1131,11 +1170,20 @@ export const OandaProChart: React.FC = () => {
         < TIMEFRAME_SECONDS[granularity]
         ? sourceCandles
         : displayCandles;
+      const entryRule = resolveRuleForDirectEntry({
+        zoneTimeframe: granularity,
+        signal: setup.signal,
+        sourceCandles,
+        baseRule: setup.rule,
+        m5Candles: granularity === 'M5' ? displayCandles : vipCandles.M5 || [],
+        m15Candles: granularity === 'M15' ? displayCandles : vipCandles.M15 || [],
+      });
+      if (!entryRule) continue;
       const trade = calculateTradeLevels({
         sourceCandles,
         executionCandles,
         signal: setup.signal,
-        rule: setup.rule,
+        rule: entryRule,
         omitStopBuffer: isDeepDiscountTradeSignal(setup.zone, setup.signal),
       });
       if (trade) trades.set(setup.zone.id, trade);
@@ -1326,9 +1374,18 @@ export const OandaProChart: React.FC = () => {
         if (!zone.active || zone.status !== 'valid' || zone.tradeable === false) continue;
         const signal = resolveZoneEngulfingSignal(zone, zoneTimeframe);
         if (!signal) continue;
-        const rule = getDirectTradeRule(zoneTimeframe, signal.timeframe);
+        const baseRule = getDirectTradeRule(zoneTimeframe, signal.timeframe);
         const sourceCandles = tableTimeframeData[signal.timeframe]?.candles;
-        if (!rule || !sourceCandles?.length) continue;
+        if (!baseRule || !sourceCandles?.length) continue;
+        const rule = resolveRuleForDirectEntry({
+          zoneTimeframe,
+          signal,
+          sourceCandles,
+          baseRule,
+          m5Candles: tableTimeframeData.M5?.candles || [],
+          m15Candles: tableTimeframeData.M15?.candles || [],
+        });
+        if (!rule) continue;
         const executionCandles = TIMEFRAME_SECONDS[signal.timeframe] < TIMEFRAME_SECONDS[zoneTimeframe]
           ? sourceCandles
           : timeframeData.candles;
@@ -1440,11 +1497,20 @@ export const OandaProChart: React.FC = () => {
       if (zone.status === 'rejected' || zone.tradeable === false) continue;
       const signal = resolveZoneEngulfingSignal(zone, granularity);
       if (!signal) continue;
-      const rule = getDirectTradeRule(granularity, signal.timeframe);
-      if (!rule) continue;
+      const baseRule = getDirectTradeRule(granularity, signal.timeframe);
+      if (!baseRule) continue;
       const sourceCandles = signal.timeframe === granularity
         ? displayCandles
         : vipCandles[signal.timeframe] || [];
+      const rule = resolveRuleForDirectEntry({
+        zoneTimeframe: granularity,
+        signal,
+        sourceCandles,
+        baseRule,
+        m5Candles: granularity === 'M5' ? displayCandles : vipCandles.M5 || [],
+        m15Candles: granularity === 'M15' ? displayCandles : vipCandles.M15 || [],
+      });
+      if (!rule) continue;
       const executionCandles = TIMEFRAME_SECONDS[signal.timeframe]
         < TIMEFRAME_SECONDS[granularity]
         ? sourceCandles
@@ -2951,11 +3017,11 @@ export const OandaProChart: React.FC = () => {
                   />
                 </label>
                 <label className="mb-2 block font-bold text-slate-700">
-                  Risk per trade (%)
+                  Risk per trade (%, max 5)
                   <input
                     type="number"
                     min="0.01"
-                    max="2"
+                    max="5"
                     step="0.05"
                     value={mt5Status.config.riskPercent}
                     onChange={(event) => setMt5Status((current) => current ? {
@@ -2967,7 +3033,7 @@ export const OandaProChart: React.FC = () => {
                   />
                 </label>
                 <label className="mb-2 block font-bold text-slate-700">
-                  Maximum open trades
+                  Maximum open trades (max 10)
                   <input
                     type="number"
                     min="1"
