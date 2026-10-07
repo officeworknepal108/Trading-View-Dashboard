@@ -4,6 +4,7 @@ import {
   assessEngulfingVolumeLogic,
   calculateTradeLevels,
   getDirectTradeRule,
+  getEngulfingVolumeStatus,
   getMtfTradeRule,
   isDeepDiscountTradeSignal,
   resolveDirectEntryPolicy,
@@ -87,7 +88,15 @@ test('volume logic excludes Type 4 and fails safely when required volume is miss
   ).passes, false);
 });
 
-test('direct M1 policy keeps aligned trades, uses 1R for the volume exception, and blocks invalid exceptions', () => {
+test('volume assessment reports valid, best, failed, unavailable, and not-applicable states', () => {
+  assert.equal(getEngulfingVolumeStatus({ applicable: true, passes: true, bestQuality: false, firstVolume: 2, secondVolume: 1 }, 'T1'), 'valid');
+  assert.equal(getEngulfingVolumeStatus({ applicable: true, passes: true, bestQuality: true, firstVolume: 3, secondVolume: 2, thirdVolume: 1 }, 'T2'), 'best');
+  assert.equal(getEngulfingVolumeStatus({ applicable: true, passes: false, bestQuality: false, firstVolume: 1, secondVolume: 2 }, 'T1'), 'failed');
+  assert.equal(getEngulfingVolumeStatus({ applicable: true, passes: false, bestQuality: false, firstVolume: 1, secondVolume: 2 }, 'T3'), 'unavailable');
+  assert.equal(getEngulfingVolumeStatus({ applicable: false, passes: false, bestQuality: false }, 'T4'), 'not-applicable');
+});
+
+test('direct M1 policy uses volume as observation only and never changes normal entry rules', () => {
   const baseRule = getDirectTradeRule('M1', 'M1')!;
   const validVolume = [volumeCandle(0, 120), volumeCandle(60, 80)];
   const invalidVolume = [volumeCandle(0, 80), volumeCandle(60, 120)];
@@ -103,7 +112,7 @@ test('direct M1 policy keeps aligned trades, uses 1R for the volume exception, a
   assert.equal(aligned.allowed, true);
   assert.equal(aligned.rule?.rewardRisk, 3);
 
-  const exception = resolveDirectEntryPolicy({
+  const validCounterTrendVolume = resolveDirectEntryPolicy({
     zoneTimeframe: 'M1',
     signal: bullishSignal,
     sourceCandles: validVolume,
@@ -111,9 +120,10 @@ test('direct M1 policy keeps aligned trades, uses 1R for the volume exception, a
     m5Trend: 'bearish',
     m15Trend: 'bearish',
   });
-  assert.equal(exception.allowed, true);
-  assert.equal(exception.reason, 'volume-counter-trend');
-  assert.equal(exception.rule?.rewardRisk, 1);
+  assert.equal(validCounterTrendVolume.allowed, false);
+  assert.equal(validCounterTrendVolume.reason, 'blocked');
+  assert.equal(validCounterTrendVolume.rule, undefined);
+  assert.equal(validCounterTrendVolume.volume.passes, true);
 
   const blocked = resolveDirectEntryPolicy({
     zoneTimeframe: 'M1',
@@ -126,7 +136,7 @@ test('direct M1 policy keeps aligned trades, uses 1R for the volume exception, a
   assert.equal(blocked.allowed, false);
   assert.equal(blocked.rule, undefined);
 
-  const bearishException = resolveDirectEntryPolicy({
+  const bearishCounterTrendVolume = resolveDirectEntryPolicy({
     zoneTimeframe: 'M1',
     signal: { ...bullishSignal, direction: 'bearish' },
     sourceCandles: validVolume,
@@ -134,8 +144,8 @@ test('direct M1 policy keeps aligned trades, uses 1R for the volume exception, a
     m5Trend: 'bullish',
     m15Trend: 'bullish',
   });
-  assert.equal(bearishException.allowed, true);
-  assert.equal(bearishException.rule?.rewardRisk, 1);
+  assert.equal(bearishCounterTrendVolume.allowed, false);
+  assert.equal(bearishCounterTrendVolume.volume.passes, true);
 
   const disagreementWithoutVolume = resolveDirectEntryPolicy({
     zoneTimeframe: 'M1',

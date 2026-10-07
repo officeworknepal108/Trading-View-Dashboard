@@ -36,9 +36,11 @@ export interface EngulfingVolumeAssessment {
   thirdVolume?: number;
 }
 
+export type EngulfingVolumeStatus = 'not-applicable' | 'unavailable' | 'failed' | 'valid' | 'best';
+
 export interface DirectEntryPolicyDecision {
   allowed: boolean;
-  reason: 'unchanged' | 'higher-timeframe-alignment' | 'volume-counter-trend' | 'blocked';
+  reason: 'unchanged' | 'higher-timeframe-alignment' | 'blocked';
   rule?: TradeRule;
   volume: EngulfingVolumeAssessment;
 }
@@ -118,9 +120,22 @@ export function assessEngulfingVolumeLogic(
   };
 }
 
+export function getEngulfingVolumeStatus(
+  assessment: EngulfingVolumeAssessment,
+  type: EngulfingType,
+): EngulfingVolumeStatus {
+  if (!assessment.applicable) return 'not-applicable';
+  const requiredVolumesAvailable = type === 'T1'
+    ? assessment.firstVolume !== undefined && assessment.secondVolume !== undefined
+    : assessment.secondVolume !== undefined && assessment.thirdVolume !== undefined;
+  if (!requiredVolumesAvailable) return 'unavailable';
+  if (assessment.bestQuality) return 'best';
+  return assessment.passes ? 'valid' : 'failed';
+}
+
 /**
- * M1 direct entries alone use the higher-timeframe gate. A valid T1-T3 volume
- * setup can bypass a missing/opposing M5+M15 alignment, but is capped at 1R.
+ * M1 direct entries alone use the higher-timeframe gate. Volume is returned as
+ * observation metadata only: it never accepts, rejects, or changes a trade.
  * Every other direct timeframe passes through unchanged.
  */
 export function resolveDirectEntryPolicy(options: {
@@ -140,14 +155,6 @@ export function resolveDirectEntryPolicy(options: {
   const aligned = m5Trend === signal.direction && m15Trend === signal.direction;
   if (aligned) {
     return { allowed: true, reason: 'higher-timeframe-alignment', rule: baseRule, volume };
-  }
-  if (volume.passes) {
-    return {
-      allowed: true,
-      reason: 'volume-counter-trend',
-      rule: { ...baseRule, rewardRisk: 1 },
-      volume,
-    };
   }
   return { allowed: false, reason: 'blocked', volume };
 }

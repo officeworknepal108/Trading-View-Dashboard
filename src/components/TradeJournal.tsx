@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { BookOpen, Download, ImagePlus, Save, X } from 'lucide-react';
 import type { ChartTimeZone } from '../services/chartTime';
-import type { TradeResult, TradeTimeframe } from '../services/tradeLevels';
+import type { EngulfingVolumeStatus, TradeResult, TradeTimeframe } from '../services/tradeLevels';
 
 export interface JournalTradeRecord {
   id: string;
@@ -19,6 +19,10 @@ export interface JournalTradeRecord {
   rewardRisk: number;
   riskPips: number;
   signalAt?: number;
+  volumeLogicStatus?: EngulfingVolumeStatus;
+  volume1?: number;
+  volume2?: number;
+  volume3?: number;
   fibSource?: string;
   fibBand?: string;
   fibLevels?: Array<{ label: string; price: number }>;
@@ -57,6 +61,24 @@ interface TradeJournalProps {
 }
 
 const RESULT_LABELS: Record<TradeResult, string> = { tp: 'TP', sl: 'SL', rf: 'RISK FREE' };
+const VOLUME_STATUS_LABELS: Record<EngulfingVolumeStatus, string> = {
+  'not-applicable': 'N/A',
+  unavailable: 'UNAVAILABLE',
+  failed: 'FAILED',
+  valid: 'VALID',
+  best: 'BEST',
+};
+
+function volumeStatus(trade: JournalTradeRecord): EngulfingVolumeStatus {
+  return trade.volumeLogicStatus ?? 'unavailable';
+}
+
+function volumeValues(trade: JournalTradeRecord): string {
+  return [trade.volume1, trade.volume2, trade.volume3]
+    .map((volume, index) => volume === undefined ? undefined : `V${index + 1} ${volume}`)
+    .filter(Boolean)
+    .join(' · ') || 'No saved volume values';
+}
 
 function displayTimeframe(timeframe: string): string {
   return timeframe.startsWith('M') ? `${timeframe.slice(1)}M` : timeframe;
@@ -257,6 +279,7 @@ export const TradeJournal: React.FC<TradeJournalProps> = ({ records, timeZone, o
   const [resultFilter, setResultFilter] = useState<'ALL' | TradeResult>('ALL');
   const [timeframeFilter, setTimeframeFilter] = useState('ALL');
   const [sourceFilter, setSourceFilter] = useState('ALL');
+  const [volumeFilter, setVolumeFilter] = useState<'ALL' | EngulfingVolumeStatus>('ALL');
   const [search, setSearch] = useState('');
   const [saving, setSaving] = useState(false);
   const [exporting, setExporting] = useState<'excel' | 'word' | null>(null);
@@ -401,10 +424,11 @@ export const TradeJournal: React.FC<TradeJournalProps> = ({ records, timeZone, o
       (resultFilter === 'ALL' || trade.result === resultFilter)
       && (timeframeFilter === 'ALL' || trade.zoneTimeframe === timeframeFilter)
       && (sourceFilter === 'ALL' || trade.source === sourceFilter)
-      && (!query || [trade.zoneName, trade.engulfingType, trade.session, trade.reason, trade.mistake, trade.lesson]
+      && (volumeFilter === 'ALL' || volumeStatus(trade) === volumeFilter)
+      && (!query || [trade.zoneName, trade.engulfingType, volumeStatus(trade), trade.session, trade.reason, trade.mistake, trade.lesson]
         .some((value) => value?.toLowerCase().includes(query)))
     ));
-  }, [resultFilter, search, sourceFilter, timeframeFilter, trades]);
+  }, [resultFilter, search, sourceFilter, timeframeFilter, trades, volumeFilter]);
 
   const counts = useMemo(() => ({
     tp: filteredTrades.filter((trade) => trade.result === 'tp').length,
@@ -474,6 +498,10 @@ export const TradeJournal: React.FC<TradeJournalProps> = ({ records, timeZone, o
         Source: trade.source,
         'Engulfing TF': displayTimeframe(trade.signalTimeframe),
         'Engulfing Type': trade.engulfingType,
+        'Volume Logic': VOLUME_STATUS_LABELS[volumeStatus(trade)],
+        'Volume 1': trade.volume1 ?? '',
+        'Volume 2': trade.volume2 ?? '',
+        'Volume 3': trade.volume3 ?? '',
         Entry: trade.entry,
         SL: trade.stopLoss,
         TP: trade.takeProfit,
@@ -487,7 +515,7 @@ export const TradeJournal: React.FC<TradeJournalProps> = ({ records, timeZone, o
       }));
       XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(summary), 'Dashboard');
       const tradeSheet = XLSX.utils.json_to_sheet(rows);
-      tradeSheet['!cols'] = [5, 13, 8, 13, 9, 18, 8, 12, 12, 14, 12, 12, 12, 10, 8, 12, 20, 38, 38, 38]
+      tradeSheet['!cols'] = [5, 13, 8, 13, 9, 18, 8, 12, 12, 14, 12, 12, 12, 12, 12, 12, 12, 10, 8, 12, 20, 38, 38, 38]
         .map((wch) => ({ wch }));
       XLSX.utils.book_append_sheet(workbook, tradeSheet, 'Trade Journal');
       XLSX.writeFile(workbook, `Trade-Journal-${new Date().toISOString().slice(0, 10)}.xlsx`);
@@ -528,6 +556,7 @@ export const TradeJournal: React.FC<TradeJournalProps> = ({ records, timeZone, o
           new Paragraph(`Date: ${formatJournalDate(trade.completedAt, timeZone)}    Time: ${formatJournalTime(trade.completedAt, timeZone)}    Session: ${trade.session || inferTradingSession(trade.completedAt)}`),
           new Paragraph(`Setup: ${displayTimeframe(trade.zoneTimeframe)} ${trade.zoneName} · ${trade.direction === 'bullish' ? 'BUY' : 'SELL'}`),
           new Paragraph(`Confirmation: ${displayTimeframe(trade.signalTimeframe)} ${trade.engulfingType} · Source: ${trade.source}`),
+          new Paragraph(`Volume logic: ${VOLUME_STATUS_LABELS[volumeStatus(trade)]} · ${volumeValues(trade)}`),
           new Paragraph(`Entry: ${formatPrice(trade.entry)}    SL: ${formatPrice(trade.stopLoss)}    TP: ${formatPrice(trade.takeProfit)}    Risk: ${trade.riskPips} pips    R:R 1:${trade.rewardRisk}`),
           new Paragraph({ children: [new TextRun({ text: `Outcome: ${RESULT_LABELS[trade.result]}`, bold: true })] }),
           new Paragraph({ children: [new TextRun({ text: 'Reason: ', bold: true }), new TextRun(trade.reason || '—')] }),
@@ -609,13 +638,16 @@ export const TradeJournal: React.FC<TradeJournalProps> = ({ records, timeZone, o
         <select value={sourceFilter} onChange={(event) => setSourceFilter(event.target.value)} className="rounded border border-slate-200 px-2 py-1 text-[9px] font-bold">
           <option value="ALL">ALL SOURCES</option><option value="ENGULFING">ENGULFING</option><option value="MTF">MTF</option>
         </select>
+        <select value={volumeFilter} onChange={(event) => setVolumeFilter(event.target.value as 'ALL' | EngulfingVolumeStatus)} className="rounded border border-slate-200 px-2 py-1 text-[9px] font-bold">
+          <option value="ALL">ALL VOLUME LOGIC</option><option value="best">BEST</option><option value="valid">VALID</option><option value="failed">FAILED</option><option value="unavailable">UNAVAILABLE</option><option value="not-applicable">N/A</option>
+        </select>
       </div>
 
       <div className="flex min-h-0 flex-1">
         <div className="min-w-0 flex-1 overflow-auto border-r border-slate-300 bg-white">
-          <table className="min-w-[1120px] w-full border-collapse text-center text-[9px]">
+          <table className="min-w-[1220px] w-full border-collapse text-center text-[9px]">
             <thead className="sticky top-0 z-10 bg-slate-600 uppercase text-white">
-              <tr>{['#', 'Date', 'Time', 'Session', 'Zone TF', 'Zone', 'Side', 'Engulfing', 'Entry', 'SL', 'TP', 'R:R', 'Result'].map((heading) => <th key={heading} className="whitespace-nowrap px-2 py-1.5">{heading}</th>)}</tr>
+              <tr>{['#', 'Date', 'Time', 'Session', 'Zone TF', 'Zone', 'Side', 'Engulfing', 'Volume', 'Entry', 'SL', 'TP', 'R:R', 'Result'].map((heading) => <th key={heading} className="whitespace-nowrap px-2 py-1.5">{heading}</th>)}</tr>
             </thead>
             <tbody>
               {filteredTrades.map((trade, index) => (
@@ -628,12 +660,13 @@ export const TradeJournal: React.FC<TradeJournalProps> = ({ records, timeZone, o
                   <td className="whitespace-nowrap px-2 py-1.5 text-left font-bold">{trade.zoneName}</td>
                   <td className={`px-2 py-1.5 font-black ${trade.direction === 'bullish' ? 'text-emerald-700' : 'text-rose-700'}`}>{trade.direction === 'bullish' ? 'BUY' : 'SELL'}</td>
                   <td className="whitespace-nowrap px-2 py-1.5">{displayTimeframe(trade.signalTimeframe)} {trade.engulfingType}</td>
+                  <td title={volumeValues(trade)} className={`whitespace-nowrap px-2 py-1.5 font-black ${volumeStatus(trade) === 'best' ? 'text-emerald-700' : volumeStatus(trade) === 'valid' ? 'text-blue-700' : volumeStatus(trade) === 'failed' ? 'text-rose-700' : 'text-slate-500'}`}>{VOLUME_STATUS_LABELS[volumeStatus(trade)]}</td>
                   <td className="px-2 py-1.5">{formatPrice(trade.entry)}</td><td className="px-2 py-1.5">{formatPrice(trade.stopLoss)}</td><td className="px-2 py-1.5">{formatPrice(trade.takeProfit)}</td>
                   <td className="px-2 py-1.5 font-bold">1:{trade.rewardRisk}</td>
                   <td className={`px-2 py-1.5 font-black ${trade.result === 'tp' ? 'text-emerald-700' : trade.result === 'sl' ? 'text-rose-700' : 'text-amber-600'}`}>{RESULT_LABELS[trade.result]}</td>
                 </tr>
               ))}
-              {filteredTrades.length === 0 && <tr><td colSpan={13} className="p-6 text-slate-400">No completed trades match these filters.</td></tr>}
+              {filteredTrades.length === 0 && <tr><td colSpan={14} className="p-6 text-slate-400">No completed trades match these filters.</td></tr>}
             </tbody>
           </table>
         </div>
@@ -644,6 +677,7 @@ export const TradeJournal: React.FC<TradeJournalProps> = ({ records, timeZone, o
             <div className="mb-2 rounded border border-slate-200 bg-white p-2 text-[9px] leading-relaxed text-slate-600">
               <strong className="text-slate-800">{displayTimeframe(selectedTrade.zoneTimeframe)} {selectedTrade.zoneName}</strong> · {selectedTrade.direction === 'bullish' ? 'BUY' : 'SELL'}<br />
               {displayTimeframe(selectedTrade.signalTimeframe)} {selectedTrade.engulfingType} · 1:{selectedTrade.rewardRisk} · {RESULT_LABELS[selectedTrade.result]}
+              <br />Volume logic: <strong>{VOLUME_STATUS_LABELS[volumeStatus(selectedTrade)]}</strong> · {volumeValues(selectedTrade)}
             </div>
             <label className="mb-2 block text-[8px] font-black uppercase text-slate-500">Session
               <select value={draft.session} onChange={(event) => setDraft((current) => ({ ...current, session: event.target.value }))} className="mt-1 w-full rounded border border-slate-200 bg-white px-2 py-1.5 text-[9px] font-bold text-slate-700">

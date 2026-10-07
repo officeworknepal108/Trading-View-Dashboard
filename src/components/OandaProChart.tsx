@@ -40,10 +40,12 @@ import {
   type MtfRow,
 } from '../services/mtf';
 import {
+  assessEngulfingVolumeLogic,
   calculateTradeLevels,
   formatTradeTimeframe,
   getDirectTradeRule,
   getMtfTradeRule,
+  getEngulfingVolumeStatus,
   isDeepDiscountTradeSignal,
   resolveDirectEntryPolicy,
   resolveZoneEngulfingSignal,
@@ -662,6 +664,19 @@ function journalFibMetadata(
     }))
     : undefined;
   return { fibSource, fibBand, fibLevels };
+}
+
+function journalVolumeMetadata(
+  candles: OandaCandle[],
+  signal: EngulfingTradeSignal,
+): Pick<JournalTradeRecord, 'volumeLogicStatus' | 'volume1' | 'volume2' | 'volume3'> {
+  const assessment = assessEngulfingVolumeLogic(candles, signal);
+  return {
+    volumeLogicStatus: getEngulfingVolumeStatus(assessment, signal.type),
+    volume1: assessment.firstVolume,
+    volume2: assessment.secondVolume,
+    volume3: assessment.thirdVolume,
+  };
 }
 
 const EngulfingAccuracyTable: React.FC<{
@@ -1465,6 +1480,7 @@ export const OandaProChart: React.FC = () => {
       zoneTimeframe: TradeTimeframe,
       source: AccuracyTradeRecord['source'],
       trade: TradeLevels | undefined,
+      volumeCandles: OandaCandle[] | undefined,
       journalDetails: Partial<JournalTradeRecord> = {},
     ) => {
       if (!trade?.result) return;
@@ -1486,6 +1502,7 @@ export const OandaProChart: React.FC = () => {
         rewardRisk: trade.rewardRisk,
         riskPips: trade.riskPips,
         signalAt: trade.signal.time,
+        ...(volumeCandles ? journalVolumeMetadata(volumeCandles, trade.signal) : {}),
         ...journalDetails,
         ...(screenshotDataUrl ? { screenshotDataUrl } : {}),
       });
@@ -1528,6 +1545,7 @@ export const OandaProChart: React.FC = () => {
         granularity,
         'ENGULFING',
         trade,
+        sourceCandles,
         journalFibMetadata(zone, signal),
       );
     }
@@ -1559,6 +1577,7 @@ export const OandaProChart: React.FC = () => {
         row.higherTimeframe,
         'MTF',
         trade,
+        lowerTimeframeData.candles,
         {
           fibSource: 'MTF FIB',
           fibBand: row.engulfingDeepDiscount ? '0.71-0.79' : '0.5-0.618',
@@ -1579,7 +1598,10 @@ export const OandaProChart: React.FC = () => {
       const setup = directSetups.get(zoneId);
       if (!setup) continue;
       const id = `DIRECT:${zoneId}:${setup.signal.time}:${trade.entry}`;
-      addRecord(id, setup.zone.name, granularity, 'ENGULFING', trade);
+      const sourceCandles = setup.signal.timeframe === granularity
+        ? displayCandles
+        : vipCandles[setup.signal.timeframe] || [];
+      addRecord(id, setup.zone.name, granularity, 'ENGULFING', trade, sourceCandles);
     }
     for (const row of mtfRows) {
       if (!row.trade) continue;
@@ -1590,6 +1612,7 @@ export const OandaProChart: React.FC = () => {
         row.higherTimeframe,
         'MTF',
         row.trade,
+        tableTimeframeData[row.lowerTimeframe]?.candles,
       );
     }
     return Array.from(records.values())
@@ -1610,7 +1633,15 @@ export const OandaProChart: React.FC = () => {
   useEffect(() => {
     if (accuracyTradeRecords.length === 0) return;
     const signature = accuracyTradeRecords
-      .map((record) => `${record.id}:${record.result}:${record.completedAt}`)
+      .map((record) => [
+        record.id,
+        record.result,
+        record.completedAt,
+        record.volumeLogicStatus,
+        record.volume1,
+        record.volume2,
+        record.volume3,
+      ].join(':'))
       .sort()
       .join('|');
     if (signature === journalSyncSignatureRef.current) return;
