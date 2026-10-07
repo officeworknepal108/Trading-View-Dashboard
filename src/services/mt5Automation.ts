@@ -1,5 +1,25 @@
 import type { TradeLevels, TradeTimeframe } from './tradeLevels';
 
+export const MT5_RISK_PERCENT_OPTIONS = [
+  0.25, 0.5, 1, 1.5, 2, 2.5, 3, 3.5, 4, 4.5, 5,
+] as const;
+
+export function normalizeMt5RiskPercent(value: unknown, fallback = 0.25): number {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) return fallback;
+  return MT5_RISK_PERCENT_OPTIONS.reduce((nearest, option) => (
+    Math.abs(option - numeric) < Math.abs(nearest - numeric) ? option : nearest
+  ));
+}
+
+export function calculateXauUsdLotSize(cashRisk: number, stopLossPips: number): number {
+  if (!Number.isFinite(cashRisk) || cashRisk <= 0) throw new Error('Cash risk must be positive.');
+  if (!Number.isFinite(stopLossPips) || stopLossPips <= 0) {
+    throw new Error('SL pip distance must be positive.');
+  }
+  return cashRisk / (stopLossPips * 10);
+}
+
 export type Mt5SignalStatus = 'QUEUED' | 'CLAIMED' | 'PLACED' | 'ACTIVE'
   | 'RISK_FREE' | 'TP' | 'SL' | 'RF' | 'CANCELLED' | 'REJECTED' | 'EXPIRED' | 'SIMULATED';
 
@@ -65,6 +85,10 @@ export interface Mt5AutomationStatus {
     processExitCode?: number | null;
     account?: string;
     server?: string;
+    balance?: number;
+    equity?: number;
+    freeMargin?: number;
+    currency?: string;
     brokerSymbol?: string;
     lastHeartbeatAt?: number;
     message?: string;

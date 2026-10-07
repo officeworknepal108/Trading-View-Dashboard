@@ -99,6 +99,10 @@ def heartbeat(config: dict[str, Any], message: str = "Bridge ready") -> None:
         "processId": os.getpid(),
         "account": CONNECTED_ACCOUNT,
         "server": CONNECTED_SERVER,
+        "balance": float(account.balance) if account else None,
+        "equity": float(account.equity) if account else None,
+        "freeMargin": float(account.margin_free) if account else None,
+        "currency": str(account.currency) if account else None,
         "brokerSymbol": config.get("brokerSymbol", "XAUUSDm"),
         "message": message,
     })
@@ -128,6 +132,16 @@ def calculate_volume(signal: dict[str, Any], config: dict[str, Any], symbol_info
     account = mt5.account_info()
     if not account:
         raise RuntimeError("Unable to read account equity.")
+    sl_pips = float(signal.get("riskPips", 0))
+    if not math.isfinite(sl_pips) or sl_pips <= 0:
+        raise RuntimeError("SL pip distance must be a positive number.")
+    risk_money = float(account.equity) * float(config["riskPercent"]) / 100.0
+    formula_one_lot_loss = sl_pips * 10.0
+    raw_volume = risk_money / formula_one_lot_loss
+
+    # The agreed XAUUSD formula assumes $10 per pip for one standard lot.
+    # Confirm that the connected broker uses the same contract before risking
+    # money; a non-standard symbol must never silently use the wrong lot size.
     order_type = mt5.ORDER_TYPE_BUY if signal["direction"] == "BUY" else mt5.ORDER_TYPE_SELL
     one_lot_loss = mt5.order_calc_profit(
         order_type,
@@ -138,8 +152,14 @@ def calculate_volume(signal: dict[str, Any], config: dict[str, Any], symbol_info
     )
     if one_lot_loss is None or abs(one_lot_loss) <= 0:
         raise RuntimeError(f"MT5 could not calculate SL risk: {mt5.last_error()}")
-    risk_money = float(account.equity) * float(config["riskPercent"]) / 100.0
-    return normalize_volume(risk_money / abs(one_lot_loss), symbol_info)
+    broker_one_lot_loss = abs(float(one_lot_loss))
+    tolerance = max(0.01, formula_one_lot_loss * 0.02)
+    if abs(broker_one_lot_loss - formula_one_lot_loss) > tolerance:
+        raise RuntimeError(
+            "Broker XAUUSD contract does not match $10 per pip per 1 lot: "
+            f"formula={formula_one_lot_loss:.2f}, MT5={broker_one_lot_loss:.2f}."
+        )
+    return normalize_volume(raw_volume, symbol_info)
 
 
 def today_realized_loss_percent() -> float:

@@ -57,6 +57,7 @@ import {
 } from '../services/tradeLevels';
 import { TradeJournal, type JournalTradeRecord } from './TradeJournal';
 import {
+  MT5_RISK_PERCENT_OPTIONS,
   isExecutableTrade,
   tradeToMt5Signal,
   type Mt5AutomationStatus,
@@ -3048,20 +3049,19 @@ export const OandaProChart: React.FC = () => {
                   />
                 </label>
                 <label className="mb-2 block font-bold text-slate-700">
-                  Risk per trade (%, max 5)
-                  <input
-                    type="number"
-                    min="0.01"
-                    max="5"
-                    step="0.05"
+                  Risk per trade
+                  <select
                     value={mt5Status.config.riskPercent}
-                    onChange={(event) => setMt5Status((current) => current ? {
-                      ...current,
-                      config: { ...current.config, riskPercent: Number(event.target.value) },
-                    } : current)}
-                    onBlur={(event) => void updateMt5Config({ riskPercent: Number(event.target.value) })}
-                    className="mt-1 w-full rounded border border-slate-200 px-2 py-1"
-                  />
+                    onChange={(event) => void updateMt5Config({ riskPercent: Number(event.target.value) })}
+                    className="mt-1 w-full rounded border border-slate-200 bg-white px-2 py-1"
+                  >
+                    {MT5_RISK_PERCENT_OPTIONS.map((riskPercent) => (
+                      <option key={riskPercent} value={riskPercent}>{riskPercent}%</option>
+                    ))}
+                  </select>
+                  <span className="mt-1 block text-[8px] font-semibold text-slate-500">
+                    Lot size = cash risk ÷ (SL pips × 10)
+                  </span>
                 </label>
                 <label className="mb-2 block font-bold text-slate-700">
                   Maximum open trades (max 10)
@@ -3080,6 +3080,15 @@ export const OandaProChart: React.FC = () => {
                 </label>
                 <div className="rounded bg-slate-50 p-2 leading-relaxed text-slate-600">
                   Symbol: <b>{mt5Status.config.brokerSymbol}</b><br />
+                  MT5 Capital: <b>{mt5Status.bridge.balance === undefined
+                    ? '—'
+                    : `${mt5Status.bridge.currency || '$'} ${mt5Status.bridge.balance.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}</b><br />
+                  Equity: <b>{mt5Status.bridge.equity === undefined
+                    ? '—'
+                    : `${mt5Status.bridge.currency || '$'} ${mt5Status.bridge.equity.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}</b><br />
+                  Selected cash risk: <b>{mt5Status.bridge.equity === undefined
+                    ? '—'
+                    : `${mt5Status.bridge.currency || '$'} ${(mt5Status.bridge.equity * mt5Status.config.riskPercent / 100).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}</b><br />
                   Queue: <b>{mt5Status.counts.QUEUED ?? 0}</b> · Active: <b>{mt5Status.counts.ACTIVE ?? 0}</b><br />
                   Process: <b>{mt5Status.bridge.processRunning
                     ? `RUNNING · PID ${mt5Status.bridge.processId ?? '—'}`

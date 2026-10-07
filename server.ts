@@ -6,6 +6,7 @@ import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { createServer as createViteServer } from 'vite';
 import { fetchTradingViewCandles } from './src/services/tradingViewDatafeed';
 import {
+  normalizeMt5RiskPercent,
   isExecutableTrade,
   tradeToMt5Signal,
   Mt5AutomationConfig,
@@ -79,6 +80,10 @@ interface Mt5BridgeHeartbeat {
   processId?: number;
   account?: string;
   server?: string;
+  balance?: number;
+  equity?: number;
+  freeMargin?: number;
+  currency?: string;
   brokerSymbol?: string;
   message?: string;
   lastHeartbeatAt: number;
@@ -178,7 +183,12 @@ async function writeMt5Signals(signals: Mt5StoredSignal[]): Promise<void> {
 async function readMt5Config(): Promise<Mt5AutomationConfig> {
   try {
     const content = await readFile(MT5_CONFIG_FILE, 'utf8');
-    return { ...DEFAULT_MT5_CONFIG, ...JSON.parse(content) };
+    const parsed = JSON.parse(content);
+    return {
+      ...DEFAULT_MT5_CONFIG,
+      ...parsed,
+      riskPercent: normalizeMt5RiskPercent(parsed?.riskPercent, DEFAULT_MT5_CONFIG.riskPercent),
+    };
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === 'ENOENT') return DEFAULT_MT5_CONFIG;
     throw error;
@@ -215,6 +225,13 @@ function validateMt5Signal(candidate: any): string | undefined {
     || !validFinitePrice(candidate.takeProfit) || !validFinitePrice(candidate.riskFree)) {
     return 'Entry, SL, TP and risk-free prices must be positive numbers.';
   }
+  if (!Number.isFinite(candidate.riskPips) || candidate.riskPips <= 0) {
+    return 'SL pip distance must be a positive number.';
+  }
+  const calculatedRiskPips = Math.abs(candidate.entry - candidate.stopLoss) * 10;
+  if (Math.abs(candidate.riskPips - calculatedRiskPips) > 0.05) {
+    return 'SL pip distance does not match the entry and stop loss.';
+  }
   if (candidate.direction === 'BUY'
     && !(candidate.stopLoss < candidate.entry && candidate.takeProfit > candidate.entry)) {
     return 'BUY signal levels are not correctly ordered.';
@@ -240,7 +257,7 @@ function sanitizeMt5Config(candidate: any, current: Mt5AutomationConfig): Mt5Aut
     brokerSymbol: typeof candidate?.brokerSymbol === 'string'
       ? candidate.brokerSymbol.trim().slice(0, 30) || current.brokerSymbol
       : current.brokerSymbol,
-    riskPercent: clamp(candidate?.riskPercent, current.riskPercent, 0.01, 5),
+    riskPercent: normalizeMt5RiskPercent(candidate?.riskPercent, current.riskPercent),
     maximumOpenTrades: Math.round(clamp(candidate?.maximumOpenTrades, current.maximumOpenTrades, 1, 10)),
     maximumDailyLossPercent: clamp(candidate?.maximumDailyLossPercent, current.maximumDailyLossPercent, 0.1, 10),
     maximumSpreadPoints: Math.round(clamp(candidate?.maximumSpreadPoints, current.maximumSpreadPoints, 1, 1000)),
@@ -550,6 +567,10 @@ async function startServer() {
       processId: Number.isInteger(Number(req.body?.processId)) ? Number(req.body.processId) : undefined,
       account: String(req.body?.account ?? '').slice(0, 40) || undefined,
       server: String(req.body?.server ?? '').slice(0, 80) || undefined,
+      balance: req.body?.balance != null && Number.isFinite(Number(req.body.balance)) ? Number(req.body.balance) : undefined,
+      equity: req.body?.equity != null && Number.isFinite(Number(req.body.equity)) ? Number(req.body.equity) : undefined,
+      freeMargin: req.body?.freeMargin != null && Number.isFinite(Number(req.body.freeMargin)) ? Number(req.body.freeMargin) : undefined,
+      currency: String(req.body?.currency ?? '').slice(0, 12) || undefined,
       brokerSymbol: String(req.body?.brokerSymbol ?? '').slice(0, 30) || undefined,
       message: String(req.body?.message ?? '').slice(0, 300) || undefined,
       lastHeartbeatAt: Date.now(),

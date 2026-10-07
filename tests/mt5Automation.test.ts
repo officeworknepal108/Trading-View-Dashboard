@@ -1,11 +1,30 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
+  MT5_RISK_PERCENT_OPTIONS,
   buildMt5SignalId,
+  calculateXauUsdLotSize,
   isExecutableTrade,
+  normalizeMt5RiskPercent,
   tradeToMt5Signal,
 } from '../src/services/mt5Automation';
 import type { TradeLevels } from '../src/services/tradeLevels';
+
+test('MT5 risk selector exposes only the agreed percentages and normalizes legacy values', () => {
+  assert.deepEqual(MT5_RISK_PERCENT_OPTIONS, [
+    0.25, 0.5, 1, 1.5, 2, 2.5, 3, 3.5, 4, 4.5, 5,
+  ]);
+  assert.equal(normalizeMt5RiskPercent(0.26), 0.25);
+  assert.equal(normalizeMt5RiskPercent(2.6), 2.5);
+  assert.equal(normalizeMt5RiskPercent(5), 5);
+  assert.equal(normalizeMt5RiskPercent('invalid', 1), 1);
+});
+
+test('XAUUSD lot size follows cash risk divided by SL pips times ten', () => {
+  assert.equal(calculateXauUsdLotSize(100, 150), 1 / 15);
+  assert.equal(calculateXauUsdLotSize(200, 150), 2 / 15);
+  assert.throws(() => calculateXauUsdLotSize(100, 0), /SL pip distance/);
+});
 
 const activeTrade: TradeLevels = {
   entry: 4150,
