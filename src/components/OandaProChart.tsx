@@ -60,11 +60,7 @@ import {
   MT5_DEFAULT_ENABLED_TIMEFRAMES,
   MT5_ENTRY_TIMEFRAME_OPTIONS,
   MT5_RISK_PERCENT_OPTIONS,
-  isMt5EntryTimeframeEnabled,
-  isExecutableTrade,
-  tradeToMt5Signal,
   type Mt5AutomationStatus,
-  type Mt5SignalInput,
 } from '../services/mt5Automation';
 
 type OandaGranularity = 'M1' | 'M5' | 'M15' | 'M30' | 'H1' | 'H4' | 'D';
@@ -140,13 +136,7 @@ interface TrackedDirectTradeSetup {
 interface TradeOverlay {
   id: string;
   trade: TradeLevels;
-}
-
-interface Mt5TradeCandidate {
-  source: Mt5SignalInput['source'];
-  zoneName: string;
-  zoneTimeframe: TradeTimeframe;
-  trade: TradeLevels;
+  label?: string;
 }
 
 type AccuracyTradeRecord = JournalTradeRecord;
@@ -163,6 +153,7 @@ const TIMEFRAMES: Array<{ value: OandaGranularity; label: string }> = [
 
 const TREND_TABLE_GRANULARITIES: OandaGranularity[] = ['M1', 'M5', 'M15', 'H1', 'H4', 'D'];
 const AUTOMATION_GRANULARITIES: OandaGranularity[] = ['M1', 'M5', 'M15', 'M30', 'H1'];
+const MT5_CHART_GRANULARITIES: OandaGranularity[] = ['M1', 'M5', 'M15', 'M30', 'H1', 'H4', 'D'];
 
 const ACCURACY_ZONE_ROWS = [
   'TJL1', 'TJL2', 'QML', 'QML(A+)', 'QML(A++)', 'SBR', 'RBS', 'DB', 'DT', 'DBD', 'DTD',
@@ -833,7 +824,6 @@ export const OandaProChart: React.FC = () => {
   const liveCountdownRef = useRef<HTMLSpanElement | null>(null);
   const replaySelectionLineRef = useRef<HTMLDivElement | null>(null);
   const journalSyncSignatureRef = useRef('');
-  const publishedMt5SignalsRef = useRef(new Set<string>());
   const capturedTradeSetupsRef = useRef(new Set<string>());
   const zonesRef = useRef<StructureZone[]>([]);
   const swingFibMovesRef = useRef<SwingFibMove[]>([]);
@@ -868,7 +858,7 @@ export const OandaProChart: React.FC = () => {
   const [candles, setCandles] = useState<OandaCandle[]>([]);
   const [vipCandles, setVipCandles] = useState<Partial<Record<MarketGranularity, OandaCandle[]>>>({});
   const [hoveredCandle, setHoveredCandle] = useState<OandaCandle | null>(null);
-  const [source, setSource] = useState('TradingView WebSocket · OANDA:XAUUSD');
+  const [source, setSource] = useState('Waiting for MT5 broker candles');
   const [lastUpdated, setLastUpdated] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -1354,132 +1344,6 @@ export const OandaProChart: React.FC = () => {
     ))
   ), [allMtfTradeRows, granularity]);
 
-  const mt5TradeCandidates = useMemo<Mt5TradeCandidate[]>(() => {
-    const candidates: Mt5TradeCandidate[] = [];
-
-    // Use the exact visible-chart calculation for the selected timeframe.
-    for (const setup of currentDirectTradeSetups.values()) {
-      const trade = directZoneTrades.get(setup.zone.id);
-      if (trade && isExecutableTrade(trade)) {
-        candidates.push({
-          source: 'ENGULFING',
-          zoneName: setup.zone.name,
-          zoneTimeframe: granularity,
-          trade,
-        });
-      }
-    }
-
-    // Monitor the other supported direct timeframes without requiring the user
-    // to switch the visible chart. H4/D are excluded until explicit rules exist.
-    for (const zoneTimeframe of AUTOMATION_GRANULARITIES) {
-      if (zoneTimeframe === granularity) continue;
-      const timeframeData = tableTimeframeData[zoneTimeframe];
-      if (!timeframeData?.candles.length) continue;
-      const latest = timeframeData.candles[timeframeData.candles.length - 1];
-      const cutoff = marketCandleCloseTime(latest.time, zoneTimeframe);
-      let zones = timeframeData.structure.zones.map((zone) => ({ ...zone }));
-      for (const fallbackTimeframe of DIRECT_ENGULFING_FALLBACKS[zoneTimeframe] ?? []) {
-        const fallbackCandles = (tableTimeframeData[fallbackTimeframe]?.candles ?? [])
-          .filter((candle) => candle.complete && marketCandleCloseTime(candle.time, fallbackTimeframe) <= cutoff);
-        zones = applyTradeableZoneEngulfingFallback(
-          fallbackCandles,
-          zones,
-          fallbackTimeframe,
-          zoneTimeframe === 'H1',
-        );
-      }
-      for (const zone of zones) {
-        if (!zone.active || zone.status !== 'valid' || zone.tradeable === false) continue;
-        const signal = resolveZoneEngulfingSignal(zone, zoneTimeframe);
-        if (!signal) continue;
-        const baseRule = getDirectTradeRule(zoneTimeframe, signal.timeframe);
-        const sourceCandles = tableTimeframeData[signal.timeframe]?.candles;
-        if (!baseRule || !sourceCandles?.length) continue;
-        const rule = resolveRuleForDirectEntry({
-          zoneTimeframe,
-          signal,
-          sourceCandles,
-          baseRule,
-          m5Candles: tableTimeframeData.M5?.candles || [],
-          m15Candles: tableTimeframeData.M15?.candles || [],
-        });
-        if (!rule) continue;
-        const executionCandles = TIMEFRAME_SECONDS[signal.timeframe] < TIMEFRAME_SECONDS[zoneTimeframe]
-          ? sourceCandles
-          : timeframeData.candles;
-        const trade = calculateTradeLevels({
-          sourceCandles,
-          executionCandles,
-          signal,
-          rule,
-          omitStopBuffer: isDeepDiscountTradeSignal(zone, signal),
-        });
-        if (trade && isExecutableTrade(trade)) {
-          candidates.push({ source: 'ENGULFING', zoneName: zone.name, zoneTimeframe, trade });
-        }
-      }
-    }
-
-    for (const row of allMtfTradeRows) {
-      if (row.trade && isExecutableTrade(row.trade)) {
-        candidates.push({
-          source: 'MTF',
-          zoneName: row.tappedZone ?? row.higherTimeframeZone,
-          zoneTimeframe: row.higherTimeframe,
-          trade: row.trade,
-        });
-      }
-    }
-    return candidates;
-  }, [
-    allMtfTradeRows,
-    currentDirectTradeSetups,
-    directZoneTrades,
-    granularity,
-    tableTimeframeData,
-  ]);
-
-  useEffect(() => {
-    if (replayIndex !== null || !mt5Status?.config.enabled) return;
-    const now = Math.floor(Date.now() / 1000);
-    const grouped = new Map<string, Mt5SignalInput>();
-    for (const candidate of mt5TradeCandidates) {
-      if (!isMt5EntryTimeframeEnabled(
-        mt5Status.config.enabledTimeframes,
-        candidate.trade.signal.timeframe,
-      )) continue;
-      if (candidate.trade.calculatedAt < now - mt5Status.config.signalMaxAgeSeconds) continue;
-      const signal = tradeToMt5Signal({
-        ...candidate,
-        now,
-        pendingExpiryMinutes: mt5Status.config.pendingExpiryMinutes,
-      });
-      const existing = grouped.get(signal.id);
-      if (existing) {
-        existing.confluenceZones = Array.from(new Set([
-          existing.zoneName,
-          ...(existing.confluenceZones ?? []),
-          signal.zoneName,
-        ]));
-      } else {
-        grouped.set(signal.id, signal);
-      }
-    }
-    for (const signal of grouped.values()) {
-      if (publishedMt5SignalsRef.current.has(signal.id)) continue;
-      publishedMt5SignalsRef.current.add(signal.id);
-      void fetch('/api/mt5/signals', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(signal),
-      }).then((response) => {
-        if (!response.ok && response.status !== 409) publishedMt5SignalsRef.current.delete(signal.id);
-        return refreshMt5Status();
-      }).catch(() => publishedMt5SignalsRef.current.delete(signal.id));
-    }
-  }, [mt5Status?.config, mt5TradeCandidates, refreshMt5Status, replayIndex]);
-
   const accuracyTradeRecords = useMemo<AccuracyTradeRecord[]>(() => {
     const records = new Map<string, AccuracyTradeRecord>();
     const addRecord = (
@@ -1714,6 +1578,50 @@ export const OandaProChart: React.FC = () => {
       .sort((first, second) => second.trade.calculatedAt - first.trade.calculatedAt)
       .slice(0, 1);
   }, [directZoneTrades, mtfRows]);
+
+  const liveMt5TradeOverlays = useMemo<TradeOverlay[]>(() => (
+    (mt5Status?.positions ?? []).flatMap((position) => {
+      if (!(position.stopLoss > 0) || !(position.takeProfit > 0) || !(position.priceOpen > 0)) return [];
+      const riskDistance = Math.abs(position.priceOpen - position.stopLoss);
+      if (riskDistance <= 0) return [];
+      const rewardRisk = Math.max(0.1, Math.round(
+        Math.abs(position.takeProfit - position.priceOpen) / riskDistance * 10,
+      ) / 10);
+      const signalTimeframe = position.signalTimeframe ?? granularity;
+      const signalType = (['T1', 'T2', 'T3', 'T4'].includes(position.engulfingType ?? '')
+        ? position.engulfingType
+        : 'T1') as EngulfingTradeSignal['type'];
+      const isBuy = position.direction === 'BUY';
+      const trade: TradeLevels = {
+        entry: position.priceOpen,
+        stopLoss: position.stopLoss,
+        takeProfit: position.takeProfit,
+        riskFree: isBuy ? position.priceOpen + riskDistance : position.priceOpen - riskDistance,
+        riskPips: Math.round(riskDistance / 0.1 * 100) / 100,
+        rewardRisk,
+        status: 'active',
+        pendingAtCreation: false,
+        calculatedAt: position.openedAt,
+        filledAt: position.openedAt,
+        signal: {
+          type: signalType,
+          direction: isBuy ? 'bullish' : 'bearish',
+          time: position.signalAt ?? position.openedAt,
+          candleCount: signalType === 'T1' ? 2 : 3,
+          timeframe: signalTimeframe,
+        },
+      };
+      return [{
+        id: `MT5:${position.ticket}`,
+        trade,
+        label: `${signalTimeframe} ${position.direction} · #${position.ticket} · ${position.volume.toFixed(2)} LOT`,
+      }];
+    })
+  ), [granularity, mt5Status?.positions]);
+
+  const visibleTradeOverlays = replayIndex === null && liveMt5TradeOverlays.length > 0
+    ? liveMt5TradeOverlays
+    : tradeOverlays;
 
   const mtfEntryMarkers = useMemo(() => {
     const markerKeys = new Set<string>();
@@ -2267,7 +2175,7 @@ export const OandaProChart: React.FC = () => {
       fragment.appendChild(svg);
     }
     if (showTradeLevelsRef.current) {
-      for (const overlay of tradeOverlaysRef.current) {
+      for (const [overlayIndex, overlay] of tradeOverlaysRef.current.entries()) {
         const { trade } = overlay;
         const anchor = displayCandles.find((candle) => (
           trade.calculatedAt >= candle.time
@@ -2310,7 +2218,7 @@ export const OandaProChart: React.FC = () => {
         const badge = document.createElement('div');
         badge.style.position = 'absolute';
         badge.style.left = `${left + 2}px`;
-        badge.style.top = `${entryY - 10}px`;
+        badge.style.top = `${entryY - 13 - (overlay.label ? overlayIndex % 3 * 14 : 0)}px`;
         badge.style.padding = '1px 4px';
         badge.style.borderRadius = '3px';
         badge.style.background = trade.signal.direction === 'bullish' ? '#16a34a' : '#e11d48';
@@ -2318,7 +2226,9 @@ export const OandaProChart: React.FC = () => {
         badge.style.fontSize = '8px';
         badge.style.fontWeight = '800';
         badge.style.lineHeight = '12px';
-        badge.textContent = `1:${trade.rewardRisk}`;
+        badge.style.whiteSpace = 'nowrap';
+        badge.style.zIndex = '4';
+        badge.textContent = overlay.label ?? `1:${trade.rewardRisk}`;
         fragment.appendChild(badge);
       }
     }
@@ -2356,9 +2266,9 @@ export const OandaProChart: React.FC = () => {
     fibPreviousVisibilityRef.current = fibPreviousVisibility;
     showInvalidZonesRef.current = showInvalidZones;
     showTradeLevelsRef.current = showTradeLevels;
-    tradeOverlaysRef.current = tradeOverlays;
+    tradeOverlaysRef.current = visibleTradeOverlays;
     scheduleOverlayRedraw();
-  }, [dayFibMoves, displayZones, fibPreviousVisibility, fibVisibility, redrawZones, scheduleOverlayRedraw, showFib, showInternal, showInvalidZones, showIss, showMgZones, showStructure, showSupplyDemand, showTradeLevels, structure.internalMarkers, structure.issMarkers, structure.lines, structure.markers, swingFibMoves, tradeOverlays]);
+  }, [dayFibMoves, displayZones, fibPreviousVisibility, fibVisibility, redrawZones, scheduleOverlayRedraw, showFib, showInternal, showInvalidZones, showIss, showMgZones, showStructure, showSupplyDemand, showTradeLevels, structure.internalMarkers, structure.issMarkers, structure.lines, structure.markers, swingFibMoves, visibleTradeOverlays]);
 
   useEffect(() => {
     const overlay = tradeOverlays[0];
@@ -2453,18 +2363,23 @@ export const OandaProChart: React.FC = () => {
           count: '1500',
         });
         if (replayTime !== null) query.set('endTime', String(replayTime));
-        let lastError = `TradingView returned no ${GRANULARITY_LABELS[requestedGranularity]} candles.`;
+        const useMt5BrokerFeed = replayTime === null
+          && MT5_CHART_GRANULARITIES.includes(requestedGranularity as OandaGranularity);
+        let lastError = `Market feed returned no ${GRANULARITY_LABELS[requestedGranularity]} candles.`;
         for (let attempt = 0; attempt < 2; attempt += 1) {
-          const response = await fetch(`/api/tradingview/market-data?${query}`, {
+          const requestUrl = useMt5BrokerFeed
+            ? `/api/mt5/market-data?timeframe=${requestedGranularity}`
+            : `/api/tradingview/market-data?${query}`;
+          const response = await fetch(requestUrl, {
             signal,
             cache: 'no-store',
           });
           const payload = await response.json() as MarketDataResponse;
           if (!response.ok || !payload.ok || !Array.isArray(payload.candles)) {
-            throw new Error(payload.error || `TradingView request failed with HTTP ${response.status}`);
+            throw new Error(payload.error || `Market data request failed with HTTP ${response.status}`);
           }
           if (payload.candles.length > 0) return payload;
-          lastError = `TradingView returned no ${GRANULARITY_LABELS[requestedGranularity]} candles.`;
+          lastError = `Market feed returned no ${GRANULARITY_LABELS[requestedGranularity]} candles.`;
         }
         throw new Error(lastError);
       };
@@ -2473,7 +2388,7 @@ export const OandaProChart: React.FC = () => {
       // requests even though those are only needed for VIP/trend context.
       const payload = await requestCandles(granularity);
       if (requestId !== loadRequestIdRef.current) return;
-      if (payload.candles.length === 0) throw new Error('TradingView returned no candles for OANDA:XAUUSD.');
+      if (payload.candles.length === 0) throw new Error('The market feed returned no XAUUSD candles.');
       const nextReplayIndex = replayTime === null
         ? null
         : findReplayIndexAtOrBefore(payload.candles, replayTime);
@@ -2484,7 +2399,7 @@ export const OandaProChart: React.FC = () => {
       setCandles(payload.candles);
       if (nextReplayIndex !== null) setReplayIndex(nextReplayIndex);
       setHoveredCandle(null);
-      setSource(payload.source || 'TradingView WebSocket · OANDA:XAUUSD · unofficial');
+      setSource(payload.source || 'MetaTrader 5 · broker XAUUSD');
       setLastUpdated(payload.fetchedAt || new Date().toISOString());
       setError(null);
       setIsLoading(false);
@@ -2522,7 +2437,7 @@ export const OandaProChart: React.FC = () => {
       await loadAuxiliaryBatch(remainingGranularities);
     } catch (loadError) {
       if ((loadError as Error).name !== 'AbortError') {
-        setError(loadError instanceof Error ? loadError.message : 'Unable to load TradingView candles.');
+        setError(loadError instanceof Error ? loadError.message : 'Unable to load market candles.');
         if (requestId === loadRequestIdRef.current && replayTime !== null) {
           pendingReplayViewportRef.current = null;
           setGranularity(loadedGranularityRef.current);
@@ -2990,7 +2905,7 @@ export const OandaProChart: React.FC = () => {
               onClick={() => setMt5SettingsOpen((visible) => !visible)}
               className={`whitespace-nowrap rounded-md border px-2 py-1 text-[9px] font-black transition ${
                 mt5Status?.config.enabled
-                  ? mt5Status.config.dryRun
+                  ? mt5Status.config.dryRun || mt5Status.marketData?.fresh !== true
                     ? 'border-amber-300 bg-amber-50 text-amber-800'
                     : 'border-emerald-300 bg-emerald-50 text-emerald-800'
                   : 'border-slate-300 bg-slate-50 text-slate-600'
@@ -2998,10 +2913,13 @@ export const OandaProChart: React.FC = () => {
               title="Open MT5 automatic execution settings"
             >
               <span className={`mr-1 inline-block h-1.5 w-1.5 rounded-full ${
-                mt5Status?.bridge.connected ? 'bg-emerald-500' : 'bg-slate-400'
+                mt5Status?.bridge.connected && mt5Status.marketData?.fresh
+                  ? 'bg-emerald-500' : 'bg-slate-400'
               }`} />
               MT5 {mt5Status?.config.enabled
-                ? mt5Status.config.dryRun ? 'DRY RUN' : 'AUTO ON'
+                ? mt5Status.config.dryRun
+                  ? 'DRY RUN'
+                  : mt5Status.marketData?.fresh ? 'AUTO ON' : 'AUTO WAIT'
                 : 'OFF'}
             </button>
             {mt5SettingsOpen && mt5Status && (
@@ -3125,6 +3043,9 @@ export const OandaProChart: React.FC = () => {
                 </label>
                 <div className="rounded bg-slate-50 p-2 leading-relaxed text-slate-600">
                   Symbol: <b>{mt5Status.config.brokerSymbol}</b><br />
+                  Execution candles: <b className={mt5Status.marketData?.fresh ? 'text-emerald-700' : 'text-amber-700'}>
+                    MT5 BROKER · {mt5Status.marketData?.fresh ? 'FRESH' : 'WAITING'}
+                  </b><br />
                   MT5 Capital: <b>{mt5Status.bridge.balance === undefined
                     ? '—'
                     : `${mt5Status.bridge.currency || '$'} ${mt5Status.bridge.balance.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}</b><br />
@@ -3485,7 +3406,8 @@ export const OandaProChart: React.FC = () => {
                 : 'border-emerald-200 bg-emerald-50 text-emerald-700'
             }`}>
               {error ? <WifiOff className="h-2.5 w-2.5" /> : <Wifi className="h-2.5 w-2.5" />}
-              {error ? 'FEED DISCONNECTED' : 'TRADINGVIEW CONNECTED'}
+              {error ? 'FEED DISCONNECTED' : source.startsWith('MetaTrader 5')
+                ? 'MT5 BROKER CONNECTED' : 'TRADINGVIEW CONNECTED'}
             </div>
             <button
               type="button"
@@ -3499,7 +3421,7 @@ export const OandaProChart: React.FC = () => {
             <button
               onClick={() => setRefreshKey((value) => value + 1)}
               className="rounded-md border border-slate-200 p-1 text-slate-600 hover:bg-slate-100"
-              title="Refresh TradingView OANDA:XAUUSD candles"
+              title="Refresh XAUUSD market candles"
             >
               <RefreshCw className={`h-3.5 w-3.5 ${isLoading ? 'animate-spin' : ''}`} />
             </button>
@@ -3833,7 +3755,7 @@ export const OandaProChart: React.FC = () => {
             <div className="absolute inset-0 z-20 grid place-items-center bg-white/85">
               <div className="flex items-center gap-2 text-sm font-bold text-slate-600">
                 <RefreshCw className="h-4 w-4 animate-spin text-indigo-600" />
-                Loading TradingView OANDA:XAUUSD candles…
+                Loading XAUUSD market candles…
               </div>
             </div>
           )}
@@ -3842,10 +3764,10 @@ export const OandaProChart: React.FC = () => {
             <div className="absolute inset-0 z-20 grid place-items-center bg-white/95 p-6">
               <div className="max-w-xl rounded-xl border border-rose-200 bg-rose-50 p-5 text-center shadow-sm">
                 <AlertTriangle className="mx-auto mb-2 h-7 w-7 text-rose-600" />
-                <h2 className="font-black text-rose-900">TradingView candle feed is unavailable</h2>
+                <h2 className="font-black text-rose-900">XAUUSD candle feed is unavailable</h2>
                 <p className="mt-2 text-sm text-rose-800">{error}</p>
                 <p className="mt-3 text-xs leading-relaxed text-slate-600">
-                  The dashboard requests OANDA:XAUUSD through TradingView's unofficial WebSocket protocol. No synthetic or Binance fallback will be displayed.
+                  Live charts and automatic execution require candles from the connected MT5 broker. Historical replay may use TradingView data and never sends orders.
                 </p>
               </div>
             </div>
@@ -3853,9 +3775,13 @@ export const OandaProChart: React.FC = () => {
         </div>
 
         <div className="flex flex-wrap items-center gap-4 border-t border-slate-200 bg-slate-50 px-4 py-1.5 text-[10px] font-bold text-slate-500">
-          <span className="flex items-center gap-1 text-amber-700"><AlertTriangle className="h-3 w-3" /> Unofficial TradingView protocol</span>
-          <span className="flex items-center gap-1 text-emerald-700"><CheckCircle2 className="h-3 w-3" /> Symbol: OANDA:XAUUSD</span>
-          <span>OHLC supplied by TradingView</span>
+          <span className={`flex items-center gap-1 ${source.startsWith('MetaTrader 5') ? 'text-emerald-700' : 'text-amber-700'}`}>
+            {source.startsWith('MetaTrader 5')
+              ? <CheckCircle2 className="h-3 w-3" /> : <AlertTriangle className="h-3 w-3" />}
+            {source.startsWith('MetaTrader 5') ? 'MT5 broker execution data' : 'TradingView replay data'}
+          </span>
+          <span className="flex items-center gap-1 text-emerald-700"><CheckCircle2 className="h-3 w-3" /> Symbol: {mt5Status?.config.brokerSymbol || 'XAUUSD'}</span>
+          <span>OHLC source: {source}</span>
           <span>Structure: HH · HL · LH · LL · BOS · CHoCH</span>
           <span>Genesis Low: {formatPrice(structure.genesis?.price)}</span>
           <span>Active MG zones: {displayZones.filter((zone) => zone.category === 'mg' && zone.active).length}</span>

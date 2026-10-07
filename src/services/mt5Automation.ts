@@ -122,6 +122,37 @@ export interface Mt5AutomationStatus {
     message?: string;
     logs?: string[];
   };
+  positions: Array<{
+    ticket: number;
+    symbol: string;
+    direction: 'BUY' | 'SELL';
+    volume: number;
+    priceOpen: number;
+    priceCurrent: number;
+    stopLoss: number;
+    takeProfit: number;
+    profit: number;
+    swap: number;
+    openedAt: number;
+    comment?: string;
+    magic?: number;
+    signalTimeframe?: TradeTimeframe;
+    source?: Mt5SignalInput['source'];
+    zoneName?: string;
+    engulfingType?: string;
+    signalAt?: number;
+  }>;
+  marketData: {
+    source: 'MT5_BROKER';
+    fresh: boolean;
+    lastUpdateAt: number;
+    timeframes: Partial<Record<TradeTimeframe, {
+      updatedAt?: number;
+      count: number;
+      latestCandleTime?: number;
+      latestCompletedTime?: number;
+    }>>;
+  };
   counts: Record<string, number>;
   recentSignals: Mt5StoredSignal[];
 }

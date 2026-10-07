@@ -40,6 +40,16 @@ BRIDGE_ID = os.getenv("MT5_BRIDGE_ID", f"kalbairab-{uuid.getnode():x}")
 STATE_FILE = ROOT / ".mt5_bridge_state.json"
 CONNECTED_ACCOUNT = ""
 CONNECTED_SERVER = ""
+MT5_MARKET_TIMEFRAMES = {
+    "M1": mt5.TIMEFRAME_M1,
+    "M5": mt5.TIMEFRAME_M5,
+    "M15": mt5.TIMEFRAME_M15,
+    "M30": mt5.TIMEFRAME_M30,
+    "H1": mt5.TIMEFRAME_H1,
+    "H4": mt5.TIMEFRAME_H4,
+    "D": mt5.TIMEFRAME_D1,
+}
+LAST_MARKET_BAR_TIME: dict[str, int] = {}
 
 SESSION = requests.Session()
 if BRIDGE_TOKEN:
@@ -101,6 +111,12 @@ def heartbeat(config: dict[str, Any], message: str = "Bridge ready") -> None:
     if account:
         CONNECTED_ACCOUNT = str(account.login)
         CONNECTED_SERVER = str(account.server)
+    symbol = str(config.get("brokerSymbol", "XAUUSD"))
+    positions = mt5.positions_get(symbol=symbol) or []
+    try:
+        time_offset = broker_utc_offset_seconds(symbol)
+    except RuntimeError:
+        time_offset = 0
     api("POST", "/api/mt5/heartbeat", json={
         "bridgeId": BRIDGE_ID,
         "processId": os.getpid(),
@@ -110,9 +126,81 @@ def heartbeat(config: dict[str, Any], message: str = "Bridge ready") -> None:
         "equity": float(account.equity) if account else None,
         "freeMargin": float(account.margin_free) if account else None,
         "currency": str(account.currency) if account else None,
-        "brokerSymbol": config.get("brokerSymbol", "XAUUSDm"),
+        "brokerSymbol": symbol,
+        "positions": [{
+            "ticket": int(position.ticket),
+            "symbol": str(position.symbol),
+            "direction": "BUY" if position.type == mt5.POSITION_TYPE_BUY else "SELL",
+            "volume": float(position.volume),
+            "priceOpen": float(position.price_open),
+            "priceCurrent": float(position.price_current),
+            "stopLoss": float(position.sl),
+            "takeProfit": float(position.tp),
+            "profit": float(position.profit),
+            "swap": float(position.swap),
+            "openedAt": int(position.time) - time_offset,
+            "comment": str(position.comment),
+            "magic": int(position.magic),
+        } for position in positions],
         "message": message,
     })
+
+
+def mt5_rates_to_candles(rates: Any, broker_utc_offset_seconds: int = 0) -> list[dict[str, Any]]:
+    ordered = sorted(rates, key=lambda rate: int(rate["time"]))
+    if not ordered:
+        return []
+    current_bar_time = int(ordered[-1]["time"])
+    return [{
+        "time": int(rate["time"]) - broker_utc_offset_seconds,
+        "open": float(rate["open"]),
+        "high": float(rate["high"]),
+        "low": float(rate["low"]),
+        "close": float(rate["close"]),
+        "volume": float(rate["tick_volume"]),
+        "complete": int(rate["time"]) < current_bar_time,
+    } for rate in ordered]
+
+
+def broker_utc_offset_seconds(symbol: str) -> int:
+    """Return the server-clock offset encoded in this broker's MT5 epochs."""
+    tick = mt5.symbol_info_tick(symbol)
+    if tick is None:
+        raise RuntimeError(f"Unable to read {symbol} broker time: {mt5.last_error()}")
+    raw_offset = int(tick.time) - int(time.time())
+    rounded_offset = int(round(raw_offset / 900.0) * 900)
+    if abs(rounded_offset) > 14 * 60 * 60:
+        raise RuntimeError(f"Broker time offset {rounded_offset}s is outside the safe range.")
+    return rounded_offset
+
+
+def publish_mt5_market_data(config: dict[str, Any]) -> int:
+    symbol = str(config.get("brokerSymbol", "XAUUSD"))
+    if not mt5.symbol_select(symbol, True):
+        raise RuntimeError(f"Broker symbol {symbol} is unavailable for candle data: {mt5.last_error()}")
+    utc_offset = broker_utc_offset_seconds(symbol)
+    published = 0
+    for label, timeframe in MT5_MARKET_TIMEFRAMES.items():
+        preview = mt5.copy_rates_from_pos(symbol, timeframe, 0, 2)
+        if preview is None or len(preview) < 2:
+            continue
+        current_bar_time = max(int(rate["time"]) for rate in preview)
+        if LAST_MARKET_BAR_TIME.get(label) == current_bar_time:
+            continue
+        rates = mt5.copy_rates_from_pos(symbol, timeframe, 0, 1_500)
+        if rates is None or len(rates) < 10:
+            continue
+        candles = mt5_rates_to_candles(rates, utc_offset)
+        response = api("POST", "/api/mt5/market-data", json={
+            "timeframe": label,
+            "symbol": symbol,
+            "candles": candles,
+        })
+        if int(response.get("count", 0)) < 10:
+            raise RuntimeError(f"Dashboard rejected the {label} MT5 candle snapshot.")
+        LAST_MARKET_BAR_TIME[label] = current_bar_time
+        published += 1
+    return published
 
 
 def update_status(signal_id: str, status: str, **details: Any) -> None:
@@ -483,6 +571,9 @@ def run() -> None:
             try:
                 status_payload = api("GET", "/api/mt5/status")
                 config = status_payload["config"]
+                published_timeframes = publish_mt5_market_data(config)
+                if published_timeframes:
+                    print(f"MT5 DATA: published {published_timeframes} updated timeframe snapshot(s)")
                 if time.time() - last_heartbeat >= 5:
                     heartbeat(config)
                     last_heartbeat = time.time()

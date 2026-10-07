@@ -22,12 +22,17 @@ import {
   applyTradeableZoneEngulfingFallback,
   type StructureCandle,
 } from './src/services/marketStructure';
+import { buildAlternatingSwingFibs } from './src/services/swingFib';
+import { buildDayFibs } from './src/services/dayFib';
+import { applySwingFibConfluence } from './src/services/swingFibConfluence';
+import { applyDayFibConfluence } from './src/services/dayFibConfluence';
 import { buildMtfRows, type MtfGranularity, type MtfTimeframeData } from './src/services/mtf';
 import {
   calculateTradeLevels,
   getDirectTradeRule,
   getMtfTradeRule,
   isDeepDiscountTradeSignal,
+  resolveDirectEntryPolicy,
   resolveZoneEngulfingSignal,
   type EngulfingTradeSignal,
   type TradeTimeframe,
@@ -89,14 +94,33 @@ interface Mt5BridgeHeartbeat {
   freeMargin?: number;
   currency?: string;
   brokerSymbol?: string;
+  positions?: Mt5LivePosition[];
   message?: string;
   lastHeartbeatAt: number;
+}
+
+interface Mt5LivePosition {
+  ticket: number;
+  symbol: string;
+  direction: 'BUY' | 'SELL';
+  volume: number;
+  priceOpen: number;
+  priceCurrent: number;
+  stopLoss: number;
+  takeProfit: number;
+  profit: number;
+  swap: number;
+  openedAt: number;
+  comment?: string;
+  magic?: number;
 }
 
 let mt5BridgeHeartbeat: Mt5BridgeHeartbeat | undefined;
 let mt5MutationQueue: Promise<unknown> = Promise.resolve();
 const automationCandleCache: Partial<Record<TradeTimeframe, StructureCandle[]>> = {};
-let automationNextTimeframeIndex = 0;
+const mt5MarketDataUpdatedAt: Partial<Record<TradeTimeframe, number>> = {};
+let mt5MarketDataVersion = 0;
+let lastScannedMt5MarketDataVersion = -1;
 let managedMt5Bridge: ChildProcessWithoutNullStreams | undefined;
 let managedMt5BridgeProcessId: number | undefined;
 let managedMt5BridgeStartedAt: number | undefined;
@@ -222,6 +246,48 @@ function validFinitePrice(value: unknown): value is number {
   return typeof value === 'number' && Number.isFinite(value) && value > 0;
 }
 
+function sanitizeMt5CandleSnapshot(candidate: any): {
+  timeframe: TradeTimeframe;
+  candles: StructureCandle[];
+} | { error: string } {
+  const timeframe = String(candidate?.timeframe ?? '') as TradeTimeframe;
+  if (!AUTOMATION_TIMEFRAMES.includes(timeframe)) return { error: 'Unsupported MT5 candle timeframe.' };
+  if (!Array.isArray(candidate?.candles) || candidate.candles.length < 10
+    || candidate.candles.length > 2_000) {
+    return { error: 'MT5 candle snapshot must contain between 10 and 2,000 candles.' };
+  }
+  const candles: StructureCandle[] = [];
+  for (const raw of candidate.candles) {
+    const time = Math.floor(Number(raw?.time));
+    const open = Number(raw?.open);
+    const high = Number(raw?.high);
+    const low = Number(raw?.low);
+    const close = Number(raw?.close);
+    const volume = Number(raw?.volume);
+    if (!Number.isFinite(time) || time <= 0 || !validFinitePrice(open) || !validFinitePrice(high)
+      || !validFinitePrice(low) || !validFinitePrice(close) || !Number.isFinite(volume) || volume < 0
+      || high < Math.max(open, close, low) || low > Math.min(open, close, high)) {
+      return { error: `Invalid MT5 candle in ${timeframe} snapshot.` };
+    }
+    candles.push({ time, open, high, low, close, volume, complete: raw?.complete === true });
+  }
+  candles.sort((first, second) => first.time - second.time);
+  const unique = candles.filter((candle, index) => index === 0 || candle.time !== candles[index - 1].time);
+  if (unique.length < 10) return { error: 'MT5 candle snapshot has insufficient unique candles.' };
+  return { timeframe, candles: unique };
+}
+
+function mt5ExecutionFeedIsFresh(now = Date.now()): boolean {
+  const m1UpdatedAt = mt5MarketDataUpdatedAt.M1;
+  const latestM1 = automationCandleCache.M1?.[automationCandleCache.M1.length - 1];
+  const nowSeconds = Math.floor(now / 1000);
+  return m1UpdatedAt !== undefined
+    && now - m1UpdatedAt < 90_000
+    && latestM1 !== undefined
+    && latestM1.time <= nowSeconds + 60
+    && latestM1.time >= nowSeconds - 180;
+}
+
 function validateMt5Signal(candidate: any): string | undefined {
   if (!candidate || typeof candidate !== 'object') return 'A signal object is required.';
   if (typeof candidate.id !== 'string' || !candidate.id.trim() || candidate.id.length > 500) return 'Invalid signal ID.';
@@ -292,9 +358,17 @@ async function enqueueMt5Signal(
   if (candidate.calculatedAt < now - config.signalMaxAgeSeconds) {
     throw new Error('Signal is too old for automatic execution.');
   }
+  if (candidate.signalAt > now + 5 || candidate.calculatedAt > now + 5) {
+    throw new Error('Future-dated signals cannot be executed.');
+  }
   return serializeMt5Mutation(async () => {
     const signals = await readMt5Signals();
-    const existing = signals.find((signal) => signal.id === candidate.id);
+    const existing = signals.find((signal) => signal.id === candidate.id || (
+      signal.symbol === candidate.symbol
+      && signal.signalTimeframe === candidate.signalTimeframe
+      && signal.direction === candidate.direction
+      && signal.signalAt === candidate.signalAt
+    ));
     if (existing) {
       const zones = new Set([existing.zoneName, ...(existing.confluenceZones ?? []), candidate.zoneName,
         ...(candidate.confluenceZones ?? [])]);
@@ -355,15 +429,30 @@ function analyzeAutomationTimeframe(
   });
 }
 
+function completedAutomationTrendAt(
+  candles: StructureCandle[],
+  timeframe: TradeTimeframe,
+  cutoff: number,
+): 'bullish' | 'bearish' | 'neutral' {
+  const completedCandles = candles.filter((candle) => (
+    candle.complete !== false && candle.time + AUTOMATION_SECONDS[timeframe] <= cutoff
+  ));
+  if (completedCandles.length === 0) return 'neutral';
+  return analyzeMarketStructure(completedCandles, {
+    allowSupplyDemand: ['H1', 'H4', 'D'].includes(timeframe),
+    sourceBarSeconds: AUTOMATION_SECONDS[timeframe],
+    confirmationBarSeconds: AUTOMATION_CONFIRMATION_SECONDS[timeframe],
+    zoneVisualBars: 30,
+  }).trend;
+}
+
 async function scanMt5AutomationSignals(): Promise<number> {
   const config = await readMt5Config();
   if (!config.enabled) return 0;
-  const refreshTimeframe = AUTOMATION_TIMEFRAMES[automationNextTimeframeIndex];
-  automationNextTimeframeIndex = (automationNextTimeframeIndex + 1) % AUTOMATION_TIMEFRAMES.length;
-  automationCandleCache[refreshTimeframe] = await fetchTradingViewCandles({
-    exchange: 'OANDA', symbol: 'XAUUSD', granularity: refreshTimeframe, count: 1500,
-  });
+  if (!mt5ExecutionFeedIsFresh()) return 0;
   if (AUTOMATION_TIMEFRAMES.some((timeframe) => !automationCandleCache[timeframe]?.length)) return 0;
+  const scanVersion = mt5MarketDataVersion;
+  if (scanVersion === lastScannedMt5MarketDataVersion) return 0;
   const candles = automationCandleCache as Record<TradeTimeframe, StructureCandle[]>;
   const rawStructures: Partial<Record<TradeTimeframe, ReturnType<typeof analyzeMarketStructure>>> = {};
   for (const timeframe of AUTOMATION_TIMEFRAMES) {
@@ -378,6 +467,20 @@ async function scanMt5AutomationSignals(): Promise<number> {
   for (const timeframe of AUTOMATION_TIMEFRAMES) {
     structures[timeframe] = analyzeAutomationTimeframe(timeframe, candles[timeframe], rawStructures);
   }
+  const h4SeedLine = (rawStructures.H4?.lines ?? [])
+    .filter((line) => line.type === 'swing'
+      && line.fromTime !== line.toTime
+      && line.fromPrice !== line.toPrice)
+    .sort((first, second) => first.toTime - second.toTime)[0];
+  const swingFibMoves = h4SeedLine
+    ? buildAlternatingSwingFibs(candles.H4, {
+      sourceTime: h4SeedLine.fromTime,
+      sourcePrice: h4SeedLine.fromPrice,
+      zeroTime: h4SeedLine.toTime,
+      zeroPrice: h4SeedLine.toPrice,
+    })
+    : [];
+  const currentSwingFib = swingFibMoves[swingFibMoves.length - 1];
   const candidates: Mt5SignalInput[] = [];
   const now = Math.floor(Date.now() / 1000);
 
@@ -386,7 +489,19 @@ async function scanMt5AutomationSignals(): Promise<number> {
     const latest = sourceCandles[sourceCandles.length - 1];
     if (!latest) continue;
     const cutoff = latest.time + (latest.complete === false ? 0 : AUTOMATION_SECONDS[zoneTimeframe]);
-    let zones = (structures[zoneTimeframe]?.zones ?? []).map((zone) => ({ ...zone }));
+    let zones = applySwingFibConfluence(
+      sourceCandles,
+      structures[zoneTimeframe]?.zones ?? [],
+      currentSwingFib,
+    ).zones;
+    if (['M1', 'M5', 'M15', 'M30'].includes(zoneTimeframe)) {
+      const dayFibMoves = buildDayFibs(sourceCandles);
+      zones = applyDayFibConfluence(
+        sourceCandles,
+        zones,
+        dayFibMoves[dayFibMoves.length - 1],
+      ).zones;
+    }
     for (const fallbackTimeframe of AUTOMATION_FALLBACKS[zoneTimeframe] ?? []) {
       const fallbackCandles = candles[fallbackTimeframe].filter((candle) => (
         candle.complete !== false && candle.time + AUTOMATION_SECONDS[fallbackTimeframe] <= cutoff
@@ -402,8 +517,18 @@ async function scanMt5AutomationSignals(): Promise<number> {
       if (!zone.active || zone.status !== 'valid' || zone.tradeable === false) continue;
       const signal = resolveZoneEngulfingSignal(zone, zoneTimeframe);
       if (!signal) continue;
-      const rule = getDirectTradeRule(zoneTimeframe, signal.timeframe);
-      if (!rule) continue;
+      const baseRule = getDirectTradeRule(zoneTimeframe, signal.timeframe);
+      if (!baseRule) continue;
+      const signalClose = signal.time + AUTOMATION_SECONDS[signal.timeframe];
+      const policy = resolveDirectEntryPolicy({
+        zoneTimeframe,
+        signal,
+        sourceCandles: candles[signal.timeframe],
+        baseRule,
+        m5Trend: completedAutomationTrendAt(candles.M5, 'M5', signalClose),
+        m15Trend: completedAutomationTrendAt(candles.M15, 'M15', signalClose),
+      });
+      if (!policy.allowed || !policy.rule) continue;
       const executionCandles = AUTOMATION_SECONDS[signal.timeframe] < AUTOMATION_SECONDS[zoneTimeframe]
         ? candles[signal.timeframe]
         : sourceCandles;
@@ -411,7 +536,7 @@ async function scanMt5AutomationSignals(): Promise<number> {
         sourceCandles: candles[signal.timeframe],
         executionCandles,
         signal,
-        rule,
+        rule: policy.rule,
         omitStopBuffer: isDeepDiscountTradeSignal(zone, signal),
       });
       if (!trade || !isExecutableTrade(trade)) continue;
@@ -457,6 +582,7 @@ async function scanMt5AutomationSignals(): Promise<number> {
   for (const candidate of candidates) {
     if (!isMt5EntryTimeframeEnabled(config.enabledTimeframes, candidate.signalTimeframe)) continue;
     if (candidate.calculatedAt < now - config.signalMaxAgeSeconds) continue;
+    if (candidate.signalAt > now + 5 || candidate.calculatedAt > now + 5) continue;
     const existing = grouped.get(candidate.id);
     if (existing) {
       existing.confluenceZones = Array.from(new Set([
@@ -469,6 +595,7 @@ async function scanMt5AutomationSignals(): Promise<number> {
     const result = await enqueueMt5Signal(candidate, config);
     if (!result.duplicate) queued += 1;
   }
+  lastScannedMt5MarketDataVersion = scanVersion;
   return queued;
 }
 
@@ -519,6 +646,45 @@ async function startServer() {
     });
   });
 
+  app.post('/api/mt5/market-data', (req, res) => {
+    if (!mt5BridgeAuthorized(req)) {
+      return res.status(401).json({ ok: false, error: 'Bridge authorization failed.' });
+    }
+    const snapshot = sanitizeMt5CandleSnapshot(req.body);
+    if ('error' in snapshot) return res.status(400).json({ ok: false, error: snapshot.error });
+    automationCandleCache[snapshot.timeframe] = snapshot.candles;
+    mt5MarketDataUpdatedAt[snapshot.timeframe] = Date.now();
+    mt5MarketDataVersion += 1;
+    const latest = snapshot.candles[snapshot.candles.length - 1];
+    const latestCompleted = [...snapshot.candles].reverse().find((candle) => candle.complete !== false);
+    return res.status(202).json({
+      ok: true,
+      timeframe: snapshot.timeframe,
+      count: snapshot.candles.length,
+      latestCandleTime: latest?.time,
+      latestCompletedTime: latestCompleted?.time,
+    });
+  });
+
+  app.get('/api/mt5/market-data', (req, res) => {
+    const timeframe = String(req.query.timeframe ?? '') as TradeTimeframe;
+    if (!AUTOMATION_TIMEFRAMES.includes(timeframe)) {
+      return res.status(400).json({ ok: false, error: 'Unsupported MT5 candle timeframe.' });
+    }
+    const candles = automationCandleCache[timeframe] ?? [];
+    if (candles.length === 0) {
+      return res.status(503).json({ ok: false, error: `Waiting for MT5 ${timeframe} broker candles.` });
+    }
+    res.setHeader('Cache-Control', 'no-store');
+    return res.json({
+      ok: true,
+      source: `MetaTrader 5 · ${mt5BridgeHeartbeat?.server || 'broker'} · ${mt5BridgeHeartbeat?.brokerSymbol || 'XAUUSD'}`,
+      granularity: timeframe,
+      fetchedAt: new Date(mt5MarketDataUpdatedAt[timeframe] ?? Date.now()).toISOString(),
+      candles,
+    });
+  });
+
   app.get('/api/mt5/status', async (_req, res) => {
     try {
       const [config, signals] = await Promise.all([readMt5Config(), readMt5Signals()]);
@@ -531,6 +697,19 @@ async function startServer() {
         : Number.POSITIVE_INFINITY;
       const connected = heartbeatAge < 15_000;
       const managedProcessId = managedMt5Bridge?.pid ?? managedMt5BridgeProcessId;
+      const positions = (mt5BridgeHeartbeat?.positions ?? []).map((position) => {
+        const signal = signals.find((candidate) => (
+          candidate.brokerPosition === position.ticket || candidate.brokerTicket === position.ticket
+        ));
+        return {
+          ...position,
+          signalTimeframe: signal?.signalTimeframe,
+          source: signal?.source,
+          zoneName: signal?.zoneName,
+          engulfingType: signal?.engulfingType,
+          signalAt: signal?.signalAt,
+        };
+      });
       return res.json({
         ok: true,
         config,
@@ -544,6 +723,24 @@ async function startServer() {
           processStartedAt: managedMt5BridgeStartedAt,
           processExitCode: managedMt5BridgeExitCode,
           logs: managedMt5BridgeLogs.slice(-30),
+        },
+        positions,
+        marketData: {
+          source: 'MT5_BROKER',
+          fresh: connected && mt5ExecutionFeedIsFresh(),
+          lastUpdateAt: Math.max(0, ...Object.values(mt5MarketDataUpdatedAt)),
+          timeframes: Object.fromEntries(AUTOMATION_TIMEFRAMES.map((timeframe) => {
+            const timeframeCandles = automationCandleCache[timeframe] ?? [];
+            const latest = timeframeCandles[timeframeCandles.length - 1];
+            const latestCompleted = [...timeframeCandles].reverse()
+              .find((candle) => candle.complete !== false);
+            return [timeframe, {
+              updatedAt: mt5MarketDataUpdatedAt[timeframe],
+              count: timeframeCandles.length,
+              latestCandleTime: latest?.time,
+              latestCompletedTime: latestCompleted?.time,
+            }];
+          })),
         },
         counts,
         recentSignals: signals.slice(-25).reverse(),
@@ -583,6 +780,9 @@ async function startServer() {
       const now = Math.floor(Date.now() / 1000);
       const config = await readMt5Config();
       if (!config.enabled) return res.status(409).json({ ok: false, error: 'MT5 automation is disabled.' });
+      if (!mt5ExecutionFeedIsFresh()) {
+        return res.status(409).json({ ok: false, error: 'MT5 broker candle feed is not fresh.' });
+      }
       if (!isMt5EntryTimeframeEnabled(config.enabledTimeframes, req.body.signalTimeframe)) {
         return res.status(409).json({
           ok: false,
@@ -603,6 +803,30 @@ async function startServer() {
     if (!mt5BridgeAuthorized(req)) return res.status(401).json({ ok: false, error: 'Bridge authorization failed.' });
     const bridgeId = typeof req.body?.bridgeId === 'string' ? req.body.bridgeId.trim().slice(0, 100) : '';
     if (!bridgeId) return res.status(400).json({ ok: false, error: 'Bridge ID is required.' });
+    const positions: Mt5LivePosition[] = Array.isArray(req.body?.positions)
+      ? req.body.positions.slice(0, 100).flatMap((raw: any) => {
+        const ticket = Number(raw?.ticket);
+        const direction = raw?.direction;
+        const numericFields = ['volume', 'priceOpen', 'priceCurrent', 'stopLoss', 'takeProfit', 'profit', 'swap', 'openedAt'] as const;
+        if (!Number.isInteger(ticket) || ticket <= 0 || !['BUY', 'SELL'].includes(direction)
+          || numericFields.some((field) => !Number.isFinite(Number(raw?.[field])))) return [];
+        return [{
+          ticket,
+          symbol: String(raw?.symbol ?? '').slice(0, 30),
+          direction,
+          volume: Number(raw.volume),
+          priceOpen: Number(raw.priceOpen),
+          priceCurrent: Number(raw.priceCurrent),
+          stopLoss: Number(raw.stopLoss),
+          takeProfit: Number(raw.takeProfit),
+          profit: Number(raw.profit),
+          swap: Number(raw.swap),
+          openedAt: Math.floor(Number(raw.openedAt)),
+          comment: String(raw?.comment ?? '').slice(0, 100) || undefined,
+          magic: Number.isInteger(Number(raw?.magic)) ? Number(raw.magic) : undefined,
+        } satisfies Mt5LivePosition];
+      })
+      : [];
     mt5BridgeHeartbeat = {
       bridgeId,
       processId: Number.isInteger(Number(req.body?.processId)) ? Number(req.body.processId) : undefined,
@@ -613,6 +837,7 @@ async function startServer() {
       freeMargin: req.body?.freeMargin != null && Number.isFinite(Number(req.body.freeMargin)) ? Number(req.body.freeMargin) : undefined,
       currency: String(req.body?.currency ?? '').slice(0, 12) || undefined,
       brokerSymbol: String(req.body?.brokerSymbol ?? '').slice(0, 30) || undefined,
+      positions,
       message: String(req.body?.message ?? '').slice(0, 300) || undefined,
       lastHeartbeatAt: Date.now(),
     };
@@ -648,6 +873,7 @@ async function startServer() {
       if (!bridgeId) return res.status(400).json({ ok: false, error: 'Bridge ID is required.' });
       const config = await readMt5Config();
       if (!config.enabled) return res.json({ ok: true, signal: null, config });
+      if (!mt5ExecutionFeedIsFresh()) return res.json({ ok: true, signal: null, config });
       const now = Math.floor(Date.now() / 1000);
       const signal = await serializeMt5Mutation(async () => {
         const signals = await readMt5Signals();
@@ -1024,7 +1250,7 @@ async function startServer() {
       automationScanRunning = false;
     }
   };
-  const scanTimer = setInterval(() => void runAutomationScan(), 5_000);
+  const scanTimer = setInterval(() => void runAutomationScan(), 1_000);
   scanTimer.unref();
   setTimeout(() => void runAutomationScan(), 2_000).unref();
 }
