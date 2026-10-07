@@ -363,11 +363,16 @@ async function enqueueMt5Signal(
   }
   return serializeMt5Mutation(async () => {
     const signals = await readMt5Signals();
+    const liveStatuses = new Set<Mt5SignalStatus>(['QUEUED', 'CLAIMED', 'PLACED', 'ACTIVE', 'RISK_FREE']);
     const existing = signals.find((signal) => signal.id === candidate.id || (
       signal.symbol === candidate.symbol
       && signal.signalTimeframe === candidate.signalTimeframe
       && signal.direction === candidate.direction
       && signal.signalAt === candidate.signalAt
+    ) || (
+      candidate.setupId !== undefined
+      && signal.setupId === candidate.setupId
+      && liveStatuses.has(signal.status)
     ));
     if (existing) {
       const zones = new Set([existing.zoneName, ...(existing.confluenceZones ?? []), candidate.zoneName,
@@ -380,6 +385,7 @@ async function enqueueMt5Signal(
     const signal: Mt5StoredSignal = {
       ...candidate,
       id: candidate.id.trim(),
+      setupId: candidate.setupId?.trim().slice(0, 300) || undefined,
       zoneName: String(candidate.zoneName || 'Unknown').slice(0, 100),
       engulfingType: String(candidate.engulfingType || '').slice(0, 30),
       confluenceZones: candidate.confluenceZones?.map(String).slice(0, 20),
@@ -541,7 +547,8 @@ async function scanMt5AutomationSignals(): Promise<number> {
       });
       if (!trade || !isExecutableTrade(trade)) continue;
       candidates.push(tradeToMt5Signal({
-        source: 'ENGULFING', zoneName: zone.name, zoneTimeframe, trade, now,
+        source: 'ENGULFING', setupId: `DIRECT:${zoneTimeframe}:${zone.id}`,
+        zoneName: zone.name, zoneTimeframe, trade, now,
         pendingExpiryMinutes: config.pendingExpiryMinutes,
       }));
     }
@@ -572,7 +579,8 @@ async function scanMt5AutomationSignals(): Promise<number> {
     });
     if (!trade || !isExecutableTrade(trade)) continue;
     candidates.push(tradeToMt5Signal({
-      source: 'MTF', zoneName: row.tappedZone ?? row.higherTimeframeZone,
+      source: 'MTF', setupId: `MTF:${row.id}`,
+      zoneName: row.tappedZone ?? row.higherTimeframeZone,
       zoneTimeframe: row.higherTimeframe, trade, now,
       pendingExpiryMinutes: config.pendingExpiryMinutes,
     }));

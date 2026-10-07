@@ -76,7 +76,8 @@ test('MT5 signal IDs deduplicate overlapping zones with identical execution leve
 
 test('active trade becomes a market signal and pending trade becomes a limit signal', () => {
   const active = tradeToMt5Signal({
-    source: 'ENGULFING', zoneName: 'DB', zoneTimeframe: 'M15', trade: activeTrade,
+    source: 'ENGULFING', setupId: 'DIRECT:M15:db-1000',
+    zoneName: 'DB', zoneTimeframe: 'M15', trade: activeTrade,
     now: 1_010, pendingExpiryMinutes: 60,
   });
   const pending = tradeToMt5Signal({
@@ -87,6 +88,7 @@ test('active trade becomes a market signal and pending trade becomes a limit sig
   assert.equal(pending.orderType, 'LIMIT');
   assert.equal(active.expiresAt, 4_610);
   assert.equal(active.direction, 'BUY');
+  assert.equal(active.setupId, 'DIRECT:M15:db-1000');
 });
 
 test('only pending and active dashboard trades are executable', () => {

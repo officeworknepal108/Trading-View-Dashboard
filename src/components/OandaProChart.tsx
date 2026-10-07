@@ -136,7 +136,6 @@ interface TrackedDirectTradeSetup {
 interface TradeOverlay {
   id: string;
   trade: TradeLevels;
-  label?: string;
 }
 
 type AccuracyTradeRecord = JournalTradeRecord;
@@ -1581,6 +1580,7 @@ export const OandaProChart: React.FC = () => {
 
   const liveMt5TradeOverlays = useMemo<TradeOverlay[]>(() => (
     (mt5Status?.positions ?? []).flatMap((position) => {
+      if (position.signalTimeframe !== granularity) return [];
       if (!(position.stopLoss > 0) || !(position.takeProfit > 0) || !(position.priceOpen > 0)) return [];
       const riskDistance = Math.abs(position.priceOpen - position.stopLoss);
       if (riskDistance <= 0) return [];
@@ -1614,7 +1614,6 @@ export const OandaProChart: React.FC = () => {
       return [{
         id: `MT5:${position.ticket}`,
         trade,
-        label: `${signalTimeframe} ${position.direction} · #${position.ticket} · ${position.volume.toFixed(2)} LOT`,
       }];
     })
   ), [granularity, mt5Status?.positions]);
@@ -2175,7 +2174,7 @@ export const OandaProChart: React.FC = () => {
       fragment.appendChild(svg);
     }
     if (showTradeLevelsRef.current) {
-      for (const [overlayIndex, overlay] of tradeOverlaysRef.current.entries()) {
+      for (const overlay of tradeOverlaysRef.current) {
         const { trade } = overlay;
         const anchor = displayCandles.find((candle) => (
           trade.calculatedAt >= candle.time
@@ -2218,7 +2217,7 @@ export const OandaProChart: React.FC = () => {
         const badge = document.createElement('div');
         badge.style.position = 'absolute';
         badge.style.left = `${left + 2}px`;
-        badge.style.top = `${entryY - 13 - (overlay.label ? overlayIndex % 3 * 14 : 0)}px`;
+        badge.style.top = `${entryY - 10}px`;
         badge.style.padding = '1px 4px';
         badge.style.borderRadius = '3px';
         badge.style.background = trade.signal.direction === 'bullish' ? '#16a34a' : '#e11d48';
@@ -2226,9 +2225,7 @@ export const OandaProChart: React.FC = () => {
         badge.style.fontSize = '8px';
         badge.style.fontWeight = '800';
         badge.style.lineHeight = '12px';
-        badge.style.whiteSpace = 'nowrap';
-        badge.style.zIndex = '4';
-        badge.textContent = overlay.label ?? `1:${trade.rewardRisk}`;
+        badge.textContent = `1:${trade.rewardRisk}`;
         fragment.appendChild(badge);
       }
     }

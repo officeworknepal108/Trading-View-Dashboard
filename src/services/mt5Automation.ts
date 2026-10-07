@@ -61,6 +61,7 @@ export interface Mt5AutomationConfig {
 
 export interface Mt5SignalInput {
   id: string;
+  setupId?: string;
   symbol: string;
   direction: 'BUY' | 'SELL';
   orderType: 'MARKET' | 'LIMIT';
@@ -182,6 +183,7 @@ export function buildMt5SignalId(options: {
 
 export function tradeToMt5Signal(options: {
   source: Mt5SignalInput['source'];
+  setupId?: string;
   zoneName: string;
   zoneTimeframe: TradeTimeframe;
   trade: TradeLevels;
@@ -203,6 +205,7 @@ export function tradeToMt5Signal(options: {
   });
   return {
     id,
+    setupId: options.setupId,
     symbol: 'XAUUSD',
     direction,
     orderType,
