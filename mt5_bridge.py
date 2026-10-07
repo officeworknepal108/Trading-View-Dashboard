@@ -63,9 +63,16 @@ def load_state() -> dict[str, dict[str, Any]]:
 
 
 def save_state(state: dict[str, dict[str, Any]]) -> None:
-    temporary = STATE_FILE.with_suffix(".tmp")
+    temporary = STATE_FILE.with_name(f".{STATE_FILE.stem}.{os.getpid()}.tmp")
     temporary.write_text(json.dumps(state, indent=2), encoding="utf-8")
-    temporary.replace(STATE_FILE)
+    for attempt in range(6):
+        try:
+            temporary.replace(STATE_FILE)
+            return
+        except PermissionError:
+            if attempt == 5:
+                raise
+            time.sleep(0.05 * (attempt + 1))
 
 
 def initialize_mt5() -> None:
@@ -128,6 +135,42 @@ def normalize_volume(raw_volume: float, symbol_info: Any) -> float:
     return round(min(maximum, stepped), digits)
 
 
+def volume_digits(symbol_info: Any) -> int:
+    step = float(symbol_info.volume_step)
+    return max(0, len(f"{step:.10f}".rstrip("0").split(".")[-1]))
+
+
+def calculate_partial_close_volume(initial_volume: float, current_volume: float, symbol_info: Any) -> float:
+    """Return a broker-valid close volume nearest to half, rounding up when needed.
+
+    Rounding up preserves the intended gross break-even-or-better result if the
+    remaining position later reaches the original stop loss.
+    """
+    step = float(symbol_info.volume_step)
+    minimum = float(symbol_info.volume_min)
+    digits = volume_digits(symbol_info)
+    if step <= 0 or minimum <= 0:
+        raise RuntimeError("Broker returned invalid volume rules for partial closing.")
+    if current_volume + step / 10 < minimum * 2:
+        raise RuntimeError(
+            f"Position volume {current_volume:g} cannot be split into two broker-valid parts "
+            f"(minimum {minimum:g})."
+        )
+    desired = initial_volume / 2.0
+    close_units = math.ceil((desired - 1e-12) / step)
+    close_volume = round(close_units * step, digits)
+    maximum_close = current_volume - minimum
+    if close_volume > maximum_close + step / 10:
+        close_units = math.floor((maximum_close + 1e-12) / step)
+        close_volume = round(close_units * step, digits)
+    remaining_volume = round(current_volume - close_volume, digits)
+    if close_volume + step / 10 < minimum or remaining_volume + step / 10 < minimum:
+        raise RuntimeError(
+            f"Position volume {current_volume:g} cannot be split safely using broker step {step:g}."
+        )
+    return close_volume
+
+
 def calculate_volume(signal: dict[str, Any], config: dict[str, Any], symbol_info: Any) -> float:
     account = mt5.account_info()
     if not account:
@@ -159,7 +202,10 @@ def calculate_volume(signal: dict[str, Any], config: dict[str, Any], symbol_info
             "Broker XAUUSD contract does not match $10 per pip per 1 lot: "
             f"formula={formula_one_lot_loss:.2f}, MT5={broker_one_lot_loss:.2f}."
         )
-    return normalize_volume(raw_volume, symbol_info)
+    volume = normalize_volume(raw_volume, symbol_info)
+    # Do not open a position that cannot follow the agreed 50%-at-1R exit plan.
+    calculate_partial_close_volume(volume, volume, symbol_info)
+    return volume
 
 
 def today_realized_loss_percent() -> float:
@@ -212,13 +258,14 @@ def check_safety(signal: dict[str, Any], config: dict[str, Any]) -> tuple[Any, A
 
 def send_with_filling_fallback(request: dict[str, Any]) -> Any:
     result = None
+    successful_send_codes = (mt5.TRADE_RETCODE_DONE, mt5.TRADE_RETCODE_DONE_PARTIAL)
     for filling in (mt5.ORDER_FILLING_IOC, mt5.ORDER_FILLING_FOK, mt5.ORDER_FILLING_RETURN):
         candidate = {**request, "type_filling": filling}
         checked = mt5.order_check(candidate)
         if checked is None or checked.retcode not in (0, mt5.TRADE_RETCODE_DONE):
             continue
         result = mt5.order_send(candidate)
-        if result and result.retcode == mt5.TRADE_RETCODE_DONE:
+        if result and result.retcode in successful_send_codes:
             return result
     detail = getattr(result, "comment", None) or str(mt5.last_error())
     raise RuntimeError(f"MT5 rejected the order: {detail}")
@@ -289,6 +336,46 @@ def find_position(record: dict[str, Any]) -> Any | None:
     return None
 
 
+def close_half_position(position: Any, record: dict[str, Any]) -> dict[str, Any]:
+    info = mt5.symbol_info(position.symbol)
+    tick = mt5.symbol_info_tick(position.symbol)
+    if not info or not tick:
+        raise RuntimeError(f"No live tick is available to partially close {position.symbol}.")
+    initial_volume = float(record.get("initialVolume") or record.get("volume") or position.volume)
+    current_volume = float(position.volume)
+    close_volume = calculate_partial_close_volume(initial_volume, current_volume, info)
+    is_buy = position.type == mt5.POSITION_TYPE_BUY
+    price = float(tick.bid if is_buy else tick.ask)
+    request = {
+        "action": mt5.TRADE_ACTION_DEAL,
+        "symbol": position.symbol,
+        "position": int(position.ticket),
+        "volume": close_volume,
+        "type": mt5.ORDER_TYPE_SELL if is_buy else mt5.ORDER_TYPE_BUY,
+        "price": price,
+        "deviation": 20,
+        "magic": MAGIC_NUMBER,
+        "comment": "KB 50pct at 1R",
+    }
+    result = send_with_filling_fallback(request)
+    remaining_position = find_position(record)
+    remaining_volume = float(remaining_position.volume) if remaining_position else 0.0
+    actual_closed_volume = max(0.0, current_volume - remaining_volume)
+    if actual_closed_volume < close_volume - float(info.volume_step) / 2:
+        raise RuntimeError(
+            f"MT5 reported an incomplete partial close: requested {close_volume:g}, "
+            f"closed {actual_closed_volume:g}."
+        )
+    return {
+        "initialVolume": initial_volume,
+        "partialClosedVolume": actual_closed_volume,
+        "remainingVolume": remaining_volume,
+        "partialClosePrice": float(result.price or price),
+        "partialCloseTicket": int(result.deal or result.order),
+        "partialClosedAt": int(time.time()),
+    }
+
+
 def closed_result(record: dict[str, Any], was_risk_free: bool) -> str:
     position_ticket = int(record.get("brokerPosition") or record.get("brokerTicket") or 0)
     deals = mt5.history_deals_get(position=position_ticket) or []
@@ -347,19 +434,44 @@ def manage_open_signals(state: dict[str, dict[str, Any]], recent: list[dict[str,
         tick = mt5.symbol_info_tick(position.symbol)
         risk_free = float(record["riskFree"])
         reached = tick and (float(tick.bid) >= risk_free if is_buy else float(tick.ask) <= risk_free)
-        if status != "RISK_FREE" and reached:
-            request = {
-                "action": mt5.TRADE_ACTION_SLTP,
-                "symbol": position.symbol,
-                "position": int(position.ticket),
-                "sl": float(position.price_open),
-                "tp": float(position.tp),
-                "magic": MAGIC_NUMBER,
+        info = mt5.symbol_info(position.symbol)
+        initial_volume = float(record.get("initialVolume") or record.get("volume") or position.volume)
+        current_volume = float(position.volume)
+        partial_already_done = bool(record.get("partialClosedAt")) or (
+            info is not None and current_volume < initial_volume - float(info.volume_step) / 2
+        )
+        if status != "RISK_FREE" and partial_already_done:
+            partial_details = {
+                "initialVolume": initial_volume,
+                "partialClosedVolume": max(0.0, initial_volume - current_volume),
+                "remainingVolume": current_volume,
+                "partialClosePrice": float(record.get("partialClosePrice") or 0),
+                "partialCloseTicket": int(record.get("partialCloseTicket") or 0),
+                "partialClosedAt": int(record.get("partialClosedAt") or time.time()),
             }
-            result = mt5.order_send(request)
-            if result and result.retcode == mt5.TRADE_RETCODE_DONE:
-                record["status"] = "RISK_FREE"
-                update_status(signal_id, "RISK_FREE", message="SL moved to the actual MT5 entry price.")
+            record.update(partial_details)
+            record["status"] = "RISK_FREE"
+            update_status(
+                signal_id,
+                "RISK_FREE",
+                **partial_details,
+                message="50% was closed at 1R; the remaining position keeps its original SL and TP.",
+            )
+            continue
+        if status != "RISK_FREE" and reached:
+            partial_details = close_half_position(position, record)
+            record.update(partial_details)
+            record["status"] = "RISK_FREE"
+            update_status(
+                signal_id,
+                "RISK_FREE",
+                **partial_details,
+                message="50% closed at 1R; remaining volume continues with the original SL and TP.",
+            )
+            print(
+                f"RISK FREE: closed {partial_details['partialClosedVolume']:g} {position.symbol}; "
+                f"remaining {partial_details['remainingVolume']:g} with original SL/TP"
+            )
 
 
 def run() -> None:

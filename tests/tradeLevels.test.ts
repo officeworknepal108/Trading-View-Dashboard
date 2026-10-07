@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
   assessEngulfingVolumeLogic,
+  calculateHalfAtOneRResult,
   calculateTradeLevels,
   getDirectTradeRule,
   getEngulfingVolumeStatus,
@@ -19,6 +20,14 @@ const bullishSignal: EngulfingTradeSignal = {
   candleCount: 2,
   timeframe: 'M1',
 };
+
+test('half-at-1R management reports the correct net R outcome', () => {
+  assert.equal(calculateHalfAtOneRResult('sl', 3), -1);
+  assert.equal(calculateHalfAtOneRResult('rf', 3), 0);
+  assert.equal(calculateHalfAtOneRResult('tp', 1), 1);
+  assert.equal(calculateHalfAtOneRResult('tp', 2), 1.5);
+  assert.equal(calculateHalfAtOneRResult('tp', 3), 2);
+});
 
 function volumeCandle(time: number, volume?: number): StructureCandle {
   return { time, open: 10, high: 12, low: 9, close: 11, volume, complete: true };

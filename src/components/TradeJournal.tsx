@@ -1,7 +1,12 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { BookOpen, Download, ImagePlus, Save, X } from 'lucide-react';
 import type { ChartTimeZone } from '../services/chartTime';
-import type { EngulfingVolumeStatus, TradeResult, TradeTimeframe } from '../services/tradeLevels';
+import {
+  calculateHalfAtOneRResult,
+  type EngulfingVolumeStatus,
+  type TradeResult,
+  type TradeTimeframe,
+} from '../services/tradeLevels';
 
 export interface JournalTradeRecord {
   id: string;
@@ -120,7 +125,7 @@ export function inferTradingSession(time: number): string {
 
 function calculateTotalR(trades: JournalTradeRecord[]): number {
   return trades.reduce((total, trade) => (
-    total + (trade.result === 'tp' ? trade.rewardRisk : trade.result === 'sl' ? -1 : 0)
+    total + calculateHalfAtOneRResult(trade.result, trade.rewardRisk)
   ), 0);
 }
 

@@ -9,6 +9,12 @@ export type TradeTimeframe = 'M1' | 'M5' | 'M15' | 'M30' | 'H1' | 'H4' | 'D';
 export type TradeStatus = 'pending' | 'active' | 'risk-free' | 'tp-hit' | 'sl-hit';
 export type TradeResult = 'sl' | 'rf' | 'tp';
 
+export function calculateHalfAtOneRResult(result: TradeResult, rewardRisk: number): number {
+  if (result === 'sl') return -1;
+  if (result === 'rf') return 0;
+  return (1 + rewardRisk) / 2;
+}
+
 export interface TradeRule {
   zoneTimeframe: TradeTimeframe;
   engulfingTimeframe: TradeTimeframe;

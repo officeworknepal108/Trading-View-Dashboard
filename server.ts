@@ -701,7 +701,11 @@ async function startServer() {
         if (!signal) return undefined;
         signal.status = status;
         signal.updatedAt = Math.floor(Date.now() / 1000);
-        for (const field of ['brokerTicket', 'brokerPosition', 'executionPrice', 'volume'] as const) {
+        for (const field of [
+          'brokerTicket', 'brokerPosition', 'executionPrice', 'volume', 'initialVolume',
+          'partialClosedVolume', 'remainingVolume', 'partialClosePrice', 'partialCloseTicket',
+          'partialClosedAt',
+        ] as const) {
           const value = Number(req.body?.[field]);
           if (Number.isFinite(value)) signal[field] = value;
         }

@@ -91,6 +91,12 @@ export interface Mt5StoredSignal extends Mt5SignalInput {
   brokerPosition?: number;
   executionPrice?: number;
   volume?: number;
+  initialVolume?: number;
+  partialClosedVolume?: number;
+  remainingVolume?: number;
+  partialClosePrice?: number;
+  partialCloseTicket?: number;
+  partialClosedAt?: number;
   message?: string;
 }
 
