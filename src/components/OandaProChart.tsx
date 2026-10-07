@@ -3033,7 +3033,12 @@ export const OandaProChart: React.FC = () => {
                   </div>
                 )}
                 <label className="mb-2 flex items-center justify-between font-bold text-slate-700">
-                  Enable signal queue
+                  <span>
+                    Auto Trading:{' '}
+                    <b className={mt5Status.config.enabled ? 'text-emerald-700' : 'text-rose-700'}>
+                      {mt5Status.config.enabled ? 'ON' : 'OFF'}
+                    </b>
+                  </span>
                   <input
                     type="checkbox"
                     checked={mt5Status.config.enabled}
@@ -3041,11 +3046,16 @@ export const OandaProChart: React.FC = () => {
                   />
                 </label>
                 <label className="mb-2 flex items-center justify-between font-bold text-slate-700">
-                  Dry run (no orders)
+                  <span>
+                    Send Trades to MT5:{' '}
+                    <b className={!mt5Status.config.dryRun ? 'text-emerald-700' : 'text-rose-700'}>
+                      {!mt5Status.config.dryRun ? 'YES' : 'NO'}
+                    </b>
+                  </span>
                   <input
                     type="checkbox"
-                    checked={mt5Status.config.dryRun}
-                    onChange={(event) => void updateMt5Config({ dryRun: event.target.checked })}
+                    checked={!mt5Status.config.dryRun}
+                    onChange={(event) => void updateMt5Config({ dryRun: !event.target.checked })}
                   />
                 </label>
                 <label className="mb-2 block font-bold text-slate-700">
