@@ -1,10 +1,14 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
+  MT5_DEFAULT_ENABLED_TIMEFRAMES,
+  MT5_ENTRY_TIMEFRAME_OPTIONS,
   MT5_RISK_PERCENT_OPTIONS,
   buildMt5SignalId,
   calculateXauUsdLotSize,
   isExecutableTrade,
+  isMt5EntryTimeframeEnabled,
+  normalizeMt5EnabledTimeframes,
   normalizeMt5RiskPercent,
   tradeToMt5Signal,
 } from '../src/services/mt5Automation';
@@ -18,6 +22,17 @@ test('MT5 risk selector exposes only the agreed percentages and normalizes legac
   assert.equal(normalizeMt5RiskPercent(2.6), 2.5);
   assert.equal(normalizeMt5RiskPercent(5), 5);
   assert.equal(normalizeMt5RiskPercent('invalid', 1), 1);
+});
+
+test('MT5 entry timeframe selector accepts supported choices and can disable M1', () => {
+  assert.deepEqual(MT5_ENTRY_TIMEFRAME_OPTIONS, ['M1', 'M5', 'M15', 'M30', 'H1']);
+  assert.deepEqual(MT5_DEFAULT_ENABLED_TIMEFRAMES, ['M5', 'M15', 'M30', 'H1']);
+  const selected = normalizeMt5EnabledTimeframes(['H1', 'M5', 'M5', 'H4', 'M15']);
+  assert.deepEqual(selected, ['M5', 'M15', 'H1']);
+  assert.equal(isMt5EntryTimeframeEnabled(selected, 'M1'), false);
+  assert.equal(isMt5EntryTimeframeEnabled(selected, 'M5'), true);
+  assert.deepEqual(normalizeMt5EnabledTimeframes([], ['M5']), []);
+  assert.deepEqual(normalizeMt5EnabledTimeframes(undefined, ['M5', 'M15']), ['M5', 'M15']);
 });
 
 test('XAUUSD lot size follows cash risk divided by SL pips times ten', () => {

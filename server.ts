@@ -6,6 +6,9 @@ import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { createServer as createViteServer } from 'vite';
 import { fetchTradingViewCandles } from './src/services/tradingViewDatafeed';
 import {
+  MT5_DEFAULT_ENABLED_TIMEFRAMES,
+  isMt5EntryTimeframeEnabled,
+  normalizeMt5EnabledTimeframes,
   normalizeMt5RiskPercent,
   isExecutableTrade,
   tradeToMt5Signal,
@@ -50,6 +53,7 @@ const DEFAULT_MT5_CONFIG: Mt5AutomationConfig = {
   dryRun: true,
   symbol: 'XAUUSD',
   brokerSymbol: 'XAUUSDm',
+  enabledTimeframes: [...MT5_DEFAULT_ENABLED_TIMEFRAMES],
   riskPercent: 0.25,
   maximumOpenTrades: 1,
   maximumDailyLossPercent: 1,
@@ -187,6 +191,10 @@ async function readMt5Config(): Promise<Mt5AutomationConfig> {
     return {
       ...DEFAULT_MT5_CONFIG,
       ...parsed,
+      enabledTimeframes: normalizeMt5EnabledTimeframes(
+        parsed?.enabledTimeframes,
+        DEFAULT_MT5_CONFIG.enabledTimeframes,
+      ),
       riskPercent: normalizeMt5RiskPercent(parsed?.riskPercent, DEFAULT_MT5_CONFIG.riskPercent),
     };
   } catch (error) {
@@ -257,6 +265,10 @@ function sanitizeMt5Config(candidate: any, current: Mt5AutomationConfig): Mt5Aut
     brokerSymbol: typeof candidate?.brokerSymbol === 'string'
       ? candidate.brokerSymbol.trim().slice(0, 30) || current.brokerSymbol
       : current.brokerSymbol,
+    enabledTimeframes: normalizeMt5EnabledTimeframes(
+      candidate?.enabledTimeframes,
+      current.enabledTimeframes,
+    ),
     riskPercent: normalizeMt5RiskPercent(candidate?.riskPercent, current.riskPercent),
     maximumOpenTrades: Math.round(clamp(candidate?.maximumOpenTrades, current.maximumOpenTrades, 1, 10)),
     maximumDailyLossPercent: clamp(candidate?.maximumDailyLossPercent, current.maximumDailyLossPercent, 0.1, 10),
@@ -273,6 +285,9 @@ async function enqueueMt5Signal(
 ): Promise<{ signal: Mt5StoredSignal; duplicate: boolean }> {
   const error = validateMt5Signal(candidate);
   if (error) throw new Error(error);
+  if (!isMt5EntryTimeframeEnabled(config.enabledTimeframes, candidate.signalTimeframe)) {
+    throw new Error(`${candidate.signalTimeframe} automatic trading is disabled.`);
+  }
   const now = Math.floor(Date.now() / 1000);
   if (candidate.calculatedAt < now - config.signalMaxAgeSeconds) {
     throw new Error('Signal is too old for automatic execution.');
@@ -301,6 +316,24 @@ async function enqueueMt5Signal(
     signals.push(signal);
     await writeMt5Signals(signals.slice(-5_000));
     return { signal, duplicate: false };
+  });
+}
+
+async function rejectDisabledQueuedSignals(config: Mt5AutomationConfig): Promise<number> {
+  const now = Math.floor(Date.now() / 1000);
+  return serializeMt5Mutation(async () => {
+    const signals = await readMt5Signals();
+    let rejected = 0;
+    for (const signal of signals) {
+      if (signal.status !== 'QUEUED'
+        || isMt5EntryTimeframeEnabled(config.enabledTimeframes, signal.signalTimeframe)) continue;
+      signal.status = 'REJECTED';
+      signal.updatedAt = now;
+      signal.message = `${signal.signalTimeframe} automatic trading was switched off before execution.`;
+      rejected += 1;
+    }
+    if (rejected > 0) await writeMt5Signals(signals);
+    return rejected;
   });
 }
 
@@ -422,6 +455,7 @@ async function scanMt5AutomationSignals(): Promise<number> {
 
   const grouped = new Map<string, Mt5SignalInput>();
   for (const candidate of candidates) {
+    if (!isMt5EntryTimeframeEnabled(config.enabledTimeframes, candidate.signalTimeframe)) continue;
     if (candidate.calculatedAt < now - config.signalMaxAgeSeconds) continue;
     const existing = grouped.get(candidate.id);
     if (existing) {
@@ -525,6 +559,7 @@ async function startServer() {
       const current = await readMt5Config();
       const config = sanitizeMt5Config(req.body, current);
       await writeMt5Config(config);
+      await rejectDisabledQueuedSignals(config);
       const heartbeatConnected = mt5BridgeHeartbeat !== undefined
         && Date.now() - mt5BridgeHeartbeat.lastHeartbeatAt < 15_000;
       const externalHeartbeatConnected = heartbeatConnected
@@ -548,6 +583,12 @@ async function startServer() {
       const now = Math.floor(Date.now() / 1000);
       const config = await readMt5Config();
       if (!config.enabled) return res.status(409).json({ ok: false, error: 'MT5 automation is disabled.' });
+      if (!isMt5EntryTimeframeEnabled(config.enabledTimeframes, req.body.signalTimeframe)) {
+        return res.status(409).json({
+          ok: false,
+          error: `${String(req.body.signalTimeframe)} automatic trading is disabled.`,
+        });
+      }
       if (req.body.calculatedAt < now - config.signalMaxAgeSeconds) {
         return res.status(409).json({ ok: false, error: 'Signal is too old for automatic execution.' });
       }
@@ -620,8 +661,17 @@ async function startServer() {
             item.updatedAt = now;
             item.message = 'Signal expired before execution.';
           }
+          if (item.status === 'QUEUED'
+            && !isMt5EntryTimeframeEnabled(config.enabledTimeframes, item.signalTimeframe)) {
+            item.status = 'REJECTED';
+            item.updatedAt = now;
+            item.message = `${item.signalTimeframe} automatic trading is disabled.`;
+          }
         }
-        const next = signals.find((item) => item.status === 'QUEUED');
+        const next = signals.find((item) => (
+          item.status === 'QUEUED'
+          && isMt5EntryTimeframeEnabled(config.enabledTimeframes, item.signalTimeframe)
+        ));
         if (next) {
           next.status = 'CLAIMED';
           next.claimedAt = now;

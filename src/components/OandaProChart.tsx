@@ -57,7 +57,10 @@ import {
 } from '../services/tradeLevels';
 import { TradeJournal, type JournalTradeRecord } from './TradeJournal';
 import {
+  MT5_DEFAULT_ENABLED_TIMEFRAMES,
+  MT5_ENTRY_TIMEFRAME_OPTIONS,
   MT5_RISK_PERCENT_OPTIONS,
+  isMt5EntryTimeframeEnabled,
   isExecutableTrade,
   tradeToMt5Signal,
   type Mt5AutomationStatus,
@@ -1442,6 +1445,10 @@ export const OandaProChart: React.FC = () => {
     const now = Math.floor(Date.now() / 1000);
     const grouped = new Map<string, Mt5SignalInput>();
     for (const candidate of mt5TradeCandidates) {
+      if (!isMt5EntryTimeframeEnabled(
+        mt5Status.config.enabledTimeframes,
+        candidate.trade.signal.timeframe,
+      )) continue;
       if (candidate.trade.calculatedAt < now - mt5Status.config.signalMaxAgeSeconds) continue;
       const signal = tradeToMt5Signal({
         ...candidate,
@@ -3058,6 +3065,34 @@ export const OandaProChart: React.FC = () => {
                     onChange={(event) => void updateMt5Config({ dryRun: !event.target.checked })}
                   />
                 </label>
+                <fieldset className="mb-2 rounded border border-slate-200 bg-slate-50 p-2">
+                  <legend className="px-1 font-bold text-slate-700">Trade Entry Timeframes</legend>
+                  <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1">
+                    {MT5_ENTRY_TIMEFRAME_OPTIONS.map((timeframe) => {
+                      const currentTimeframes = mt5Status.config.enabledTimeframes
+                        ?? MT5_DEFAULT_ENABLED_TIMEFRAMES;
+                      const checked = currentTimeframes.includes(timeframe);
+                      return (
+                        <label key={timeframe} className="flex items-center gap-1 font-bold text-slate-700">
+                          <input
+                            type="checkbox"
+                            checked={checked}
+                            onChange={(event) => {
+                              const enabledTimeframes = event.target.checked
+                                ? [...currentTimeframes, timeframe]
+                                : currentTimeframes.filter((item) => item !== timeframe);
+                              void updateMt5Config({ enabledTimeframes });
+                            }}
+                          />
+                          {timeframe}
+                        </label>
+                      );
+                    })}
+                  </div>
+                  <span className="mt-1 block text-[8px] font-semibold text-slate-500">
+                    Checked timeframes can send entry signals to MT5.
+                  </span>
+                </fieldset>
                 <label className="mb-2 block font-bold text-slate-700">
                   Risk per trade
                   <select

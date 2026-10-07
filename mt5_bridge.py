@@ -174,6 +174,10 @@ def today_realized_loss_percent() -> float:
 
 
 def check_safety(signal: dict[str, Any], config: dict[str, Any]) -> tuple[Any, Any]:
+    enabled_timeframes = config.get("enabledTimeframes", ["M1", "M5", "M15", "M30", "H1"])
+    signal_timeframe = str(signal.get("signalTimeframe", ""))
+    if signal_timeframe not in enabled_timeframes:
+        raise RuntimeError(f"{signal_timeframe or 'Unknown'} automatic trading is disabled.")
     terminal = mt5.terminal_info()
     account = mt5.account_info()
     if not terminal or not terminal.connected:
@@ -222,7 +226,7 @@ def send_with_filling_fallback(request: dict[str, Any]) -> Any:
 
 def place_signal(signal: dict[str, Any], config: dict[str, Any]) -> dict[str, Any]:
     if config.get("dryRun", True) or not ALLOW_LIVE_EXECUTION:
-        reason = "Dashboard dry run" if config.get("dryRun", True) else "MT5_ALLOW_LIVE_EXECUTION is not YES"
+        reason = "Send Trades to MT5 is NO" if config.get("dryRun", True) else "MT5_ALLOW_LIVE_EXECUTION is not YES"
         update_status(signal["id"], "SIMULATED", message=f"Validated without an order: {reason}.")
         print(f"DRY RUN {signal['direction']} {signal['zoneTimeframe']} {signal['zoneName']}")
         return {"status": "SIMULATED"}

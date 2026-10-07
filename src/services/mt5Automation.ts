@@ -4,6 +4,27 @@ export const MT5_RISK_PERCENT_OPTIONS = [
   0.25, 0.5, 1, 1.5, 2, 2.5, 3, 3.5, 4, 4.5, 5,
 ] as const;
 
+export const MT5_ENTRY_TIMEFRAME_OPTIONS = ['M1', 'M5', 'M15', 'M30', 'H1'] as const;
+export type Mt5EntryTimeframe = typeof MT5_ENTRY_TIMEFRAME_OPTIONS[number];
+export const MT5_DEFAULT_ENABLED_TIMEFRAMES: readonly Mt5EntryTimeframe[] = ['M5', 'M15', 'M30', 'H1'];
+
+export function normalizeMt5EnabledTimeframes(
+  value: unknown,
+  fallback: readonly Mt5EntryTimeframe[] = MT5_DEFAULT_ENABLED_TIMEFRAMES,
+): Mt5EntryTimeframe[] {
+  if (!Array.isArray(value)) return [...fallback];
+  const selected = new Set(value.map(String));
+  return MT5_ENTRY_TIMEFRAME_OPTIONS.filter((timeframe) => selected.has(timeframe));
+}
+
+export function isMt5EntryTimeframeEnabled(
+  enabledTimeframes: readonly Mt5EntryTimeframe[] | undefined,
+  signalTimeframe: string,
+): boolean {
+  return (enabledTimeframes ?? MT5_DEFAULT_ENABLED_TIMEFRAMES)
+    .includes(signalTimeframe as Mt5EntryTimeframe);
+}
+
 export function normalizeMt5RiskPercent(value: unknown, fallback = 0.25): number {
   const numeric = Number(value);
   if (!Number.isFinite(numeric)) return fallback;
@@ -28,6 +49,7 @@ export interface Mt5AutomationConfig {
   dryRun: boolean;
   symbol: string;
   brokerSymbol: string;
+  enabledTimeframes: Mt5EntryTimeframe[];
   riskPercent: number;
   maximumOpenTrades: number;
   maximumDailyLossPercent: number;
