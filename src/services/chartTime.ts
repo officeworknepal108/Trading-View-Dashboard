@@ -1,6 +1,6 @@
 import { TickMarkType, type Time } from 'lightweight-charts';
 
-export type ChartTimeZone = 'Asia/Kathmandu' | 'UTC';
+export type ChartTimeZone = 'Asia/Kathmandu' | 'Asia/Kolkata' | 'UTC';
 
 function timeToDate(time: Time): Date {
   if (typeof time === 'number') return new Date(time * 1000);

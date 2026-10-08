@@ -32,6 +32,7 @@ import { ChartTimeZone, formatChartTick, formatChartTime } from '../services/cha
 import { buildDayFibs, DayFibMove } from '../services/dayFib';
 import { applySwingFibConfluence } from '../services/swingFibConfluence';
 import { applyDayFibConfluence } from '../services/dayFibConfluence';
+import { INDICATOR_FIB_LEVELS, indicatorFibPrice } from '../services/indicatorFib';
 import {
   MTF_MAPPINGS,
   buildMtfHistoryRows,
@@ -85,6 +86,88 @@ type LiveChartDataSource = 'MT5' | 'OANDA';
 type FibVisibilityKey = 'tjl1' | 'tjl2' | 'choch' | 'intChoch' | 'intTjl1' | 'intTjl2'
   | 'doubleChoch' | 'iss' | 'swing' | 'day';
 type ChochFibVisibility = [boolean, boolean, boolean, boolean];
+type ChartDrawingTool = 'rectangle' | 'fib' | 'measure' | 'note' | 'path' | 'trend';
+type ChartDrawingVisibility = 'all' | 'current-only' | 'current-and-above' | 'current-and-below';
+
+interface ChartDrawingPoint {
+  time: number;
+  price: number;
+}
+
+interface ChartDrawing {
+  id: string;
+  scope: string;
+  tool: ChartDrawingTool;
+  points: ChartDrawingPoint[];
+  text?: string;
+  color?: string;
+  visibilityTimeframe?: OandaGranularity;
+  visibility?: ChartDrawingVisibility;
+  hidden?: boolean;
+}
+
+interface ChartDrawingDraft {
+  tool: ChartDrawingTool;
+  points: ChartDrawingPoint[];
+  hover?: ChartDrawingPoint;
+}
+
+interface ChartDrawingDrag {
+  drawingId: string;
+  pointIndex?: number;
+  start: ChartDrawingPoint;
+  originalPoints: ChartDrawingPoint[];
+}
+
+interface ChartDrawingTextEditor {
+  drawingId: string;
+  value: string;
+}
+
+const CHART_DRAWINGS_STORAGE_KEY = 'oanda-dashboard-chart-drawings-v1';
+const CHART_DRAWING_COLORS = ['#2563eb', '#dc2626', '#16a34a', '#d97706', '#7c3aed', '#0f172a'] as const;
+
+const CHART_DRAWING_TOOLS: Array<{
+  tool: ChartDrawingTool;
+  label: string;
+  hint: string;
+}> = [
+  { tool: 'rectangle', label: 'RECTANGLE', hint: 'Mark a price and time area' },
+  { tool: 'fib', label: 'FIB MARKING', hint: 'Draw Fibonacci retracement levels' },
+  { tool: 'measure', label: 'SCALE / MEASURE', hint: 'Measure bars and price movement' },
+  { tool: 'note', label: 'NOTE TEXT', hint: 'Attach a written note to a price' },
+  { tool: 'path', label: 'PATH', hint: 'Draw connected custom segments' },
+  { tool: 'trend', label: 'TREND LINE', hint: 'Connect two chart points' },
+];
+
+function loadStoredChartDrawings(): ChartDrawing[] {
+  try {
+    const parsed = JSON.parse(window.localStorage.getItem(CHART_DRAWINGS_STORAGE_KEY) || '[]');
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter((drawing): drawing is ChartDrawing => (
+      drawing && typeof drawing.id === 'string' && typeof drawing.scope === 'string'
+      && CHART_DRAWING_TOOLS.some(({ tool }) => tool === drawing.tool)
+      && Array.isArray(drawing.points)
+      && drawing.points.every((point: ChartDrawingPoint) => (
+        Number.isFinite(point?.time) && Number.isFinite(point?.price)
+      ))
+    )).map((drawing) => {
+      const [sourceScope, legacyTimeframe] = drawing.scope.split(':');
+      return {
+        ...drawing,
+        scope: sourceScope,
+        visibilityTimeframe: drawing.visibilityTimeframe
+          ?? (DRAWING_TIMEFRAME_ORDER.includes(legacyTimeframe as OandaGranularity)
+            ? legacyTimeframe as OandaGranularity
+            : 'M15'),
+        visibility: drawing.visibility ?? 'all',
+        hidden: drawing.hidden ?? false,
+      };
+    });
+  } catch {
+    return [];
+  }
+}
 
 const DEFAULT_CHOCH_FIB_VISIBILITY: ChochFibVisibility = [false, false, false, false];
 
@@ -170,6 +253,7 @@ const TIMEFRAMES: Array<{ value: OandaGranularity; label: string }> = [
   { value: 'H4', label: '4h' },
   { value: 'D', label: 'D' },
 ];
+const DRAWING_TIMEFRAME_ORDER: OandaGranularity[] = ['M1', 'M5', 'M15', 'M30', 'H1', 'H4', 'D'];
 
 const TREND_TABLE_GRANULARITIES: OandaGranularity[] = ['M1', 'M5', 'M15', 'H1', 'H4', 'D'];
 const AUTOMATION_GRANULARITIES: OandaGranularity[] = ['M1', 'M5', 'M15', 'M30', 'H1'];
@@ -974,6 +1058,12 @@ const EngulfingAccuracyTable: React.FC<{
 export const OandaProChart: React.FC = () => {
   const hostRef = useRef<HTMLDivElement | null>(null);
   const chartPaneRef = useRef<HTMLDivElement | null>(null);
+  const drawingToolbarDragRef = useRef<{
+    offsetX: number;
+    offsetY: number;
+    width: number;
+    height: number;
+  } | null>(null);
   const chartRef = useRef<any>(null);
   const candleSeriesRef = useRef<any>(null);
   const volumeSeriesRef = useRef<any>(null);
@@ -1015,6 +1105,7 @@ export const OandaProChart: React.FC = () => {
   const overlayRedrawFrameRef = useRef<number | null>(null);
   const overlayRedrawTimerRef = useRef<number | null>(null);
   const lastOverlayRedrawAtRef = useRef(0);
+  const drawingRedrawFrameRef = useRef<number | null>(null);
   const hasFittedRef = useRef(false);
   const replayTimeRef = useRef<number | null>(null);
   const pendingReplayViewportRef = useRef<{ fromOffset: number; toOffset: number } | null>(null);
@@ -1067,6 +1158,16 @@ export const OandaProChart: React.FC = () => {
   const [mt5SettingsOpen, setMt5SettingsOpen] = useState(false);
   const [mt5BridgeControlError, setMt5BridgeControlError] = useState<string | null>(null);
   const [showIndicatorControls, setShowIndicatorControls] = useState(false);
+  const [showDrawingTools, setShowDrawingTools] = useState(false);
+  const [activeDrawingTool, setActiveDrawingTool] = useState<ChartDrawingTool | null>(null);
+  const [chartDrawings, setChartDrawings] = useState<ChartDrawing[]>(loadStoredChartDrawings);
+  const [drawingDraft, setDrawingDraft] = useState<ChartDrawingDraft | null>(null);
+  const [selectedDrawingId, setSelectedDrawingId] = useState<string | null>(null);
+  const [showDrawingVisibility, setShowDrawingVisibility] = useState(false);
+  const [drawingToolbarPosition, setDrawingToolbarPosition] = useState<{ left: number; top: number } | null>(null);
+  const [drawingTextEditor, setDrawingTextEditor] = useState<ChartDrawingTextEditor | null>(null);
+  const [drawingDrag, setDrawingDrag] = useState<ChartDrawingDrag | null>(null);
+  const [drawingRenderVersion, setDrawingRenderVersion] = useState(0);
   const [showZoneTable, setShowZoneTable] = useState(true);
   const [replayIndex, setReplayIndex] = useState<number | null>(null);
   const [replayPlaying, setReplayPlaying] = useState(false);
@@ -1083,6 +1184,62 @@ export const OandaProChart: React.FC = () => {
   candlesRef.current = candles;
   replaySelectingRef.current = replaySelecting;
   replaySelectionIndexRef.current = replaySelectionIndex;
+
+  const drawingScope = liveChartDataSource;
+
+  useEffect(() => {
+    window.localStorage.setItem(CHART_DRAWINGS_STORAGE_KEY, JSON.stringify(chartDrawings));
+  }, [chartDrawings]);
+
+  useEffect(() => {
+    setDrawingDraft(null);
+    setDrawingDrag(null);
+    setSelectedDrawingId(null);
+    setShowDrawingVisibility(false);
+  }, [drawingScope, granularity]);
+
+  useEffect(() => {
+    setDrawingToolbarPosition(null);
+    drawingToolbarDragRef.current = null;
+    setDrawingTextEditor((current) => (
+      current?.drawingId === selectedDrawingId ? current : null
+    ));
+  }, [selectedDrawingId]);
+
+  useEffect(() => {
+    const moveToolbar = (event: MouseEvent) => {
+      const drag = drawingToolbarDragRef.current;
+      const pane = chartPaneRef.current;
+      if (!drag || !pane) return;
+      const bounds = pane.getBoundingClientRect();
+      setDrawingToolbarPosition({
+        left: Math.max(0, Math.min(bounds.width - drag.width, event.clientX - bounds.left - drag.offsetX)),
+        top: Math.max(0, Math.min(bounds.height - drag.height, event.clientY - bounds.top - drag.offsetY)),
+      });
+    };
+    const finishToolbarMove = () => {
+      drawingToolbarDragRef.current = null;
+    };
+    window.addEventListener('mousemove', moveToolbar);
+    window.addEventListener('mouseup', finishToolbarMove);
+    return () => {
+      window.removeEventListener('mousemove', moveToolbar);
+      window.removeEventListener('mouseup', finishToolbarMove);
+    };
+  }, []);
+
+  useEffect(() => {
+    const cancelDrawing = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return;
+      setDrawingDraft(null);
+      setDrawingDrag(null);
+      setSelectedDrawingId(null);
+      setShowDrawingVisibility(false);
+      setActiveDrawingTool(null);
+    };
+    window.addEventListener('keydown', cancelDrawing);
+    return () => window.removeEventListener('keydown', cancelDrawing);
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -2229,15 +2386,6 @@ export const OandaProChart: React.FC = () => {
       svg.style.overflow = 'hidden';
 
       if (showFibRef.current && hasVisibleFibMarking) {
-        const fibLevels = [
-          { ratio: 0, label: '0' },
-          { ratio: 0.5, label: '0.5' },
-          { ratio: 0.618, label: '0.618' },
-          { ratio: 0.71, label: '0.71' },
-          { ratio: 0.79, label: '0.79' },
-          { ratio: 1, label: '1' },
-        ];
-
         const fibMovesByType = new Map<FibVisibilityKey, StructureZone[]>();
         for (const zone of zonesRef.current) {
           const type = fibVisibilityKey(zone);
@@ -2359,9 +2507,8 @@ export const OandaProChart: React.FC = () => {
           const lineRight = Math.max(sourceX, zeroX);
           if (lineRight < 0 || lineLeft > rightEdge) continue;
 
-          for (const level of fibLevels) {
-            const price = zone.fibZeroPrice
-              + (zone.fibSourcePrice - zone.fibZeroPrice) * level.ratio;
+          for (const level of INDICATOR_FIB_LEVELS) {
+            const price = indicatorFibPrice(zone.fibZeroPrice, zone.fibSourcePrice, level.ratio);
             const y = series.priceToCoordinate(price);
             if (y === null || y < -20 || y > host.clientHeight + 20) continue;
 
@@ -2582,6 +2729,14 @@ export const OandaProChart: React.FC = () => {
     const delay = Math.max(0, 50 - elapsed);
     if (delay > 0) overlayRedrawTimerRef.current = window.setTimeout(scheduleFrame, delay);
     else scheduleFrame();
+  }, []);
+
+  const scheduleDrawingRedraw = useCallback(() => {
+    if (drawingRedrawFrameRef.current !== null) return;
+    drawingRedrawFrameRef.current = window.requestAnimationFrame(() => {
+      drawingRedrawFrameRef.current = null;
+      setDrawingRenderVersion((version) => version + 1);
+    });
   }, []);
 
   useEffect(() => {
@@ -2895,10 +3050,12 @@ export const OandaProChart: React.FC = () => {
     const observer = new ResizeObserver(([entry]) => {
       chart.applyOptions({ width: entry.contentRect.width, height: entry.contentRect.height });
       scheduleOverlayRedraw();
+      scheduleDrawingRedraw();
       window.requestAnimationFrame(() => syncReplaySelectionLineRef.current());
     });
     const handleVisibleRangeChange = () => {
       scheduleOverlayRedraw();
+      scheduleDrawingRedraw();
       syncReplaySelectionLineRef.current();
     };
     chart.timeScale().subscribeVisibleLogicalRangeChange(handleVisibleRangeChange);
@@ -2918,13 +3075,17 @@ export const OandaProChart: React.FC = () => {
         window.clearTimeout(overlayRedrawTimerRef.current);
         overlayRedrawTimerRef.current = null;
       }
+      if (drawingRedrawFrameRef.current !== null) {
+        window.cancelAnimationFrame(drawingRedrawFrameRef.current);
+        drawingRedrawFrameRef.current = null;
+      }
       chart.remove();
       chartRef.current = null;
       candleSeriesRef.current = null;
       volumeSeriesRef.current = null;
       markersRef.current = null;
     };
-  }, [scheduleOverlayRedraw]);
+  }, [scheduleDrawingRedraw, scheduleOverlayRedraw]);
 
   useEffect(() => {
     const chart = chartRef.current;
@@ -2983,7 +3144,8 @@ export const OandaProChart: React.FC = () => {
       hasFittedRef.current = true;
     }
     scheduleOverlayRedraw();
-  }, [displayCandles, engulfingMarkers, granularity, mtfEntryMarkers, replayIndex, restorePresentChartView, scheduleOverlayRedraw, showEngulfing, showInternal, showIss, showStructure, structure.internalMarkers, structure.issMarkers, structure.markers]);
+    scheduleDrawingRedraw();
+  }, [displayCandles, engulfingMarkers, granularity, mtfEntryMarkers, replayIndex, restorePresentChartView, scheduleDrawingRedraw, scheduleOverlayRedraw, showEngulfing, showInternal, showIss, showStructure, structure.internalMarkers, structure.issMarkers, structure.markers]);
 
   useEffect(() => {
     const label = livePriceLabelRef.current;
@@ -3107,6 +3269,632 @@ export const OandaProChart: React.FC = () => {
       1,
       Math.min(candles.length - 1, Math.round(logicalIndex)),
     ));
+  };
+
+  const chartDrawingPointFromClient = (clientX: number, clientY: number): ChartDrawingPoint | null => {
+    const chart = chartRef.current;
+    const series = candleSeriesRef.current;
+    const host = hostRef.current;
+    if (!chart || !series || !host || displayCandles.length === 0) return null;
+    const bounds = host.getBoundingClientRect();
+    const logical = chart.timeScale().coordinateToLogical(clientX - bounds.left);
+    const price = series.coordinateToPrice(clientY - bounds.top);
+    if (logical === null || price === null || !Number.isFinite(logical) || !Number.isFinite(price)) return null;
+    const nearestIndex = Math.round(logical);
+    let time: number;
+    if (nearestIndex >= 0 && nearestIndex < displayCandles.length) {
+      time = displayCandles[nearestIndex].time;
+    } else if (nearestIndex < 0) {
+      time = displayCandles[0].time + nearestIndex * TIMEFRAME_SECONDS[granularity];
+    } else {
+      const lastIndex = displayCandles.length - 1;
+      time = displayCandles[lastIndex].time
+        + (nearestIndex - lastIndex) * TIMEFRAME_SECONDS[granularity];
+    }
+    return { time, price };
+  };
+
+  const saveChartDrawing = (
+    tool: ChartDrawingTool,
+    points: ChartDrawingPoint[],
+    text?: string,
+  ) => {
+    if (points.length === 0) return null;
+    const drawingId = `drawing-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    setChartDrawings((current) => [...current, {
+      id: drawingId,
+      scope: drawingScope,
+      tool,
+      points,
+      text,
+      color: '#2563eb',
+      visibilityTimeframe: granularity,
+      visibility: 'all',
+      hidden: false,
+    }]);
+    setDrawingDraft(null);
+    setActiveDrawingTool(null);
+    return drawingId;
+  };
+
+  const handleDrawingChartClick = (event: React.MouseEvent<HTMLDivElement>) => {
+    if (!activeDrawingTool) return;
+    const point = chartDrawingPointFromClient(event.clientX, event.clientY);
+    if (!point) return;
+
+    if (activeDrawingTool === 'path') {
+      if (!drawingDraft || drawingDraft.tool !== 'path') {
+        setDrawingDraft({ tool: 'path', points: [point], hover: point });
+        return;
+      }
+      const nextPoints = [...drawingDraft.points, point].filter((candidate, index, points) => (
+        index === 0 || candidate.time !== points[index - 1].time
+        || Math.abs(candidate.price - points[index - 1].price) > 0.0001
+      ));
+      if (event.detail >= 2 && nextPoints.length >= 2) saveChartDrawing('path', nextPoints);
+      else setDrawingDraft({ tool: 'path', points: nextPoints, hover: point });
+      return;
+    }
+
+    if (!drawingDraft || drawingDraft.tool !== activeDrawingTool) {
+      setDrawingDraft({ tool: activeDrawingTool, points: [point], hover: point });
+      return;
+    }
+    const secondPoint = activeDrawingTool === 'trend' && event.shiftKey
+      ? { ...point, price: drawingDraft.points[0].price }
+      : point;
+    const drawingId = saveChartDrawing(activeDrawingTool, [drawingDraft.points[0], secondPoint]);
+    if (activeDrawingTool === 'note' && drawingId) {
+      setSelectedDrawingId(drawingId);
+      setDrawingTextEditor({ drawingId, value: '' });
+    }
+  };
+
+  const finishDrawingPath = () => {
+    if (drawingDraft?.tool === 'path' && drawingDraft.points.length >= 2) {
+      saveChartDrawing('path', drawingDraft.points);
+    } else {
+      setDrawingDraft(null);
+      setActiveDrawingTool(null);
+    }
+  };
+
+  const undoLastChartDrawing = () => {
+    setChartDrawings((current) => {
+      const lastIndex = current.map((drawing) => drawing.scope).lastIndexOf(drawingScope);
+      return lastIndex < 0 ? current : current.filter((_, index) => index !== lastIndex);
+    });
+  };
+
+  const clearCurrentChartDrawings = () => {
+    if (!chartDrawings.some((drawing) => drawing.scope === drawingScope)) return;
+    if (!window.confirm(`Remove all drawings from the ${liveChartDataSource} charts?`)) return;
+    setChartDrawings((current) => current.filter((drawing) => drawing.scope !== drawingScope));
+    setDrawingDraft(null);
+    setActiveDrawingTool(null);
+    setSelectedDrawingId(null);
+    setShowDrawingVisibility(false);
+  };
+
+  const updateChartDrawing = (drawingId: string, updates: Partial<ChartDrawing>) => {
+    setChartDrawings((current) => current.map((drawing) => (
+      drawing.id === drawingId ? { ...drawing, ...updates } : drawing
+    )));
+  };
+
+  const removeChartDrawing = (drawingId: string) => {
+    setChartDrawings((current) => current.filter((drawing) => drawing.id !== drawingId));
+    setSelectedDrawingId(null);
+    setShowDrawingVisibility(false);
+    setDrawingDrag(null);
+  };
+
+  const chartDrawingIsVisible = (drawing: ChartDrawing) => {
+    if (drawing.hidden) return false;
+    const mode = drawing.visibility ?? 'all';
+    if (mode === 'all') return true;
+    const origin = drawing.visibilityTimeframe ?? granularity;
+    const originIndex = DRAWING_TIMEFRAME_ORDER.indexOf(origin);
+    const currentIndex = DRAWING_TIMEFRAME_ORDER.indexOf(granularity);
+    if (mode === 'current-only') return currentIndex === originIndex;
+    if (mode === 'current-and-above') return currentIndex >= originIndex;
+    return currentIndex <= originIndex;
+  };
+
+  const chartDrawingPointToCoordinate = (point: ChartDrawingPoint): { x: number; y: number } | null => {
+    const chart = chartRef.current;
+    const series = candleSeriesRef.current;
+    if (!chart || !series || displayCandles.length === 0) return null;
+    let logical: number;
+    let low = 0;
+    let high = displayCandles.length;
+    while (low < high) {
+      const middle = Math.floor((low + high) / 2);
+      if (displayCandles[middle].time < point.time) low = middle + 1;
+      else high = middle;
+    }
+    if (low < displayCandles.length && displayCandles[low].time === point.time) {
+      logical = low;
+    } else if (low === 0) {
+      logical = (point.time - displayCandles[0].time) / TIMEFRAME_SECONDS[granularity];
+    } else if (low < displayCandles.length) {
+      const previous = displayCandles[low - 1];
+      const next = displayCandles[low];
+      const interval = Math.max(1, next.time - previous.time);
+      logical = low - 1 + (point.time - previous.time) / interval;
+    } else {
+      const lastIndex = displayCandles.length - 1;
+      logical = lastIndex
+        + (point.time - displayCandles[lastIndex].time) / TIMEFRAME_SECONDS[granularity];
+    }
+    const x = chart.timeScale().logicalToCoordinate(logical);
+    const y = series.priceToCoordinate(point.price);
+    return x === null || y === null ? null : { x, y };
+  };
+
+  // Reading this state ensures SVG drawings are recalculated after chart pan,
+  // zoom, resize, or candle replacement even though their data has not changed.
+  void drawingRenderVersion;
+  const currentSourceChartDrawings = chartDrawings.filter((drawing) => drawing.scope === drawingScope);
+  const visibleChartDrawings = currentSourceChartDrawings.filter(chartDrawingIsVisible);
+  const hiddenChartDrawings = currentSourceChartDrawings.filter((drawing) => drawing.hidden);
+  const selectedChartDrawing = currentSourceChartDrawings.find((drawing) => (
+    drawing.id === selectedDrawingId
+  ));
+  const previewChartDrawing = drawingDraft && drawingDraft.points.length > 0
+    ? {
+      id: 'drawing-preview',
+      scope: drawingScope,
+      tool: drawingDraft.tool,
+      points: drawingDraft.hover
+        ? [...drawingDraft.points, drawingDraft.hover]
+        : drawingDraft.points,
+    } satisfies ChartDrawing
+    : null;
+  const textEditorDrawing = drawingTextEditor
+    ? currentSourceChartDrawings.find((drawing) => drawing.id === drawingTextEditor.drawingId)
+    : undefined;
+  const textEditorCoordinates = textEditorDrawing?.points.length
+    ? textEditorDrawing.points.map(chartDrawingPointToCoordinate)
+    : [];
+  const drawingTextEditorPosition = textEditorCoordinates.length >= 1
+    && textEditorCoordinates[0]
+    ? (() => {
+      const firstCoordinate = textEditorCoordinates[0];
+      const lastCoordinate = textEditorCoordinates[textEditorCoordinates.length - 1] ?? firstCoordinate;
+      let angle = textEditorDrawing?.tool === 'trend'
+        ? Math.atan2(lastCoordinate.y - firstCoordinate.y, lastCoordinate.x - firstCoordinate.x) * 180 / Math.PI
+        : 0;
+      if (angle > 90 || angle < -90) angle += 180;
+      return {
+        left: (firstCoordinate.x + lastCoordinate.x) / 2,
+        top: (firstCoordinate.y + lastCoordinate.y) / 2,
+        angle,
+      };
+    })()
+    : null;
+
+  const startChartDrawingDrag = (
+    event: React.MouseEvent<SVGElement>,
+    drawing: ChartDrawing,
+    pointIndex?: number,
+  ) => {
+    if (previewChartDrawing) return;
+    event.preventDefault();
+    event.stopPropagation();
+    const start = chartDrawingPointFromClient(event.clientX, event.clientY);
+    if (!start) return;
+    setSelectedDrawingId(drawing.id);
+    setShowDrawingVisibility(false);
+    setDrawingDrag({
+      drawingId: drawing.id,
+      pointIndex,
+      start,
+      originalPoints: drawing.points.map((point) => ({ ...point })),
+    });
+  };
+
+  const moveSelectedChartDrawing = (clientX: number, clientY: number, shiftKey = false) => {
+    if (!drawingDrag) return;
+    const currentPoint = chartDrawingPointFromClient(clientX, clientY);
+    if (!currentPoint) return;
+    let points: ChartDrawingPoint[];
+    if (drawingDrag.pointIndex !== undefined) {
+      const draggedDrawing = chartDrawings.find((drawing) => drawing.id === drawingDrag.drawingId);
+      const oppositePoint = drawingDrag.originalPoints[drawingDrag.pointIndex === 0 ? 1 : 0];
+      const draggedPoint = shiftKey && draggedDrawing?.tool === 'trend' && oppositePoint
+        ? { ...currentPoint, price: oppositePoint.price }
+        : currentPoint;
+      points = drawingDrag.originalPoints.map((point, index) => (
+        index === drawingDrag.pointIndex ? draggedPoint : point
+      ));
+    } else {
+      const timeDelta = currentPoint.time - drawingDrag.start.time;
+      const priceDelta = currentPoint.price - drawingDrag.start.price;
+      points = drawingDrag.originalPoints.map((point) => ({
+        time: point.time + timeDelta,
+        price: point.price + priceDelta,
+      }));
+    }
+    updateChartDrawing(drawingDrag.drawingId, { points });
+  };
+
+  useEffect(() => {
+    if (!drawingDrag) return undefined;
+    const moveDrawing = (event: MouseEvent) => (
+      moveSelectedChartDrawing(event.clientX, event.clientY, event.shiftKey)
+    );
+    const finishMoving = () => setDrawingDrag(null);
+    window.addEventListener('mousemove', moveDrawing);
+    window.addEventListener('mouseup', finishMoving);
+    return () => {
+      window.removeEventListener('mousemove', moveDrawing);
+      window.removeEventListener('mouseup', finishMoving);
+    };
+  }, [drawingDrag, chartDrawings]);
+
+  const editChartDrawingText = (drawing: ChartDrawing) => {
+    if (drawing.tool !== 'rectangle' && drawing.tool !== 'trend' && drawing.tool !== 'note') return;
+    setSelectedDrawingId(drawing.id);
+    setDrawingTextEditor({ drawingId: drawing.id, value: drawing.text ?? '' });
+  };
+
+  const saveChartDrawingText = () => {
+    if (!drawingTextEditor) return;
+    updateChartDrawing(drawingTextEditor.drawingId, {
+      text: drawingTextEditor.value.trim().slice(0, 80),
+    });
+    setDrawingTextEditor(null);
+  };
+
+  useEffect(() => {
+    const deleteSelectedDrawing = (event: KeyboardEvent) => {
+      if (!selectedDrawingId || (event.key !== 'Delete' && event.key !== 'Backspace')) return;
+      const target = event.target as HTMLElement | null;
+      if (target?.matches('input, textarea, select, [contenteditable="true"]')) return;
+      event.preventDefault();
+      removeChartDrawing(selectedDrawingId);
+    };
+    window.addEventListener('keydown', deleteSelectedDrawing);
+    return () => window.removeEventListener('keydown', deleteSelectedDrawing);
+  }, [selectedDrawingId]);
+
+  const renderChartDrawing = (drawing: ChartDrawing, preview = false) => {
+    const points = drawing.points
+      .map(chartDrawingPointToCoordinate)
+      .filter((point): point is { x: number; y: number } => point !== null);
+    if (points.length === 0) return null;
+    const selected = !preview && drawing.id === selectedDrawingId;
+    const drawingColor = drawing.color ?? '#2563eb';
+    const stroke = preview ? '#7c3aed' : drawingColor;
+    const opacity = preview ? 0.65 : 0.9;
+    const wrapDrawing = (content: React.ReactNode) => (
+      <g
+        key={drawing.id}
+        opacity={opacity}
+        pointerEvents={preview ? 'none' : 'visiblePainted'}
+        onMouseDown={preview ? undefined : (event) => startChartDrawingDrag(event, drawing)}
+        onDoubleClick={preview ? undefined : (event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          editChartDrawingText(drawing);
+        }}
+        style={preview ? undefined : { cursor: 'move' }}
+      >
+        {content}
+        {selected && drawing.points.map((point, index) => {
+          const coordinate = chartDrawingPointToCoordinate(point);
+          if (!coordinate) return null;
+          return (
+            <circle
+              key={`${drawing.id}-handle-${index}`}
+              cx={coordinate.x}
+              cy={coordinate.y}
+              r="4"
+              fill="white"
+              stroke="#7c3aed"
+              strokeWidth="1.5"
+              pointerEvents="all"
+              onMouseDown={(event) => startChartDrawingDrag(event, drawing, index)}
+              style={{ cursor: 'grab' }}
+            />
+          );
+        })}
+      </g>
+    );
+
+    if (drawing.tool === 'note') {
+      const anchor = points[0];
+      const labelPoint = points.length > 1 ? points[points.length - 1] : { x: anchor.x + 40, y: anchor.y - 30 };
+      const label = drawing.text || 'Add text';
+      const width = Math.min(220, Math.max(64, label.length * 5.4 + 18));
+      return wrapDrawing(
+        <>
+          <line x1={anchor.x} y1={anchor.y} x2={labelPoint.x} y2={labelPoint.y} stroke={stroke} strokeWidth="1" />
+          <circle cx={anchor.x} cy={anchor.y} r="3" fill="white" stroke={stroke} strokeWidth="1.2" />
+          <rect x={labelPoint.x - width / 2} y={labelPoint.y - 10} width={width} height="20" rx="3" fill="white" stroke={stroke} />
+          {drawingTextEditor?.drawingId !== drawing.id && (
+            <text x={labelPoint.x} y={labelPoint.y + 3} textAnchor="middle" fill={stroke} fontSize="9" fontWeight="700">
+              {label.length > 38 ? `${label.slice(0, 38)}…` : label}
+            </text>
+          )}
+        </>
+      );
+    }
+
+    if (drawing.tool === 'path') {
+      return wrapDrawing(
+        <>
+          <polyline
+            points={points.map((point) => `${point.x},${point.y}`).join(' ')}
+            fill="none"
+            stroke="transparent"
+            strokeWidth="10"
+            strokeLinejoin="round"
+            strokeLinecap="round"
+          />
+          <polyline
+            points={points.map((point) => `${point.x},${point.y}`).join(' ')}
+            fill="none"
+            stroke={stroke}
+            strokeWidth="1.5"
+            strokeLinejoin="round"
+            strokeLinecap="round"
+          />
+        </>
+      );
+    }
+
+    if (points.length < 2) {
+      return wrapDrawing(<circle cx={points[0].x} cy={points[0].y} r="3" fill={stroke} />);
+    }
+    const [first, second] = points;
+
+    if (drawing.tool === 'rectangle') {
+      const left = Math.min(first.x, second.x);
+      const top = Math.min(first.y, second.y);
+      const width = Math.abs(second.x - first.x);
+      return wrapDrawing(
+        <>
+          <rect
+            x={left}
+            y={top}
+            width={width}
+            height={Math.abs(second.y - first.y)}
+            fill={`${drawingColor}1a`}
+            stroke={stroke}
+            strokeWidth="1"
+          />
+          {drawing.text && drawingTextEditor?.drawingId !== drawing.id && (
+            <text
+              x={left + width / 2}
+              y={top + 14}
+              textAnchor="middle"
+              fill={drawingColor}
+              fontSize="9"
+              fontWeight="700"
+              pointerEvents="none"
+            >
+              {drawing.text}
+            </text>
+          )}
+        </>
+      );
+    }
+
+    if (drawing.tool === 'fib') {
+      const sourcePrice = drawing.points[0].price;
+      const zeroPrice = drawing.points[drawing.points.length - 1].price;
+      const left = Math.min(first.x, second.x);
+      const right = Math.max(first.x, second.x);
+      return wrapDrawing(
+        <>
+          <rect
+            x={left}
+            y={Math.min(first.y, second.y)}
+            width={Math.max(8, right - left)}
+            height={Math.max(8, Math.abs(second.y - first.y))}
+            fill="transparent"
+          />
+          <line
+            x1={first.x}
+            y1={first.y}
+            x2={second.x}
+            y2={second.y}
+            stroke={selected ? stroke : '#f43f5e'}
+            strokeWidth="1.2"
+            strokeOpacity="0.82"
+            strokeDasharray="7 6"
+          />
+          {INDICATOR_FIB_LEVELS.map((level) => {
+            const price = indicatorFibPrice(zeroPrice, sourcePrice, level.ratio);
+            const coordinate = candleSeriesRef.current?.priceToCoordinate(price);
+            if (coordinate === null || coordinate === undefined) return null;
+            return (
+              <g key={level.ratio}>
+                <line
+                  x1={left}
+                  y1={coordinate}
+                  x2={right}
+                  y2={coordinate}
+                  stroke={selected ? stroke : '#e11d48'}
+                  strokeWidth={level.ratio === 0 || level.ratio === 1 ? '1.2' : '1'}
+                  strokeOpacity="0.82"
+                />
+                <text
+                  x={Math.max(18, left - 7)}
+                  y={coordinate + 3}
+                  textAnchor="end"
+                  fill={selected ? stroke : '#e11d48'}
+                  fillOpacity="0.9"
+                  fontSize="9"
+                  fontWeight="700"
+                >
+                  {level.label}
+                </text>
+              </g>
+            );
+          })}
+        </>
+      );
+    }
+
+    if (drawing.tool === 'measure') {
+      const priceChange = drawing.points[1].price - drawing.points[0].price;
+      const percentChange = drawing.points[0].price === 0 ? 0 : priceChange / drawing.points[0].price * 100;
+      const elapsedSeconds = Math.abs(drawing.points[1].time - drawing.points[0].time);
+      const elapsedDays = Math.floor(elapsedSeconds / 86_400);
+      const elapsedHours = Math.floor(elapsedSeconds % 86_400 / 3_600);
+      const elapsedMinutes = Math.floor(elapsedSeconds % 3_600 / 60);
+      const elapsedParts = [
+        elapsedDays ? `${elapsedDays}d` : '',
+        elapsedHours ? `${elapsedHours}h` : '',
+        elapsedMinutes || (!elapsedDays && !elapsedHours) ? `${elapsedMinutes}m` : '',
+      ].filter(Boolean).join(' ');
+      const firstTime = Math.min(drawing.points[0].time, drawing.points[1].time);
+      const lastTime = Math.max(drawing.points[0].time, drawing.points[1].time);
+      const measuredCandles = displayCandles.filter((candle) => (
+        candle.time > firstTime && candle.time <= lastTime
+      ));
+      const bars = measuredCandles.length;
+      const totalVolume = measuredCandles.reduce((sum, candle) => sum + candle.volume, 0);
+      const volumeLabel = totalVolume >= 1_000_000
+        ? `${(totalVolume / 1_000_000).toFixed(2)} M`
+        : totalVolume >= 1_000
+          ? `${(totalVolume / 1_000).toFixed(2)} K`
+          : totalVolume.toLocaleString(undefined, { maximumFractionDigits: 0 });
+      const left = Math.min(first.x, second.x);
+      const top = Math.min(first.y, second.y);
+      const width = Math.abs(second.x - first.x);
+      const height = Math.abs(second.y - first.y);
+      const centerX = left + width / 2;
+      const measureColor = priceChange >= 0 ? '#22ab94' : '#f7525f';
+      const chartHeight = chartPaneRef.current?.clientHeight ?? 0;
+      const cardWidth = 180;
+      const cardHeight = 58;
+      const cardTop = top + height + cardHeight + 12 < chartHeight
+        ? top + height + 12
+        : Math.max(4, top - cardHeight - 12);
+      const signedPrice = `${priceChange >= 0 ? '+' : ''}${formatPrice(priceChange)}`;
+      const signedPercent = `${percentChange >= 0 ? '+' : ''}${percentChange.toFixed(2)}%`;
+      const pips = priceChange * 100;
+      const signedPips = `${pips >= 0 ? '+' : ''}${pips.toFixed(1)}`;
+      return wrapDrawing(
+        <>
+          <defs>
+            <marker
+              id={`measure-arrow-${drawing.id}`}
+              markerWidth="7"
+              markerHeight="7"
+              refX="6"
+              refY="3.5"
+              orient="auto"
+              markerUnits="strokeWidth"
+            >
+              <path d="M0,0 L7,3.5 L0,7 Z" fill={measureColor} />
+            </marker>
+          </defs>
+          <rect
+            x={left}
+            y={top}
+            width={width}
+            height={height}
+            fill={measureColor}
+            fillOpacity="0.16"
+            stroke={measureColor}
+            strokeOpacity="0.65"
+            strokeWidth="1"
+          />
+          {width > 2 && (
+            <line
+              x1={first.x}
+              y1={top + height / 2}
+              x2={second.x}
+              y2={top + height / 2}
+              stroke={measureColor}
+              strokeWidth="1"
+              strokeOpacity="0.8"
+              markerEnd={`url(#measure-arrow-${drawing.id})`}
+            />
+          )}
+          {height > 2 && (
+            <line
+              x1={centerX}
+              y1={first.y}
+              x2={centerX}
+              y2={second.y}
+              stroke={measureColor}
+              strokeWidth="1"
+              strokeOpacity="0.8"
+              markerEnd={`url(#measure-arrow-${drawing.id})`}
+            />
+          )}
+          <rect
+            x={centerX - cardWidth / 2}
+            y={cardTop}
+            width={cardWidth}
+            height={cardHeight}
+            rx="4"
+            fill={measureColor}
+          />
+          <text x={centerX} y={cardTop + 16} textAnchor="middle" fill="white" fontSize="9" fontWeight="700">
+            {signedPrice} ({signedPercent}) {signedPips} pips
+          </text>
+          <text x={centerX} y={cardTop + 33} textAnchor="middle" fill="white" fontSize="9" fontWeight="700">
+            {bars > 0 ? `${bars} bars, ` : ''}{elapsedParts}
+          </text>
+          <text x={centerX} y={cardTop + 50} textAnchor="middle" fill="white" fontSize="9" fontWeight="700">
+            Vol {volumeLabel}
+          </text>
+        </>
+      );
+    }
+
+    return wrapDrawing(
+      <>
+        <line
+          x1={first.x}
+          y1={first.y}
+          x2={second.x}
+          y2={second.y}
+          stroke="transparent"
+          strokeWidth="10"
+          strokeLinecap="round"
+        />
+        <line
+          x1={first.x}
+          y1={first.y}
+          x2={second.x}
+          y2={second.y}
+          stroke={stroke}
+          strokeWidth="1.5"
+          strokeLinecap="round"
+        />
+        {drawing.text && drawingTextEditor?.drawingId !== drawing.id && (() => {
+          const centerX = (first.x + second.x) / 2;
+          const centerY = (first.y + second.y) / 2;
+          let angle = Math.atan2(second.y - first.y, second.x - first.x) * 180 / Math.PI;
+          if (angle > 90 || angle < -90) angle += 180;
+          return (
+            <text
+              x={centerX}
+              y={centerY - 3}
+              textAnchor="middle"
+              fill={drawingColor}
+              stroke="white"
+              strokeWidth="2.5"
+              paintOrder="stroke"
+              transform={`rotate(${angle} ${centerX} ${centerY})`}
+              fontSize="9"
+              fontWeight="700"
+              pointerEvents="none"
+            >
+              {drawing.text}
+            </text>
+          );
+        })()}
+      </>
+    );
   };
 
   const renderFibOptionButton = (option: { key: FibVisibilityKey; label: string }) => {
@@ -3486,7 +4274,10 @@ export const OandaProChart: React.FC = () => {
           <div className="relative flex items-center border-l border-slate-200 pl-1">
             <button
               type="button"
-              onClick={() => setShowIndicatorControls((visible) => !visible)}
+              onClick={() => {
+                setShowIndicatorControls((visible) => !visible);
+                setShowDrawingTools(false);
+              }}
               className={`whitespace-nowrap rounded-full border px-2 py-0.5 text-[9px] font-black transition ${
                 showIndicatorControls
                   ? 'border-indigo-300 bg-indigo-100 text-indigo-800'
@@ -3848,6 +4639,118 @@ export const OandaProChart: React.FC = () => {
             )}
           </div>
 
+          <div className="relative flex items-center">
+            <button
+              type="button"
+              onClick={() => {
+                setShowDrawingTools((visible) => !visible);
+                setShowIndicatorControls(false);
+              }}
+              className={`whitespace-nowrap rounded-full border px-2 py-0.5 text-[9px] font-black transition ${
+                activeDrawingTool
+                  ? 'border-violet-400 bg-violet-600 text-white'
+                  : showDrawingTools
+                    ? 'border-violet-300 bg-violet-100 text-violet-800'
+                    : 'border-slate-300 bg-slate-50 text-slate-600 hover:bg-slate-100'
+              }`}
+              title="Open chart drawing tools"
+              aria-expanded={showDrawingTools}
+            >
+              TOOLS {activeDrawingTool ? '●' : showDrawingTools ? '▴' : '▾'}
+            </button>
+            {showDrawingTools && (
+              <div className="absolute right-0 top-full z-[65] mt-1 w-80 rounded-lg border border-violet-100 bg-white p-2 shadow-xl ring-1 ring-slate-900/5">
+                <div className="relative mb-2 flex min-h-8 items-center justify-center border-b border-slate-100 pb-1.5 pr-8">
+                  <div className="text-center">
+                    <div className="text-[10px] font-black tracking-wide text-slate-700">CHART DRAWING TOOLS</div>
+                    <div className="text-[8px] font-bold tracking-wide text-slate-400">SELECT A TOOL, THEN CLICK ON THE CHART</div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setShowDrawingTools(false)}
+                    className="absolute right-0 top-0 rounded-full border border-slate-200 px-1.5 py-0.5 text-[8px] font-black text-slate-500 hover:bg-slate-100"
+                    aria-label="Close drawing tools"
+                  >
+                    ✕
+                  </button>
+                </div>
+                <div className="grid grid-cols-2 gap-1">
+                  {CHART_DRAWING_TOOLS.map((option) => (
+                    <button
+                      key={option.tool}
+                      type="button"
+                      onClick={() => {
+                        setActiveDrawingTool(option.tool);
+                        setDrawingDraft(null);
+                        setDrawingDrag(null);
+                        setSelectedDrawingId(null);
+                        setShowDrawingVisibility(false);
+                        setReplaySelecting(false);
+                        setShowDrawingTools(false);
+                      }}
+                      className={`rounded-md border px-2 py-1.5 text-left transition ${
+                        activeDrawingTool === option.tool
+                          ? 'border-violet-400 bg-violet-100 text-violet-900'
+                          : 'border-slate-200 bg-slate-50 text-slate-700 hover:border-violet-200 hover:bg-violet-50'
+                      }`}
+                      title={option.hint}
+                    >
+                      <span className="block text-[9px] font-black">{option.label}</span>
+                      <span className="mt-0.5 block text-[7px] font-semibold leading-tight text-slate-400">
+                        {option.hint}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+                <div className="mt-2 flex flex-wrap items-center gap-1 border-t border-slate-100 pt-2">
+                  <button
+                    type="button"
+                    onClick={undoLastChartDrawing}
+                    disabled={!currentSourceChartDrawings.length}
+                    className="rounded-full border border-slate-200 px-2 py-0.5 text-[8px] font-black text-slate-600 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-40"
+                  >
+                    UNDO LAST
+                  </button>
+                  <button
+                    type="button"
+                    onClick={clearCurrentChartDrawings}
+                    disabled={!currentSourceChartDrawings.length}
+                    className="rounded-full border border-rose-200 px-2 py-0.5 text-[8px] font-black text-rose-700 hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-40"
+                  >
+                    CLEAR ALL
+                  </button>
+                  {hiddenChartDrawings.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => setChartDrawings((current) => current.map((drawing) => (
+                        drawing.scope === drawingScope ? { ...drawing, hidden: false } : drawing
+                      )))}
+                      className="rounded-full border border-violet-200 px-2 py-0.5 text-[8px] font-black text-violet-700 hover:bg-violet-50"
+                    >
+                      SHOW HIDDEN ({hiddenChartDrawings.length})
+                    </button>
+                  )}
+                  {(activeDrawingTool || drawingDraft) && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setDrawingDraft(null);
+                        setActiveDrawingTool(null);
+                        setShowDrawingTools(false);
+                      }}
+                      className="ml-auto rounded-full border border-amber-200 px-2 py-0.5 text-[8px] font-black text-amber-700 hover:bg-amber-50"
+                    >
+                      CANCEL
+                    </button>
+                  )}
+                  <span className="ml-auto text-[8px] font-bold text-slate-400">
+                    {currentSourceChartDrawings.length} SAVED
+                  </span>
+                </div>
+              </div>
+            )}
+          </div>
+
           <div className="ml-auto flex max-w-full flex-wrap items-center justify-end gap-1 2xl:flex-nowrap">
             <label className="flex items-center gap-1 rounded-md border border-slate-200 bg-white px-1.5 py-0.5 text-[8px] font-black text-slate-600">
               TIME
@@ -3858,6 +4761,7 @@ export const OandaProChart: React.FC = () => {
                 title="Choose the timezone shown on the chart axis and crosshair"
               >
                 <option value="Asia/Kathmandu">NEPAL</option>
+                <option value="Asia/Kolkata">INDIA</option>
                 <option value="UTC">UTC</option>
               </select>
             </label>
@@ -3942,9 +4846,60 @@ export const OandaProChart: React.FC = () => {
           </span>
         </div>
 
-        <div ref={chartPaneRef} className="relative flex-1 min-h-0 bg-white">
+        <div
+          ref={chartPaneRef}
+          className="relative flex-1 min-h-0 bg-white"
+          onMouseDown={() => {
+            if (!activeDrawingTool && !drawingDrag) {
+              setSelectedDrawingId(null);
+              setShowDrawingVisibility(false);
+            }
+          }}
+        >
           <div ref={hostRef} className="absolute inset-0" />
           <div ref={zoneLayerRef} className="pointer-events-none absolute inset-0 z-10 overflow-hidden" />
+          <svg
+            className="pointer-events-none absolute inset-0 z-[18] h-full w-full overflow-hidden"
+            aria-label="Saved chart drawings"
+          >
+            {visibleChartDrawings.map((drawing) => renderChartDrawing(drawing))}
+            {previewChartDrawing && renderChartDrawing(previewChartDrawing, true)}
+          </svg>
+          {drawingTextEditor && drawingTextEditorPosition && (
+            <input
+              autoFocus
+              type="text"
+              value={drawingTextEditor.value}
+              maxLength={80}
+              placeholder="Add text"
+              onChange={(event) => setDrawingTextEditor((current) => (
+                current ? { ...current, value: event.target.value } : current
+              ))}
+              onBlur={saveChartDrawingText}
+              onKeyDown={(event) => {
+                event.stopPropagation();
+                if (event.key === 'Enter') {
+                  event.preventDefault();
+                  saveChartDrawingText();
+                } else if (event.key === 'Escape') {
+                  event.preventDefault();
+                  setDrawingTextEditor(null);
+                }
+              }}
+              onMouseDown={(event) => event.stopPropagation()}
+              className={`absolute z-50 w-36 origin-center px-1 py-0.5 text-center text-[9px] font-semibold text-slate-700 outline-none placeholder:italic placeholder:text-slate-400 focus:border-blue-500 ${
+                textEditorDrawing?.tool === 'note'
+                  ? 'rounded border border-blue-400 bg-white shadow-md'
+                  : 'border-0 border-b border-slate-400 bg-white/80 shadow-none'
+              }`}
+              style={{
+                left: drawingTextEditorPosition.left,
+                top: drawingTextEditorPosition.top,
+                transform: `translate(-50%, -50%) rotate(${drawingTextEditorPosition.angle}deg)`,
+              }}
+              aria-label="Drawing text"
+            />
+          )}
           <div
             ref={livePriceLabelRef}
             className="pointer-events-none absolute right-0 z-20 hidden w-[72px] -translate-y-1/2 flex-col items-center justify-center py-0.5 text-white shadow-sm"
@@ -3953,6 +4908,198 @@ export const OandaProChart: React.FC = () => {
             <span ref={livePriceValueRef} className="text-[10px] font-black leading-[12px]" />
             <span ref={liveCountdownRef} className="text-[9px] font-bold leading-[11px]" />
           </div>
+          {selectedChartDrawing && chartDrawingIsVisible(selectedChartDrawing) && !activeDrawingTool && (
+            <div
+              className={`absolute z-40 flex items-center gap-0.5 rounded-md border border-violet-200 bg-white p-0.5 shadow-lg ${
+                drawingToolbarPosition ? '' : 'left-1/2 top-2 -translate-x-1/2'
+              }`}
+              style={drawingToolbarPosition ?? undefined}
+              onMouseDown={(event) => event.stopPropagation()}
+            >
+              <span className="rounded bg-violet-100 px-1 py-0.5 text-[6px] font-black leading-none text-violet-800">
+                {CHART_DRAWING_TOOLS.find(({ tool }) => tool === selectedChartDrawing.tool)?.label}
+              </span>
+              <button
+                type="button"
+                className="cursor-move select-none rounded px-1 py-0.5 text-[6px] font-black leading-none text-slate-400 hover:bg-slate-100 hover:text-slate-600"
+                title="Drag this control bar"
+                onMouseDown={(event) => {
+                  event.preventDefault();
+                  event.stopPropagation();
+                  const pane = chartPaneRef.current;
+                  if (!pane) return;
+                  const toolbarBounds = event.currentTarget.parentElement?.getBoundingClientRect();
+                  const paneBounds = pane.getBoundingClientRect();
+                  if (!toolbarBounds) return;
+                  const left = toolbarBounds.left - paneBounds.left;
+                  const top = toolbarBounds.top - paneBounds.top;
+                  setDrawingToolbarPosition({ left, top });
+                  drawingToolbarDragRef.current = {
+                    offsetX: event.clientX - toolbarBounds.left,
+                    offsetY: event.clientY - toolbarBounds.top,
+                    width: toolbarBounds.width,
+                    height: toolbarBounds.height,
+                  };
+                }}
+              >
+                ⠿ MOVE
+              </button>
+              {(selectedChartDrawing.tool === 'rectangle'
+                || selectedChartDrawing.tool === 'trend'
+                || selectedChartDrawing.tool === 'note') && (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => editChartDrawingText(selectedChartDrawing)}
+                    className="rounded border border-slate-200 px-1 py-0.5 text-[6px] font-black leading-none text-slate-600 hover:bg-slate-50"
+                    title="You can also double-click the drawing"
+                  >
+                    TEXT
+                  </button>
+                  <div className="flex items-center gap-px rounded border border-slate-200 px-0.5 py-0.5" title="Drawing colour">
+                    {CHART_DRAWING_COLORS.map((color) => (
+                      <button
+                        key={color}
+                        type="button"
+                        onClick={() => updateChartDrawing(selectedChartDrawing.id, { color })}
+                        className={`h-2.5 w-2.5 rounded-full border ${
+                          (selectedChartDrawing.color ?? '#2563eb') === color
+                            ? 'border-slate-900 ring-1 ring-slate-400'
+                            : 'border-white'
+                        }`}
+                        style={{ backgroundColor: color }}
+                        aria-label={`Use ${color} drawing colour`}
+                      />
+                    ))}
+                  </div>
+                </>
+              )}
+              <div className="relative">
+                <button
+                  type="button"
+                  onClick={() => setShowDrawingVisibility((visible) => !visible)}
+                  className={`rounded border px-1 py-0.5 text-[6px] font-black leading-none ${
+                    showDrawingVisibility
+                      ? 'border-violet-300 bg-violet-100 text-violet-800'
+                      : 'border-slate-200 text-slate-600 hover:bg-slate-50'
+                  }`}
+                >
+                  VISIBILITY ▾
+                </button>
+                {showDrawingVisibility && (
+                  <div className="absolute left-0 top-full z-50 mt-1 w-48 rounded-md border border-slate-200 bg-white p-1.5 shadow-xl">
+                    <div className="mb-1 border-b border-slate-100 px-1 pb-1 text-[8px] font-black text-slate-500">
+                      CURRENT: {TIMEFRAMES.find(({ value }) => value === granularity)?.label.toUpperCase()}
+                    </div>
+                    {([
+                      ['current-and-above', 'CURRENT INTERVAL AND ABOVE'],
+                      ['current-and-below', 'CURRENT INTERVAL AND BELOW'],
+                      ['current-only', 'CURRENT INTERVAL ONLY'],
+                      ['all', 'ALL INTERVALS'],
+                    ] as Array<[ChartDrawingVisibility, string]>).map(([visibility, label]) => (
+                      <button
+                        key={visibility}
+                        type="button"
+                        onClick={() => {
+                          updateChartDrawing(selectedChartDrawing.id, {
+                            visibility,
+                            visibilityTimeframe: granularity,
+                          });
+                          setShowDrawingVisibility(false);
+                        }}
+                        className={`flex w-full items-center justify-between rounded px-2 py-1.5 text-left text-[8px] font-black ${
+                          (selectedChartDrawing.visibility ?? 'all') === visibility
+                            ? 'bg-violet-100 text-violet-800'
+                            : 'text-slate-600 hover:bg-slate-50'
+                        }`}
+                      >
+                        {label}
+                        {(selectedChartDrawing.visibility ?? 'all') === visibility && <span>✓</span>}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  updateChartDrawing(selectedChartDrawing.id, { hidden: true });
+                  setSelectedDrawingId(null);
+                  setShowDrawingVisibility(false);
+                }}
+                className="rounded border border-slate-200 px-1 py-0.5 text-[6px] font-black leading-none text-slate-600 hover:bg-slate-50"
+              >
+                HIDE
+              </button>
+              <button
+                type="button"
+                onClick={() => removeChartDrawing(selectedChartDrawing.id)}
+                className="rounded border border-rose-200 px-1 py-0.5 text-[6px] font-black leading-none text-rose-700 hover:bg-rose-50"
+              >
+                DELETE
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setSelectedDrawingId(null);
+                  setShowDrawingVisibility(false);
+                }}
+                className="rounded-full border border-slate-200 px-1 py-0 text-[6px] font-black leading-none text-slate-500 hover:bg-slate-100"
+                aria-label="Close drawing editor"
+              >
+                ✕
+              </button>
+            </div>
+          )}
+          {activeDrawingTool && !replaySelecting && (
+            <div
+              className="absolute inset-0 z-30 cursor-crosshair"
+              onClick={handleDrawingChartClick}
+              onMouseMove={(event) => {
+                if (!drawingDraft) return;
+                const hover = chartDrawingPointFromClient(event.clientX, event.clientY);
+                if (hover) {
+                  const constrainedHover = activeDrawingTool === 'trend' && event.shiftKey
+                    ? { ...hover, price: drawingDraft.points[0].price }
+                    : hover;
+                  setDrawingDraft((current) => current ? { ...current, hover: constrainedHover } : current);
+                }
+              }}
+              onContextMenu={(event) => {
+                event.preventDefault();
+                if (activeDrawingTool === 'path') finishDrawingPath();
+                else {
+                  setDrawingDraft(null);
+                  setActiveDrawingTool(null);
+                }
+              }}
+              title="Click on the chart to place drawing points"
+            >
+              <div className="pointer-events-none absolute bottom-3 left-1/2 flex -translate-x-1/2 items-center gap-2 rounded-full border border-violet-200 bg-white/95 px-3 py-1.5 text-[9px] font-black text-violet-800 shadow-lg">
+                {CHART_DRAWING_TOOLS.find(({ tool }) => tool === activeDrawingTool)?.label}
+                <span className="font-semibold text-slate-500">
+                  {activeDrawingTool === 'note'
+                    ? 'Click a price for the note'
+                    : activeDrawingTool === 'path'
+                      ? 'Click points · double-click or right-click to finish'
+                      : activeDrawingTool === 'note'
+                        ? drawingDraft
+                          ? 'Click where the text box should be placed'
+                          : 'Click the anchor point'
+                      : activeDrawingTool === 'fib'
+                        ? drawingDraft
+                          ? 'Click level 0 move extreme'
+                          : 'Click level 1 structure source'
+                        : activeDrawingTool === 'trend'
+                          ? drawingDraft
+                            ? 'Click second point · hold Shift for a straight horizontal line'
+                            : 'Click the first point'
+                          : drawingDraft ? 'Click the second point' : 'Click the first point'}
+                </span>
+                <span className="text-slate-400">ESC cancels</span>
+              </div>
+            </div>
+          )}
           {replaySelecting && replaySelectionIndex !== null && (
             <div
               className="absolute inset-0 z-30 cursor-ew-resize"
