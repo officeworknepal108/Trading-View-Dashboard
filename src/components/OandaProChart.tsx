@@ -3974,7 +3974,7 @@ export const OandaProChart: React.FC = () => {
   return (
     <section className="h-full w-full bg-slate-100 p-3 sm:p-4 overflow-hidden">
       <div className="h-full w-full overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm flex flex-col">
-        <div className="flex flex-wrap items-center gap-1.5 border-b border-slate-200 bg-white px-2.5 py-1 2xl:flex-nowrap">
+        <div className="flex flex-wrap items-center gap-1.5 border-b border-slate-200 bg-white px-2.5 py-1 xl:flex-nowrap">
           <div className="flex items-center gap-1 pr-1.5 border-r border-slate-200">
             <div className="grid h-5 w-5 place-items-center rounded-full bg-amber-100 text-[7px] font-black text-amber-700">Au</div>
             <div>
@@ -4025,76 +4025,6 @@ export const OandaProChart: React.FC = () => {
                 {dataSource}
               </button>
             ))}
-          </div>
-
-          <div className="flex items-center gap-1 border-l border-slate-200 pl-2">
-            {replayIndex === null ? (
-              <button
-                onClick={openReplaySelector}
-                disabled={candles.length < 2}
-                className="rounded-full border border-violet-200 bg-violet-50 px-2 py-0.5 text-[9px] font-black text-violet-700 transition hover:bg-violet-100 disabled:cursor-not-allowed disabled:opacity-50"
-                title="Choose a chart bar, then start candle-by-candle replay from that point"
-              >
-                ▶ REPLAY
-              </button>
-            ) : (
-              <>
-                <button
-                  onClick={() => setReplayIndex((index) => Math.max(1, (index ?? 1) - 1))}
-                  className="rounded-full border border-violet-200 bg-white px-2 py-0.5 text-[9px] font-black text-violet-700 hover:bg-violet-50"
-                  title="Previous candle"
-                >
-                  ‹
-                </button>
-                <button
-                  onClick={openReplaySelector}
-                  className={`rounded-full border px-2 py-0.5 text-[9px] font-black transition ${
-                    replaySelecting
-                      ? 'border-blue-300 bg-blue-100 text-blue-800'
-                      : 'border-blue-200 bg-white text-blue-700 hover:bg-blue-50'
-                  }`}
-                  title="Show the blue Replay line and choose another candle"
-                >
-                  │ LINE
-                </button>
-                <button
-                  onClick={() => setReplayPlaying((playing) => !playing)}
-                  className="rounded-full border border-violet-200 bg-violet-50 px-2 py-0.5 text-[9px] font-black text-violet-700 hover:bg-violet-100"
-                  title={replayPlaying ? 'Pause replay' : 'Play replay'}
-                >
-                  {replayPlaying ? '❚❚ PAUSE' : '▶ PLAY'}
-                </button>
-                <button
-                  onClick={() => setReplayIndex((index) => Math.min(candles.length - 1, (index ?? 1) + 1))}
-                  className="rounded-full border border-violet-200 bg-white px-2 py-0.5 text-[9px] font-black text-violet-700 hover:bg-violet-50"
-                  title="Next candle"
-                >
-                  ›
-                </button>
-                <select
-                  value={replaySpeed}
-                  onChange={(event) => setReplaySpeed(Number(event.target.value))}
-                  className="rounded-full border border-violet-200 bg-white px-2 py-0.5 text-[9px] font-black text-violet-700"
-                  title="Replay speed"
-                >
-                  <option value={0.5}>0.5x</option>
-                  <option value={1}>1x</option>
-                  <option value={2}>2x</option>
-                  <option value={5}>5x</option>
-                  <option value={10}>10x</option>
-                </select>
-                <button
-                  onClick={exitReplay}
-                  className="rounded-full border border-slate-200 bg-white px-2 py-0.5 text-[9px] font-black text-slate-500 hover:bg-slate-100"
-                  title="Exit replay and return to the live chart"
-                >
-                  LIVE
-                </button>
-                <span className="px-1 text-[9px] font-bold text-violet-700">
-                  {displayCandles.length}/{candles.length}
-                </span>
-              </>
-            )}
           </div>
 
           <div className="relative">
@@ -4639,6 +4569,76 @@ export const OandaProChart: React.FC = () => {
             )}
           </div>
 
+          <div className="flex items-center gap-0.5 border-l border-slate-200 pl-1.5">
+            {replayIndex === null ? (
+              <button
+                onClick={openReplaySelector}
+                disabled={candles.length < 2}
+                className="rounded-full border border-violet-200 bg-violet-50 px-1.5 py-px text-[7px] font-black leading-3 text-violet-700 transition hover:bg-violet-100 disabled:cursor-not-allowed disabled:opacity-50"
+                title="Choose a chart bar, then start candle-by-candle replay from that point"
+              >
+                REPLAY
+              </button>
+            ) : (
+              <>
+                <button
+                  onClick={() => setReplayIndex((index) => Math.max(1, (index ?? 1) - 1))}
+                  className="rounded-full border border-violet-200 bg-white px-1.5 py-px text-[7px] font-black leading-3 text-violet-700 hover:bg-violet-50"
+                  title="Previous candle"
+                >
+                  ‹
+                </button>
+                <button
+                  onClick={openReplaySelector}
+                  className={`rounded-full border px-1.5 py-px text-[7px] font-black leading-3 transition ${
+                    replaySelecting
+                      ? 'border-blue-300 bg-blue-100 text-blue-800'
+                      : 'border-blue-200 bg-white text-blue-700 hover:bg-blue-50'
+                  }`}
+                  title="Show the blue Replay line and choose another candle"
+                >
+                  │ LINE
+                </button>
+                <button
+                  onClick={() => setReplayPlaying((playing) => !playing)}
+                  className="rounded-full border border-violet-200 bg-violet-50 px-1.5 py-px text-[7px] font-black leading-3 text-violet-700 hover:bg-violet-100"
+                  title={replayPlaying ? 'Pause replay' : 'Play replay'}
+                >
+                  {replayPlaying ? '❚❚ PAUSE' : '▶ PLAY'}
+                </button>
+                <button
+                  onClick={() => setReplayIndex((index) => Math.min(candles.length - 1, (index ?? 1) + 1))}
+                  className="rounded-full border border-violet-200 bg-white px-1.5 py-px text-[7px] font-black leading-3 text-violet-700 hover:bg-violet-50"
+                  title="Next candle"
+                >
+                  ›
+                </button>
+                <select
+                  value={replaySpeed}
+                  onChange={(event) => setReplaySpeed(Number(event.target.value))}
+                  className="rounded-full border border-violet-200 bg-white px-1.5 py-px text-[7px] font-black leading-3 text-violet-700"
+                  title="Replay speed"
+                >
+                  <option value={0.5}>0.5x</option>
+                  <option value={1}>1x</option>
+                  <option value={2}>2x</option>
+                  <option value={5}>5x</option>
+                  <option value={10}>10x</option>
+                </select>
+                <button
+                  onClick={exitReplay}
+                  className="rounded-full border border-slate-200 bg-white px-1.5 py-px text-[7px] font-black leading-3 text-slate-500 hover:bg-slate-100"
+                  title="Exit replay and return to the live chart"
+                >
+                  LIVE
+                </button>
+                <span className="px-0.5 text-[7px] font-bold text-violet-700">
+                  {displayCandles.length}/{candles.length}
+                </span>
+              </>
+            )}
+          </div>
+
           <div className="relative flex items-center">
             <button
               type="button"
@@ -4751,7 +4751,7 @@ export const OandaProChart: React.FC = () => {
             )}
           </div>
 
-          <div className="ml-auto flex max-w-full flex-wrap items-center justify-end gap-1 2xl:flex-nowrap">
+          <div className="flex max-w-full flex-wrap items-center justify-end gap-1 xl:ml-0 xl:shrink-0 xl:flex-nowrap">
             <label className="flex items-center gap-1 rounded-md border border-slate-200 bg-white px-1.5 py-0.5 text-[8px] font-black text-slate-600">
               TIME
               <select
@@ -4775,18 +4775,12 @@ export const OandaProChart: React.FC = () => {
                 ? 'MT5 BROKER CONNECTED' : 'TRADINGVIEW CONNECTED'}
             </div>
             <button
-              type="button"
-              onClick={restorePresentChartView}
-              className="flex items-center gap-1 rounded-md border border-slate-200 px-1.5 py-0.5 text-[8px] font-black text-slate-600 hover:bg-slate-100"
-              title="Restore the default candle zoom and return to the latest candle"
-            >
-              <RefreshCw className="h-2.5 w-2.5" />
-              CHART VIEW
-            </button>
-            <button
-              onClick={() => setRefreshKey((value) => value + 1)}
+              onClick={() => {
+                restorePresentChartView();
+                setRefreshKey((value) => value + 1);
+              }}
               className="rounded-md border border-slate-200 p-1 text-slate-600 hover:bg-slate-100"
-              title="Refresh XAUUSD market candles"
+              title="Refresh candles and restore the default chart view"
             >
               <RefreshCw className={`h-3.5 w-3.5 ${isLoading ? 'animate-spin' : ''}`} />
             </button>
