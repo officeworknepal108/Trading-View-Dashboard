@@ -113,8 +113,9 @@ test('FIB overlap accepts primary for TJL1 and both primary and deep for TJL2', 
   }), undefined, 'a completed close through 0.79 invalidates the deep setup');
 });
 
-test('an external zone can qualify against any of the latest three CHoCH FIB moves', () => {
+test('an external zone can qualify against any of the latest four CHoCH FIB moves', () => {
   const candles: StructureCandle[] = [
+    { time: -10, open: -100, high: -95, low: -100, close: -96, complete: true },
     { time: 0, open: 0, high: 5, low: 0, close: 4, complete: true },
     { time: 10, open: 100, high: 105, low: 100, close: 104, complete: true },
     { time: 20, open: 104, high: 220, low: 103, close: 210, complete: true },
@@ -122,6 +123,8 @@ test('an external zone can qualify against any of the latest three CHoCH FIB mov
     { time: 40, open: 190, high: 220, low: 185, close: 215, complete: true },
   ];
   const zones: StructureZone[] = [
+    zone({ id: 'fifth-db', name: 'DB', isBuy: true, startTime: -10, bottom: -100, top: -95, chochTime: -10 }),
+    zone({ id: 'fifth-qml', name: 'QML', isBuy: true, startTime: -10, bottom: -22, top: -18, chochTime: -10 }),
     zone({ id: 'oldest-db', name: 'DB', isBuy: true, startTime: 0, bottom: 0, top: 5, chochTime: 0 }),
     zone({ id: 'oldest-qml', name: 'QML', isBuy: true, startTime: 0, bottom: 48, top: 52, chochTime: 0 }),
     zone({ id: 'old-db', name: 'DB', isBuy: true, startTime: 10, bottom: 100, top: 105, chochTime: 10 }),
@@ -131,6 +134,7 @@ test('an external zone can qualify against any of the latest three CHoCH FIB mov
     zone({ id: 'latest-db', name: 'DB', isBuy: true, startTime: 30, bottom: 180, top: 185, chochTime: 30 }),
     zone({ id: 'latest-qml', name: 'QML', isBuy: true, startTime: 30, bottom: 128, top: 132, chochTime: 30 }),
     zone({ id: 'fourth-fib-only', name: 'QML', isBuy: true, startTime: 30, bottom: 48, top: 52, chochTime: 30 }),
+    zone({ id: 'fifth-fib-only', name: 'QML', isBuy: true, startTime: 30, bottom: -22, top: -18, chochTime: 30 }),
   ];
 
   applyFibConfluence(candles, zones);
@@ -139,10 +143,13 @@ test('an external zone can qualify against any of the latest three CHoCH FIB mov
   assert.equal(latestQml.fibStatus, 'a-plus');
   assert.equal(latestQml.fibBand, '0.71-0.79');
   assert.equal(latestQml.fibSourceTime, 10, 'the matching previous CHoCH anchors the accepted FIB');
+  const fourthFibZone = zones.find((candidate) => candidate.id === 'fourth-fib-only')!;
+  assert.equal(fourthFibZone.fibStatus, 'a-plus');
+  assert.equal(fourthFibZone.fibSourceTime, 0, 'the fourth CHoCH FIB remains eligible');
   assert.equal(
-    zones.find((candidate) => candidate.id === 'fourth-fib-only')!.fibStatus,
+    zones.find((candidate) => candidate.id === 'fifth-fib-only')!.fibStatus,
     'not-valid',
-    'a fourth, older CHoCH FIB is outside the active three-move window',
+    'a fifth, older CHoCH FIB is outside the active four-move window',
   );
 });
 

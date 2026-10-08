@@ -791,7 +791,7 @@ function applyEngulfingConfluence(
   return markers.sort((a, b) => Number(a.time) - Number(b.time)).slice(-120);
 }
 
-export const RECENT_CHOCH_FIB_COUNT = 3;
+export const RECENT_CHOCH_FIB_COUNT = 4;
 
 export function applyFibConfluence(candles: StructureCandle[], zones: StructureZone[]): void {
   const completed = candles.filter((candle) => candle.complete !== false);
@@ -924,9 +924,9 @@ export function applyFibConfluence(candles: StructureCandle[], zones: StructureZ
     )), false);
   }
 
-  // Keep the latest CHoCH FIB plus its two predecessors active for external
+  // Keep the latest CHoCH FIB plus its three predecessors active for external
   // MG confluence. A zone that misses its own move can qualify against any of
-  // these three same-direction moves. The newest matching FIB wins.
+  // these four same-direction moves. The newest matching FIB wins.
   const recentExternalChochMoves = [...singleKeys]
     .map((key) => {
       const [category, timeText] = key.split(':');

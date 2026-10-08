@@ -83,11 +83,14 @@ type OandaGranularity = 'M1' | 'M5' | 'M15' | 'M30' | 'H1' | 'H4' | 'D';
 type MarketGranularity = OandaGranularity | 'W' | 'MO';
 type FibVisibilityKey = 'tjl1' | 'tjl2' | 'choch' | 'intChoch' | 'intTjl1' | 'intTjl2'
   | 'doubleChoch' | 'iss' | 'swing' | 'day';
+type ChochFibVisibility = [boolean, boolean, boolean, boolean];
+
+const DEFAULT_CHOCH_FIB_VISIBILITY: ChochFibVisibility = [true, true, true, true];
 
 const DEFAULT_FIB_VISIBILITY: Record<FibVisibilityKey, boolean> = {
   tjl1: false,
   tjl2: false,
-  choch: true,
+  choch: false,
   intChoch: false,
   intTjl1: false,
   intTjl2: false,
@@ -463,8 +466,10 @@ function isFibMarkingVisible(
   showFib: boolean,
   visibility: Record<FibVisibilityKey, boolean>,
   previousVisibility: Record<FibVisibilityKey, boolean>,
+  chochVisibility: ChochFibVisibility,
 ): boolean {
   const key = fibVisibilityKey(zone);
+  if (key === 'choch') return showFib && chochVisibility.some(Boolean);
   if (key === 'tjl1' || key === 'tjl2' || key === 'intTjl1' || key === 'intTjl2'
     || key === 'doubleChoch' || key === 'iss') {
     return showFib && visibility[key];
@@ -1001,6 +1006,7 @@ export const OandaProChart: React.FC = () => {
   const showFibRef = useRef(true);
   const fibVisibilityRef = useRef<Record<FibVisibilityKey, boolean>>(DEFAULT_FIB_VISIBILITY);
   const fibPreviousVisibilityRef = useRef<Record<FibVisibilityKey, boolean>>(DEFAULT_FIB_VISIBILITY);
+  const chochFibVisibilityRef = useRef<ChochFibVisibility>(DEFAULT_CHOCH_FIB_VISIBILITY);
   const showInvalidZonesRef = useRef(false);
   const showTradeLevelsRef = useRef(true);
   const tradeOverlaysRef = useRef<TradeOverlay[]>([]);
@@ -1041,6 +1047,9 @@ export const OandaProChart: React.FC = () => {
   const [fibPreviousVisibility, setFibPreviousVisibility] = useState<Record<FibVisibilityKey, boolean>>(
     DEFAULT_FIB_VISIBILITY,
   );
+  const [chochFibVisibility, setChochFibVisibility] = useState<ChochFibVisibility>(
+    DEFAULT_CHOCH_FIB_VISIBILITY,
+  );
   const [showEngulfing, setShowEngulfing] = useState(true);
   const [showInvalidZones, setShowInvalidZones] = useState(false);
   const [showTradeLevels, setShowTradeLevels] = useState(true);
@@ -1065,7 +1074,8 @@ export const OandaProChart: React.FC = () => {
   Map<string, TrackedDirectTradeSetup>
   >(new Map());
   const hasAnyFibMarking = Object.values(fibVisibility).some(Boolean)
-    || Object.values(fibPreviousVisibility).some(Boolean);
+    || Object.values(fibPreviousVisibility).some(Boolean)
+    || chochFibVisibility.some(Boolean);
 
   candlesRef.current = candles;
   replaySelectingRef.current = replaySelecting;
@@ -2203,7 +2213,8 @@ export const OandaProChart: React.FC = () => {
     }
 
     const hasVisibleFibMarking = Object.values(fibVisibilityRef.current).some(Boolean)
-      || Object.values(fibPreviousVisibilityRef.current).some(Boolean);
+      || Object.values(fibPreviousVisibilityRef.current).some(Boolean)
+      || chochFibVisibilityRef.current.some(Boolean);
     if (showStructureRef.current || showIssRef.current || showInternalRef.current
       || (showFibRef.current && hasVisibleFibMarking)) {
       const namespace = 'http://www.w3.org/2000/svg';
@@ -2233,7 +2244,7 @@ export const OandaProChart: React.FC = () => {
             && zone.category === 'internal'
             && zone.chochTime !== undefined;
           const retainHistoricalChochFib = type === 'choch'
-            && (fibVisibilityRef.current.choch || fibPreviousVisibilityRef.current.choch);
+            && chochFibVisibilityRef.current.some(Boolean);
           if (type === 'iss' && !isIssWaveFib) continue;
           if (type === 'intChoch' && !isInternalChochFib) continue;
           if (!zone.active && !showInvalidZonesRef.current
@@ -2243,6 +2254,7 @@ export const OandaProChart: React.FC = () => {
             showFibRef.current,
             fibVisibilityRef.current,
             fibPreviousVisibilityRef.current,
+            chochFibVisibilityRef.current,
           )) continue;
           if (zone.fibSourceTime === undefined || zone.fibSourcePrice === undefined
             || zone.fibZeroTime === undefined || zone.fibZeroPrice === undefined) continue;
@@ -2316,11 +2328,16 @@ export const OandaProChart: React.FC = () => {
               distinctMoves.add(moveKey);
               return true;
             });
+          if (type === 'choch') {
+            return orderedMoves.slice(0, 4).filter((_, index) => (
+              chochFibVisibilityRef.current[index]
+            ));
+          }
           const previousMoves = type !== 'tjl1' && type !== 'tjl2'
             && type !== 'intTjl1' && type !== 'intTjl2'
             && type !== 'doubleChoch' && type !== 'iss'
             && fibPreviousVisibilityRef.current[type]
-            ? type === 'choch' ? orderedMoves.slice(1, 3) : orderedMoves.slice(1, 2)
+            ? orderedMoves.slice(1, 2)
             : [];
           return [
             ...(fibVisibilityRef.current[type] && orderedMoves[0] ? [orderedMoves[0]] : []),
@@ -2580,11 +2597,12 @@ export const OandaProChart: React.FC = () => {
     showFibRef.current = showFib;
     fibVisibilityRef.current = fibVisibility;
     fibPreviousVisibilityRef.current = fibPreviousVisibility;
+    chochFibVisibilityRef.current = chochFibVisibility;
     showInvalidZonesRef.current = showInvalidZones;
     showTradeLevelsRef.current = showTradeLevels;
     tradeOverlaysRef.current = visibleTradeOverlays;
     scheduleOverlayRedraw();
-  }, [dayFibMoves, displayZones, fibPreviousVisibility, fibVisibility, redrawZones, scheduleOverlayRedraw, showFib, showInternal, showInvalidZones, showIss, showMgZones, showStructure, showSupplyDemand, showTradeLevels, structure.internalMarkers, structure.issMarkers, structure.lines, structure.markers, swingFibMoves, visibleTradeOverlays]);
+  }, [chochFibVisibility, dayFibMoves, displayZones, fibPreviousVisibility, fibVisibility, redrawZones, scheduleOverlayRedraw, showFib, showInternal, showInvalidZones, showIss, showMgZones, showStructure, showSupplyDemand, showTradeLevels, structure.internalMarkers, structure.issMarkers, structure.lines, structure.markers, swingFibMoves, visibleTradeOverlays]);
 
   useEffect(() => {
     const overlay = tradeOverlays[0];
@@ -2606,6 +2624,7 @@ export const OandaProChart: React.FC = () => {
         const previousShowTradeLevels = showTradeLevelsRef.current;
         const previousFibVisibility = fibVisibilityRef.current;
         const previousFibPreviousVisibility = fibPreviousVisibilityRef.current;
+        const previousChochFibVisibility = chochFibVisibilityRef.current;
         try {
           showFibRef.current = true;
           showTradeLevelsRef.current = true;
@@ -2613,6 +2632,7 @@ export const OandaProChart: React.FC = () => {
             ALL_FIB_VISIBILITY_OPTIONS.map((option) => [option.key, true]),
           ) as Record<FibVisibilityKey, boolean>;
           fibPreviousVisibilityRef.current = DEFAULT_FIB_VISIBILITY;
+          chochFibVisibilityRef.current = [true, true, true, true];
           redrawZonesRef.current();
           await new Promise<void>((resolve) => window.requestAnimationFrame(() => resolve()));
           const { toJpeg } = await import('html-to-image');
@@ -2634,6 +2654,7 @@ export const OandaProChart: React.FC = () => {
           showTradeLevelsRef.current = previousShowTradeLevels;
           fibVisibilityRef.current = previousFibVisibility;
           fibPreviousVisibilityRef.current = previousFibPreviousVisibility;
+          chochFibVisibilityRef.current = previousChochFibVisibility;
           redrawZonesRef.current();
         }
       };
@@ -3070,28 +3091,34 @@ export const OandaProChart: React.FC = () => {
 
   const renderFibOptionButton = (option: { key: FibVisibilityKey; label: string }) => {
     const isSingleMarking = isSingleFibMarkingKey(option.key);
+    const isChochMarking = option.key === 'choch';
     const isUnavailable = (option.key === 'swing' && granularity === 'D')
       || (option.key === 'day' && !['M1', 'M5', 'M15', 'M30'].includes(granularity));
     const latestOn = fibVisibility[option.key];
     const previousOn = fibPreviousVisibility[option.key];
+    const chochVisibleCount = chochFibVisibility.filter(Boolean).length;
     const status = isUnavailable
       ? option.key === 'day' ? '≤30m' : '≤4H'
+      : isChochMarking
+        ? `${chochVisibleCount}/4`
       : isSingleMarking
       ? latestOn ? 'ON' : 'OFF'
-      : option.key === 'choch' && latestOn && previousOn
-        ? '3 FIBS'
-        : option.key === 'choch' && previousOn
-          ? '2 PREV'
       : latestOn && previousOn
         ? 'BOTH'
         : latestOn ? 'LATEST' : previousOn ? 'PREV' : 'OFF';
-    const active = !isUnavailable && (latestOn || (!isSingleMarking && previousOn));
+    const active = !isUnavailable && (isChochMarking
+      ? chochVisibleCount > 0
+      : latestOn || (!isSingleMarking && previousOn));
     return (
       <button
         key={option.key}
         type="button"
         disabled={isUnavailable}
         onClick={() => {
+          if (isChochMarking) {
+            setExpandedFibOption((current) => current === option.key ? null : option.key);
+            return;
+          }
           if (isSingleMarking) {
             setFibVisibility((current) => ({
               ...current,
@@ -3119,11 +3146,11 @@ export const OandaProChart: React.FC = () => {
           ? option.key === 'day'
             ? 'Day FIB is available on the 1m, 5m, 15m, and 30m charts'
             : 'Show the 4H Swing FIB drawing on charts from 1m through 4H'
+          : isChochMarking
+            ? 'Choose each of the latest four CHoCH FIB drawings separately'
           : isSingleMarking
           ? `Show or hide the single current ${option.label.replace(' MARKING', '')} FIB marking`
-          : option.key === 'choch'
-            ? 'Choose the latest CHoCH FIB and the two previous CHoCH FIBs'
-            : `Choose latest or previous ${option.label}`}
+          : `Choose latest or previous ${option.label}`}
         aria-expanded={isSingleMarking ? undefined : expandedFibOption === option.key}
       >
         <span className="whitespace-nowrap">{option.label.replace(' MARKING', '')}</span>
@@ -3503,13 +3530,14 @@ export const OandaProChart: React.FC = () => {
                   <div className="mb-1.5 flex items-center justify-between border-b border-slate-100 pb-1.5">
                     <div>
                       <div className="text-[10px] font-black tracking-wide text-slate-700">FIB MARKINGS</div>
-                      <div className="text-[8px] font-bold text-slate-400">CHOOSE ONE OR BOTH</div>
+                      <div className="text-[8px] font-bold text-slate-400">SELECT FIBS SEPARATELY</div>
                     </div>
                     <button
                       type="button"
                       onClick={() => {
                         setFibVisibility({ ...DEFAULT_FIB_VISIBILITY });
                         setFibPreviousVisibility({ ...DEFAULT_FIB_VISIBILITY });
+                        setChochFibVisibility([false, false, false, false]);
                       }}
                       disabled={!hasAnyFibMarking}
                       className={`rounded-full border px-2 py-1 text-[8px] font-black leading-none transition ${
@@ -3566,48 +3594,77 @@ export const OandaProChart: React.FC = () => {
                           ?.label.replace(' MARKING', '')} SETUP
                       </div>
                       <div className="grid grid-cols-2 gap-1">
-                        <button
-                          type="button"
-                          onClick={() => setFibVisibility((current) => ({
-                            ...current,
-                            [expandedFibOption]: !current[expandedFibOption],
-                          }))}
-                          className={`flex items-center justify-between whitespace-nowrap rounded border px-1.5 py-1 text-[8px] font-black leading-none ${
-                            fibVisibility[expandedFibOption]
-                              ? 'border-fuchsia-300 bg-fuchsia-200 text-fuchsia-800'
-                              : 'border-slate-200 bg-white text-slate-500'
-                          }`}
-                        >
-                          <span>LATEST</span>
-                          <span className={`ml-1 rounded-full px-1 py-0.5 text-[8px] ${
-                            fibVisibility[expandedFibOption]
-                              ? 'bg-fuchsia-300 text-fuchsia-900'
-                              : 'bg-slate-200 text-slate-500'
-                          }`}>
-                            {fibVisibility[expandedFibOption] ? 'ON' : 'OFF'}
-                          </span>
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setFibPreviousVisibility((current) => ({
-                            ...current,
-                            [expandedFibOption]: !current[expandedFibOption],
-                          }))}
-                          className={`flex items-center justify-between whitespace-nowrap rounded border px-1.5 py-1 text-[8px] font-black leading-none ${
-                            fibPreviousVisibility[expandedFibOption]
-                              ? 'border-fuchsia-300 bg-fuchsia-200 text-fuchsia-800'
-                              : 'border-slate-200 bg-white text-slate-500'
-                          }`}
-                        >
-                          <span>{expandedFibOption === 'choch' ? '2 PREVIOUS' : 'PREVIOUS'}</span>
-                          <span className={`ml-1 rounded-full px-1 py-0.5 text-[8px] ${
-                            fibPreviousVisibility[expandedFibOption]
-                              ? 'bg-fuchsia-300 text-fuchsia-900'
-                              : 'bg-slate-200 text-slate-500'
-                          }`}>
-                            {fibPreviousVisibility[expandedFibOption] ? 'ON' : 'OFF'}
-                          </span>
-                        </button>
+                        {expandedFibOption === 'choch' ? (
+                          ['LATEST', 'PREVIOUS 1', 'PREVIOUS 2', 'PREVIOUS 3'].map((label, index) => {
+                            const enabled = chochFibVisibility[index];
+                            return (
+                              <button
+                                key={label}
+                                type="button"
+                                onClick={() => setChochFibVisibility((current) => current.map((value, slot) => (
+                                  slot === index ? !value : value
+                                )) as ChochFibVisibility)}
+                                className={`flex items-center justify-between whitespace-nowrap rounded border px-1.5 py-1 text-[8px] font-black leading-none ${
+                                  enabled
+                                    ? 'border-fuchsia-300 bg-fuchsia-200 text-fuchsia-800'
+                                    : 'border-slate-200 bg-white text-slate-500'
+                                }`}
+                              >
+                                <span>{label}</span>
+                                <span className={`ml-1 rounded-full px-1 py-0.5 text-[8px] ${
+                                  enabled
+                                    ? 'bg-fuchsia-300 text-fuchsia-900'
+                                    : 'bg-slate-200 text-slate-500'
+                                }`}>
+                                  {enabled ? 'ON' : 'OFF'}
+                                </span>
+                              </button>
+                            );
+                          })
+                        ) : <>
+                          <button
+                            type="button"
+                            onClick={() => setFibVisibility((current) => ({
+                              ...current,
+                              [expandedFibOption]: !current[expandedFibOption],
+                            }))}
+                            className={`flex items-center justify-between whitespace-nowrap rounded border px-1.5 py-1 text-[8px] font-black leading-none ${
+                              fibVisibility[expandedFibOption]
+                                ? 'border-fuchsia-300 bg-fuchsia-200 text-fuchsia-800'
+                                : 'border-slate-200 bg-white text-slate-500'
+                            }`}
+                          >
+                            <span>LATEST</span>
+                            <span className={`ml-1 rounded-full px-1 py-0.5 text-[8px] ${
+                              fibVisibility[expandedFibOption]
+                                ? 'bg-fuchsia-300 text-fuchsia-900'
+                                : 'bg-slate-200 text-slate-500'
+                            }`}>
+                              {fibVisibility[expandedFibOption] ? 'ON' : 'OFF'}
+                            </span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setFibPreviousVisibility((current) => ({
+                              ...current,
+                              [expandedFibOption]: !current[expandedFibOption],
+                            }))}
+                            className={`flex items-center justify-between whitespace-nowrap rounded border px-1.5 py-1 text-[8px] font-black leading-none ${
+                              fibPreviousVisibility[expandedFibOption]
+                                ? 'border-fuchsia-300 bg-fuchsia-200 text-fuchsia-800'
+                                : 'border-slate-200 bg-white text-slate-500'
+                            }`}
+                          >
+                            <span>PREVIOUS</span>
+                            <span className={`ml-1 rounded-full px-1 py-0.5 text-[8px] ${
+                              fibPreviousVisibility[expandedFibOption]
+                                ? 'bg-fuchsia-300 text-fuchsia-900'
+                                : 'bg-slate-200 text-slate-500'
+                            }`}>
+                              {fibPreviousVisibility[expandedFibOption] ? 'ON' : 'OFF'}
+                            </span>
+                          </button>
+                        </>}
                       </div>
                     </div>
                   )}
