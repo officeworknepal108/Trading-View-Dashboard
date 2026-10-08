@@ -415,6 +415,7 @@ def place_signal(signal: dict[str, Any], config: dict[str, Any]) -> dict[str, An
         "brokerPosition": int(result.order) if not is_limit else 0,
         "executionPrice": execution_price,
         "initialStopLoss": initial_stop_loss,
+        "openedAt": int(time.time()),
         "riskFree": actual_risk_free,
         "riskPips": actual_risk * 10,
         "volume": volume,
@@ -492,6 +493,23 @@ def closed_result(record: dict[str, Any], was_risk_free: bool) -> str:
     return "RF" if was_risk_free else "CANCELLED"
 
 
+def closed_trade_details(record: dict[str, Any], was_risk_free: bool) -> dict[str, Any]:
+    position_ticket = int(record.get("brokerPosition") or record.get("brokerTicket") or 0)
+    deals = mt5.history_deals_get(position=position_ticket) or []
+    exits = [deal for deal in deals if deal.entry == mt5.DEAL_ENTRY_OUT]
+    details: dict[str, Any] = {
+        "status": closed_result(record, was_risk_free),
+        "closedAt": int(time.time()),
+    }
+    if exits:
+        details["closePrice"] = float(exits[-1].price)
+        details["realizedProfit"] = sum(
+            float(deal.profit) + float(deal.swap) + float(deal.commission)
+            for deal in exits
+        )
+    return details
+
+
 def manage_open_signals(
     state: dict[str, dict[str, Any]],
     recent: list[dict[str, Any]],
@@ -538,18 +556,30 @@ def manage_open_signals(
                     "ACTIVE",
                     brokerPosition=int(position.ticket),
                     executionPrice=execution_price,
+                    initialStopLoss=initial_stop_loss,
+                    openedAt=int(time.time()),
                     riskFree=risk_free,
                     riskPips=actual_risk * 10,
                 )
                 continue
-            result = closed_result(record, False)
-            update_status(signal_id, result, message="Pending order no longer exists.")
+            close_details = closed_trade_details(record, False)
+            update_status(
+                signal_id,
+                close_details.pop("status"),
+                **close_details,
+                message="Pending order no longer exists.",
+            )
             state.pop(signal_id, None)
             continue
         position = find_position(record)
         if not position:
-            result = closed_result(record, status == "RISK_FREE")
-            update_status(signal_id, result, message="MT5 position closed.")
+            close_details = closed_trade_details(record, status == "RISK_FREE")
+            update_status(
+                signal_id,
+                close_details.pop("status"),
+                **close_details,
+                message="MT5 position closed.",
+            )
             state.pop(signal_id, None)
             continue
         is_buy = position.type == mt5.POSITION_TYPE_BUY

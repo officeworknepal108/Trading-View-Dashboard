@@ -65,7 +65,11 @@ import {
   tradeRecordPeriodLabel,
   type TradeRecordFilters,
 } from '../services/tradeRecordFilters';
-import { TradeJournal, type JournalTradeRecord } from './TradeJournal';
+import {
+  TradeJournal,
+  renderHistoricalTradeSnapshot,
+  type JournalTradeRecord,
+} from './TradeJournal';
 import { TradeMultiSelect } from './TradeMultiSelect';
 import {
   MT5_DEFAULT_ENABLED_TIMEFRAMES,
@@ -980,6 +984,7 @@ export const OandaProChart: React.FC = () => {
   const updateHeaderCandleRef = useRef<(timestamp?: number) => void>(() => undefined);
   const replaySelectionLineRef = useRef<HTMLDivElement | null>(null);
   const journalSyncSignatureRef = useRef('');
+  const mt5JournalImageSignatureRef = useRef('');
   const capturedTradeSetupsRef = useRef(new Set<string>());
   const zonesRef = useRef<StructureZone[]>([]);
   const swingFibMovesRef = useRef<SwingFibMove[]>([]);
@@ -1099,6 +1104,77 @@ export const OandaProChart: React.FC = () => {
     const timer = window.setInterval(() => void refreshMt5Status(), 5_000);
     return () => window.clearInterval(timer);
   }, [refreshMt5Status]);
+
+  const mt5JournalLifecycleSignature = useMemo(() => (
+    (mt5Status?.recentSignals ?? [])
+      .filter((signal) => ['ACTIVE', 'RISK_FREE', 'TP', 'SL', 'RF'].includes(signal.status))
+      .map((signal) => `${signal.id}:${signal.status}:${signal.updatedAt}`)
+      .sort()
+      .join('|')
+  ), [mt5Status?.recentSignals]);
+
+  useEffect(() => {
+    const lifecycleSignals = (mt5Status?.recentSignals ?? []).filter((signal) => (
+      ['ACTIVE', 'RISK_FREE', 'TP', 'SL', 'RF'].includes(signal.status)
+    ));
+    const signature = mt5JournalLifecycleSignature;
+    if (!signature || signature === mt5JournalImageSignatureRef.current) return;
+    mt5JournalImageSignatureRef.current = signature;
+    let cancelled = false;
+    const prepareMt5JournalImages = async () => {
+      try {
+        const response = await fetch('/api/journal/trades', { cache: 'no-store' });
+        const payload = await response.json() as { ok?: boolean; trades?: JournalTradeRecord[] };
+        if (!response.ok || !payload.ok || !Array.isArray(payload.trades)) return;
+        const signalIds = new Set(lifecycleSignals.map((signal) => signal.id));
+        const candidates = payload.trades.filter((trade) => (
+          trade.mt5Managed && trade.mt5SignalId && signalIds.has(trade.mt5SignalId)
+          && (!trade.entryScreenshotDataUrl
+            || (trade.lifecycleStatus === 'closed' && !trade.exitScreenshotDataUrl))
+        ));
+        let savedTrades = payload.trades;
+        for (const trade of candidates) {
+          if (cancelled) return;
+          const entryScreenshotDataUrl = trade.entryScreenshotDataUrl
+            || (trade.entrySnapshotCandles && trade.entrySnapshotCandles.length >= 2
+              ? renderHistoricalTradeSnapshot(trade, trade.entrySnapshotCandles)
+              : undefined);
+          const exitScreenshotDataUrl = trade.lifecycleStatus === 'closed'
+            ? trade.exitScreenshotDataUrl
+              || (trade.exitSnapshotCandles && trade.exitSnapshotCandles.length >= 2
+                ? renderHistoricalTradeSnapshot(trade, trade.exitSnapshotCandles)
+                : undefined)
+            : undefined;
+          if (!entryScreenshotDataUrl
+            || (trade.lifecycleStatus === 'closed' && !exitScreenshotDataUrl)) continue;
+          const updated = {
+            ...trade,
+            entryScreenshotDataUrl,
+            exitScreenshotDataUrl,
+            screenshotDataUrl: trade.screenshotDataUrl
+              || exitScreenshotDataUrl || entryScreenshotDataUrl,
+          };
+          const saveResponse = await fetch('/api/journal/trades', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ trades: [updated] }),
+          });
+          const savePayload = await saveResponse.json() as {
+            ok?: boolean;
+            trades?: JournalTradeRecord[];
+          };
+          if (saveResponse.ok && savePayload.ok && Array.isArray(savePayload.trades)) {
+            savedTrades = savePayload.trades;
+          }
+        }
+        if (!cancelled) setSavedJournalTrades(savedTrades);
+      } catch {
+        mt5JournalImageSignatureRef.current = '';
+      }
+    };
+    void prepareMt5JournalImages();
+    return () => { cancelled = true; };
+  }, [mt5JournalLifecycleSignature]);
 
   const updateMt5Config = useCallback(async (changes: Record<string, unknown>) => {
     if (!mt5Status) return;
@@ -1750,8 +1826,11 @@ export const OandaProChart: React.FC = () => {
     });
   }, [accuracyTradeRecords]);
 
-  const allSavedAccuracyRecords = savedJournalTrades.length > 0
-    ? savedJournalTrades
+  const completedSavedJournalTrades = savedJournalTrades.filter((record) => (
+    record.result === 'tp' || record.result === 'sl' || record.result === 'rf'
+  ));
+  const allSavedAccuracyRecords = completedSavedJournalTrades.length > 0
+    ? completedSavedJournalTrades
     : accuracyTradeRecords;
   const timeframeAccuracyRecords = useMemo(() => allSavedAccuracyRecords
     .filter((record) => record.zoneTimeframe === granularity)

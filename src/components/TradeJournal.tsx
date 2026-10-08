@@ -10,6 +10,7 @@ import {
 import {
   calculateHalfAtOneRResult,
   type EngulfingVolumeStatus,
+  type MarketTrend,
   type TradeResult,
   type TradeTimeframe,
 } from '../services/tradeLevels';
@@ -19,7 +20,7 @@ export interface JournalTradeRecord {
   id: string;
   zoneName: string;
   zoneTimeframe: TradeTimeframe;
-  result: TradeResult;
+  result: TradeResult | 'open' | 'risk-free';
   completedAt: number;
   source: 'ENGULFING' | 'MTF';
   direction: 'bullish' | 'bearish';
@@ -50,6 +51,26 @@ export interface JournalTradeRecord {
   mistake?: string;
   lesson?: string;
   screenshotDataUrl?: string;
+  entryScreenshotDataUrl?: string;
+  exitScreenshotDataUrl?: string;
+  entrySnapshotCandles?: SnapshotCandle[];
+  exitSnapshotCandles?: SnapshotCandle[];
+  openedAt?: number;
+  closedAt?: number;
+  lifecycleStatus?: 'open' | 'risk-free' | 'closed';
+  mt5Managed?: boolean;
+  mt5SignalId?: string;
+  brokerTicket?: number;
+  volume?: number;
+  partialClosedVolume?: number;
+  remainingVolume?: number;
+  partialClosePrice?: number;
+  partialClosedAt?: number;
+  closePrice?: number;
+  realizedProfit?: number;
+  autoReason?: string;
+  biasAtEntry?: Partial<Record<TradeTimeframe, MarketTrend>>;
+  lifecycleEvents?: Array<Record<string, unknown> & { status: string; at: number }>;
 }
 
 interface SnapshotCandle {
@@ -72,7 +93,9 @@ interface TradeJournalProps {
   onClose: () => void;
 }
 
-const RESULT_LABELS: Record<TradeResult, string> = { tp: 'TP', sl: 'SL', rf: 'RISK FREE' };
+const RESULT_LABELS: Record<JournalTradeRecord['result'], string> = {
+  tp: 'TP', sl: 'SL', rf: 'RISK FREE', open: 'OPEN', 'risk-free': 'RF DONE',
+};
 const VOLUME_STATUS_LABELS: Record<EngulfingVolumeStatus, string> = {
   'not-applicable': 'N/A',
   unavailable: 'UNAVAILABLE',
@@ -93,11 +116,20 @@ function volumeValues(trade: JournalTradeRecord): string {
 }
 
 function displayTimeframe(timeframe: string): string {
+  if (timeframe === 'D') return 'D1';
   return timeframe.startsWith('M') ? `${timeframe.slice(1)}M` : timeframe;
 }
 
 function formatPrice(value: number): string {
   return value.toLocaleString('en-US', { minimumFractionDigits: 3, maximumFractionDigits: 3 });
+}
+
+const BIAS_TIMEFRAMES: TradeTimeframe[] = ['M1', 'M5', 'M15', 'H1', 'H4', 'D'];
+
+function trendLabel(trend: MarketTrend | undefined): string {
+  if (trend === 'bullish') return 'BULLISH';
+  if (trend === 'bearish') return 'BEARISH';
+  return 'NEUTRAL';
 }
 
 function formatJournalDate(time: number, timeZone: ChartTimeZone): string {
@@ -132,7 +164,9 @@ export function inferTradingSession(time: number): string {
 
 function calculateTotalR(trades: JournalTradeRecord[]): number {
   return trades.reduce((total, trade) => (
-    total + calculateHalfAtOneRResult(trade.result, trade.rewardRisk)
+    total + (['tp', 'sl', 'rf'].includes(trade.result)
+      ? calculateHalfAtOneRResult(trade.result as TradeResult, trade.rewardRisk)
+      : 0)
   ), 0);
 }
 
@@ -154,7 +188,7 @@ function signalTimeFromRecord(trade: JournalTradeRecord): number {
   return Number.isFinite(parsed) ? parsed : trade.completedAt;
 }
 
-function renderHistoricalTradeSnapshot(
+export function renderHistoricalTradeSnapshot(
   trade: JournalTradeRecord,
   sourceCandles: SnapshotCandle[],
 ): string | undefined {
@@ -288,7 +322,7 @@ export const TradeJournal: React.FC<TradeJournalProps> = ({ records, timeZone, o
   const screenshotBackfillRunningRef = React.useRef(false);
   const [trades, setTrades] = useState<JournalTradeRecord[]>(records);
   const [selectedId, setSelectedId] = useState<string | null>(records[0]?.id ?? null);
-  const [resultFilter, setResultFilter] = useState<'ALL' | TradeResult>('ALL');
+  const [resultFilter, setResultFilter] = useState<'ALL' | JournalTradeRecord['result']>('ALL');
   const [timeframeFilter, setTimeframeFilter] = useState<TradeRecordFilters['timeframes']>('ALL');
   const [datePeriod, setDatePeriod] = useState<TradeRecordFilters['datePeriod']>('DAY');
   const [dateFilter, setDateFilter] = useState('ALL');
@@ -341,7 +375,7 @@ export const TradeJournal: React.FC<TradeJournalProps> = ({ records, timeZone, o
         if (cancelled) return;
         setTrades(finalTrades);
         setSelectedId((current) => current ?? finalTrades[0]?.id ?? null);
-        setMessage(`${finalTrades.length} completed trade${finalTrades.length === 1 ? '' : 's'} saved`);
+        setMessage(`${finalTrades.length} journal trade${finalTrades.length === 1 ? '' : 's'} saved`);
       } catch (error) {
         if (!cancelled) setMessage(error instanceof Error ? error.message : 'Unable to load journal.');
       } finally {
@@ -354,12 +388,19 @@ export const TradeJournal: React.FC<TradeJournalProps> = ({ records, timeZone, o
 
   useEffect(() => {
     if (!journalLoaded || screenshotBackfillRunningRef.current) return undefined;
-    const candidates = trades.filter((trade) => (
-      !trade.screenshotDataUrl && !screenshotBackfillAttemptedRef.current.has(trade.id)
-    ));
+    const candidates = trades.filter((trade) => {
+      const needsImage = trade.mt5Managed && (
+        !trade.entryScreenshotDataUrl
+        || (trade.lifecycleStatus === 'closed' && !trade.exitScreenshotDataUrl)
+      );
+      return needsImage
+        && !screenshotBackfillAttemptedRef.current.has(`${trade.id}:${trade.lifecycleStatus || 'legacy'}`);
+    });
     if (candidates.length === 0) return undefined;
     screenshotBackfillRunningRef.current = true;
-    for (const trade of candidates) screenshotBackfillAttemptedRef.current.add(trade.id);
+    for (const trade of candidates) {
+      screenshotBackfillAttemptedRef.current.add(`${trade.id}:${trade.lifecycleStatus || 'legacy'}`);
+    }
     const backfill = async () => {
       setPreparingScreenshots(true);
       const timeframeSeconds: Record<TradeTimeframe, number> = {
@@ -374,8 +415,28 @@ export const TradeJournal: React.FC<TradeJournalProps> = ({ records, timeZone, o
       const generated: JournalTradeRecord[] = [];
       setMessage(`Preparing ${candidates.length} missing trade screenshot${candidates.length === 1 ? '' : 's'}…`);
       for (const [timeframe, timeframeTrades] of byTimeframe) {
+        const needingHistory: JournalTradeRecord[] = [];
+        for (const trade of timeframeTrades) {
+          const entryScreenshotDataUrl = trade.entryScreenshotDataUrl
+            || (trade.entrySnapshotCandles?.length
+              ? renderHistoricalTradeSnapshot(trade, trade.entrySnapshotCandles) : undefined);
+          const exitScreenshotDataUrl = trade.lifecycleStatus === 'closed'
+            ? trade.exitScreenshotDataUrl || (trade.exitSnapshotCandles?.length
+              ? renderHistoricalTradeSnapshot(trade, trade.exitSnapshotCandles) : undefined)
+            : undefined;
+          if (entryScreenshotDataUrl
+            && (trade.lifecycleStatus !== 'closed' || exitScreenshotDataUrl)) {
+            generated.push({
+              ...trade,
+              entryScreenshotDataUrl,
+              exitScreenshotDataUrl,
+              screenshotDataUrl: trade.screenshotDataUrl || exitScreenshotDataUrl || entryScreenshotDataUrl,
+            });
+          } else needingHistory.push(trade);
+        }
+        if (needingHistory.length === 0) continue;
         try {
-          const latestCompletion = Math.max(...timeframeTrades.map((trade) => trade.completedAt));
+          const latestCompletion = Math.max(...needingHistory.map((trade) => trade.completedAt));
           const query = new URLSearchParams({
             granularity: timeframe,
             count: '5000',
@@ -384,9 +445,20 @@ export const TradeJournal: React.FC<TradeJournalProps> = ({ records, timeZone, o
           const response = await fetch(`/api/tradingview/market-data?${query}`, { cache: 'no-store' });
           const payload = await response.json() as { ok?: boolean; candles?: SnapshotCandle[] };
           if (!response.ok || !payload.ok || !Array.isArray(payload.candles)) continue;
-          for (const trade of timeframeTrades) {
-            const screenshotDataUrl = renderHistoricalTradeSnapshot(trade, payload.candles);
-            if (screenshotDataUrl) generated.push({ ...trade, screenshotDataUrl });
+          for (const trade of needingHistory) {
+            const entryCandles = trade.entrySnapshotCandles || trade.snapshotCandles || payload.candles;
+            const exitCandles = trade.exitSnapshotCandles || payload.candles;
+            const entryScreenshotDataUrl = trade.entryScreenshotDataUrl
+              || renderHistoricalTradeSnapshot(trade, entryCandles);
+            const exitScreenshotDataUrl = trade.lifecycleStatus === 'closed'
+              ? trade.exitScreenshotDataUrl || renderHistoricalTradeSnapshot(trade, exitCandles)
+              : undefined;
+            if (entryScreenshotDataUrl || exitScreenshotDataUrl) generated.push({
+              ...trade,
+              entryScreenshotDataUrl,
+              exitScreenshotDataUrl,
+              screenshotDataUrl: trade.screenshotDataUrl || exitScreenshotDataUrl || entryScreenshotDataUrl,
+            });
           }
         } catch {
           // A missing timeframe feed must not block the rest of the journal.
@@ -421,6 +493,21 @@ export const TradeJournal: React.FC<TradeJournalProps> = ({ records, timeZone, o
     return undefined;
   }, [journalLoaded, trades]);
 
+  useEffect(() => {
+    if (!journalLoaded) return undefined;
+    const refresh = async () => {
+      try {
+        const response = await fetch('/api/journal/trades', { cache: 'no-store' });
+        const payload = await response.json() as JournalResponse;
+        if (response.ok && payload.ok && Array.isArray(payload.trades)) setTrades(payload.trades);
+      } catch {
+        // Keep the currently loaded journal visible during a temporary server interruption.
+      }
+    };
+    const timer = window.setInterval(() => void refresh(), 5_000);
+    return () => window.clearInterval(timer);
+  }, [journalLoaded]);
+
   const selectedTrade = trades.find((trade) => trade.id === selectedId);
   useEffect(() => {
     if (!selectedTrade) return;
@@ -431,7 +518,7 @@ export const TradeJournal: React.FC<TradeJournalProps> = ({ records, timeZone, o
       lesson: selectedTrade.lesson || '',
       screenshotDataUrl: selectedTrade.screenshotDataUrl || '',
     });
-  }, [selectedTrade]);
+  }, [selectedTrade?.id]);
 
   const availableTimeframes = useMemo(() => {
     const order: TradeTimeframe[] = ['M1', 'M5', 'M15', 'M30', 'H1', 'H4', 'D'];
@@ -443,18 +530,19 @@ export const TradeJournal: React.FC<TradeJournalProps> = ({ records, timeZone, o
   )).sort(), [trades]);
   const filteredTrades = useMemo(() => {
     const query = search.trim().toLowerCase();
-    const coreFiltered = filterTradeRecords<JournalTradeRecord>(trades, {
+    const coreFiltered = filterTradeRecords(trades as Array<JournalTradeRecord & { result: TradeResult }>, {
       timeframes: timeframeFilter,
       datePeriod,
       date: dateFilter,
       source: sourceFilter,
       side: sideFilter,
-      result: resultFilter,
+      result: 'ALL',
       zones: zoneFilter,
     }, timeZone);
     return coreFiltered.filter((trade) => (
       (volumeFilter === 'ALL' || volumeStatus(trade) === volumeFilter)
-      && (!query || [trade.zoneName, trade.engulfingType, volumeStatus(trade), trade.session, trade.reason, trade.mistake, trade.lesson]
+      && (resultFilter === 'ALL' || trade.result === resultFilter)
+      && (!query || [trade.zoneName, trade.engulfingType, volumeStatus(trade), trade.session, trade.reason, trade.autoReason, trade.mistake, trade.lesson]
         .some((value) => value?.toLowerCase().includes(query)))
     ));
   }, [dateFilter, datePeriod, resultFilter, search, sideFilter, sourceFilter, timeframeFilter, timeZone, trades, volumeFilter, zoneFilter]);
@@ -464,13 +552,17 @@ export const TradeJournal: React.FC<TradeJournalProps> = ({ records, timeZone, o
     setSelectedId(filteredTrades[0]?.id ?? null);
   }, [filteredTrades, selectedId]);
 
+  const completedTrades = useMemo(
+    () => filteredTrades.filter((trade) => ['tp', 'sl', 'rf'].includes(trade.result)),
+    [filteredTrades],
+  );
   const counts = useMemo(() => ({
     tp: filteredTrades.filter((trade) => trade.result === 'tp').length,
     sl: filteredTrades.filter((trade) => trade.result === 'sl').length,
     rf: filteredTrades.filter((trade) => trade.result === 'rf').length,
   }), [filteredTrades]);
-  const accuracy = filteredTrades.length > 0 ? Math.round((counts.tp * 10_000) / filteredTrades.length) / 100 : 0;
-  const totalR = calculateTotalR(filteredTrades);
+  const accuracy = completedTrades.length > 0 ? Math.round((counts.tp * 10_000) / completedTrades.length) / 100 : 0;
+  const totalR = calculateTotalR(completedTrades);
 
   const saveTrade = async () => {
     if (!selectedTrade) return;
@@ -542,8 +634,18 @@ export const TradeJournal: React.FC<TradeJournalProps> = ({ records, timeZone, o
         'Risk Pips': trade.riskPips,
         'R:R': `1:${trade.rewardRisk}`,
         Result: RESULT_LABELS[trade.result],
+        'Bias M1': trendLabel(trade.biasAtEntry?.M1),
+        'Bias M5': trendLabel(trade.biasAtEntry?.M5),
+        'Bias M15': trendLabel(trade.biasAtEntry?.M15),
+        'Bias M30': trendLabel(trade.biasAtEntry?.M30),
+        'Bias H1': trendLabel(trade.biasAtEntry?.H1),
+        'Bias H4': trendLabel(trade.biasAtEntry?.H4),
+        'Bias D1': trendLabel(trade.biasAtEntry?.D),
+        'MT5 Ticket': trade.brokerTicket ?? '',
+        'Lot Size': trade.volume ?? '',
+        'Realized P/L': trade.realizedProfit ?? '',
         'Screenshot Available': trade.screenshotDataUrl ? 'YES' : 'NO',
-        Reason: trade.reason || '',
+        Reason: trade.reason || trade.autoReason || '',
         Mistake: trade.mistake || '',
         Lesson: trade.lesson || '',
       }));
@@ -591,9 +693,10 @@ export const TradeJournal: React.FC<TradeJournalProps> = ({ records, timeZone, o
           new Paragraph(`Setup: ${displayTimeframe(trade.zoneTimeframe)} ${trade.zoneName} · ${trade.direction === 'bullish' ? 'BUY' : 'SELL'}`),
           new Paragraph(`Confirmation: ${displayTimeframe(trade.signalTimeframe)} ${trade.engulfingType} · Source: ${trade.source}`),
           new Paragraph(`Volume logic: ${VOLUME_STATUS_LABELS[volumeStatus(trade)]} · ${volumeValues(trade)}`),
+          ...(trade.biasAtEntry ? [new Paragraph(`Bias at entry: ${BIAS_TIMEFRAMES.map((timeframe) => `${displayTimeframe(timeframe)} ${trendLabel(trade.biasAtEntry?.[timeframe])}`).join(' · ')}`)] : []),
           new Paragraph(`Entry: ${formatPrice(trade.entry)}    SL: ${formatPrice(trade.stopLoss)}    TP: ${formatPrice(trade.takeProfit)}    Risk: ${trade.riskPips} pips    R:R 1:${trade.rewardRisk}`),
           new Paragraph({ children: [new TextRun({ text: `Outcome: ${RESULT_LABELS[trade.result]}`, bold: true })] }),
-          new Paragraph({ children: [new TextRun({ text: 'Reason: ', bold: true }), new TextRun(trade.reason || '—')] }),
+          new Paragraph({ children: [new TextRun({ text: 'Reason: ', bold: true }), new TextRun(trade.reason || trade.autoReason || '—')] }),
           new Paragraph({ children: [new TextRun({ text: 'Mistake / Important observation: ', bold: true }), new TextRun(trade.mistake || '—')] }),
           new Paragraph({ children: [new TextRun({ text: 'Lesson learned: ', bold: true }), new TextRun(trade.lesson || '—')] }),
         );
@@ -687,8 +790,8 @@ export const TradeJournal: React.FC<TradeJournalProps> = ({ records, timeZone, o
         <select value={sideFilter} onChange={(event) => setSideFilter(event.target.value as TradeRecordFilters['side'])} className="rounded border border-slate-200 px-2 py-1 text-[9px] font-bold">
           <option value="ALL">ALL SIDES</option><option value="BUY">BUY</option><option value="SELL">SELL</option>
         </select>
-        <select value={resultFilter} onChange={(event) => setResultFilter(event.target.value as 'ALL' | TradeResult)} className="rounded border border-slate-200 px-2 py-1 text-[9px] font-bold">
-          <option value="ALL">ALL RESULTS</option><option value="tp">TP</option><option value="sl">SL</option><option value="rf">RISK FREE</option>
+        <select value={resultFilter} onChange={(event) => setResultFilter(event.target.value as 'ALL' | JournalTradeRecord['result'])} className="rounded border border-slate-200 px-2 py-1 text-[9px] font-bold">
+          <option value="ALL">ALL RESULTS</option><option value="open">OPEN</option><option value="risk-free">RF DONE</option><option value="tp">TP</option><option value="sl">SL</option><option value="rf">RISK FREE</option>
         </select>
         <TradeMultiSelect
           allLabel="ALL ZONES"
@@ -729,10 +832,10 @@ export const TradeJournal: React.FC<TradeJournalProps> = ({ records, timeZone, o
                   <td title={volumeValues(trade)} className={`whitespace-nowrap px-2 py-1.5 font-black ${volumeStatus(trade) === 'best' ? 'text-emerald-700' : volumeStatus(trade) === 'valid' ? 'text-blue-700' : volumeStatus(trade) === 'failed' ? 'text-rose-700' : 'text-slate-500'}`}>{VOLUME_STATUS_LABELS[volumeStatus(trade)]}</td>
                   <td className="px-2 py-1.5">{formatPrice(trade.entry)}</td><td className="px-2 py-1.5">{formatPrice(trade.stopLoss)}</td><td className="px-2 py-1.5">{formatPrice(trade.takeProfit)}</td>
                   <td className="px-2 py-1.5 font-bold">1:{trade.rewardRisk}</td>
-                  <td className={`px-2 py-1.5 font-black ${trade.result === 'tp' ? 'text-emerald-700' : trade.result === 'sl' ? 'text-rose-700' : 'text-amber-600'}`}>{RESULT_LABELS[trade.result]}</td>
+                  <td className={`px-2 py-1.5 font-black ${trade.result === 'tp' ? 'text-emerald-700' : trade.result === 'sl' ? 'text-rose-700' : trade.result === 'open' ? 'text-blue-700' : 'text-amber-600'}`}>{RESULT_LABELS[trade.result]}</td>
                 </tr>
               ))}
-              {filteredTrades.length === 0 && <tr><td colSpan={14} className="p-6 text-slate-400">No completed trades match these filters.</td></tr>}
+              {filteredTrades.length === 0 && <tr><td colSpan={14} className="p-6 text-slate-400">No journal trades match these filters.</td></tr>}
             </tbody>
           </table>
         </div>
@@ -744,13 +847,34 @@ export const TradeJournal: React.FC<TradeJournalProps> = ({ records, timeZone, o
               <strong className="text-slate-800">{displayTimeframe(selectedTrade.zoneTimeframe)} {selectedTrade.zoneName}</strong> · {selectedTrade.direction === 'bullish' ? 'BUY' : 'SELL'}<br />
               {displayTimeframe(selectedTrade.signalTimeframe)} {selectedTrade.engulfingType} · 1:{selectedTrade.rewardRisk} · {RESULT_LABELS[selectedTrade.result]}
               <br />Volume logic: <strong>{VOLUME_STATUS_LABELS[volumeStatus(selectedTrade)]}</strong> · {volumeValues(selectedTrade)}
+              {selectedTrade.brokerTicket && <><br />MT5 ticket: <strong>#{selectedTrade.brokerTicket}</strong>{selectedTrade.volume ? ` · ${selectedTrade.volume} lot` : ''}</>}
             </div>
+            {selectedTrade.biasAtEntry && (
+              <div className="mb-2 rounded border border-indigo-200 bg-indigo-50 p-2">
+                <div className="mb-1 text-[8px] font-black uppercase text-indigo-800">Bias at entry</div>
+                <div className="grid grid-cols-4 gap-1">
+                  {BIAS_TIMEFRAMES.map((timeframe) => {
+                    const trend = selectedTrade.biasAtEntry?.[timeframe];
+                    return <div key={timeframe} className="rounded bg-white px-1 py-1 text-center text-[7px] font-black">
+                      <div className="text-slate-500">{displayTimeframe(timeframe)}</div>
+                      <div className={trend === 'bullish' ? 'text-emerald-700' : trend === 'bearish' ? 'text-rose-700' : 'text-slate-500'}>{trendLabel(trend)}</div>
+                    </div>;
+                  })}
+                </div>
+              </div>
+            )}
+            {(selectedTrade.reason || selectedTrade.autoReason) && (
+              <div className="mb-2 rounded border border-emerald-200 bg-emerald-50 p-2 text-[8px] leading-relaxed text-slate-700">
+                <div className="mb-1 font-black uppercase text-emerald-800">{selectedTrade.reason ? 'Manual entry reason' : 'Automatic entry reason'}</div>
+                {selectedTrade.reason || selectedTrade.autoReason}
+              </div>
+            )}
             <label className="mb-2 block text-[8px] font-black uppercase text-slate-500">Session
               <select value={draft.session} onChange={(event) => setDraft((current) => ({ ...current, session: event.target.value }))} className="mt-1 w-full rounded border border-slate-200 bg-white px-2 py-1.5 text-[9px] font-bold text-slate-700">
                 {['ASIAN', 'LONDON', 'LON + NYC', 'NEW YORK', 'OTHER'].map((session) => <option key={session}>{session}</option>)}
               </select>
             </label>
-            {[['reason', 'Reason for entry'], ['mistake', 'Mistake / important observation'], ['lesson', 'Lesson learned']].map(([key, label]) => (
+            {[['reason', 'Manual reason (automatic reason used when empty)'], ['mistake', 'Mistake / important observation'], ['lesson', 'Lesson learned']].map(([key, label]) => (
               <label key={key} className="mb-2 block text-[8px] font-black uppercase text-slate-500">{label}
                 <textarea value={draft[key as 'reason' | 'mistake' | 'lesson']} onChange={(event) => setDraft((current) => ({ ...current, [key]: event.target.value }))} rows={3}
                   className="mt-1 w-full resize-y rounded border border-slate-200 bg-white px-2 py-1.5 text-[9px] font-medium normal-case text-slate-700 outline-none focus:border-indigo-300" />
@@ -761,6 +885,14 @@ export const TradeJournal: React.FC<TradeJournalProps> = ({ records, timeZone, o
               <input type="file" accept="image/*" className="hidden" onChange={(event) => attachScreenshot(event.target.files?.[0])} />
             </label>
             {draft.screenshotDataUrl && <img src={draft.screenshotDataUrl} alt="Trade screenshot" className="mb-2 max-h-40 w-full rounded border border-slate-200 object-contain" />}
+            {selectedTrade.entryScreenshotDataUrl && <div className="mb-2">
+              <div className="mb-1 text-[8px] font-black uppercase text-slate-500">Entry snapshot</div>
+              <img src={selectedTrade.entryScreenshotDataUrl} alt="Entry snapshot" className="max-h-40 w-full rounded border border-slate-200 object-contain" />
+            </div>}
+            {selectedTrade.exitScreenshotDataUrl && <div className="mb-2">
+              <div className="mb-1 text-[8px] font-black uppercase text-slate-500">Final outcome snapshot</div>
+              <img src={selectedTrade.exitScreenshotDataUrl} alt="Final outcome snapshot" className="max-h-40 w-full rounded border border-slate-200 object-contain" />
+            </div>}
             <button type="button" onClick={() => void saveTrade()} disabled={saving} className="flex w-full items-center justify-center gap-1 rounded bg-indigo-700 px-2 py-2 text-[9px] font-black text-white hover:bg-indigo-800 disabled:opacity-50">
               <Save className="h-3.5 w-3.5" /> {saving ? 'SAVING…' : 'SAVE TRADE REVIEW'}
             </button>

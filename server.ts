@@ -31,6 +31,8 @@ import { applyOneMinuteGenesisQml, executionZoneName } from './src/services/oneM
 import { buildMtfRows, type MtfGranularity, type MtfTimeframeData } from './src/services/mtf';
 import {
   calculateTradeLevels,
+  assessEngulfingVolumeLogic,
+  getEngulfingVolumeStatus,
   getDirectTradeRule,
   getMtfTradeRule,
   isDeepDiscountTradeSignal,
@@ -119,6 +121,7 @@ interface Mt5LivePosition {
 
 let mt5BridgeHeartbeat: Mt5BridgeHeartbeat | undefined;
 let mt5MutationQueue: Promise<unknown> = Promise.resolve();
+let journalMutationQueue: Promise<unknown> = Promise.resolve();
 const automationCandleCache: Partial<Record<TradeTimeframe, StructureCandle[]>> = {};
 const mt5MarketDataUpdatedAt: Partial<Record<TradeTimeframe, number>> = {};
 let mt5MarketDataVersion = 0;
@@ -191,6 +194,12 @@ function stopManagedMt5Bridge(): boolean {
 function serializeMt5Mutation<T>(operation: () => Promise<T>): Promise<T> {
   const queued = mt5MutationQueue.then(operation, operation);
   mt5MutationQueue = queued.then(() => undefined, () => undefined);
+  return queued;
+}
+
+function serializeJournalMutation<T>(operation: () => Promise<T>): Promise<T> {
+  const queued = journalMutationQueue.then(operation, operation);
+  journalMutationQueue = queued.then(() => undefined, () => undefined);
   return queued;
 }
 
@@ -454,6 +463,72 @@ function completedAutomationTrendAt(
   }).trend;
 }
 
+function journalSnapshotCandles(
+  candles: StructureCandle[],
+  signalAt: number,
+  cutoff: number,
+): StructureCandle[] {
+  const available = candles.filter((candle) => candle.time <= cutoff);
+  const signalIndex = available.findIndex((candle) => candle.time === signalAt);
+  const end = signalIndex >= 0 ? Math.min(available.length, signalIndex + 16) : available.length;
+  const start = Math.max(0, (signalIndex >= 0 ? signalIndex : end) - 35);
+  return available.slice(start, end).map((candle) => ({ ...candle }));
+}
+
+function journalExitSnapshotCandles(candles: StructureCandle[], closedAt: number): StructureCandle[] {
+  const available = candles.filter((candle) => candle.time <= closedAt);
+  return available.slice(Math.max(0, available.length - 80)).map((candle) => ({ ...candle }));
+}
+
+function journalBiasAt(
+  candles: Record<TradeTimeframe, StructureCandle[]>,
+  cutoff: number,
+): Record<TradeTimeframe, 'bullish' | 'bearish' | 'neutral'> {
+  return Object.fromEntries(AUTOMATION_TIMEFRAMES.map((timeframe) => [
+    timeframe,
+    completedAutomationTrendAt(candles[timeframe] ?? [], timeframe, cutoff),
+  ])) as Record<TradeTimeframe, 'bullish' | 'bearish' | 'neutral'>;
+}
+
+function journalVolumeContext(candles: StructureCandle[], signal: EngulfingTradeSignal) {
+  const volume = assessEngulfingVolumeLogic(candles, signal);
+  return {
+    volumeLogicStatus: getEngulfingVolumeStatus(volume, signal.type),
+    volume1: volume.firstVolume,
+    volume2: volume.secondVolume,
+    volume3: volume.thirdVolume,
+  };
+}
+
+function journalFibLevels(sourcePrice?: number, zeroPrice?: number) {
+  if (!Number.isFinite(sourcePrice) || !Number.isFinite(zeroPrice)) return undefined;
+  return [0.5, 0.618, 0.71, 0.79].map((level) => ({
+    label: String(level),
+    price: zeroPrice! + (sourcePrice! - zeroPrice!) * level,
+  }));
+}
+
+function buildJournalAutoReason(options: {
+  direction: 'BUY' | 'SELL';
+  zoneTimeframe: TradeTimeframe;
+  zoneName: string;
+  signal: EngulfingTradeSignal;
+  fibSource?: string;
+  fibBand?: string;
+  volumeLogicStatus: string;
+  source: 'ENGULFING' | 'MTF';
+}): string {
+  const fib = options.fibSource === 'MAJOR LIQUIDITY'
+    ? 'Major Liquidity qualification (no FIB required)'
+    : options.fibBand
+      ? `${options.fibSource || 'FIB'} ${options.fibBand} alignment`
+      : 'the required FIB alignment';
+  const route = options.source === 'MTF' ? 'MTF setup' : 'engulfing setup';
+  return `${options.direction} entered from a valid ${options.zoneTimeframe} ${options.zoneName} ${route}, `
+    + `with ${fib} and ${options.signal.timeframe} ${options.signal.type} `
+    + `${options.signal.direction} confirmation. Volume logic: ${options.volumeLogicStatus.toUpperCase()}.`;
+}
+
 async function scanMt5AutomationSignals(): Promise<number> {
   const config = await readMt5Config();
   if (!config.enabled) return 0;
@@ -551,11 +626,42 @@ async function scanMt5AutomationSignals(): Promise<number> {
         omitStopBuffer: isDeepDiscountTradeSignal(zone, signal),
       });
       if (!trade || !isExecutableTrade(trade)) continue;
-      candidates.push(applySignalOppositePositionTarget(tradeToMt5Signal({
+      const volumeContext = journalVolumeContext(candles[signal.timeframe], signal);
+      let fibSource = zone.majorLiquidity ? 'MAJOR LIQUIDITY' : 'ZONE FIB';
+      let fibBand = zone.fibBand;
+      if (signal.time === zone.swingEngulfingTime && signal.type === zone.swingEngulfingType) {
+        fibSource = '4H SWING FIB';
+        fibBand = zone.swingFibBand;
+      } else if (signal.time === zone.dayEngulfingTime && signal.type === zone.dayEngulfingType) {
+        fibSource = 'DAY FIB';
+        fibBand = zone.dayFibBand;
+      }
+      const baseSignal = tradeToMt5Signal({
         source: 'ENGULFING', setupId: `DIRECT:${zoneTimeframe}:${zone.id}`,
         zoneName: executionZoneName(zone), zoneTimeframe, trade, now,
         pendingExpiryMinutes: config.pendingExpiryMinutes,
-      }), mt5BridgeHeartbeat?.positions));
+      });
+      baseSignal.journalContext = {
+        biasAtEntry: journalBiasAt(candles, signalClose),
+        autoReason: buildJournalAutoReason({
+          direction: baseSignal.direction,
+          zoneTimeframe,
+          zoneName: baseSignal.zoneName,
+          signal,
+          fibSource,
+          fibBand,
+          volumeLogicStatus: volumeContext.volumeLogicStatus,
+          source: 'ENGULFING',
+        }),
+        fibSource,
+        fibBand,
+        fibLevels: journalFibLevels(zone.fibSourcePrice, zone.fibZeroPrice),
+        ...volumeContext,
+        entrySnapshotCandles: journalSnapshotCandles(
+          candles[signal.timeframe], signal.time, signalClose,
+        ),
+      };
+      candidates.push(applySignalOppositePositionTarget(baseSignal, mt5BridgeHeartbeat?.positions));
     }
   }
 
@@ -583,12 +689,35 @@ async function scanMt5AutomationSignals(): Promise<number> {
       omitStopBuffer: row.engulfingDeepDiscount === true,
     });
     if (!trade || !isExecutableTrade(trade)) continue;
-    candidates.push(applySignalOppositePositionTarget(tradeToMt5Signal({
+    const signalClose = signal.time + AUTOMATION_SECONDS[signal.timeframe];
+    const volumeContext = journalVolumeContext(candles[row.lowerTimeframe], signal);
+    const baseSignal = tradeToMt5Signal({
       source: 'MTF', setupId: `MTF:${row.id}`,
       zoneName: row.tappedZone ?? row.higherTimeframeZone,
       zoneTimeframe: row.higherTimeframe, trade, now,
       pendingExpiryMinutes: config.pendingExpiryMinutes,
-    }), mt5BridgeHeartbeat?.positions));
+    });
+    const fibBand = row.engulfingDeepDiscount ? '0.71-0.79' : '0.5-0.618';
+    baseSignal.journalContext = {
+      biasAtEntry: journalBiasAt(candles, signalClose),
+      autoReason: buildJournalAutoReason({
+        direction: baseSignal.direction,
+        zoneTimeframe: row.higherTimeframe,
+        zoneName: baseSignal.zoneName,
+        signal,
+        fibSource: 'MTF FIB',
+        fibBand,
+        volumeLogicStatus: volumeContext.volumeLogicStatus,
+        source: 'MTF',
+      }),
+      fibSource: 'MTF FIB',
+      fibBand,
+      ...volumeContext,
+      entrySnapshotCandles: journalSnapshotCandles(
+        candles[row.lowerTimeframe], signal.time, signalClose,
+      ),
+    };
+    candidates.push(applySignalOppositePositionTarget(baseSignal, mt5BridgeHeartbeat?.positions));
   }
 
   const grouped = new Map<string, Mt5SignalInput>();
@@ -638,6 +767,111 @@ async function readJournalTrades(): Promise<StoredJournalTrade[]> {
 async function writeJournalTrades(trades: StoredJournalTrade[]): Promise<void> {
   await mkdir(path.dirname(JOURNAL_FILE), { recursive: true });
   await writeFile(JOURNAL_FILE, `${JSON.stringify({ trades }, null, 2)}\n`, 'utf8');
+}
+
+function lifecycleEvent(status: string, at: number, details: Record<string, unknown>) {
+  return { status, at, ...details };
+}
+
+async function updateMt5JournalRecord(
+  signal: Mt5StoredSignal,
+  status: Mt5SignalStatus,
+  details: Record<string, unknown>,
+  updatedAt: number,
+): Promise<void> {
+  const journalId = `MT5:${signal.id}`;
+  await serializeJournalMutation(async () => {
+    const trades = await readJournalTrades();
+    const existingIndex = trades.findIndex((trade) => trade.id === journalId);
+    const existing = existingIndex >= 0 ? trades[existingIndex] : undefined;
+    if (status !== 'ACTIVE' && status !== 'RISK_FREE'
+      && !['TP', 'SL', 'RF'].includes(status) && !existing) return;
+    if (!existing && status !== 'ACTIVE') return;
+
+    const context = signal.journalContext;
+    const openedAt = Number(signal.openedAt) || updatedAt;
+    const executionPrice = Number(signal.executionPrice) || signal.entry;
+    const stopLoss = Number((details as any).initialStopLoss) || signal.stopLoss;
+    const riskPips = Number(signal.riskPips) || Math.abs(executionPrice - stopLoss) * 10;
+    const result = status === 'TP' ? 'tp' : status === 'SL' ? 'sl' : status === 'RF' ? 'rf'
+      : status === 'RISK_FREE' ? 'risk-free' : 'open';
+    const eventDetails: Record<string, unknown> = {};
+    for (const key of [
+      'brokerTicket', 'brokerPosition', 'executionPrice', 'volume', 'initialVolume',
+      'partialClosedVolume', 'remainingVolume', 'partialClosePrice', 'partialCloseTicket',
+      'partialClosedAt', 'closePrice', 'realizedProfit', 'message',
+    ]) {
+      const value = (signal as any)[key] ?? details[key];
+      if (value !== undefined) eventDetails[key] = value;
+    }
+    const priorEvents = Array.isArray((existing as any)?.lifecycleEvents)
+      ? (existing as any).lifecycleEvents as Array<Record<string, unknown>> : [];
+    const duplicateEvent = priorEvents.some((event) => event.status === status && event.at === updatedAt);
+    const lifecycleEvents = duplicateEvent
+      ? priorEvents
+      : [...priorEvents, lifecycleEvent(status, updatedAt, eventDetails)];
+    const final = ['TP', 'SL', 'RF'].includes(status);
+    const exitCandles = final
+      ? journalExitSnapshotCandles(
+        automationCandleCache[signal.signalTimeframe] ?? [], Number(signal.closedAt) || updatedAt,
+      )
+      : undefined;
+    const biasAtEntry = (existing as any)?.biasAtEntry || (
+      status === 'ACTIVE'
+        ? journalBiasAt(
+          automationCandleCache as Record<TradeTimeframe, StructureCandle[]>, openedAt,
+        )
+        : context?.biasAtEntry
+    );
+    const record: StoredJournalTrade = {
+      ...existing,
+      id: journalId,
+      mt5SignalId: signal.id,
+      mt5Managed: true,
+      lifecycleStatus: final ? 'closed' : status === 'RISK_FREE' ? 'risk-free' : 'open',
+      result,
+      openedAt,
+      completedAt: final ? (Number(signal.closedAt) || updatedAt) : openedAt,
+      closedAt: final ? (Number(signal.closedAt) || updatedAt) : undefined,
+      zoneName: signal.zoneName,
+      zoneTimeframe: signal.zoneTimeframe,
+      source: signal.source,
+      direction: signal.direction === 'BUY' ? 'bullish' : 'bearish',
+      signalTimeframe: signal.signalTimeframe,
+      engulfingType: signal.engulfingType,
+      signalAt: signal.signalAt,
+      entry: executionPrice,
+      stopLoss,
+      takeProfit: signal.takeProfit,
+      rewardRisk: signal.rewardRisk,
+      riskPips,
+      brokerTicket: signal.brokerPosition || signal.brokerTicket,
+      volume: signal.initialVolume || signal.volume,
+      partialClosedVolume: signal.partialClosedVolume,
+      remainingVolume: signal.remainingVolume,
+      partialClosePrice: signal.partialClosePrice,
+      partialClosedAt: signal.partialClosedAt,
+      closePrice: signal.closePrice,
+      realizedProfit: signal.realizedProfit,
+      biasAtEntry,
+      autoReason: context?.autoReason,
+      fibSource: context?.fibSource,
+      fibBand: context?.fibBand,
+      fibLevels: context?.fibLevels,
+      volumeLogicStatus: context?.volumeLogicStatus,
+      volume1: context?.volume1,
+      volume2: context?.volume2,
+      volume3: context?.volume3,
+      entrySnapshotCandles: context?.entrySnapshotCandles,
+      snapshotCandles: context?.entrySnapshotCandles,
+      exitSnapshotCandles: exitCandles?.length ? exitCandles : (existing as any)?.exitSnapshotCandles,
+      lifecycleEvents,
+    };
+    if (existingIndex >= 0) trades[existingIndex] = record;
+    else trades.push(record);
+    trades.sort((first, second) => second.completedAt - first.completedAt);
+    await writeJournalTrades(trades);
+  });
 }
 
 async function startServer() {
@@ -953,7 +1187,8 @@ async function startServer() {
         signal.updatedAt = Math.floor(Date.now() / 1000);
         for (const field of [
           'brokerTicket', 'brokerPosition', 'executionPrice', 'volume', 'initialVolume',
-          'riskFree', 'riskPips',
+          'initialStopLoss', 'riskFree', 'riskPips', 'openedAt', 'closedAt',
+          'closePrice', 'realizedProfit',
           'partialClosedVolume', 'remainingVolume', 'partialClosePrice', 'partialCloseTicket',
           'partialClosedAt',
         ] as const) {
@@ -964,6 +1199,14 @@ async function startServer() {
         await writeMt5Signals(signals);
         return signal;
       });
+      if (updated) {
+        await updateMt5JournalRecord(
+          updated,
+          status,
+          req.body && typeof req.body === 'object' ? req.body : {},
+          updated.updatedAt,
+        );
+      }
       return updated
         ? res.json({ ok: true, signal: updated })
         : res.status(404).json({ ok: false, error: 'Signal not found.' });
@@ -991,18 +1234,21 @@ async function startServer() {
       if (incoming.length === 0 || incoming.length > 2_000) {
         return res.status(400).json({ ok: false, error: 'One or more journal trades are required.' });
       }
-      const existing = await readJournalTrades();
-      const merged = new Map(existing.map((trade) => [trade.id, trade]));
-      for (const candidate of incoming) {
-        if (!candidate || typeof candidate !== 'object') continue;
-        const id = typeof candidate.id === 'string' ? candidate.id.trim().slice(0, 500) : '';
-        const completedAt = Number(candidate.completedAt);
-        if (!id || !Number.isFinite(completedAt) || completedAt <= 0) continue;
-        merged.set(id, { ...merged.get(id), ...candidate, id, completedAt });
-      }
-      const trades = Array.from(merged.values())
-        .sort((first, second) => second.completedAt - first.completedAt);
-      await writeJournalTrades(trades);
+      const trades = await serializeJournalMutation(async () => {
+        const existing = await readJournalTrades();
+        const merged = new Map(existing.map((trade) => [trade.id, trade]));
+        for (const candidate of incoming) {
+          if (!candidate || typeof candidate !== 'object') continue;
+          const id = typeof candidate.id === 'string' ? candidate.id.trim().slice(0, 500) : '';
+          const completedAt = Number(candidate.completedAt);
+          if (!id || !Number.isFinite(completedAt) || completedAt <= 0) continue;
+          merged.set(id, { ...merged.get(id), ...candidate, id, completedAt });
+        }
+        const mergedTrades = Array.from(merged.values())
+          .sort((first, second) => second.completedAt - first.completedAt);
+        await writeJournalTrades(mergedTrades);
+        return mergedTrades;
+      });
       return res.json({ ok: true, trades });
     } catch (error) {
       return res.status(500).json({

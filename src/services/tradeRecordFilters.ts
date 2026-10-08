@@ -6,7 +6,7 @@ export interface FilterableTradeRecord {
   signalTimeframe: TradeTimeframe;
   source: 'ENGULFING' | 'MTF';
   direction: 'bullish' | 'bearish';
-  result: TradeResult;
+  result: TradeResult | 'open' | 'risk-free';
   zoneName: string;
 }
 

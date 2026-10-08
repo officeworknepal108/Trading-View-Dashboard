@@ -88,3 +88,17 @@ test('trade filters select complete weeks and months', () => {
     date: '2026-11-21',
   }, 'Asia/Kathmandu'), [later]);
 });
+
+test('open MT5 journal records stay visible without affecting completed-result filters', () => {
+  const openRecord: FilterableTradeRecord = {
+    ...records[0],
+    result: 'open',
+    zoneName: 'RBS',
+  };
+  const journalRecords = [...records, openRecord];
+  assert.deepEqual(filterTradeRecords(journalRecords, DEFAULT_TRADE_RECORD_FILTERS, 'Asia/Kathmandu'), journalRecords);
+  assert.deepEqual(filterTradeRecords(journalRecords, {
+    ...DEFAULT_TRADE_RECORD_FILTERS,
+    result: 'tp',
+  }, 'Asia/Kathmandu'), [records[0]]);
+});

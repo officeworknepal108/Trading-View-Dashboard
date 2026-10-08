@@ -1,4 +1,11 @@
-import { hasOppositeOpenPosition, type TradeLevels, type TradeTimeframe } from './tradeLevels';
+import {
+  hasOppositeOpenPosition,
+  type EngulfingVolumeStatus,
+  type MarketTrend,
+  type TradeLevels,
+  type TradeTimeframe,
+} from './tradeLevels';
+import type { StructureCandle } from './marketStructure';
 
 export const MT5_RISK_PERCENT_OPTIONS = [
   0.25, 0.5, 1, 1.5, 2, 2.5, 3, 3.5, 4, 4.5, 5,
@@ -91,6 +98,18 @@ export interface Mt5SignalInput {
   riskPips: number;
   expiresAt: number;
   confluenceZones?: string[];
+  journalContext?: {
+    biasAtEntry: Record<TradeTimeframe, MarketTrend>;
+    autoReason: string;
+    fibSource?: string;
+    fibBand?: string;
+    fibLevels?: Array<{ label: string; price: number }>;
+    volumeLogicStatus: EngulfingVolumeStatus;
+    volume1?: number;
+    volume2?: number;
+    volume3?: number;
+    entrySnapshotCandles: StructureCandle[];
+  };
 }
 
 export interface Mt5StoredSignal extends Mt5SignalInput {
@@ -102,6 +121,7 @@ export interface Mt5StoredSignal extends Mt5SignalInput {
   brokerTicket?: number;
   brokerPosition?: number;
   executionPrice?: number;
+  initialStopLoss?: number;
   volume?: number;
   initialVolume?: number;
   partialClosedVolume?: number;
@@ -109,6 +129,10 @@ export interface Mt5StoredSignal extends Mt5SignalInput {
   partialClosePrice?: number;
   partialCloseTicket?: number;
   partialClosedAt?: number;
+  openedAt?: number;
+  closedAt?: number;
+  closePrice?: number;
+  realizedProfit?: number;
   message?: string;
 }
 
