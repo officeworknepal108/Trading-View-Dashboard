@@ -25,6 +25,16 @@ export function isMt5EntryTimeframeEnabled(
     .includes(signalTimeframe as Mt5EntryTimeframe);
 }
 
+export function isMt5SignalAllowedByTimeframes(
+  enabledTimeframes: readonly Mt5EntryTimeframe[] | undefined,
+  signal: Pick<Mt5SignalInput, 'zoneTimeframe' | 'signalTimeframe'>,
+): boolean {
+  const enabled = enabledTimeframes ?? MT5_DEFAULT_ENABLED_TIMEFRAMES;
+  const controlled = new Set<string>(MT5_ENTRY_TIMEFRAME_OPTIONS);
+  return (!controlled.has(signal.zoneTimeframe) || enabled.includes(signal.zoneTimeframe as Mt5EntryTimeframe))
+    && (!controlled.has(signal.signalTimeframe) || enabled.includes(signal.signalTimeframe as Mt5EntryTimeframe));
+}
+
 export function normalizeMt5RiskPercent(value: unknown, fallback = 0.25): number {
   const numeric = Number(value);
   if (!Number.isFinite(numeric)) return fallback;
@@ -145,6 +155,9 @@ export interface Mt5AutomationStatus {
     engulfingType?: string;
     signalAt?: number;
     setupId?: string;
+    rewardRisk?: number;
+    riskFree?: number;
+    signalStatus?: Mt5SignalStatus;
   }>;
   marketData: {
     source: 'MT5_BROKER';

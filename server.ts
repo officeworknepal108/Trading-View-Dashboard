@@ -8,7 +8,7 @@ import { fetchTradingViewCandles } from './src/services/tradingViewDatafeed';
 import {
   MT5_DEFAULT_ENABLED_TIMEFRAMES,
   applySignalOppositePositionTarget,
-  isMt5EntryTimeframeEnabled,
+  isMt5SignalAllowedByTimeframes,
   normalizeMt5EnabledTimeframes,
   normalizeMt5RiskPercent,
   isExecutableTrade,
@@ -353,8 +353,8 @@ async function enqueueMt5Signal(
 ): Promise<{ signal: Mt5StoredSignal; duplicate: boolean }> {
   const error = validateMt5Signal(candidate);
   if (error) throw new Error(error);
-  if (!isMt5EntryTimeframeEnabled(config.enabledTimeframes, candidate.signalTimeframe)) {
-    throw new Error(`${candidate.signalTimeframe} automatic trading is disabled.`);
+  if (!isMt5SignalAllowedByTimeframes(config.enabledTimeframes, candidate)) {
+    throw new Error(`${candidate.zoneTimeframe} setup / ${candidate.signalTimeframe} entry automatic trading is disabled.`);
   }
   const now = Math.floor(Date.now() / 1000);
   if (candidate.calculatedAt < now - config.signalMaxAgeSeconds) {
@@ -408,10 +408,10 @@ async function rejectDisabledQueuedSignals(config: Mt5AutomationConfig): Promise
     let rejected = 0;
     for (const signal of signals) {
       if (signal.status !== 'QUEUED'
-        || isMt5EntryTimeframeEnabled(config.enabledTimeframes, signal.signalTimeframe)) continue;
+        || isMt5SignalAllowedByTimeframes(config.enabledTimeframes, signal)) continue;
       signal.status = 'REJECTED';
       signal.updatedAt = now;
-      signal.message = `${signal.signalTimeframe} automatic trading was switched off before execution.`;
+      signal.message = `${signal.zoneTimeframe} setup / ${signal.signalTimeframe} entry was switched off before execution.`;
       rejected += 1;
     }
     if (rejected > 0) await writeMt5Signals(signals);
@@ -593,7 +593,7 @@ async function scanMt5AutomationSignals(): Promise<number> {
 
   const grouped = new Map<string, Mt5SignalInput>();
   for (const candidate of candidates) {
-    if (!isMt5EntryTimeframeEnabled(config.enabledTimeframes, candidate.signalTimeframe)) continue;
+    if (!isMt5SignalAllowedByTimeframes(config.enabledTimeframes, candidate)) continue;
     if (candidate.calculatedAt < now - config.signalMaxAgeSeconds) continue;
     if (candidate.signalAt > now + 5 || candidate.calculatedAt > now + 5) continue;
     const existing = grouped.get(candidate.id);
@@ -723,6 +723,9 @@ async function startServer() {
           engulfingType: signal?.engulfingType,
           signalAt: signal?.signalAt,
           setupId: signal?.setupId,
+          rewardRisk: signal?.rewardRisk,
+          riskFree: signal?.riskFree,
+          signalStatus: signal?.status,
         };
       });
       return res.json({
@@ -798,10 +801,10 @@ async function startServer() {
       if (!mt5ExecutionFeedIsFresh()) {
         return res.status(409).json({ ok: false, error: 'MT5 broker candle feed is not fresh.' });
       }
-      if (!isMt5EntryTimeframeEnabled(config.enabledTimeframes, req.body.signalTimeframe)) {
+      if (!isMt5SignalAllowedByTimeframes(config.enabledTimeframes, req.body as Mt5SignalInput)) {
         return res.status(409).json({
           ok: false,
-          error: `${String(req.body.signalTimeframe)} automatic trading is disabled.`,
+          error: `${String(req.body.zoneTimeframe)} setup / ${String(req.body.signalTimeframe)} entry automatic trading is disabled.`,
         });
       }
       if (req.body.calculatedAt < now - config.signalMaxAgeSeconds) {
@@ -903,10 +906,10 @@ async function startServer() {
             item.message = 'Signal expired before execution.';
           }
           if (item.status === 'QUEUED'
-            && !isMt5EntryTimeframeEnabled(config.enabledTimeframes, item.signalTimeframe)) {
+            && !isMt5SignalAllowedByTimeframes(config.enabledTimeframes, item)) {
             item.status = 'REJECTED';
             item.updatedAt = now;
-            item.message = `${item.signalTimeframe} automatic trading is disabled.`;
+            item.message = `${item.zoneTimeframe} setup / ${item.signalTimeframe} entry automatic trading is disabled.`;
           }
           if (item.status === 'QUEUED') {
             Object.assign(item, applySignalOppositePositionTarget(
@@ -917,7 +920,7 @@ async function startServer() {
         }
         const next = signals.find((item) => (
           item.status === 'QUEUED'
-          && isMt5EntryTimeframeEnabled(config.enabledTimeframes, item.signalTimeframe)
+          && isMt5SignalAllowedByTimeframes(config.enabledTimeframes, item)
         ));
         if (next) {
           next.status = 'CLAIMED';
@@ -950,6 +953,7 @@ async function startServer() {
         signal.updatedAt = Math.floor(Date.now() / 1000);
         for (const field of [
           'brokerTicket', 'brokerPosition', 'executionPrice', 'volume', 'initialVolume',
+          'riskFree', 'riskPips',
           'partialClosedVolume', 'remainingVolume', 'partialClosePrice', 'partialCloseTicket',
           'partialClosedAt',
         ] as const) {

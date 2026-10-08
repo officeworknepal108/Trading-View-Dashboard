@@ -9,6 +9,7 @@ import {
   calculateXauUsdLotSize,
   isExecutableTrade,
   isMt5EntryTimeframeEnabled,
+  isMt5SignalAllowedByTimeframes,
   normalizeMt5EnabledTimeframes,
   normalizeMt5RiskPercent,
   tradeToMt5Signal,
@@ -34,6 +35,25 @@ test('MT5 entry timeframe selector accepts supported choices and can disable M1'
   assert.equal(isMt5EntryTimeframeEnabled(selected, 'M5'), true);
   assert.deepEqual(normalizeMt5EnabledTimeframes([], ['M5']), []);
   assert.deepEqual(normalizeMt5EnabledTimeframes(undefined, ['M5', 'M15']), ['M5', 'M15']);
+});
+
+test('disabled M1 blocks native, direct and MTF signals related to M1', () => {
+  const enabled = ['M5', 'M15', 'M30', 'H1'] as const;
+  assert.equal(isMt5SignalAllowedByTimeframes(enabled, {
+    zoneTimeframe: 'M1', signalTimeframe: 'M1',
+  }), false);
+  assert.equal(isMt5SignalAllowedByTimeframes(enabled, {
+    zoneTimeframe: 'M1', signalTimeframe: 'M5',
+  }), false);
+  assert.equal(isMt5SignalAllowedByTimeframes(enabled, {
+    zoneTimeframe: 'M5', signalTimeframe: 'M1',
+  }), false);
+  assert.equal(isMt5SignalAllowedByTimeframes(enabled, {
+    zoneTimeframe: 'M5', signalTimeframe: 'M15',
+  }), true);
+  assert.equal(isMt5SignalAllowedByTimeframes(enabled, {
+    zoneTimeframe: 'H4', signalTimeframe: 'H1',
+  }), true);
 });
 
 test('XAUUSD lot size follows cash risk divided by SL pips times ten', () => {

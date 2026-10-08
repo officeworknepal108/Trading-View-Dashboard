@@ -310,8 +310,14 @@ def today_realized_loss_percent() -> float:
 def check_safety(signal: dict[str, Any], config: dict[str, Any]) -> tuple[Any, Any]:
     enabled_timeframes = config.get("enabledTimeframes", ["M1", "M5", "M15", "M30", "H1"])
     signal_timeframe = str(signal.get("signalTimeframe", ""))
-    if signal_timeframe not in enabled_timeframes:
-        raise RuntimeError(f"{signal_timeframe or 'Unknown'} automatic trading is disabled.")
+    zone_timeframe = str(signal.get("zoneTimeframe", ""))
+    controlled_timeframes = {"M1", "M5", "M15", "M30", "H1"}
+    if ((signal_timeframe in controlled_timeframes and signal_timeframe not in enabled_timeframes)
+            or (zone_timeframe in controlled_timeframes and zone_timeframe not in enabled_timeframes)):
+        raise RuntimeError(
+            f"{zone_timeframe or 'Unknown'} setup / {signal_timeframe or 'Unknown'} entry "
+            "automatic trading is disabled."
+        )
     terminal = mt5.terminal_info()
     account = mt5.account_info()
     if not terminal or not terminal.connected:
@@ -398,11 +404,19 @@ def place_signal(signal: dict[str, Any], config: dict[str, Any]) -> dict[str, An
     }
     result = send_with_filling_fallback(request)
     status = "PLACED" if is_limit else "ACTIVE"
+    execution_price = float(result.price or price)
+    initial_stop_loss = float(signal["stopLoss"])
+    actual_risk = abs(execution_price - initial_stop_loss)
+    risk_multiple = float(config.get("moveStopToBreakEvenAtR", 1))
+    actual_risk_free = execution_price + actual_risk * risk_multiple if is_buy else execution_price - actual_risk * risk_multiple
     details = {
         "status": status,
         "brokerTicket": int(result.order),
         "brokerPosition": int(result.order) if not is_limit else 0,
-        "executionPrice": float(result.price or price),
+        "executionPrice": execution_price,
+        "initialStopLoss": initial_stop_loss,
+        "riskFree": actual_risk_free,
+        "riskPips": actual_risk * 10,
         "volume": volume,
         "comment": request["comment"],
     }
@@ -478,7 +492,11 @@ def closed_result(record: dict[str, Any], was_risk_free: bool) -> str:
     return "RF" if was_risk_free else "CANCELLED"
 
 
-def manage_open_signals(state: dict[str, dict[str, Any]], recent: list[dict[str, Any]]) -> None:
+def manage_open_signals(
+    state: dict[str, dict[str, Any]],
+    recent: list[dict[str, Any]],
+    config: dict[str, Any],
+) -> None:
     server_by_id = {item["id"]: item for item in recent}
     for signal_id, record in list(state.items()):
         server_signal = server_by_id.get(signal_id, {})
@@ -504,9 +522,25 @@ def manage_open_signals(state: dict[str, dict[str, Any]], recent: list[dict[str,
                 continue
             position = find_position(record)
             if position:
+                execution_price = float(position.price_open)
+                initial_stop_loss = float(record.get("initialStopLoss") or position.sl or record["stopLoss"])
+                actual_risk = abs(execution_price - initial_stop_loss)
+                risk_multiple = float(config.get("moveStopToBreakEvenAtR", 1))
+                risk_free = execution_price + actual_risk * risk_multiple if position.type == mt5.POSITION_TYPE_BUY else execution_price - actual_risk * risk_multiple
                 record["brokerPosition"] = int(position.ticket)
                 record["status"] = "ACTIVE"
-                update_status(signal_id, "ACTIVE", brokerPosition=int(position.ticket), executionPrice=float(position.price_open))
+                record["executionPrice"] = execution_price
+                record["initialStopLoss"] = initial_stop_loss
+                record["riskFree"] = risk_free
+                record["riskPips"] = actual_risk * 10
+                update_status(
+                    signal_id,
+                    "ACTIVE",
+                    brokerPosition=int(position.ticket),
+                    executionPrice=execution_price,
+                    riskFree=risk_free,
+                    riskPips=actual_risk * 10,
+                )
                 continue
             result = closed_result(record, False)
             update_status(signal_id, result, message="Pending order no longer exists.")
@@ -520,7 +554,23 @@ def manage_open_signals(state: dict[str, dict[str, Any]], recent: list[dict[str,
             continue
         is_buy = position.type == mt5.POSITION_TYPE_BUY
         tick = mt5.symbol_info_tick(position.symbol)
-        risk_free = float(record["riskFree"])
+        execution_price = float(position.price_open)
+        initial_stop_loss = float(record.get("initialStopLoss") or position.sl or record["stopLoss"])
+        actual_risk = abs(execution_price - initial_stop_loss)
+        risk_multiple = float(config.get("moveStopToBreakEvenAtR", 1))
+        risk_free = execution_price + actual_risk * risk_multiple if is_buy else execution_price - actual_risk * risk_multiple
+        if status != "RISK_FREE" and abs(float(record.get("riskFree") or 0) - risk_free) > 1e-9:
+            record["executionPrice"] = execution_price
+            record["initialStopLoss"] = initial_stop_loss
+            record["riskFree"] = risk_free
+            record["riskPips"] = actual_risk * 10
+            update_status(
+                signal_id,
+                "ACTIVE",
+                executionPrice=execution_price,
+                riskFree=risk_free,
+                riskPips=actual_risk * 10,
+            )
         reached = tick and (float(tick.bid) >= risk_free if is_buy else float(tick.ask) <= risk_free)
         info = mt5.symbol_info(position.symbol)
         initial_volume = float(record.get("initialVolume") or record.get("volume") or position.volume)
@@ -584,7 +634,7 @@ def run() -> None:
                         and server_signal.get("status") in {"PLACED", "ACTIVE", "RISK_FREE"}
                     ):
                         state.setdefault(server_signal["id"], dict(server_signal))
-                manage_open_signals(state, recent_signals)
+                manage_open_signals(state, recent_signals, config)
                 save_state(state)
                 claim = api("POST", "/api/mt5/signals/claim", json={"bridgeId": BRIDGE_ID})
                 signal = claim.get("signal")

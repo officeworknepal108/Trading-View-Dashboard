@@ -385,12 +385,6 @@ const TradeDetailsRow: React.FC<{
         {oppositePositionOpen && (
           <span className="rounded bg-amber-100 px-1 py-0.5 text-amber-800">OPPOSITE MT5 POSITION · 1:1</span>
         )}
-        {mt5Signal && (
-          <span className="rounded bg-cyan-100 px-1 py-0.5 text-cyan-800">
-            {mt5Signal.zoneTimeframe} SETUP → {mt5Signal.signalTimeframe} ENTRY
-            {mt5Signal.brokerTicket ? ` · MT5 #${mt5Signal.brokerTicket}` : ''}
-          </span>
-        )}
         <span className="text-blue-700">ENTRY <span className="tabular-nums font-semibold text-slate-700">{formatPrice(trade.entry)}</span></span>
         <span className="text-rose-700">SL <span className="tabular-nums font-semibold text-slate-700">{formatPrice(trade.stopLoss)}</span></span>
         <span className="text-emerald-700">TP <span className="tabular-nums font-semibold text-slate-700">{formatPrice(trade.takeProfit)}</span></span>
@@ -1818,7 +1812,7 @@ export const OandaProChart: React.FC = () => {
       return [{
         id: `MT5:${position.ticket}`,
         trade,
-        label: `MT5 #${position.ticket} · ${position.zoneTimeframe ?? '?'}→${position.signalTimeframe ?? '?'} · 1:${rewardRisk}`,
+        label: `${position.zoneTimeframe ?? '?'}→${position.signalTimeframe ?? '?'} · 1:${position.rewardRisk ?? rewardRisk}`,
       }];
     })
   ), [granularity, mt5Status?.positions]);
@@ -2441,15 +2435,13 @@ export const OandaProChart: React.FC = () => {
 
         const badge = document.createElement('div');
         badge.style.position = 'absolute';
-        badge.style.left = `${left + 2}px`;
-        badge.style.top = `${entryY - 10}px`;
-        badge.style.padding = '1px 4px';
-        badge.style.borderRadius = '3px';
-        badge.style.background = trade.signal.direction === 'bullish' ? '#16a34a' : '#e11d48';
-        badge.style.color = '#ffffff';
+        badge.style.left = `${left + width / 2}px`;
+        badge.style.top = `${Math.max(entryY, stopY) - 13}px`;
+        badge.style.transform = 'translateX(-50%)';
+        badge.style.color = '#0f172a';
         badge.style.fontSize = '8px';
         badge.style.fontWeight = '800';
-        badge.style.lineHeight = '12px';
+        badge.style.lineHeight = '10px';
         badge.style.whiteSpace = 'nowrap';
         badge.textContent = overlay.label ?? `CHART · 1:${trade.rewardRisk}`;
         fragment.appendChild(badge);
@@ -3228,7 +3220,7 @@ export const OandaProChart: React.FC = () => {
                   />
                 </label>
                 <fieldset className="mb-2 rounded border border-slate-200 bg-slate-50 p-2">
-                  <legend className="px-1 font-bold text-slate-700">Entry / Engulfing Timeframes</legend>
+                  <legend className="px-1 font-bold text-slate-700">Allowed Trade Timeframes</legend>
                   <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1">
                     {MT5_ENTRY_TIMEFRAME_OPTIONS.map((timeframe) => {
                       const currentTimeframes = mt5Status.config.enabledTimeframes
@@ -3252,8 +3244,8 @@ export const OandaProChart: React.FC = () => {
                     })}
                   </div>
                   <span className="mt-1 block text-[8px] font-semibold text-slate-500">
-                    Checked engulfing timeframes can send entries. M1 off blocks M1 engulfing,
-                    but an M1 setup confirmed by enabled M5 can still trade.
+                    OFF blocks that timeframe everywhere. M1 OFF blocks M1 setup, M1 engulfing,
+                    and every MTF trade related to M1.
                   </span>
                 </fieldset>
                 <label className="mb-2 block font-bold text-slate-700">
@@ -3300,7 +3292,7 @@ export const OandaProChart: React.FC = () => {
                   Selected cash risk: <b>{mt5Status.bridge.equity === undefined
                     ? '—'
                     : `${mt5Status.bridge.currency || '$'} ${(mt5Status.bridge.equity * mt5Status.config.riskPercent / 100).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}</b><br />
-                  Queue: <b>{mt5Status.counts.QUEUED ?? 0}</b> · Active: <b>{mt5Status.counts.ACTIVE ?? 0}</b><br />
+                  Waiting to send: <b>{mt5Status.counts.QUEUED ?? 0}</b> · Open MT5 trades: <b>{mt5Status.positions.length}</b><br />
                   Process: <b>{mt5Status.bridge.processRunning
                     ? `RUNNING · PID ${mt5Status.bridge.processId ?? '—'}`
                     : mt5Status.bridge.connected ? 'MANUALLY STARTED' : 'STOPPED'}</b><br />
@@ -3681,14 +3673,22 @@ export const OandaProChart: React.FC = () => {
         </div>
 
         {replayIndex === null && (mt5Status?.positions.length ?? 0) > 0 && (
-          <div className="flex flex-wrap items-center gap-x-4 gap-y-1 border-b border-cyan-200 bg-cyan-50 px-4 py-1.5 text-[10px] font-bold text-cyan-900">
-            <span className="font-black">MT5 LIVE {mt5Status!.positions.length === 1 ? 'TRADE' : 'TRADES'}</span>
+          <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 border-b border-cyan-200 bg-cyan-50 px-3 py-1 text-[8px] font-semibold leading-none text-cyan-900">
+            <span className="text-[8px] font-black">MT5 LIVE</span>
             {mt5Status!.positions.map((position) => (
-              <span key={position.ticket} className="rounded border border-cyan-200 bg-white px-2 py-0.5">
-                #{position.ticket} · <b className={position.direction === 'BUY' ? 'text-emerald-700' : 'text-rose-700'}>{position.direction}</b>
-                {' · '}{position.zoneTimeframe ?? '?'} SETUP → {position.signalTimeframe ?? '?'} ENTRY
-                {' · '}{position.zoneName ?? 'UNKNOWN ZONE'} {position.engulfingType ?? ''}
-                {' · '}OPEN {formatPrice(position.priceOpen)} · SL {formatPrice(position.stopLoss)} · TP {formatPrice(position.takeProfit)}
+              <span key={position.ticket} className="flex items-center gap-1 rounded border border-cyan-200 bg-white px-1.5 py-1">
+                #{position.ticket}
+                <b className="rounded bg-slate-100 px-1 py-0.5 text-[7px] font-black text-slate-600">
+                  {position.signalTimeframe ?? '?'} ENTRY
+                </b>
+                · <b className={position.direction === 'BUY' ? 'text-emerald-700' : 'text-rose-700'}>{position.direction}</b>
+                {' · '}{position.volume.toLocaleString(undefined, { maximumFractionDigits: 2 })} LOT
+                {' · '}RUNNING P/L: <b className={position.profit >= 0 ? 'text-emerald-700' : 'text-rose-700'}>
+                  {mt5Status!.bridge.currency || 'USD'} {position.profit.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                </b>
+                {(position.signalStatus === 'RISK_FREE' || position.signalStatus === 'RF') && (
+                  <b className="rounded bg-emerald-100 px-1 py-0.5 text-[7px] font-black text-emerald-700">RF DONE</b>
+                )}
               </span>
             ))}
           </div>
