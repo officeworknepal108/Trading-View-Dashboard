@@ -3513,10 +3513,10 @@ export const OandaProChart: React.FC = () => {
                   ✕
                 </button>
               </div>
-              <div className="flex flex-wrap items-stretch gap-1 [&>*]:min-w-[105px] [&>*]:flex-1">
+              <div className="flex flex-wrap items-center justify-center gap-1">
             <button
               onClick={() => setShowStructure((value) => !value)}
-              className={`whitespace-nowrap rounded-md border px-1.5 py-0.5 text-[8px] font-black leading-tight transition ${
+              className={`whitespace-nowrap rounded-full border px-1.5 py-0.5 text-[8px] font-black transition ${
                 showStructure
                   ? 'border-indigo-200 bg-indigo-50 text-indigo-700'
                   : 'border-slate-200 bg-white text-slate-500'
@@ -3527,7 +3527,7 @@ export const OandaProChart: React.FC = () => {
             </button>
             <button
               onClick={() => setShowMgZones((value) => !value)}
-              className={`whitespace-nowrap rounded-md border px-1.5 py-0.5 text-[8px] font-black leading-tight transition ${
+              className={`whitespace-nowrap rounded-full border px-1.5 py-0.5 text-[8px] font-black transition ${
                 showMgZones
                   ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
                   : 'border-slate-200 bg-white text-slate-500'
@@ -3538,7 +3538,7 @@ export const OandaProChart: React.FC = () => {
             </button>
             <button
               onClick={() => setShowSupplyDemand((value) => !value)}
-              className={`whitespace-nowrap rounded-md border px-1.5 py-0.5 text-[8px] font-black leading-tight transition ${
+              className={`whitespace-nowrap rounded-full border px-1.5 py-0.5 text-[8px] font-black transition ${
                 showSupplyDemand
                   ? 'border-cyan-200 bg-cyan-50 text-cyan-700'
                   : 'border-slate-200 bg-white text-slate-500'
@@ -3549,7 +3549,7 @@ export const OandaProChart: React.FC = () => {
             </button>
             <button
               onClick={() => setShowIss((value) => !value)}
-              className={`whitespace-nowrap rounded-md border px-1.5 py-0.5 text-[8px] font-black leading-tight transition ${
+              className={`whitespace-nowrap rounded-full border px-1.5 py-0.5 text-[8px] font-black transition ${
                 showIss ? 'border-amber-200 bg-amber-50 text-amber-700' : 'border-slate-200 bg-white text-slate-500'
               }`}
               title="Show or hide ISS 0–5 wave markings"
@@ -3558,7 +3558,7 @@ export const OandaProChart: React.FC = () => {
             </button>
             <button
               onClick={() => setShowInternal((value) => !value)}
-              className={`whitespace-nowrap rounded-md border px-1.5 py-0.5 text-[8px] font-black leading-tight transition ${
+              className={`whitespace-nowrap rounded-full border px-1.5 py-0.5 text-[8px] font-black transition ${
                 showInternal ? 'border-violet-200 bg-violet-50 text-violet-700' : 'border-slate-200 bg-white text-slate-500'
               }`}
               title="Show or hide post-ISS internal structure, zones, BOS and CHoCH"
@@ -3568,7 +3568,7 @@ export const OandaProChart: React.FC = () => {
             <div className="relative flex">
               <button
                 onClick={() => setShowFib((value) => !value)}
-                className={`whitespace-nowrap rounded-l-md border border-r-0 px-1.5 py-0.5 text-[8px] font-black leading-tight transition ${
+                className={`whitespace-nowrap rounded-l-full border border-r-0 px-1.5 py-0.5 text-[8px] font-black transition ${
                   showFib ? 'border-fuchsia-200 bg-fuchsia-50 text-fuchsia-700' : 'border-slate-200 bg-white text-slate-500'
                 }`}
                 title="Master switch for all Fibonacci confluence markings"
@@ -3578,7 +3578,7 @@ export const OandaProChart: React.FC = () => {
               <button
                 type="button"
                 onClick={() => setShowFibOptions((visible) => !visible)}
-                className={`rounded-r-md border px-1 py-0.5 text-[8px] font-black leading-tight transition ${
+                className={`rounded-r-full border px-1 py-0.5 text-[8px] font-black transition ${
                   showFibOptions
                     ? 'border-fuchsia-300 bg-fuchsia-100 text-fuchsia-800'
                     : showFib
@@ -3744,7 +3744,7 @@ export const OandaProChart: React.FC = () => {
                 setShowAccuracyTable(false);
                 setShowAccuracyOptions(false);
               }}
-              className={`whitespace-nowrap rounded-md border px-1.5 py-0.5 text-[8px] font-black leading-tight transition ${
+              className={`whitespace-nowrap rounded-full border px-1.5 py-0.5 text-[8px] font-black transition ${
                 showJournal
                   ? 'border-violet-300 bg-violet-100 text-violet-800'
                   : 'border-violet-200 bg-violet-50 text-violet-700'
@@ -3755,7 +3755,7 @@ export const OandaProChart: React.FC = () => {
             </button>
             <button
               onClick={() => setShowEngulfing((value) => !value)}
-              className={`whitespace-nowrap rounded-md border px-1.5 py-0.5 text-[8px] font-black leading-tight transition ${
+              className={`whitespace-nowrap rounded-full border px-1.5 py-0.5 text-[8px] font-black transition ${
                 showEngulfing ? 'border-blue-200 bg-blue-50 text-blue-700' : 'border-slate-200 bg-white text-slate-500'
               }`}
               title="Show or hide confirmed Type 1–4 engulfing signals and their mapped fallback timeframe"
@@ -3764,7 +3764,7 @@ export const OandaProChart: React.FC = () => {
             </button>
             <button
               onClick={() => setShowTradeLevels((value) => !value)}
-              className={`whitespace-nowrap rounded-md border px-1.5 py-0.5 text-[8px] font-black leading-tight transition ${
+              className={`whitespace-nowrap rounded-full border px-1.5 py-0.5 text-[8px] font-black transition ${
                 showTradeLevels
                   ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
                   : 'border-slate-200 bg-white text-slate-500'
@@ -3777,7 +3777,7 @@ export const OandaProChart: React.FC = () => {
               <button
                 type="button"
                 onClick={() => setShowAccuracyTable((value) => !value)}
-                className={`whitespace-nowrap rounded-l-md border border-r-0 px-1.5 py-0.5 text-[8px] font-black leading-tight transition ${
+                className={`whitespace-nowrap rounded-l-full border border-r-0 px-1.5 py-0.5 text-[8px] font-black transition ${
                   showAccuracyTable
                     ? 'border-indigo-200 bg-indigo-50 text-indigo-700'
                     : 'border-slate-200 bg-white text-slate-500'
@@ -3789,7 +3789,7 @@ export const OandaProChart: React.FC = () => {
               <button
                 type="button"
                 onClick={() => setShowAccuracyOptions((value) => !value)}
-                className={`rounded-r-md border px-1 py-0.5 text-[8px] font-black leading-tight transition ${
+                className={`rounded-r-full border px-1 py-0.5 text-[8px] font-black transition ${
                   showAccuracyOptions
                     ? 'border-indigo-300 bg-indigo-100 text-indigo-800'
                     : showAccuracyTable
@@ -3834,7 +3834,7 @@ export const OandaProChart: React.FC = () => {
             </div>
             <button
               onClick={() => setShowInvalidZones((value) => !value)}
-              className={`whitespace-nowrap rounded-md border px-1.5 py-0.5 text-[8px] font-black leading-tight transition ${
+              className={`whitespace-nowrap rounded-full border px-1.5 py-0.5 text-[8px] font-black transition ${
                 showInvalidZones
                   ? 'border-slate-400 bg-slate-200 text-slate-700'
                   : 'border-slate-200 bg-white text-slate-500'
