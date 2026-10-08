@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
   assessEngulfingVolumeLogic,
+  applyOppositePositionRewardRisk,
   calculateHalfAtOneRResult,
   calculateTradeLevels,
   getDirectTradeRule,
@@ -105,7 +106,7 @@ test('volume assessment reports valid, best, failed, unavailable, and not-applic
   assert.equal(getEngulfingVolumeStatus({ applicable: false, passes: false, bestQuality: false }, 'T4'), 'not-applicable');
 });
 
-test('direct M1 policy uses volume as observation only and never changes normal entry rules', () => {
+test('native M1 entries require volume and do not require M5/M15 trend alignment', () => {
   const baseRule = getDirectTradeRule('M1', 'M1')!;
   const validVolume = [volumeCandle(0, 120), volumeCandle(60, 80)];
   const invalidVolume = [volumeCandle(0, 80), volumeCandle(60, 120)];
@@ -118,8 +119,9 @@ test('direct M1 policy uses volume as observation only and never changes normal 
     m5Trend: 'bullish',
     m15Trend: 'bullish',
   });
-  assert.equal(aligned.allowed, true);
-  assert.equal(aligned.rule?.rewardRisk, 3);
+  assert.equal(aligned.allowed, false);
+  assert.equal(aligned.reason, 'volume-failed');
+  assert.equal(aligned.rule, undefined);
 
   const validCounterTrendVolume = resolveDirectEntryPolicy({
     zoneTimeframe: 'M1',
@@ -129,9 +131,9 @@ test('direct M1 policy uses volume as observation only and never changes normal 
     m5Trend: 'bearish',
     m15Trend: 'bearish',
   });
-  assert.equal(validCounterTrendVolume.allowed, false);
-  assert.equal(validCounterTrendVolume.reason, 'blocked');
-  assert.equal(validCounterTrendVolume.rule, undefined);
+  assert.equal(validCounterTrendVolume.allowed, true);
+  assert.equal(validCounterTrendVolume.reason, 'volume-confirmed');
+  assert.equal(validCounterTrendVolume.rule?.rewardRisk, 3);
   assert.equal(validCounterTrendVolume.volume.passes, true);
 
   const blocked = resolveDirectEntryPolicy({
@@ -143,6 +145,7 @@ test('direct M1 policy uses volume as observation only and never changes normal 
     m15Trend: 'bearish',
   });
   assert.equal(blocked.allowed, false);
+  assert.equal(blocked.reason, 'volume-failed');
   assert.equal(blocked.rule, undefined);
 
   const bearishCounterTrendVolume = resolveDirectEntryPolicy({
@@ -153,7 +156,8 @@ test('direct M1 policy uses volume as observation only and never changes normal 
     m5Trend: 'bullish',
     m15Trend: 'bullish',
   });
-  assert.equal(bearishCounterTrendVolume.allowed, false);
+  assert.equal(bearishCounterTrendVolume.allowed, true);
+  assert.equal(bearishCounterTrendVolume.reason, 'volume-confirmed');
   assert.equal(bearishCounterTrendVolume.volume.passes, true);
 
   const disagreementWithoutVolume = resolveDirectEntryPolicy({
@@ -165,6 +169,33 @@ test('direct M1 policy uses volume as observation only and never changes normal 
     m15Trend: 'neutral',
   });
   assert.equal(disagreementWithoutVolume.allowed, false);
+});
+
+test('an opposite open position reduces only the new trade rule to 1:1', () => {
+  const baseRule = getDirectTradeRule('M1', 'M1')!;
+  const normal = applyOppositePositionRewardRisk(baseRule, [{ direction: 'BUY' }], 'bullish');
+  assert.equal(normal.oppositePositionOpen, false);
+  assert.equal(normal.rule.rewardRisk, 3);
+
+  const hedged = applyOppositePositionRewardRisk(baseRule, [{ direction: 'SELL' }], 'bullish');
+  assert.equal(hedged.oppositePositionOpen, true);
+  assert.equal(hedged.rule.rewardRisk, 1);
+  assert.equal(baseRule.rewardRisk, 3, 'the shared base rule must remain unchanged');
+});
+
+test('M1 structure with M5 engulfing preserves the existing 1:2 route', () => {
+  const baseRule = getDirectTradeRule('M1', 'M5')!;
+  const decision = resolveDirectEntryPolicy({
+    zoneTimeframe: 'M1',
+    signal: { ...bullishSignal, timeframe: 'M5' },
+    sourceCandles: [],
+    baseRule,
+    m5Trend: 'bearish',
+    m15Trend: 'bearish',
+  });
+  assert.equal(decision.allowed, true);
+  assert.equal(decision.reason, 'unchanged');
+  assert.equal(decision.rule?.rewardRisk, 2);
 });
 
 test('direct M5 entries remain unchanged by the M1 policy', () => {

@@ -46,9 +46,14 @@ export type EngulfingVolumeStatus = 'not-applicable' | 'unavailable' | 'failed' 
 
 export interface DirectEntryPolicyDecision {
   allowed: boolean;
-  reason: 'unchanged' | 'higher-timeframe-alignment' | 'blocked';
+  reason: 'unchanged' | 'volume-confirmed' | 'volume-failed'
+    | 'volume-unavailable' | 'volume-not-applicable';
   rule?: TradeRule;
   volume: EngulfingVolumeAssessment;
+}
+
+export interface OpenPositionDirection {
+  direction: 'BUY' | 'SELL';
 }
 
 export interface TradeLevels {
@@ -140,9 +145,9 @@ export function getEngulfingVolumeStatus(
 }
 
 /**
- * M1 direct entries alone use the higher-timeframe gate. Volume is returned as
- * observation metadata only: it never accepts, rejects, or changes a trade.
- * Every other direct timeframe passes through unchanged.
+ * Native M1 entries require their agreed engulfing-volume relationship. The
+ * existing M1-structure/M5-engulfing route and every other direct route pass
+ * through unchanged.
  */
 export function resolveDirectEntryPolicy(options: {
   zoneTimeframe: TradeTimeframe;
@@ -152,17 +157,40 @@ export function resolveDirectEntryPolicy(options: {
   m5Trend?: MarketTrend;
   m15Trend?: MarketTrend;
 }): DirectEntryPolicyDecision {
-  const { zoneTimeframe, signal, sourceCandles, baseRule, m5Trend, m15Trend } = options;
+  const { zoneTimeframe, signal, sourceCandles, baseRule } = options;
   const volume = assessEngulfingVolumeLogic(sourceCandles, signal);
   if (zoneTimeframe !== 'M1' || signal.timeframe !== 'M1') {
     return { allowed: true, reason: 'unchanged', rule: baseRule, volume };
   }
 
-  const aligned = m5Trend === signal.direction && m15Trend === signal.direction;
-  if (aligned) {
-    return { allowed: true, reason: 'higher-timeframe-alignment', rule: baseRule, volume };
+  if (volume.passes) {
+    return { allowed: true, reason: 'volume-confirmed', rule: baseRule, volume };
   }
-  return { allowed: false, reason: 'blocked', volume };
+  const status = getEngulfingVolumeStatus(volume, signal.type);
+  const reason = status === 'unavailable'
+    ? 'volume-unavailable'
+    : status === 'not-applicable' ? 'volume-not-applicable' : 'volume-failed';
+  return { allowed: false, reason, volume };
+}
+
+export function hasOppositeOpenPosition(
+  positions: readonly OpenPositionDirection[] | undefined,
+  signalDirection: EngulfingDirection,
+): boolean {
+  const opposite = signalDirection === 'bullish' ? 'SELL' : 'BUY';
+  return (positions ?? []).some((position) => position.direction === opposite);
+}
+
+export function applyOppositePositionRewardRisk(
+  rule: TradeRule,
+  positions: readonly OpenPositionDirection[] | undefined,
+  signalDirection: EngulfingDirection,
+): { rule: TradeRule; oppositePositionOpen: boolean } {
+  const oppositePositionOpen = hasOppositeOpenPosition(positions, signalDirection);
+  return {
+    rule: oppositePositionOpen ? { ...rule, rewardRisk: 1 } : rule,
+    oppositePositionOpen,
+  };
 }
 
 const TIMEFRAME_SECONDS: Record<TradeTimeframe, number> = {

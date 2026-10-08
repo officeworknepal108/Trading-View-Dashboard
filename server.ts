@@ -7,6 +7,7 @@ import { createServer as createViteServer } from 'vite';
 import { fetchTradingViewCandles } from './src/services/tradingViewDatafeed';
 import {
   MT5_DEFAULT_ENABLED_TIMEFRAMES,
+  applySignalOppositePositionTarget,
   isMt5EntryTimeframeEnabled,
   normalizeMt5EnabledTimeframes,
   normalizeMt5RiskPercent,
@@ -26,6 +27,7 @@ import { buildAlternatingSwingFibs } from './src/services/swingFib';
 import { buildDayFibs } from './src/services/dayFib';
 import { applySwingFibConfluence } from './src/services/swingFibConfluence';
 import { applyDayFibConfluence } from './src/services/dayFibConfluence';
+import { applyOneMinuteGenesisQml, executionZoneName } from './src/services/oneMinuteGenesis';
 import { buildMtfRows, type MtfGranularity, type MtfTimeframeData } from './src/services/mtf';
 import {
   calculateTradeLevels,
@@ -519,6 +521,9 @@ async function scanMt5AutomationSignals(): Promise<number> {
         zoneTimeframe === 'H1',
       );
     }
+    if (zoneTimeframe === 'M1') {
+      zones = applyOneMinuteGenesisQml(zones, sourceCandles, candles.D);
+    }
     for (const zone of zones) {
       if (!zone.active || zone.status !== 'valid' || zone.tradeable === false) continue;
       const signal = resolveZoneEngulfingSignal(zone, zoneTimeframe);
@@ -546,11 +551,11 @@ async function scanMt5AutomationSignals(): Promise<number> {
         omitStopBuffer: isDeepDiscountTradeSignal(zone, signal),
       });
       if (!trade || !isExecutableTrade(trade)) continue;
-      candidates.push(tradeToMt5Signal({
+      candidates.push(applySignalOppositePositionTarget(tradeToMt5Signal({
         source: 'ENGULFING', setupId: `DIRECT:${zoneTimeframe}:${zone.id}`,
-        zoneName: zone.name, zoneTimeframe, trade, now,
+        zoneName: executionZoneName(zone), zoneTimeframe, trade, now,
         pendingExpiryMinutes: config.pendingExpiryMinutes,
-      }));
+      }), mt5BridgeHeartbeat?.positions));
     }
   }
 
@@ -578,12 +583,12 @@ async function scanMt5AutomationSignals(): Promise<number> {
       omitStopBuffer: row.engulfingDeepDiscount === true,
     });
     if (!trade || !isExecutableTrade(trade)) continue;
-    candidates.push(tradeToMt5Signal({
+    candidates.push(applySignalOppositePositionTarget(tradeToMt5Signal({
       source: 'MTF', setupId: `MTF:${row.id}`,
       zoneName: row.tappedZone ?? row.higherTimeframeZone,
       zoneTimeframe: row.higherTimeframe, trade, now,
       pendingExpiryMinutes: config.pendingExpiryMinutes,
-    }));
+    }), mt5BridgeHeartbeat?.positions));
   }
 
   const grouped = new Map<string, Mt5SignalInput>();
@@ -900,6 +905,12 @@ async function startServer() {
             item.status = 'REJECTED';
             item.updatedAt = now;
             item.message = `${item.signalTimeframe} automatic trading is disabled.`;
+          }
+          if (item.status === 'QUEUED') {
+            Object.assign(item, applySignalOppositePositionTarget(
+              item,
+              mt5BridgeHeartbeat?.positions,
+            ));
           }
         }
         const next = signals.find((item) => (

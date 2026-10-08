@@ -42,6 +42,13 @@ internally (10 pips for 1m/5m engulfings and 20 pips for 15m/30m engulfings).
 When the actual entry originates from the 0.71–0.79 or extended Deep Discount
 FIB band, SL is placed at the engulfing liquidity with no added buffer.
 
+Native 1m/1m entries require the agreed engulfing-volume test: T1 requires
+V2 < V1, while T2/T3 require V3 < V2 (and are marked best quality when V3 is
+also below V1). M5/M15 trend disagreement does not veto a volume-confirmed
+native M1 entry. The existing 1m-structure/5m-engulfing route remains unchanged.
+An M1 QML originating at its broker daily-session high or low is displayed and
+sent to MT5 as **1MG QML**.
+
 An Entry is calculated on the first chart candle after the engulfing closes.
 The normal zone and MTF tables remain unchanged until that Entry exists; then
 they add a detail row with Entry, SL, TP, R:R, actual SL pips, and the Pending,
@@ -64,6 +71,10 @@ Replay trades, completed trades and signals older
 than the configured freshness limit are never queued. Signals with identical
 direction, engulfing time and trade levels are deduplicated; overlapping zones
 are retained as confluence instead of opening duplicate positions.
+If a fresh signal is opposite to an open MT5 position for the configured broker
+symbol, only the new signal is reduced to 1:1. The server recalculates this
+target again when the bridge claims the signal, so the decision reflects the
+positions that are actually open at execution time.
 The server refreshes one timeframe at a time in the background, so monitoring
 continues when the browser is closed without bursting requests at TradingView.
 

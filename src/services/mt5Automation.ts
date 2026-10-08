@@ -1,4 +1,4 @@
-import type { TradeLevels, TradeTimeframe } from './tradeLevels';
+import { hasOppositeOpenPosition, type TradeLevels, type TradeTimeframe } from './tradeLevels';
 
 export const MT5_RISK_PERCENT_OPTIONS = [
   0.25, 0.5, 1, 1.5, 2, 2.5, 3, 3.5, 4, 4.5, 5,
@@ -77,6 +77,7 @@ export interface Mt5SignalInput {
   takeProfit: number;
   riskFree: number;
   rewardRisk: number;
+  normalRewardRisk?: number;
   riskPips: number;
   expiresAt: number;
   confluenceZones?: string[];
@@ -181,6 +182,29 @@ export function buildMt5SignalId(options: {
   ].join(':');
 }
 
+export function applySignalOppositePositionTarget(
+  signal: Mt5SignalInput,
+  positions: readonly { direction: 'BUY' | 'SELL' }[] | undefined,
+): Mt5SignalInput {
+  const requestedNormalRewardRisk = signal.normalRewardRisk ?? signal.rewardRisk;
+  const normalRewardRisk = Number.isFinite(requestedNormalRewardRisk)
+    && requestedNormalRewardRisk > 0
+    ? requestedNormalRewardRisk
+    : signal.rewardRisk;
+  const signalDirection = signal.direction === 'BUY' ? 'bullish' : 'bearish';
+  const oppositePositionOpen = hasOppositeOpenPosition(positions, signalDirection);
+  const rewardRisk = oppositePositionOpen ? 1 : normalRewardRisk;
+  const riskDistance = Math.abs(signal.entry - signal.stopLoss);
+  const takeProfit = signal.direction === 'BUY'
+    ? signal.entry + riskDistance * rewardRisk
+    : signal.entry - riskDistance * rewardRisk;
+  const adjusted = { ...signal, normalRewardRisk, rewardRisk, takeProfit };
+  return {
+    ...adjusted,
+    id: buildMt5SignalId(adjusted),
+  };
+}
+
 export function tradeToMt5Signal(options: {
   source: Mt5SignalInput['source'];
   setupId?: string;
@@ -221,6 +245,7 @@ export function tradeToMt5Signal(options: {
     takeProfit: trade.takeProfit,
     riskFree: trade.riskFree,
     rewardRisk: trade.rewardRisk,
+    normalRewardRisk: trade.rewardRisk,
     riskPips: trade.riskPips,
     expiresAt: options.now + options.pendingExpiryMinutes * 60,
     confluenceZones: options.confluenceZones,

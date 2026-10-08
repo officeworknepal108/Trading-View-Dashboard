@@ -4,6 +4,7 @@ import {
   MT5_DEFAULT_ENABLED_TIMEFRAMES,
   MT5_ENTRY_TIMEFRAME_OPTIONS,
   MT5_RISK_PERCENT_OPTIONS,
+  applySignalOppositePositionTarget,
   buildMt5SignalId,
   calculateXauUsdLotSize,
   isExecutableTrade,
@@ -89,6 +90,24 @@ test('active trade becomes a market signal and pending trade becomes a limit sig
   assert.equal(active.expiresAt, 4_610);
   assert.equal(active.direction, 'BUY');
   assert.equal(active.setupId, 'DIRECT:M15:db-1000');
+  assert.equal(active.normalRewardRisk, 2);
+});
+
+test('MT5 signal target is finalized from the positions open at execution time', () => {
+  const signal = tradeToMt5Signal({
+    source: 'ENGULFING', zoneName: '1MG QML', zoneTimeframe: 'M1',
+    trade: { ...activeTrade, rewardRisk: 3, takeProfit: 4180 },
+    now: 1_010, pendingExpiryMinutes: 60,
+  });
+  const hedged = applySignalOppositePositionTarget(signal, [{ direction: 'SELL' }]);
+  assert.equal(hedged.normalRewardRisk, 3);
+  assert.equal(hedged.rewardRisk, 1);
+  assert.equal(hedged.takeProfit, 4160);
+
+  const restored = applySignalOppositePositionTarget(hedged, []);
+  assert.equal(restored.rewardRisk, 3);
+  assert.equal(restored.takeProfit, 4180);
+  assert.notEqual(hedged.id, restored.id);
 });
 
 test('only pending and active dashboard trades are executable', () => {

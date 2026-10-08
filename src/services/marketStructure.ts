@@ -144,6 +144,10 @@ export interface StructureZone {
   dayEngulfingDirection?: EngulfingDirection;
   dayEngulfingTime?: number;
   dayEngulfingCandleCount?: number;
+  // A native M1 QML whose originating pivot is the high or low of its broker
+  // daily session. It keeps the underlying QML name for structure logic while
+  // the UI and execution payload expose the agreed 1MG QML label.
+  oneMinuteGenesisQml?: 'day-high' | 'day-low';
 }
 
 type ChochMetadata = Pick<StructureZone,
