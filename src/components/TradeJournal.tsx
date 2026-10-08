@@ -2,11 +2,17 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { BookOpen, Download, ImagePlus, Save, X } from 'lucide-react';
 import type { ChartTimeZone } from '../services/chartTime';
 import {
+  filterTradeRecords,
+  tradeRecordDateKey,
+  type TradeRecordFilters,
+} from '../services/tradeRecordFilters';
+import {
   calculateHalfAtOneRResult,
   type EngulfingVolumeStatus,
   type TradeResult,
   type TradeTimeframe,
 } from '../services/tradeLevels';
+import { TradeMultiSelect } from './TradeMultiSelect';
 
 export interface JournalTradeRecord {
   id: string;
@@ -282,8 +288,11 @@ export const TradeJournal: React.FC<TradeJournalProps> = ({ records, timeZone, o
   const [trades, setTrades] = useState<JournalTradeRecord[]>(records);
   const [selectedId, setSelectedId] = useState<string | null>(records[0]?.id ?? null);
   const [resultFilter, setResultFilter] = useState<'ALL' | TradeResult>('ALL');
-  const [timeframeFilter, setTimeframeFilter] = useState('ALL');
-  const [sourceFilter, setSourceFilter] = useState('ALL');
+  const [timeframeFilter, setTimeframeFilter] = useState<TradeRecordFilters['timeframes']>('ALL');
+  const [dateFilter, setDateFilter] = useState('ALL');
+  const [sourceFilter, setSourceFilter] = useState<TradeRecordFilters['source']>('ALL');
+  const [sideFilter, setSideFilter] = useState<TradeRecordFilters['side']>('ALL');
+  const [zoneFilter, setZoneFilter] = useState<TradeRecordFilters['zones']>('ALL');
   const [volumeFilter, setVolumeFilter] = useState<'ALL' | EngulfingVolumeStatus>('ALL');
   const [search, setSearch] = useState('');
   const [saving, setSaving] = useState(false);
@@ -422,18 +431,38 @@ export const TradeJournal: React.FC<TradeJournalProps> = ({ records, timeZone, o
     });
   }, [selectedTrade]);
 
-  const availableTimeframes = useMemo(() => Array.from(new Set(trades.map((trade) => trade.zoneTimeframe))), [trades]);
+  const availableTimeframes = useMemo(() => {
+    const order: TradeTimeframe[] = ['M1', 'M5', 'M15', 'M30', 'H1', 'H4', 'D'];
+    return Array.from(new Set<TradeTimeframe>(trades.map((trade) => trade.signalTimeframe)))
+      .sort((first, second) => order.indexOf(first) - order.indexOf(second));
+  }, [trades]);
+  const availableDates = useMemo(() => Array.from(new Set(
+    trades.map((trade) => tradeRecordDateKey(trade.completedAt, timeZone)),
+  )).sort().reverse(), [timeZone, trades]);
+  const availableZones = useMemo(() => Array.from(new Set(
+    trades.map((trade) => trade.zoneName),
+  )).sort(), [trades]);
   const filteredTrades = useMemo(() => {
     const query = search.trim().toLowerCase();
-    return trades.filter((trade) => (
-      (resultFilter === 'ALL' || trade.result === resultFilter)
-      && (timeframeFilter === 'ALL' || trade.zoneTimeframe === timeframeFilter)
-      && (sourceFilter === 'ALL' || trade.source === sourceFilter)
-      && (volumeFilter === 'ALL' || volumeStatus(trade) === volumeFilter)
+    const coreFiltered = filterTradeRecords<JournalTradeRecord>(trades, {
+      timeframes: timeframeFilter,
+      date: dateFilter,
+      source: sourceFilter,
+      side: sideFilter,
+      result: resultFilter,
+      zones: zoneFilter,
+    }, timeZone);
+    return coreFiltered.filter((trade) => (
+      (volumeFilter === 'ALL' || volumeStatus(trade) === volumeFilter)
       && (!query || [trade.zoneName, trade.engulfingType, volumeStatus(trade), trade.session, trade.reason, trade.mistake, trade.lesson]
         .some((value) => value?.toLowerCase().includes(query)))
     ));
-  }, [resultFilter, search, sourceFilter, timeframeFilter, trades, volumeFilter]);
+  }, [dateFilter, resultFilter, search, sideFilter, sourceFilter, timeframeFilter, timeZone, trades, volumeFilter, zoneFilter]);
+
+  useEffect(() => {
+    if (filteredTrades.some((trade) => trade.id === selectedId)) return;
+    setSelectedId(filteredTrades[0]?.id ?? null);
+  }, [filteredTrades, selectedId]);
 
   const counts = useMemo(() => ({
     tp: filteredTrades.filter((trade) => trade.result === 'tp').length,
@@ -632,20 +661,42 @@ export const TradeJournal: React.FC<TradeJournalProps> = ({ records, timeZone, o
       </div>
 
       <div className="flex shrink-0 flex-wrap items-center gap-1.5 border-b border-slate-200 bg-white px-2 py-1.5">
-        <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search zone, reason, mistake or lesson"
-          className="w-64 rounded border border-slate-200 px-2 py-1 text-[9px] font-semibold outline-none focus:border-indigo-300" />
+        <TradeMultiSelect
+          allLabel="ALL TIMEFRAMES"
+          emptyLabel="NO TIMEFRAMES"
+          selected={timeframeFilter}
+          options={availableTimeframes.map((timeframe) => ({ value: timeframe, label: displayTimeframe(timeframe) }))}
+          onChange={(timeframes) => setTimeframeFilter(timeframes as TradeRecordFilters['timeframes'])}
+        />
+        <select value={dateFilter} onChange={(event) => setDateFilter(event.target.value)} className="rounded border border-slate-200 px-2 py-1 text-[9px] font-bold">
+          <option value="ALL">ALL DATES</option>{availableDates.map((date) => <option key={date} value={date}>{date}</option>)}
+        </select>
+        <select value={sourceFilter} onChange={(event) => setSourceFilter(event.target.value as TradeRecordFilters['source'])} className="rounded border border-slate-200 px-2 py-1 text-[9px] font-bold">
+          <option value="ALL">ALL SOURCES</option><option value="ENGULFING">ENGULFING</option><option value="MTF">MTF</option>
+        </select>
+        <select value={sideFilter} onChange={(event) => setSideFilter(event.target.value as TradeRecordFilters['side'])} className="rounded border border-slate-200 px-2 py-1 text-[9px] font-bold">
+          <option value="ALL">ALL SIDES</option><option value="BUY">BUY</option><option value="SELL">SELL</option>
+        </select>
         <select value={resultFilter} onChange={(event) => setResultFilter(event.target.value as 'ALL' | TradeResult)} className="rounded border border-slate-200 px-2 py-1 text-[9px] font-bold">
           <option value="ALL">ALL RESULTS</option><option value="tp">TP</option><option value="sl">SL</option><option value="rf">RISK FREE</option>
         </select>
-        <select value={timeframeFilter} onChange={(event) => setTimeframeFilter(event.target.value)} className="rounded border border-slate-200 px-2 py-1 text-[9px] font-bold">
-          <option value="ALL">ALL TIMEFRAMES</option>{availableTimeframes.map((timeframe) => <option key={timeframe} value={timeframe}>{displayTimeframe(timeframe)}</option>)}
-        </select>
-        <select value={sourceFilter} onChange={(event) => setSourceFilter(event.target.value)} className="rounded border border-slate-200 px-2 py-1 text-[9px] font-bold">
-          <option value="ALL">ALL SOURCES</option><option value="ENGULFING">ENGULFING</option><option value="MTF">MTF</option>
-        </select>
+        <TradeMultiSelect
+          allLabel="ALL ZONES"
+          emptyLabel="NO ZONES"
+          selected={zoneFilter}
+          options={availableZones.map((zone) => ({ value: zone, label: zone }))}
+          onChange={setZoneFilter}
+        />
         <select value={volumeFilter} onChange={(event) => setVolumeFilter(event.target.value as 'ALL' | EngulfingVolumeStatus)} className="rounded border border-slate-200 px-2 py-1 text-[9px] font-bold">
           <option value="ALL">ALL VOLUME LOGIC</option><option value="best">BEST</option><option value="valid">VALID</option><option value="failed">FAILED</option><option value="unavailable">UNAVAILABLE</option><option value="not-applicable">N/A</option>
         </select>
+        <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search zone, reason, mistake or lesson"
+          className="min-w-48 flex-1 rounded border border-slate-200 px-2 py-1 text-[9px] font-semibold outline-none focus:border-indigo-300" />
+        <button type="button" onClick={() => {
+          setTimeframeFilter('ALL'); setDateFilter('ALL'); setSourceFilter('ALL');
+          setSideFilter('ALL'); setResultFilter('ALL'); setZoneFilter('ALL');
+          setVolumeFilter('ALL'); setSearch('');
+        }} className="rounded border border-slate-200 bg-slate-50 px-2 py-1 text-[9px] font-black text-slate-600 hover:bg-slate-100">RESET</button>
       </div>
 
       <div className="flex min-h-0 flex-1">

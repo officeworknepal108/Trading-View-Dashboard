@@ -63,7 +63,7 @@ const DEFAULT_MT5_CONFIG: Mt5AutomationConfig = {
   enabledTimeframes: [...MT5_DEFAULT_ENABLED_TIMEFRAMES],
   riskPercent: 0.25,
   maximumOpenTrades: 1,
-  maximumDailyLossPercent: 1,
+  maximumDailyLossPercent: 2,
   maximumSpreadPoints: 80,
   signalMaxAgeSeconds: 120,
   pendingExpiryMinutes: 240,
@@ -717,10 +717,12 @@ async function startServer() {
         return {
           ...position,
           signalTimeframe: signal?.signalTimeframe,
+          zoneTimeframe: signal?.zoneTimeframe,
           source: signal?.source,
           zoneName: signal?.zoneName,
           engulfingType: signal?.engulfingType,
           signalAt: signal?.signalAt,
+          setupId: signal?.setupId,
         };
       });
       return res.json({

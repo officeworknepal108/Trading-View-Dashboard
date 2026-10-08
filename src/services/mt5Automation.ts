@@ -139,10 +139,12 @@ export interface Mt5AutomationStatus {
     comment?: string;
     magic?: number;
     signalTimeframe?: TradeTimeframe;
+    zoneTimeframe?: TradeTimeframe;
     source?: Mt5SignalInput['source'];
     zoneName?: string;
     engulfingType?: string;
     signalAt?: number;
+    setupId?: string;
   }>;
   marketData: {
     source: 'MT5_BROKER';

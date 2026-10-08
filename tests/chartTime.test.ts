@@ -6,8 +6,8 @@ import { formatChartTick, formatChartTime } from '../src/services/chartTime';
 const timestamp = (Date.UTC(2026, 9, 2, 20, 0) / 1000) as UTCTimestamp;
 
 test('chart time can be rendered in Nepal time or UTC', () => {
-  assert.equal(formatChartTime(timestamp, 'UTC'), '02/10/2026 20:00');
-  assert.equal(formatChartTime(timestamp, 'Asia/Kathmandu'), '03/10/2026 01:45');
+  assert.equal(formatChartTime(timestamp, 'UTC'), "Fri 02 Oct '26 08:00 PM");
+  assert.equal(formatChartTime(timestamp, 'Asia/Kathmandu'), "Sat 03 Oct '26 01:45 AM");
 });
 
 test('chart tick formatter applies the selected timezone', () => {

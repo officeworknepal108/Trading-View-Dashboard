@@ -58,12 +58,20 @@ import {
   type TradeTimeframe,
 } from '../services/tradeLevels';
 import { applyOneMinuteGenesisQml, executionZoneName } from '../services/oneMinuteGenesis';
+import {
+  DEFAULT_TRADE_RECORD_FILTERS,
+  filterTradeRecords,
+  tradeRecordDateKey,
+  type TradeRecordFilters,
+} from '../services/tradeRecordFilters';
 import { TradeJournal, type JournalTradeRecord } from './TradeJournal';
+import { TradeMultiSelect } from './TradeMultiSelect';
 import {
   MT5_DEFAULT_ENABLED_TIMEFRAMES,
   MT5_ENTRY_TIMEFRAME_OPTIONS,
   MT5_RISK_PERCENT_OPTIONS,
   type Mt5AutomationStatus,
+  type Mt5StoredSignal,
 } from '../services/mt5Automation';
 
 type OandaGranularity = 'M1' | 'M5' | 'M15' | 'M30' | 'H1' | 'H4' | 'D';
@@ -139,6 +147,7 @@ interface TrackedDirectTradeSetup {
 interface TradeOverlay {
   id: string;
   trade: TradeLevels;
+  label?: string;
 }
 
 type AccuracyTradeRecord = JournalTradeRecord;
@@ -293,15 +302,15 @@ function mt5StatusRenderSignature(status: Mt5AutomationStatus): string {
 }
 
 function tradeStatusLabel(trade: TradeLevels): string {
-  if (trade.status === 'pending') return 'PENDING';
-  if (trade.status === 'active') return `RF ${formatPrice(trade.riskFree)} · ACTIVE`;
-  if (trade.status === 'risk-free') return `RF ${formatPrice(trade.riskFree)} · RISK FREE`;
+  if (trade.status === 'pending') return 'CHART PENDING';
+  if (trade.status === 'active') return `CHART ACTIVE · 1R AT ${formatPrice(trade.riskFree)}`;
+  if (trade.status === 'risk-free') return `CHART RF HIT · ${formatPrice(trade.riskFree)}`;
   if (trade.status === 'tp-hit') {
     return trade.rewardRisk === 1
-      ? `TP HIT · RF ${formatPrice(trade.riskFree)}`
-      : 'TP HIT';
+      ? `CHART TP HIT · RF ${formatPrice(trade.riskFree)}`
+      : 'CHART TP HIT';
   }
-  return 'SL HIT';
+  return 'CHART SL HIT';
 }
 
 const TradeStatusText: React.FC<{ trade: TradeLevels }> = ({ trade }) => {
@@ -311,11 +320,41 @@ const TradeStatusText: React.FC<{ trade: TradeLevels }> = ({ trade }) => {
     </span>
   );
 
-  if (trade.status === 'active') return <>RF {riskFreePrice} · ACTIVE</>;
-  if (trade.status === 'risk-free') return <>RF {riskFreePrice} · RISK FREE</>;
-  if (trade.status === 'tp-hit' && trade.rewardRisk === 1) return <>TP HIT · RF {riskFreePrice}</>;
+  if (trade.status === 'active') return <>CHART ACTIVE · 1R AT {riskFreePrice}</>;
+  if (trade.status === 'risk-free') return <>CHART RF HIT · {riskFreePrice}</>;
+  if (trade.status === 'tp-hit' && trade.rewardRisk === 1) return <>CHART TP HIT · RF {riskFreePrice}</>;
   return <>{tradeStatusLabel(trade)}</>;
 };
+
+function mt5SignalStatusLabel(signal: Mt5StoredSignal): string {
+  if (signal.status === 'QUEUED') return 'MT5 QUEUED';
+  if (signal.status === 'CLAIMED' || signal.status === 'PLACED') return 'MT5 PROCESSING';
+  if (signal.status === 'ACTIVE') return `MT5 ACTIVE · 1R AT ${formatPrice(signal.riskFree)}`;
+  if (signal.status === 'RISK_FREE' || signal.status === 'RF') {
+    return `MT5 RF HIT · ${formatPrice(signal.riskFree)}`;
+  }
+  if (signal.status === 'TP') {
+    return signal.rewardRisk === 1
+      ? `TP HIT · RF ${formatPrice(signal.riskFree)}`
+      : 'TP HIT';
+  }
+  if (signal.status === 'SL') return 'SL HIT';
+  if (signal.status === 'CANCELLED') return 'MT5 CANCELLED';
+  if (signal.status === 'EXPIRED') return 'MT5 EXPIRED';
+  if (signal.status === 'SIMULATED') return 'MT5 SIMULATED';
+  if (signal.message?.includes('daily loss')) return 'MT5 REJECTED · DAILY LOSS LIMIT';
+  if (signal.message?.includes('open trades')) return 'MT5 REJECTED · OPEN TRADE LIMIT';
+  if (signal.message?.toLowerCase().includes('spread')) return 'MT5 REJECTED · SPREAD LIMIT';
+  return 'MT5 REJECTED · NO TRADE';
+}
+
+function mt5SignalStatusClassName(signal: Mt5StoredSignal): string {
+  if (signal.status === 'SL' || signal.status === 'REJECTED'
+    || signal.status === 'CANCELLED' || signal.status === 'EXPIRED') return 'text-rose-700';
+  if (signal.status === 'QUEUED' || signal.status === 'CLAIMED'
+    || signal.status === 'PLACED') return 'text-amber-700';
+  return 'text-emerald-700';
+}
 
 function isCompletedTrade(trade: TradeLevels | undefined): boolean {
   return trade?.result !== undefined;
@@ -337,25 +376,34 @@ const TradeDetailsRow: React.FC<{
   colSpan: number;
   mtf?: boolean;
   oppositePositionOpen?: boolean;
-}> = ({ trade, colSpan, mtf = false, oppositePositionOpen = false }) => (
+  mt5Signal?: Mt5StoredSignal;
+}> = ({ trade, colSpan, mtf = false, oppositePositionOpen = false, mt5Signal }) => (
   <tr className="border-t border-indigo-100 bg-indigo-50/70">
     <td colSpan={colSpan} className="px-2 py-1">
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1 whitespace-nowrap text-[9px] font-black text-slate-700">
         {mtf && <span className="rounded bg-indigo-100 px-1 py-0.5 text-indigo-700">MTF</span>}
         {oppositePositionOpen && (
-          <span className="rounded bg-amber-100 px-1 py-0.5 text-amber-800">OPPOSITE MT5 POSITION Â· 1:1</span>
+          <span className="rounded bg-amber-100 px-1 py-0.5 text-amber-800">OPPOSITE MT5 POSITION · 1:1</span>
+        )}
+        {mt5Signal && (
+          <span className="rounded bg-cyan-100 px-1 py-0.5 text-cyan-800">
+            {mt5Signal.zoneTimeframe} SETUP → {mt5Signal.signalTimeframe} ENTRY
+            {mt5Signal.brokerTicket ? ` · MT5 #${mt5Signal.brokerTicket}` : ''}
+          </span>
         )}
         <span className="text-blue-700">ENTRY <span className="tabular-nums font-semibold text-slate-700">{formatPrice(trade.entry)}</span></span>
         <span className="text-rose-700">SL <span className="tabular-nums font-semibold text-slate-700">{formatPrice(trade.stopLoss)}</span></span>
         <span className="text-emerald-700">TP <span className="tabular-nums font-semibold text-slate-700">{formatPrice(trade.takeProfit)}</span></span>
         <span>R:R 1:{trade.rewardRisk}</span>
         <span>SL {trade.riskPips} PIPS</span>
-        <span className={trade.status === 'sl-hit'
-          ? 'text-rose-700'
-          : trade.status === 'pending'
-            ? 'text-amber-700'
-            : 'text-emerald-700'}>
-          <TradeStatusText trade={trade} />
+        <span className={mt5Signal
+          ? mt5SignalStatusClassName(mt5Signal)
+          : trade.status === 'sl-hit'
+            ? 'text-rose-700'
+            : trade.status === 'pending'
+              ? 'text-amber-700'
+              : 'text-emerald-700'}>
+          {mt5Signal ? mt5SignalStatusLabel(mt5Signal) : <TradeStatusText trade={trade} />}
         </span>
       </div>
     </td>
@@ -726,9 +774,24 @@ const EngulfingAccuracyTable: React.FC<{
   showAllTrades: boolean;
   timeZone: ChartTimeZone;
 }> = ({ records, allRecords, timeframe, showAllTrades, timeZone }) => {
-  const timeframeCounts = accuracyCounts(records);
+  const [filters, setFilters] = useState<TradeRecordFilters>(DEFAULT_TRADE_RECORD_FILTERS);
+  const filteredAllRecords = useMemo(
+    () => filterTradeRecords(allRecords, filters, timeZone),
+    [allRecords, filters, timeZone],
+  );
+  const summaryRecords = showAllTrades ? filteredAllRecords : records;
+  const timeframeCounts = accuracyCounts(summaryRecords);
+  const availableTimeframes = useMemo(() => Array.from(new Set<TradeTimeframe>(
+    allRecords.map((record) => record.signalTimeframe),
+  )).sort((first, second) => TIMEFRAME_SECONDS[first] - TIMEFRAME_SECONDS[second]), [allRecords]);
+  const availableDates = useMemo(() => Array.from(new Set(
+    allRecords.map((record) => tradeRecordDateKey(record.completedAt, timeZone)),
+  )).sort().reverse(), [allRecords, timeZone]);
+  const availableZones = useMemo(() => Array.from(new Set(
+    allRecords.map((record) => record.zoneName),
+  )).sort(), [allRecords]);
   const extraZoneRows: string[] = Array.from(new Set<string>(
-    records.map((record) => record.zoneName),
+    summaryRecords.map((record) => record.zoneName),
   ))
     .filter((zoneName) => !ACCURACY_ZONE_ROWS.includes(zoneName));
   const zoneRows = [...ACCURACY_ZONE_ROWS, ...extraZoneRows];
@@ -764,36 +827,75 @@ const EngulfingAccuracyTable: React.FC<{
         : 'left-3 top-1/2 max-w-[calc(100%_-_24px)] -translate-y-1/2'
     }`}>
       <div className="shrink-0 border-b border-slate-300 bg-indigo-50 px-2 py-1 text-[9px] font-black uppercase tracking-wide text-indigo-700">
-        Engulfing accuracy · {records.length} completed trade{records.length === 1 ? '' : 's'}
+        Engulfing accuracy · {summaryRecords.length} completed trade{summaryRecords.length === 1 ? '' : 's'}
       </div>
       <div className={showAllTrades ? 'flex min-h-0 flex-1' : ''}>
         <div className={showAllTrades ? 'w-[290px] shrink-0 overflow-auto border-r border-slate-300' : ''}>
           <table className="w-full border-collapse text-center text-[9px]">
             <thead>{header('Timeframe')}</thead>
             <tbody>
-              {resultRow(GRANULARITY_LABELS[timeframe].toUpperCase(), timeframeCounts)}
+              {resultRow(showAllTrades
+                ? filters.timeframes === 'ALL'
+                  ? 'ALL'
+                  : filters.timeframes.map((value) => GRANULARITY_LABELS[value].toUpperCase()).join(', ') || 'NONE'
+                : GRANULARITY_LABELS[timeframe].toUpperCase(), timeframeCounts)}
               {header('Trade source')}
               {resultRow('ENGULFING', accuracyCounts(
-                records.filter((record) => record.source === 'ENGULFING'),
+                summaryRecords.filter((record) => record.source === 'ENGULFING'),
               ))}
               {resultRow('MTF', accuracyCounts(
-                records.filter((record) => record.source === 'MTF'),
+                summaryRecords.filter((record) => record.source === 'MTF'),
               ))}
               {header('Zone type')}
               {zoneRows.map((zoneName) => resultRow(
                 zoneName,
-                accuracyCounts(records.filter((record) => record.zoneName === zoneName)),
+                accuracyCounts(summaryRecords.filter((record) => record.zoneName === zoneName)),
               ))}
             </tbody>
           </table>
         </div>
         {showAllTrades && (
           <div className="min-w-0 max-w-[calc(100vw-338px)] flex-1 overflow-auto">
-            <div className="sticky left-0 top-0 z-20 border-b border-indigo-200 bg-indigo-100 px-2 py-1 text-[9px] font-black uppercase tracking-wide text-indigo-800">
-              All completed trades · newest first
+            <div className="sticky left-0 top-0 z-20 border-b border-indigo-200 bg-indigo-50">
+              <div className="bg-indigo-100 px-2 py-1 text-[9px] font-black uppercase tracking-wide text-indigo-800">
+                All completed trades · {filteredAllRecords.length}/{allRecords.length} shown · newest first
+              </div>
+              <div className="flex flex-wrap items-center gap-1 border-t border-indigo-100 px-1.5 py-1">
+                <TradeMultiSelect
+                  allLabel="ALL TIMEFRAMES"
+                  emptyLabel="NO TIMEFRAMES"
+                  selected={filters.timeframes}
+                  options={availableTimeframes.map((value) => ({ value, label: formatTradeTimeframe(value) }))}
+                  onChange={(timeframes) => setFilters((current) => ({
+                    ...current,
+                    timeframes: timeframes as TradeRecordFilters['timeframes'],
+                  }))}
+                />
+                <select value={filters.date} onChange={(event) => setFilters((current) => ({ ...current, date: event.target.value }))} className="rounded border border-slate-200 bg-white px-1.5 py-1 text-[8px] font-bold">
+                  <option value="ALL">ALL DATES</option>
+                  {availableDates.map((value) => <option key={value} value={value}>{value}</option>)}
+                </select>
+                <select value={filters.source} onChange={(event) => setFilters((current) => ({ ...current, source: event.target.value as TradeRecordFilters['source'] }))} className="rounded border border-slate-200 bg-white px-1.5 py-1 text-[8px] font-bold">
+                  <option value="ALL">ALL SOURCES</option><option value="ENGULFING">ENGULFING</option><option value="MTF">MTF</option>
+                </select>
+                <select value={filters.side} onChange={(event) => setFilters((current) => ({ ...current, side: event.target.value as TradeRecordFilters['side'] }))} className="rounded border border-slate-200 bg-white px-1.5 py-1 text-[8px] font-bold">
+                  <option value="ALL">ALL SIDES</option><option value="BUY">BUY</option><option value="SELL">SELL</option>
+                </select>
+                <select value={filters.result} onChange={(event) => setFilters((current) => ({ ...current, result: event.target.value as TradeRecordFilters['result'] }))} className="rounded border border-slate-200 bg-white px-1.5 py-1 text-[8px] font-bold">
+                  <option value="ALL">ALL RESULTS</option><option value="tp">TP</option><option value="sl">SL</option><option value="rf">RF</option>
+                </select>
+                <TradeMultiSelect
+                  allLabel="ALL ZONES"
+                  emptyLabel="NO ZONES"
+                  selected={filters.zones}
+                  options={availableZones.map((value) => ({ value, label: value }))}
+                  onChange={(zones) => setFilters((current) => ({ ...current, zones }))}
+                />
+                <button type="button" onClick={() => setFilters(DEFAULT_TRADE_RECORD_FILTERS)} className="rounded border border-slate-200 bg-white px-1.5 py-1 text-[8px] font-black text-slate-600 hover:bg-slate-100">RESET</button>
+              </div>
             </div>
             <table className="min-w-[740px] border-collapse text-center text-[9px]">
-              <thead className="sticky top-[21px] z-10 bg-slate-600 uppercase text-white">
+              <thead className="sticky top-[55px] z-10 bg-slate-600 uppercase text-white">
               <tr>
                 <th className="px-1.5 py-1">#</th>
                 <th className="whitespace-nowrap px-1.5 py-1 text-left">Completed</th>
@@ -809,7 +911,7 @@ const EngulfingAccuracyTable: React.FC<{
               </tr>
               </thead>
               <tbody>
-              {allRecords.map((record, index) => (
+              {filteredAllRecords.map((record, index) => (
                   <tr key={record.id} className="border-t border-slate-200 odd:bg-white even:bg-slate-50">
                   <td className="px-1.5 py-1 text-slate-500">{index + 1}</td>
                   <td className="whitespace-nowrap px-1.5 py-1 text-left text-slate-600">
@@ -840,10 +942,10 @@ const EngulfingAccuracyTable: React.FC<{
                   <td className="px-1.5 py-1 font-bold text-slate-700">1:{record.rewardRisk}</td>
                   </tr>
                 ))}
-              {allRecords.length === 0 && (
+              {filteredAllRecords.length === 0 && (
                   <tr>
                     <td colSpan={11} className="px-2 py-3 text-center text-slate-400">
-                      No completed trades in the loaded chart history
+                      No completed trades match these filters
                     </td>
                   </tr>
                 )}
@@ -1292,6 +1394,21 @@ export const OandaProChart: React.FC = () => {
     }
     return trades;
   }, [directZoneEntryDecisions]);
+  const directZoneMt5Signals = useMemo(() => {
+    const signals = new Map<string, Mt5StoredSignal>();
+    if (replayIndex !== null) return signals;
+    const setupPrefix = `DIRECT:${granularity}:`;
+    for (const signal of mt5Status?.recentSignals ?? []) {
+      if (signal.source !== 'ENGULFING' || !signal.setupId?.startsWith(setupPrefix)) continue;
+      const zoneId = signal.setupId.slice(setupPrefix.length);
+      if (!zoneId || signals.has(zoneId)) continue;
+      const trade = directZoneTrades.get(zoneId);
+      if (!trade || signal.signalAt !== trade.signal.time
+        || signal.signalTimeframe !== trade.signal.timeframe) continue;
+      signals.set(zoneId, signal);
+    }
+    return signals;
+  }, [directZoneTrades, granularity, mt5Status?.recentSignals, replayIndex]);
 
   const restorePresentChartView = useCallback(() => {
     const chart = chartRef.current;
@@ -1667,7 +1784,7 @@ export const OandaProChart: React.FC = () => {
 
   const liveMt5TradeOverlays = useMemo<TradeOverlay[]>(() => (
     (mt5Status?.positions ?? []).flatMap((position) => {
-      if (position.signalTimeframe !== granularity) return [];
+      if (position.signalTimeframe !== granularity && position.zoneTimeframe !== granularity) return [];
       if (!(position.stopLoss > 0) || !(position.takeProfit > 0) || !(position.priceOpen > 0)) return [];
       const riskDistance = Math.abs(position.priceOpen - position.stopLoss);
       if (riskDistance <= 0) return [];
@@ -1701,6 +1818,7 @@ export const OandaProChart: React.FC = () => {
       return [{
         id: `MT5:${position.ticket}`,
         trade,
+        label: `MT5 #${position.ticket} · ${position.zoneTimeframe ?? '?'}→${position.signalTimeframe ?? '?'} · 1:${rewardRisk}`,
       }];
     })
   ), [granularity, mt5Status?.positions]);
@@ -2332,7 +2450,8 @@ export const OandaProChart: React.FC = () => {
         badge.style.fontSize = '8px';
         badge.style.fontWeight = '800';
         badge.style.lineHeight = '12px';
-        badge.textContent = `1:${trade.rewardRisk}`;
+        badge.style.whiteSpace = 'nowrap';
+        badge.textContent = overlay.label ?? `CHART · 1:${trade.rewardRisk}`;
         fragment.appendChild(badge);
       }
     }
@@ -2602,7 +2721,13 @@ export const OandaProChart: React.FC = () => {
       },
       crosshair: {
         mode: CrosshairMode.Normal,
-        vertLine: { color: '#64748b', width: 1, style: LineStyle.Dashed, labelBackgroundColor: '#334155' },
+        vertLine: {
+          color: '#94a3b8',
+          width: 1,
+          style: LineStyle.Dashed,
+          labelVisible: true,
+          labelBackgroundColor: '#111111',
+        },
         horzLine: { color: '#64748b', width: 1, style: LineStyle.Dashed, labelBackgroundColor: '#334155' },
       },
       rightPriceScale: {
@@ -3103,7 +3228,7 @@ export const OandaProChart: React.FC = () => {
                   />
                 </label>
                 <fieldset className="mb-2 rounded border border-slate-200 bg-slate-50 p-2">
-                  <legend className="px-1 font-bold text-slate-700">Trade Entry Timeframes</legend>
+                  <legend className="px-1 font-bold text-slate-700">Entry / Engulfing Timeframes</legend>
                   <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1">
                     {MT5_ENTRY_TIMEFRAME_OPTIONS.map((timeframe) => {
                       const currentTimeframes = mt5Status.config.enabledTimeframes
@@ -3127,7 +3252,8 @@ export const OandaProChart: React.FC = () => {
                     })}
                   </div>
                   <span className="mt-1 block text-[8px] font-semibold text-slate-500">
-                    Checked timeframes can send entry signals to MT5.
+                    Checked engulfing timeframes can send entries. M1 off blocks M1 engulfing,
+                    but an M1 setup confirmed by enabled M5 can still trade.
                   </span>
                 </fieldset>
                 <label className="mb-2 block font-bold text-slate-700">
@@ -3554,6 +3680,20 @@ export const OandaProChart: React.FC = () => {
           </div>
         </div>
 
+        {replayIndex === null && (mt5Status?.positions.length ?? 0) > 0 && (
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-1 border-b border-cyan-200 bg-cyan-50 px-4 py-1.5 text-[10px] font-bold text-cyan-900">
+            <span className="font-black">MT5 LIVE {mt5Status!.positions.length === 1 ? 'TRADE' : 'TRADES'}</span>
+            {mt5Status!.positions.map((position) => (
+              <span key={position.ticket} className="rounded border border-cyan-200 bg-white px-2 py-0.5">
+                #{position.ticket} · <b className={position.direction === 'BUY' ? 'text-emerald-700' : 'text-rose-700'}>{position.direction}</b>
+                {' · '}{position.zoneTimeframe ?? '?'} SETUP → {position.signalTimeframe ?? '?'} ENTRY
+                {' · '}{position.zoneName ?? 'UNKNOWN ZONE'} {position.engulfingType ?? ''}
+                {' · '}OPEN {formatPrice(position.priceOpen)} · SL {formatPrice(position.stopLoss)} · TP {formatPrice(position.takeProfit)}
+              </span>
+            ))}
+          </div>
+        )}
+
         <div className="flex flex-wrap items-center gap-x-4 gap-y-1 border-b border-slate-100 px-4 py-2 text-xs">
           <span className="flex items-center gap-1.5 font-black text-slate-800">
             <Crosshair className="h-3.5 w-3.5 text-slate-400" />
@@ -3676,6 +3816,7 @@ export const OandaProChart: React.FC = () => {
                   const confirmationLabel = TJL1_CONFIRMATION_LABELS[granularity].toUpperCase();
                   const confirmationSide = zone.doubleChochConfirmationDirection === 'up' ? 'ABOVE' : 'BELOW';
                   const trade = directZoneTrades.get(zone.id);
+                  const mt5Signal = directZoneMt5Signals.get(zone.id);
                   return (
                     <React.Fragment key={`double-${zone.id}`}>
                     <tr className={`border-t text-slate-700 ${
@@ -3721,7 +3862,9 @@ export const OandaProChart: React.FC = () => {
                           ? 'text-rose-700'
                           : pending ? 'text-amber-700' : 'text-emerald-700'
                       }`}>
-                        {isCompletedTrade(trade)
+                        {mt5Signal
+                          ? <span className={mt5SignalStatusClassName(mt5Signal)}>{mt5SignalStatusLabel(mt5Signal)}</span>
+                          : isCompletedTrade(trade)
                           ? <TradeStatusText trade={trade!} />
                           : pending
                           ? `WAIT ${confirmationLabel} ${confirmationSide} · NO TRADE`
@@ -3731,13 +3874,14 @@ export const OandaProChart: React.FC = () => {
                       </td>
                     </tr>
                     {trade && !isCompletedTrade(trade)
-                      && <TradeDetailsRow trade={trade} colSpan={5} />}
+                      && <TradeDetailsRow trade={trade} colSpan={5} mt5Signal={mt5Signal} />}
                     </React.Fragment>
                   );
                 })}
                 {zoneTableRows.map((zone) => {
                   const trade = directZoneTrades.get(zone.id);
                   const entryDecision = directZoneEntryDecisions.get(zone.id);
+                  const mt5Signal = directZoneMt5Signals.get(zone.id);
                   return (
                   <React.Fragment key={zone.id}>
                   <tr className="border-t border-slate-100 text-slate-700">
@@ -3800,25 +3944,29 @@ export const OandaProChart: React.FC = () => {
                     <td className={`px-2 py-1 text-right font-bold whitespace-nowrap ${
                       trade?.status === 'sl-hit' ? 'text-rose-700' : ''
                     }`}>
-                      {isCompletedTrade(trade) ? (
+                      {mt5Signal ? (
+                        <span className={mt5SignalStatusClassName(mt5Signal)}>
+                          {mt5SignalStatusLabel(mt5Signal)}
+                        </span>
+                      ) : isCompletedTrade(trade) ? (
                         <span className={trade?.status === 'sl-hit' ? 'text-rose-700' : 'text-emerald-700'}>
                           <TradeStatusText trade={trade!} />
                         </span>
                       ) : entryDecision && !entryDecision.policy.allowed ? (
                         <span className="text-rose-700">
-                          {directEntryPolicyLabel(entryDecision.policy)} Â· NO TRADE
+                          {directEntryPolicyLabel(entryDecision.policy)} · NO TRADE
                         </span>
                       ) : entryDecision?.policy.allowed && !trade ? (
-                        <span className="text-rose-700">ENTRY INVALID Â· NO TRADE</span>
+                        <span className="text-rose-700">ENTRY INVALID · NO TRADE</span>
                       ) : <>
                         <span className="text-slate-500">{zone.tapBarsAgo} bars</span>
                         <span className={zone.tradeable === false ? 'ml-1 text-rose-700' : 'ml-1 text-emerald-700'}>
                           - {zone.tradeable === false
                             ? 'NO TRADE'
                             : entryDecision?.oppositePositionOpen
-                              ? 'OPPOSITE OPEN Â· TRADE 1:1'
+                              ? 'OPPOSITE OPEN · TRADE 1:1'
                               : entryDecision?.policy.reason === 'volume-confirmed'
-                                ? `VOLUME PASSED Â· TRADE 1:${trade?.rewardRisk ?? 3}`
+                                ? `VOLUME PASSED · TRADE 1:${trade?.rewardRisk ?? 3}`
                                 : 'TRADE'}
                         </span>
                       </>}
@@ -3829,12 +3977,14 @@ export const OandaProChart: React.FC = () => {
                       trade={trade}
                       colSpan={5}
                       oppositePositionOpen={entryDecision?.oppositePositionOpen}
+                      mt5Signal={mt5Signal}
                     />}
                   </React.Fragment>
                   );
                 })}
                 {completedTradeZoneRows.map((zone) => {
                   const trade = directZoneTrades.get(zone.id)!;
+                  const mt5Signal = directZoneMt5Signals.get(zone.id);
                   return (
                     <React.Fragment key={`completed-${zone.id}`}>
                       <tr className="border-t border-slate-200 bg-slate-50 text-slate-600">
@@ -3848,10 +3998,11 @@ export const OandaProChart: React.FC = () => {
                         <td className="whitespace-nowrap px-2 py-1 text-center font-black">
                           {displayEngulfingLabel(zone) ?? '—'}
                         </td>
-                        <td className={`whitespace-nowrap px-2 py-1 text-right font-black ${
-                          trade.status === 'sl-hit' ? 'text-rose-700' : 'text-emerald-700'
+                        <td className={`whitespace-nowrap px-2 py-1 text-right font-black ${mt5Signal
+                          ? mt5SignalStatusClassName(mt5Signal)
+                          : trade.status === 'sl-hit' ? 'text-rose-700' : 'text-emerald-700'
                         }`}>
-                          <TradeStatusText trade={trade} />
+                          {mt5Signal ? mt5SignalStatusLabel(mt5Signal) : <TradeStatusText trade={trade} />}
                         </td>
                       </tr>
                     </React.Fragment>

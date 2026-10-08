@@ -9,15 +9,20 @@ function timeToDate(time: Time): Date {
 }
 
 export function formatChartTime(time: Time, timeZone: ChartTimeZone): string {
-  return new Intl.DateTimeFormat('en-GB', {
+  const parts = new Intl.DateTimeFormat('en-US', {
     timeZone,
+    weekday: 'short',
     day: '2-digit',
-    month: '2-digit',
-    year: 'numeric',
+    month: 'short',
+    year: '2-digit',
     hour: '2-digit',
     minute: '2-digit',
-    hourCycle: 'h23',
-  }).format(timeToDate(time)).replace(',', '');
+    hour12: true,
+  }).formatToParts(timeToDate(time));
+  const value = (type: Intl.DateTimeFormatPartTypes) => (
+    parts.find((part) => part.type === type)?.value ?? ''
+  );
+  return `${value('weekday')} ${value('day')} ${value('month')} '${value('year')} ${value('hour')}:${value('minute')} ${value('dayPeriod')}`;
 }
 
 export function formatChartTick(
