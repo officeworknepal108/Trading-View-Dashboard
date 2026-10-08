@@ -862,7 +862,8 @@ const EngulfingAccuracyTable: React.FC<{
   timeframe: OandaGranularity;
   showAllTrades: boolean;
   timeZone: ChartTimeZone;
-}> = ({ records, allRecords, timeframe, showAllTrades, timeZone }) => {
+  onClose: () => void;
+}> = ({ records, allRecords, timeframe, showAllTrades, timeZone, onClose }) => {
   const [filters, setFilters] = useState<TradeRecordFilters>(DEFAULT_TRADE_RECORD_FILTERS);
   const filteredAllRecords = useMemo(
     () => filterTradeRecords(allRecords, filters, timeZone),
@@ -912,8 +913,19 @@ const EngulfingAccuracyTable: React.FC<{
         ? 'bottom-3 left-3 top-3 flex w-fit max-w-[calc(100%_-_24px)] flex-col'
         : 'left-3 top-1/2 max-w-[calc(100%_-_24px)] -translate-y-1/2'
     }`}>
-      <div className="shrink-0 border-b border-slate-300 bg-indigo-50 px-2 py-1 text-[9px] font-black uppercase tracking-wide text-indigo-700">
-        Engulfing accuracy · {summaryRecords.length} completed trade{summaryRecords.length === 1 ? '' : 's'}
+      <div className="flex shrink-0 items-center gap-2 border-b border-slate-300 bg-indigo-50 px-2 py-1 text-[9px] font-black uppercase tracking-wide text-indigo-700">
+        <span>
+          Engulfing accuracy · {summaryRecords.length} completed trade{summaryRecords.length === 1 ? '' : 's'}
+        </span>
+        <button
+          type="button"
+          onClick={onClose}
+          className="ml-auto grid h-5 w-5 place-items-center rounded-full border border-indigo-200 bg-white text-[10px] font-black leading-none text-slate-500 hover:bg-slate-100 hover:text-slate-800"
+          title="Close accuracy table"
+          aria-label="Close accuracy table"
+        >
+          ×
+        </button>
       </div>
       <div className={showAllTrades ? 'flex min-h-0 flex-1' : ''}>
         <div className={showAllTrades ? 'w-[290px] shrink-0 overflow-auto border-r border-slate-300' : ''}>
@@ -4492,7 +4504,7 @@ export const OandaProChart: React.FC = () => {
               }`}
               title="Show or hide the Entry-to-TP reward box and Entry-to-SL risk box"
             >
-              TRADE LEVELS {showTradeLevels ? 'ON' : 'OFF'}
+              LONG/SHORT POSITION {showTradeLevels ? 'ON' : 'OFF'}
             </button>
             <div className="relative flex">
               <button
@@ -5390,6 +5402,10 @@ export const OandaProChart: React.FC = () => {
               timeframe={granularity}
               showAllTrades={showAllAccuracyTrades}
               timeZone={chartTimeZone}
+              onClose={() => {
+                setShowAccuracyTable(false);
+                setShowAccuracyOptions(false);
+              }}
             />
           )}
           {showJournal && (
