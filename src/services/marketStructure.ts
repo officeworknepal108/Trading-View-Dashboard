@@ -791,7 +791,9 @@ function applyEngulfingConfluence(
   return markers.sort((a, b) => Number(a.time) - Number(b.time)).slice(-120);
 }
 
-function applyFibConfluence(candles: StructureCandle[], zones: StructureZone[]): void {
+export const RECENT_CHOCH_FIB_COUNT = 3;
+
+export function applyFibConfluence(candles: StructureCandle[], zones: StructureZone[]): void {
   const completed = candles.filter((candle) => candle.complete !== false);
   const zoneNames = (names: StructureZone['name'][]) => new Set<StructureZone['name']>(names);
   const tjl1Names = zoneNames(['TJL1', 'Internal TJL1']);
@@ -899,6 +901,9 @@ function applyFibConfluence(candles: StructureCandle[], zones: StructureZone[]):
     for (const zone of group) {
       if (!eligible.has(zone.name)) continue;
       if (!isDouble && (zone.name === 'DT' || zone.name === 'DB')) {
+        // Keep complete anchor coordinates so every retained CHoCH move can be
+        // drawn even when its other zones qualify against a different move.
+        classifyFromMove(zone, anchor.startTime, sourcePrice, isSell, true);
         zone.fibRelevant = true;
         zone.fibBand = 'DB/DT';
         zone.fibStatus = 'a-plus';
@@ -918,6 +923,78 @@ function applyFibConfluence(candles: StructureCandle[], zones: StructureZone[]):
       zone.category === category && zone.chochTime === eventTime
     )), false);
   }
+
+  // Keep the latest CHoCH FIB plus its two predecessors active for external
+  // MG confluence. A zone that misses its own move can qualify against any of
+  // these three same-direction moves. The newest matching FIB wins.
+  const recentExternalChochMoves = [...singleKeys]
+    .map((key) => {
+      const [category, timeText] = key.split(':');
+      const eventTime = Number(timeText);
+      if (category !== 'mg' || !Number.isFinite(eventTime)) return undefined;
+      const group = zones.filter((zone) => (
+        zone.category === 'mg' && zone.chochTime === eventTime
+      ));
+      const anchor = group.find((zone) => zone.name === 'DT' || zone.name === 'DB');
+      if (!anchor) return undefined;
+      const isSell = !anchor.isBuy;
+      return {
+        eventTime,
+        sourceTime: anchor.startTime,
+        sourcePrice: isSell ? anchor.top : anchor.bottom,
+        isSell,
+      };
+    })
+    .filter((move): move is {
+      eventTime: number;
+      sourceTime: number;
+      sourcePrice: number;
+      isSell: boolean;
+    } => move !== undefined)
+    .sort((first, second) => second.eventTime - first.eventTime)
+    .slice(0, RECENT_CHOCH_FIB_COUNT);
+
+  const assignFibFields = (zone: StructureZone, candidate: StructureZone) => {
+    zone.fibRelevant = candidate.fibRelevant;
+    zone.fibBand = candidate.fibBand;
+    zone.fibStatus = candidate.fibStatus;
+    zone.fibLevel50 = candidate.fibLevel50;
+    zone.fibDeepInvalidatedAt = candidate.fibDeepInvalidatedAt;
+    zone.fibSourceTime = candidate.fibSourceTime;
+    zone.fibSourcePrice = candidate.fibSourcePrice;
+    zone.fibZeroTime = candidate.fibZeroTime;
+    zone.fibZeroPrice = candidate.fibZeroPrice;
+  };
+  for (const zone of sorted) {
+    if (zone.category !== 'mg' || !singleChochNames.has(zone.name)
+      || zone.name === 'DT' || zone.name === 'DB') continue;
+    let newestCandidate: StructureZone | undefined;
+    let matchingCandidate: StructureZone | undefined;
+    for (const move of recentExternalChochMoves) {
+      if (zone.isBuy !== !move.isSell) continue;
+      const candidate: StructureZone = {
+        ...zone,
+        fibBand: undefined,
+        fibStatus: undefined,
+        fibLevel50: undefined,
+        fibDeepInvalidatedAt: undefined,
+        fibSourceTime: undefined,
+        fibSourcePrice: undefined,
+        fibZeroTime: undefined,
+        fibZeroPrice: undefined,
+      };
+      classifyFromMove(candidate, move.sourceTime, move.sourcePrice, move.isSell, true);
+      newestCandidate ??= candidate;
+      if (candidate.fibStatus === 'a-plus') {
+        matchingCandidate = candidate;
+        break;
+      }
+    }
+    if (matchingCandidate || newestCandidate) {
+      assignFibFields(zone, matchingCandidate ?? newestCandidate!);
+    }
+  }
+
   const doubleTimes = new Set(zones
     .filter((zone) => zone.doubleChochTime !== undefined)
     .map((zone) => zone.doubleChochTime!));

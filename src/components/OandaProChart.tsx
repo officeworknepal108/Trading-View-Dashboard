@@ -87,7 +87,7 @@ type FibVisibilityKey = 'tjl1' | 'tjl2' | 'choch' | 'intChoch' | 'intTjl1' | 'in
 const DEFAULT_FIB_VISIBILITY: Record<FibVisibilityKey, boolean> = {
   tjl1: false,
   tjl2: false,
-  choch: false,
+  choch: true,
   intChoch: false,
   intTjl1: false,
   intTjl2: false,
@@ -2232,9 +2232,12 @@ export const OandaProChart: React.FC = () => {
           const isInternalChochFib = type === 'intChoch'
             && zone.category === 'internal'
             && zone.chochTime !== undefined;
+          const retainHistoricalChochFib = type === 'choch'
+            && (fibVisibilityRef.current.choch || fibPreviousVisibilityRef.current.choch);
           if (type === 'iss' && !isIssWaveFib) continue;
           if (type === 'intChoch' && !isInternalChochFib) continue;
-          if (!zone.active && !showInvalidZonesRef.current && !isIssWaveFib) continue;
+          if (!zone.active && !showInvalidZonesRef.current
+            && !isIssWaveFib && !retainHistoricalChochFib) continue;
           if (!zone.fibRelevant || !isFibMarkingVisible(
             zone,
             showFibRef.current,
@@ -2313,14 +2316,16 @@ export const OandaProChart: React.FC = () => {
               distinctMoves.add(moveKey);
               return true;
             });
+          const previousMoves = type !== 'tjl1' && type !== 'tjl2'
+            && type !== 'intTjl1' && type !== 'intTjl2'
+            && type !== 'doubleChoch' && type !== 'iss'
+            && fibPreviousVisibilityRef.current[type]
+            ? type === 'choch' ? orderedMoves.slice(1, 3) : orderedMoves.slice(1, 2)
+            : [];
           return [
-            fibVisibilityRef.current[type] ? orderedMoves[0] : undefined,
-            type !== 'tjl1' && type !== 'tjl2' && type !== 'intTjl1' && type !== 'intTjl2'
-              && type !== 'doubleChoch' && type !== 'iss'
-              && fibPreviousVisibilityRef.current[type]
-              ? orderedMoves[1]
-              : undefined,
-          ].filter((zone): zone is StructureZone => zone !== undefined);
+            ...(fibVisibilityRef.current[type] && orderedMoves[0] ? [orderedMoves[0]] : []),
+            ...previousMoves,
+          ];
         });
 
         for (const zone of latestFibMoves) {
@@ -3073,6 +3078,10 @@ export const OandaProChart: React.FC = () => {
       ? option.key === 'day' ? '≤30m' : '≤4H'
       : isSingleMarking
       ? latestOn ? 'ON' : 'OFF'
+      : option.key === 'choch' && latestOn && previousOn
+        ? '3 FIBS'
+        : option.key === 'choch' && previousOn
+          ? '2 PREV'
       : latestOn && previousOn
         ? 'BOTH'
         : latestOn ? 'LATEST' : previousOn ? 'PREV' : 'OFF';
@@ -3112,7 +3121,9 @@ export const OandaProChart: React.FC = () => {
             : 'Show the 4H Swing FIB drawing on charts from 1m through 4H'
           : isSingleMarking
           ? `Show or hide the single current ${option.label.replace(' MARKING', '')} FIB marking`
-          : `Choose latest or previous ${option.label}`}
+          : option.key === 'choch'
+            ? 'Choose the latest CHoCH FIB and the two previous CHoCH FIBs'
+            : `Choose latest or previous ${option.label}`}
         aria-expanded={isSingleMarking ? undefined : expandedFibOption === option.key}
       >
         <span className="whitespace-nowrap">{option.label.replace(' MARKING', '')}</span>
@@ -3588,7 +3599,7 @@ export const OandaProChart: React.FC = () => {
                               : 'border-slate-200 bg-white text-slate-500'
                           }`}
                         >
-                          <span>PREVIOUS</span>
+                          <span>{expandedFibOption === 'choch' ? '2 PREVIOUS' : 'PREVIOUS'}</span>
                           <span className={`ml-1 rounded-full px-1 py-0.5 text-[8px] ${
                             fibPreviousVisibility[expandedFibOption]
                               ? 'bg-fuchsia-300 text-fuchsia-900'
