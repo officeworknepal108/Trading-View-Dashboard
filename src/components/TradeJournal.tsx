@@ -3,7 +3,8 @@ import { BookOpen, Download, ImagePlus, Save, X } from 'lucide-react';
 import type { ChartTimeZone } from '../services/chartTime';
 import {
   filterTradeRecords,
-  tradeRecordDateKey,
+  tradeRecordDatePeriodKey,
+  tradeRecordPeriodLabel,
   type TradeRecordFilters,
 } from '../services/tradeRecordFilters';
 import {
@@ -289,6 +290,7 @@ export const TradeJournal: React.FC<TradeJournalProps> = ({ records, timeZone, o
   const [selectedId, setSelectedId] = useState<string | null>(records[0]?.id ?? null);
   const [resultFilter, setResultFilter] = useState<'ALL' | TradeResult>('ALL');
   const [timeframeFilter, setTimeframeFilter] = useState<TradeRecordFilters['timeframes']>('ALL');
+  const [datePeriod, setDatePeriod] = useState<TradeRecordFilters['datePeriod']>('DAY');
   const [dateFilter, setDateFilter] = useState('ALL');
   const [sourceFilter, setSourceFilter] = useState<TradeRecordFilters['source']>('ALL');
   const [sideFilter, setSideFilter] = useState<TradeRecordFilters['side']>('ALL');
@@ -436,9 +438,6 @@ export const TradeJournal: React.FC<TradeJournalProps> = ({ records, timeZone, o
     return Array.from(new Set<TradeTimeframe>(trades.map((trade) => trade.signalTimeframe)))
       .sort((first, second) => order.indexOf(first) - order.indexOf(second));
   }, [trades]);
-  const availableDates = useMemo(() => Array.from(new Set(
-    trades.map((trade) => tradeRecordDateKey(trade.completedAt, timeZone)),
-  )).sort().reverse(), [timeZone, trades]);
   const availableZones = useMemo(() => Array.from(new Set(
     trades.map((trade) => trade.zoneName),
   )).sort(), [trades]);
@@ -446,6 +445,7 @@ export const TradeJournal: React.FC<TradeJournalProps> = ({ records, timeZone, o
     const query = search.trim().toLowerCase();
     const coreFiltered = filterTradeRecords<JournalTradeRecord>(trades, {
       timeframes: timeframeFilter,
+      datePeriod,
       date: dateFilter,
       source: sourceFilter,
       side: sideFilter,
@@ -457,7 +457,7 @@ export const TradeJournal: React.FC<TradeJournalProps> = ({ records, timeZone, o
       && (!query || [trade.zoneName, trade.engulfingType, volumeStatus(trade), trade.session, trade.reason, trade.mistake, trade.lesson]
         .some((value) => value?.toLowerCase().includes(query)))
     ));
-  }, [dateFilter, resultFilter, search, sideFilter, sourceFilter, timeframeFilter, timeZone, trades, volumeFilter, zoneFilter]);
+  }, [dateFilter, datePeriod, resultFilter, search, sideFilter, sourceFilter, timeframeFilter, timeZone, trades, volumeFilter, zoneFilter]);
 
   useEffect(() => {
     if (filteredTrades.some((trade) => trade.id === selectedId)) return;
@@ -668,9 +668,19 @@ export const TradeJournal: React.FC<TradeJournalProps> = ({ records, timeZone, o
           options={availableTimeframes.map((timeframe) => ({ value: timeframe, label: displayTimeframe(timeframe) }))}
           onChange={(timeframes) => setTimeframeFilter(timeframes as TradeRecordFilters['timeframes'])}
         />
-        <select value={dateFilter} onChange={(event) => setDateFilter(event.target.value)} className="rounded border border-slate-200 px-2 py-1 text-[9px] font-bold">
-          <option value="ALL">ALL DATES</option>{availableDates.map((date) => <option key={date} value={date}>{date}</option>)}
+        <select value={datePeriod} onChange={(event) => {
+          setDatePeriod(event.target.value as TradeRecordFilters['datePeriod']);
+        }} className="rounded border border-slate-200 px-2 py-1 text-[9px] font-bold">
+          <option value="DAY">DAILY</option><option value="WEEK">WEEKLY</option><option value="MONTH">MONTHLY</option>
         </select>
+        <input type="date" value={dateFilter === 'ALL' ? '' : dateFilter} onChange={(event) => setDateFilter(event.target.value || 'ALL')}
+          className="rounded border border-slate-200 px-2 py-1 text-[9px] font-bold" title="Choose any date" />
+        {dateFilter !== 'ALL' && datePeriod !== 'DAY' && (
+          <span className="whitespace-nowrap text-[8px] font-bold text-indigo-700">
+            {tradeRecordPeriodLabel(tradeRecordDatePeriodKey(dateFilter, datePeriod), datePeriod)}
+          </span>
+        )}
+        {dateFilter !== 'ALL' && <button type="button" onClick={() => setDateFilter('ALL')} className="rounded border border-slate-200 bg-white px-2 py-1 text-[8px] font-black text-slate-500">ALL DATES</button>}
         <select value={sourceFilter} onChange={(event) => setSourceFilter(event.target.value as TradeRecordFilters['source'])} className="rounded border border-slate-200 px-2 py-1 text-[9px] font-bold">
           <option value="ALL">ALL SOURCES</option><option value="ENGULFING">ENGULFING</option><option value="MTF">MTF</option>
         </select>
@@ -693,7 +703,7 @@ export const TradeJournal: React.FC<TradeJournalProps> = ({ records, timeZone, o
         <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search zone, reason, mistake or lesson"
           className="min-w-48 flex-1 rounded border border-slate-200 px-2 py-1 text-[9px] font-semibold outline-none focus:border-indigo-300" />
         <button type="button" onClick={() => {
-          setTimeframeFilter('ALL'); setDateFilter('ALL'); setSourceFilter('ALL');
+          setTimeframeFilter('ALL'); setDatePeriod('DAY'); setDateFilter('ALL'); setSourceFilter('ALL');
           setSideFilter('ALL'); setResultFilter('ALL'); setZoneFilter('ALL');
           setVolumeFilter('ALL'); setSearch('');
         }} className="rounded border border-slate-200 bg-slate-50 px-2 py-1 text-[9px] font-black text-slate-600 hover:bg-slate-100">RESET</button>

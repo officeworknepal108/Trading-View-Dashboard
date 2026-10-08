@@ -10,8 +10,11 @@ export interface FilterableTradeRecord {
   zoneName: string;
 }
 
+export type TradeDatePeriod = 'DAY' | 'WEEK' | 'MONTH';
+
 export interface TradeRecordFilters {
   timeframes: 'ALL' | TradeTimeframe[];
+  datePeriod: TradeDatePeriod;
   date: string;
   source: 'ALL' | FilterableTradeRecord['source'];
   side: 'ALL' | 'BUY' | 'SELL';
@@ -21,6 +24,7 @@ export interface TradeRecordFilters {
 
 export const DEFAULT_TRADE_RECORD_FILTERS: TradeRecordFilters = {
   timeframes: 'ALL',
+  datePeriod: 'DAY',
   date: 'ALL',
   source: 'ALL',
   side: 'ALL',
@@ -41,6 +45,44 @@ export function tradeRecordDateKey(time: number, timeZone: ChartTimeZone): strin
   return `${value('year')}-${value('month')}-${value('day')}`;
 }
 
+export function tradeRecordPeriodKey(
+  time: number,
+  timeZone: ChartTimeZone,
+  period: TradeDatePeriod,
+): string {
+  const dateKey = tradeRecordDateKey(time, timeZone);
+  return tradeRecordDatePeriodKey(dateKey, period);
+}
+
+export function tradeRecordDatePeriodKey(dateKey: string, period: TradeDatePeriod): string {
+  if (period === 'DAY') return dateKey;
+  if (period === 'MONTH') return dateKey.slice(0, 7);
+  const [year, month, day] = dateKey.split('-').map(Number);
+  const date = new Date(Date.UTC(year, month - 1, day));
+  date.setUTCDate(date.getUTCDate() - date.getUTCDay());
+  return date.toISOString().slice(0, 10);
+}
+
+export function tradeRecordPeriodLabel(key: string, period: TradeDatePeriod): string {
+  if (period === 'WEEK') {
+    const start = new Date(`${key}T00:00:00Z`);
+    const end = new Date(start);
+    end.setUTCDate(end.getUTCDate() + 6);
+    const format = (date: Date) => new Intl.DateTimeFormat('en-US', {
+      timeZone: 'UTC', day: '2-digit', month: 'short', year: 'numeric',
+    }).format(date);
+    return `${format(start)} – ${format(end)}`;
+  }
+  const [year, month, parsedDay] = key.split('-').map(Number);
+  const day = parsedDay || 1;
+  return new Intl.DateTimeFormat('en-US', {
+    timeZone: 'UTC',
+    year: 'numeric',
+    month: period === 'MONTH' ? 'long' : 'short',
+    ...(period === 'DAY' ? { day: '2-digit' as const } : {}),
+  }).format(new Date(Date.UTC(year, month - 1, day)));
+}
+
 export function filterTradeRecords<T extends FilterableTradeRecord>(
   records: T[],
   filters: TradeRecordFilters,
@@ -48,7 +90,9 @@ export function filterTradeRecords<T extends FilterableTradeRecord>(
 ): T[] {
   return records.filter((record) => (
     (filters.timeframes === 'ALL' || filters.timeframes.includes(record.signalTimeframe))
-    && (filters.date === 'ALL' || tradeRecordDateKey(record.completedAt, timeZone) === filters.date)
+    && (filters.date === 'ALL'
+      || tradeRecordPeriodKey(record.completedAt, timeZone, filters.datePeriod)
+        === tradeRecordDatePeriodKey(filters.date, filters.datePeriod))
     && (filters.source === 'ALL' || record.source === filters.source)
     && (filters.side === 'ALL'
       || (filters.side === 'BUY' ? record.direction === 'bullish' : record.direction === 'bearish'))

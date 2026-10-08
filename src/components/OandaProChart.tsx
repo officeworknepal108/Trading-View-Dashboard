@@ -61,7 +61,8 @@ import { applyOneMinuteGenesisQml, executionZoneName } from '../services/oneMinu
 import {
   DEFAULT_TRADE_RECORD_FILTERS,
   filterTradeRecords,
-  tradeRecordDateKey,
+  tradeRecordDatePeriodKey,
+  tradeRecordPeriodLabel,
   type TradeRecordFilters,
 } from '../services/tradeRecordFilters';
 import { TradeJournal, type JournalTradeRecord } from './TradeJournal';
@@ -778,9 +779,6 @@ const EngulfingAccuracyTable: React.FC<{
   const availableTimeframes = useMemo(() => Array.from(new Set<TradeTimeframe>(
     allRecords.map((record) => record.signalTimeframe),
   )).sort((first, second) => TIMEFRAME_SECONDS[first] - TIMEFRAME_SECONDS[second]), [allRecords]);
-  const availableDates = useMemo(() => Array.from(new Set(
-    allRecords.map((record) => tradeRecordDateKey(record.completedAt, timeZone)),
-  )).sort().reverse(), [allRecords, timeZone]);
   const availableZones = useMemo(() => Array.from(new Set(
     allRecords.map((record) => record.zoneName),
   )).sort(), [allRecords]);
@@ -865,10 +863,21 @@ const EngulfingAccuracyTable: React.FC<{
                     timeframes: timeframes as TradeRecordFilters['timeframes'],
                   }))}
                 />
-                <select value={filters.date} onChange={(event) => setFilters((current) => ({ ...current, date: event.target.value }))} className="rounded border border-slate-200 bg-white px-1.5 py-1 text-[8px] font-bold">
-                  <option value="ALL">ALL DATES</option>
-                  {availableDates.map((value) => <option key={value} value={value}>{value}</option>)}
+                <select value={filters.datePeriod} onChange={(event) => setFilters((current) => ({
+                  ...current,
+                  datePeriod: event.target.value as TradeRecordFilters['datePeriod'],
+                }))} className="rounded border border-slate-200 bg-white px-1.5 py-1 text-[8px] font-bold">
+                  <option value="DAY">DAILY</option><option value="WEEK">WEEKLY</option><option value="MONTH">MONTHLY</option>
                 </select>
+                <input type="date" value={filters.date === 'ALL' ? '' : filters.date} onChange={(event) => setFilters((current) => ({
+                  ...current, date: event.target.value || 'ALL',
+                }))} className="rounded border border-slate-200 bg-white px-1.5 py-1 text-[8px] font-bold" title="Choose any date" />
+                {filters.date !== 'ALL' && filters.datePeriod !== 'DAY' && (
+                  <span className="whitespace-nowrap text-[8px] font-bold text-indigo-700">
+                    {tradeRecordPeriodLabel(tradeRecordDatePeriodKey(filters.date, filters.datePeriod), filters.datePeriod)}
+                  </span>
+                )}
+                {filters.date !== 'ALL' && <button type="button" onClick={() => setFilters((current) => ({ ...current, date: 'ALL' }))} className="rounded border border-slate-200 bg-white px-1.5 py-1 text-[8px] font-black text-slate-500">ALL DATES</button>}
                 <select value={filters.source} onChange={(event) => setFilters((current) => ({ ...current, source: event.target.value as TradeRecordFilters['source'] }))} className="rounded border border-slate-200 bg-white px-1.5 py-1 text-[8px] font-bold">
                   <option value="ALL">ALL SOURCES</option><option value="ENGULFING">ENGULFING</option><option value="MTF">MTF</option>
                 </select>
