@@ -1844,10 +1844,6 @@ export const OandaProChart: React.FC = () => {
     structure.engulfingMarkers,
     swingFibConfluence.engulfingMarkers,
   ]);
-  const change = latestCandle && previousCandle ? latestCandle.close - previousCandle.close : 0;
-  const changePercent = latestCandle && previousCandle && previousCandle.close
-    ? change / previousCandle.close * 100
-    : 0;
   updateHeaderCandleRef.current = (timestamp?: number) => {
     const selected = timestamp === undefined ? undefined : headerCandlesByTime.get(timestamp);
     const candle = selected?.candle ?? latestCandle;
@@ -3561,14 +3557,12 @@ export const OandaProChart: React.FC = () => {
         <div className="flex flex-wrap items-center gap-x-4 gap-y-1 border-b border-slate-100 px-4 py-2 text-xs">
           <span className="flex items-center gap-1.5 font-black text-slate-800">
             <Crosshair className="h-3.5 w-3.5 text-slate-400" />
-            O <b ref={headerOpenRef}>{formatPrice(latestCandle?.open)}</b>
+            O <b ref={headerOpenRef} />
           </span>
-          <span className="text-slate-500">H <b ref={headerHighRef} className="text-slate-800">{formatPrice(latestCandle?.high)}</b></span>
-          <span className="text-slate-500">L <b ref={headerLowRef} className="text-slate-800">{formatPrice(latestCandle?.low)}</b></span>
-          <span className="text-slate-500">C <b ref={headerCloseRef} className="text-slate-800">{formatPrice(latestCandle?.close)}</b></span>
-          <span ref={headerChangeRef} className={`font-black ${change >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
-            {change >= 0 ? '+' : ''}{formatPrice(change)} ({changePercent >= 0 ? '+' : ''}{changePercent.toFixed(2)}%)
-          </span>
+          <span className="text-slate-500">H <b ref={headerHighRef} className="text-slate-800" /></span>
+          <span className="text-slate-500">L <b ref={headerLowRef} className="text-slate-800" /></span>
+          <span className="text-slate-500">C <b ref={headerCloseRef} className="text-slate-800" /></span>
+          <span ref={headerChangeRef} className="font-black" />
           <span className={`rounded px-2 py-0.5 text-[10px] font-black ${
             structure.trend === 'bullish'
               ? 'bg-emerald-50 text-emerald-700'
