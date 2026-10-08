@@ -81,11 +81,12 @@ import {
 
 type OandaGranularity = 'M1' | 'M5' | 'M15' | 'M30' | 'H1' | 'H4' | 'D';
 type MarketGranularity = OandaGranularity | 'W' | 'MO';
+type LiveChartDataSource = 'MT5' | 'OANDA';
 type FibVisibilityKey = 'tjl1' | 'tjl2' | 'choch' | 'intChoch' | 'intTjl1' | 'intTjl2'
   | 'doubleChoch' | 'iss' | 'swing' | 'day';
 type ChochFibVisibility = [boolean, boolean, boolean, boolean];
 
-const DEFAULT_CHOCH_FIB_VISIBILITY: ChochFibVisibility = [true, true, true, true];
+const DEFAULT_CHOCH_FIB_VISIBILITY: ChochFibVisibility = [false, false, false, false];
 
 const DEFAULT_FIB_VISIBILITY: Record<FibVisibilityKey, boolean> = {
   tjl1: false,
@@ -1019,14 +1020,16 @@ export const OandaProChart: React.FC = () => {
   const pendingReplayViewportRef = useRef<{ fromOffset: number; toOffset: number } | null>(null);
   const loadRequestIdRef = useRef(0);
   const loadedGranularityRef = useRef<OandaGranularity>('M15');
+  const loadedDataSourceRef = useRef<LiveChartDataSource>('OANDA');
   const candlesRef = useRef<OandaCandle[]>([]);
   const replaySelectingRef = useRef(false);
   const replaySelectionIndexRef = useRef<number | null>(null);
   const syncReplaySelectionLineRef = useRef<() => void>(() => undefined);
   const [granularity, setGranularity] = useState<OandaGranularity>('M15');
+  const [liveChartDataSource, setLiveChartDataSource] = useState<LiveChartDataSource>('OANDA');
   const [candles, setCandles] = useState<OandaCandle[]>([]);
   const [vipCandles, setVipCandles] = useState<Partial<Record<MarketGranularity, OandaCandle[]>>>({});
-  const [source, setSource] = useState('Waiting for MT5 broker candles');
+  const [source, setSource] = useState('Loading TradingView OANDA candles');
   const [lastUpdated, setLastUpdated] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -1366,7 +1369,7 @@ export const OandaProChart: React.FC = () => {
     return zones;
   }, [dayFibConfluence.zones, displayCandles, granularity, vipCandles]);
 
-  const tradeTrackingScope = `${granularity}:${replayIndex === null ? 'live' : 'replay'}`;
+  const tradeTrackingScope = `${liveChartDataSource}:${granularity}:${replayIndex === null ? 'live' : 'replay'}`;
   const currentDirectTradeSetups = useMemo(() => {
     const setups = new Map<string, TrackedDirectTradeSetup>();
     const zoneTimeframe = granularity as TradeTimeframe;
@@ -1388,7 +1391,7 @@ export const OandaProChart: React.FC = () => {
 
   useEffect(() => {
     setTrackedDirectTradeSetups(new Map<string, TrackedDirectTradeSetup>());
-  }, [granularity, replayIndex === null]);
+  }, [granularity, liveChartDataSource, replayIndex === null]);
 
   useEffect(() => {
     if (currentDirectTradeSetups.size === 0) return;
@@ -1485,7 +1488,7 @@ export const OandaProChart: React.FC = () => {
   }, [directZoneEntryDecisions]);
   const directZoneMt5Signals = useMemo(() => {
     const signals = new Map<string, Mt5StoredSignal>();
-    if (replayIndex !== null) return signals;
+    if (replayIndex !== null || liveChartDataSource !== 'MT5') return signals;
     const setupPrefix = `DIRECT:${granularity}:`;
     for (const signal of mt5Status?.recentSignals ?? []) {
       if (signal.source !== 'ENGULFING' || !signal.setupId?.startsWith(setupPrefix)) continue;
@@ -1497,7 +1500,7 @@ export const OandaProChart: React.FC = () => {
       signals.set(zoneId, signal);
     }
     return signals;
-  }, [directZoneTrades, granularity, mt5Status?.recentSignals, replayIndex]);
+  }, [directZoneTrades, granularity, liveChartDataSource, mt5Status?.recentSignals, replayIndex]);
 
   const restorePresentChartView = useCallback(() => {
     const chart = chartRef.current;
@@ -2693,7 +2696,8 @@ export const OandaProChart: React.FC = () => {
     const requestId = ++loadRequestIdRef.current;
       const replayTime = replayTimeRef.current;
       const shouldShowLoading = candlesRef.current.length === 0
-        || loadedGranularityRef.current !== granularity;
+        || loadedGranularityRef.current !== granularity
+        || loadedDataSourceRef.current !== liveChartDataSource;
       if (shouldShowLoading) setIsLoading(true);
       try {
         const requestCandles = async (requestedGranularity: MarketGranularity) => {
@@ -2702,7 +2706,7 @@ export const OandaProChart: React.FC = () => {
           count: '1500',
         });
         if (replayTime !== null) query.set('endTime', String(replayTime));
-        const useMt5BrokerFeed = replayTime === null
+        const useMt5BrokerFeed = replayTime === null && liveChartDataSource === 'MT5'
           && MT5_CHART_GRANULARITIES.includes(requestedGranularity as OandaGranularity);
         let lastError = `Market feed returned no ${GRANULARITY_LABELS[requestedGranularity]} candles.`;
         for (let attempt = 0; attempt < 2; attempt += 1) {
@@ -2735,6 +2739,7 @@ export const OandaProChart: React.FC = () => {
         throw new Error(`The selected replay date is not available on ${GRANULARITY_LABELS[granularity]}.`);
       }
       loadedGranularityRef.current = granularity;
+      loadedDataSourceRef.current = liveChartDataSource;
       setCandles((current) => candleSnapshotsMatch(current, payload.candles)
         ? current
         : payload.candles);
@@ -2794,7 +2799,7 @@ export const OandaProChart: React.FC = () => {
         setIsLoading(false);
       }
     }
-  }, [auxiliaryGranularities, granularity, mtfLowerGranularities]);
+  }, [auxiliaryGranularities, granularity, liveChartDataSource, mtfLowerGranularities]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -3076,6 +3081,21 @@ export const OandaProChart: React.FC = () => {
     setGranularity(nextGranularity);
   };
 
+  const changeLiveChartDataSource = (nextSource: LiveChartDataSource) => {
+    if (replayIndex !== null || nextSource === liveChartDataSource) return;
+    setLiveChartDataSource(nextSource);
+    setCandles([]);
+    setVipCandles({});
+    setTrackedDirectTradeSetups(new Map<string, TrackedDirectTradeSetup>());
+    setSource(nextSource === 'MT5'
+      ? 'Waiting for MT5 broker candles'
+      : 'Loading TradingView OANDA candles');
+    setLastUpdated(null);
+    setError(null);
+    setIsLoading(true);
+    hasFittedRef.current = false;
+  };
+
   const selectReplayBar = (event: React.PointerEvent<HTMLDivElement>) => {
     const chart = chartRef.current;
     const host = hostRef.current;
@@ -3166,12 +3186,14 @@ export const OandaProChart: React.FC = () => {
   return (
     <section className="h-full w-full bg-slate-100 p-3 sm:p-4 overflow-hidden">
       <div className="h-full w-full overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm flex flex-col">
-        <div className="flex flex-wrap items-center gap-2 border-b border-slate-200 px-2.5 py-1.5 bg-white">
-          <div className="flex items-center gap-1.5 pr-2 border-r border-slate-200">
-            <div className="h-7 w-7 rounded-full bg-amber-100 text-amber-700 grid place-items-center text-xs font-black">Au</div>
+        <div className="flex flex-wrap items-center gap-1.5 border-b border-slate-200 bg-white px-2.5 py-1 2xl:flex-nowrap">
+          <div className="flex items-center gap-1 pr-1.5 border-r border-slate-200">
+            <div className="grid h-5 w-5 place-items-center rounded-full bg-amber-100 text-[7px] font-black text-amber-700">Au</div>
             <div>
-              <div className="text-[13px] font-black text-slate-900 leading-tight">Gold Spot / U.S. Dollar</div>
-              <div className="text-[9px] font-bold tracking-wider text-slate-500">XAUUSD · OANDA</div>
+              <div className="text-[9px] font-black leading-none text-slate-900">Gold Spot / U.S. Dollar</div>
+              <div className="mt-0.5 text-[6px] font-bold leading-none tracking-wider text-slate-500">
+                XAUUSD · {replayIndex !== null ? 'OANDA REPLAY' : liveChartDataSource}
+              </div>
             </div>
           </div>
 
@@ -3180,13 +3202,39 @@ export const OandaProChart: React.FC = () => {
               <button
                 key={timeframe.value}
                 onClick={() => changeTimeframe(timeframe.value)}
-                className={`rounded-md px-2 py-1 text-[11px] font-black transition ${
+                className={`rounded-full border px-2 py-0.5 text-[9px] font-black transition ${
                   granularity === timeframe.value
-                    ? 'bg-slate-900 text-white shadow-sm'
-                    : 'text-slate-600 hover:bg-slate-100 hover:text-slate-950'
+                    ? 'border-slate-900 bg-slate-900 text-white shadow-sm'
+                    : 'border-transparent text-slate-600 hover:border-slate-200 hover:bg-slate-100 hover:text-slate-950'
                 }`}
               >
                 {timeframe.label}
+              </button>
+            ))}
+          </div>
+
+          <div
+            className="flex items-center gap-0.5"
+            title={replayIndex !== null
+              ? 'Replay uses OANDA historical candles. Exit replay to choose the live chart source.'
+              : 'This changes the chart feed only. Automatic execution always uses MT5 broker candles.'}
+          >
+            <span className="px-1 text-[9px] font-black tracking-wide text-slate-400">DATA</span>
+            {(['MT5', 'OANDA'] as const).map((dataSource) => (
+              <button
+                key={dataSource}
+                type="button"
+                onClick={() => changeLiveChartDataSource(dataSource)}
+                disabled={replayIndex !== null}
+                className={`rounded-full border px-2 py-0.5 text-[9px] font-black transition disabled:cursor-not-allowed disabled:opacity-45 ${
+                  replayIndex === null && liveChartDataSource === dataSource
+                    ? dataSource === 'MT5'
+                      ? 'border-emerald-600 bg-emerald-600 text-white shadow-sm'
+                      : 'border-amber-500 bg-amber-500 text-white shadow-sm'
+                    : 'border-slate-200 bg-slate-50 text-slate-500 hover:bg-white hover:text-slate-900'
+                }`}
+              >
+                {dataSource}
               </button>
             ))}
           </div>
@@ -3196,7 +3244,7 @@ export const OandaProChart: React.FC = () => {
               <button
                 onClick={openReplaySelector}
                 disabled={candles.length < 2}
-                className="rounded-md border border-violet-200 bg-violet-50 px-2 py-1 text-[9px] font-black text-violet-700 transition hover:bg-violet-100 disabled:cursor-not-allowed disabled:opacity-50"
+                className="rounded-full border border-violet-200 bg-violet-50 px-2 py-0.5 text-[9px] font-black text-violet-700 transition hover:bg-violet-100 disabled:cursor-not-allowed disabled:opacity-50"
                 title="Choose a chart bar, then start candle-by-candle replay from that point"
               >
                 ▶ REPLAY
@@ -3205,14 +3253,14 @@ export const OandaProChart: React.FC = () => {
               <>
                 <button
                   onClick={() => setReplayIndex((index) => Math.max(1, (index ?? 1) - 1))}
-                  className="rounded-md border border-violet-200 bg-white px-1.5 py-1 text-[9px] font-black text-violet-700 hover:bg-violet-50"
+                  className="rounded-full border border-violet-200 bg-white px-2 py-0.5 text-[9px] font-black text-violet-700 hover:bg-violet-50"
                   title="Previous candle"
                 >
                   ‹
                 </button>
                 <button
                   onClick={openReplaySelector}
-                  className={`rounded-md border px-1.5 py-1 text-[9px] font-black transition ${
+                  className={`rounded-full border px-2 py-0.5 text-[9px] font-black transition ${
                     replaySelecting
                       ? 'border-blue-300 bg-blue-100 text-blue-800'
                       : 'border-blue-200 bg-white text-blue-700 hover:bg-blue-50'
@@ -3223,14 +3271,14 @@ export const OandaProChart: React.FC = () => {
                 </button>
                 <button
                   onClick={() => setReplayPlaying((playing) => !playing)}
-                  className="rounded-md border border-violet-200 bg-violet-50 px-2 py-1 text-[9px] font-black text-violet-700 hover:bg-violet-100"
+                  className="rounded-full border border-violet-200 bg-violet-50 px-2 py-0.5 text-[9px] font-black text-violet-700 hover:bg-violet-100"
                   title={replayPlaying ? 'Pause replay' : 'Play replay'}
                 >
                   {replayPlaying ? '❚❚ PAUSE' : '▶ PLAY'}
                 </button>
                 <button
                   onClick={() => setReplayIndex((index) => Math.min(candles.length - 1, (index ?? 1) + 1))}
-                  className="rounded-md border border-violet-200 bg-white px-1.5 py-1 text-[9px] font-black text-violet-700 hover:bg-violet-50"
+                  className="rounded-full border border-violet-200 bg-white px-2 py-0.5 text-[9px] font-black text-violet-700 hover:bg-violet-50"
                   title="Next candle"
                 >
                   ›
@@ -3238,7 +3286,7 @@ export const OandaProChart: React.FC = () => {
                 <select
                   value={replaySpeed}
                   onChange={(event) => setReplaySpeed(Number(event.target.value))}
-                  className="rounded-md border border-violet-200 bg-white px-1 py-1 text-[9px] font-black text-violet-700"
+                  className="rounded-full border border-violet-200 bg-white px-2 py-0.5 text-[9px] font-black text-violet-700"
                   title="Replay speed"
                 >
                   <option value={0.5}>0.5x</option>
@@ -3249,7 +3297,7 @@ export const OandaProChart: React.FC = () => {
                 </select>
                 <button
                   onClick={exitReplay}
-                  className="rounded-md border border-slate-200 bg-white px-1.5 py-1 text-[9px] font-black text-slate-500 hover:bg-slate-100"
+                  className="rounded-full border border-slate-200 bg-white px-2 py-0.5 text-[9px] font-black text-slate-500 hover:bg-slate-100"
                   title="Exit replay and return to the live chart"
                 >
                   LIVE
@@ -3265,7 +3313,7 @@ export const OandaProChart: React.FC = () => {
             <button
               type="button"
               onClick={() => setMt5SettingsOpen((visible) => !visible)}
-              className={`whitespace-nowrap rounded-md border px-2 py-1 text-[9px] font-black transition ${
+              className={`whitespace-nowrap rounded-full border px-2 py-0.5 text-[9px] font-black transition ${
                 mt5Status?.config.enabled
                   ? mt5Status.config.dryRun || mt5Status.marketData?.fresh !== true
                     ? 'border-amber-300 bg-amber-50 text-amber-800'
@@ -3435,19 +3483,37 @@ export const OandaProChart: React.FC = () => {
             )}
           </div>
 
-          <div className={`${showIndicatorControls
-            ? 'order-last flex w-full flex-wrap items-center gap-0.5 border-t border-slate-100 pt-1'
-            : 'flex items-center gap-0.5 border-l border-slate-200 pl-1'
-          }`}>
+          <div className="relative flex items-center border-l border-slate-200 pl-1">
             <button
               type="button"
               onClick={() => setShowIndicatorControls((visible) => !visible)}
-              className="whitespace-nowrap rounded-md border border-slate-300 bg-slate-50 px-1.5 py-0.5 text-[8px] font-black leading-tight text-slate-600 transition hover:bg-slate-100"
+              className={`whitespace-nowrap rounded-full border px-2 py-0.5 text-[9px] font-black transition ${
+                showIndicatorControls
+                  ? 'border-indigo-300 bg-indigo-100 text-indigo-800'
+                  : 'border-slate-300 bg-slate-50 text-slate-600 hover:bg-slate-100'
+              }`}
               title={showIndicatorControls ? 'Minimize indicator controls' : 'Show indicator controls'}
+              aria-expanded={showIndicatorControls}
             >
-              {showIndicatorControls ? 'INDICATORS − MINIMIZE' : 'INDICATORS + SHOW CONTROLS'}
+              INDICATORS {showIndicatorControls ? '▴' : '▾'}
             </button>
-            {showIndicatorControls && <>
+            {showIndicatorControls && (
+            <div className="absolute right-0 top-full z-[60] mt-1 w-[min(720px,calc(100vw-2rem))] rounded-lg border border-indigo-100 bg-white p-2 shadow-xl ring-1 ring-slate-900/5">
+              <div className="relative mb-1.5 flex min-h-8 items-center justify-center border-b border-slate-100 pb-1.5 pr-8">
+                <div className="text-center">
+                  <div className="text-[10px] font-black tracking-wide text-slate-700">INDICATOR CONTROLS</div>
+                  <div className="text-[8px] font-bold tracking-wide text-slate-400">SELECT EACH INDICATOR ON OR OFF</div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowIndicatorControls(false)}
+                  className="absolute right-0 top-0 rounded-full border border-slate-200 px-1.5 py-0.5 text-[8px] font-black text-slate-500 hover:bg-slate-100"
+                  aria-label="Close indicator controls"
+                >
+                  ✕
+                </button>
+              </div>
+              <div className="flex flex-wrap items-stretch gap-1 [&>*]:min-w-[105px] [&>*]:flex-1">
             <button
               onClick={() => setShowStructure((value) => !value)}
               className={`whitespace-nowrap rounded-md border px-1.5 py-0.5 text-[8px] font-black leading-tight transition ${
@@ -3777,23 +3843,25 @@ export const OandaProChart: React.FC = () => {
             >
               INVALID ZONES {showInvalidZones ? 'ON' : 'OFF'}
             </button>
-            </>}
+              </div>
+            </div>
+            )}
           </div>
 
-          <div className="ml-auto flex max-w-full flex-wrap items-center justify-end gap-1.5">
-            <label className="flex items-center gap-1 rounded-md border border-slate-200 bg-white px-1.5 py-0.5 text-[9px] font-black text-slate-600">
+          <div className="ml-auto flex max-w-full flex-wrap items-center justify-end gap-1 2xl:flex-nowrap">
+            <label className="flex items-center gap-1 rounded-md border border-slate-200 bg-white px-1.5 py-0.5 text-[8px] font-black text-slate-600">
               TIME
               <select
                 value={chartTimeZone}
                 onChange={(event) => setChartTimeZone(event.target.value as ChartTimeZone)}
-                className="bg-white text-[9px] font-black text-slate-700 outline-none"
+                className="bg-white text-[8px] font-black text-slate-700 outline-none"
                 title="Choose the timezone shown on the chart axis and crosshair"
               >
-                <option value="Asia/Kathmandu">NEPAL (UTC+5:45)</option>
+                <option value="Asia/Kathmandu">NEPAL</option>
                 <option value="UTC">UTC</option>
               </select>
             </label>
-            <div className={`flex items-center gap-1 rounded-full border px-2 py-0.5 text-[9px] font-black ${
+            <div className={`flex items-center gap-1 rounded-full border px-1.5 py-0.5 text-[8px] font-black ${
               error
                 ? 'border-rose-200 bg-rose-50 text-rose-700'
                 : 'border-emerald-200 bg-emerald-50 text-emerald-700'
@@ -3805,11 +3873,11 @@ export const OandaProChart: React.FC = () => {
             <button
               type="button"
               onClick={restorePresentChartView}
-              className="flex items-center gap-1 rounded-md border border-slate-200 px-2 py-1 text-[9px] font-black text-slate-600 hover:bg-slate-100"
+              className="flex items-center gap-1 rounded-md border border-slate-200 px-1.5 py-0.5 text-[8px] font-black text-slate-600 hover:bg-slate-100"
               title="Restore the default candle zoom and return to the latest candle"
             >
-              <RefreshCw className="h-3 w-3" />
-              REFRESH CHART VIEW
+              <RefreshCw className="h-2.5 w-2.5" />
+              CHART VIEW
             </button>
             <button
               onClick={() => setRefreshKey((value) => value + 1)}
@@ -4208,7 +4276,7 @@ export const OandaProChart: React.FC = () => {
                 <h2 className="font-black text-rose-900">XAUUSD candle feed is unavailable</h2>
                 <p className="mt-2 text-sm text-rose-800">{error}</p>
                 <p className="mt-3 text-xs leading-relaxed text-slate-600">
-                  Live charts and automatic execution require candles from the connected MT5 broker. Historical replay may use TradingView data and never sends orders.
+                  The selected chart feed is unavailable. Automatic execution remains independent and always uses candles from the connected MT5 broker.
                 </p>
               </div>
             </div>
@@ -4219,7 +4287,9 @@ export const OandaProChart: React.FC = () => {
           <span className={`flex items-center gap-1 ${source.startsWith('MetaTrader 5') ? 'text-emerald-700' : 'text-amber-700'}`}>
             {source.startsWith('MetaTrader 5')
               ? <CheckCircle2 className="h-3 w-3" /> : <AlertTriangle className="h-3 w-3" />}
-            {source.startsWith('MetaTrader 5') ? 'MT5 broker execution data' : 'TradingView replay data'}
+            {source.startsWith('MetaTrader 5')
+              ? 'MT5 broker chart data'
+              : replayIndex !== null ? 'TradingView replay data' : 'OANDA live chart data'}
           </span>
           <span className="flex items-center gap-1 text-emerald-700"><CheckCircle2 className="h-3 w-3" /> Symbol: {mt5Status?.config.brokerSymbol || 'XAUUSD'}</span>
           <span>OHLC source: {source}</span>
