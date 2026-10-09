@@ -628,6 +628,7 @@ test('zone engulfing requires A+ FIB, active-zone contact, the band-specific tou
     bottom: 7.5,
     top: 8.5,
     fibStatus: 'a-plus',
+    fibBand: '0.5-0.618',
     fibLevel50: 9,
   });
 
@@ -656,9 +657,9 @@ test('zone engulfing requires A+ FIB, active-zone contact, the band-specific tou
       ...eligible,
       fibBand: 'DB/DT',
       fibLevel50: undefined,
-    })?.type,
-    'T2',
-    'an originating DB/DT FIB zone qualifies from direct zone contact',
+    }),
+    undefined,
+    'an originating DB/DT label cannot replace numerical FIB alignment',
   );
   assert.equal(
     findZoneEngulfingPattern(candles, {
@@ -713,7 +714,31 @@ test('zone engulfing requires A+ FIB, active-zone contact, the band-specific tou
     fibStatus: 'a-plus',
     fibBand: 'DB/DT',
     fibLevel50: undefined,
-  }))?.type, 'T4', 'a green DT tap, one inside candle, and red close below the tap low is bearish T4');
+  })), undefined, 'a DT engulfing without numerical FIB alignment cannot qualify');
+});
+
+test('single CHoCH DB/DT anchors are not forced A+ outside numerical FIB bands', () => {
+  const candles: StructureCandle[] = [
+    { time: 0, open: 118, high: 120, low: 117, close: 119, complete: true },
+    { time: 10, open: 119, high: 119, low: 100, close: 102, complete: true },
+  ];
+  const zones: StructureZone[] = [
+    zone({
+      id: 'unaligned-dt',
+      name: 'DT',
+      isBuy: false,
+      startTime: 0,
+      bottom: 118,
+      top: 120,
+      chochTime: 10,
+    }),
+  ];
+
+  applyFibConfluence(candles, zones);
+
+  assert.equal(zones[0].fibStatus, 'not-valid');
+  assert.equal(zones[0].fibBand, undefined);
+  assert.equal(zones[0].fibLevel50, 110);
 });
 
 test('Major Liquidity accepts a zone-touching engulfing without any FIB alignment', () => {

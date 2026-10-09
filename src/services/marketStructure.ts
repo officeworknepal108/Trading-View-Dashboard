@@ -650,10 +650,14 @@ export function findZoneEngulfingPattern(
 ): EngulfingPattern | undefined {
   const fibIndependentMajorLiquidity = usesMajorLiquidityTradingRules(zone);
   const isDeepFib = zone.fibBand === '0.71-0.79' || zone.fibBand === 'deep';
-  const isDbDtFib = zone.fibBand === 'DB/DT';
+  // "DB/DT" was a synthetic label that marked every originating CHoCH
+  // anchor A+ even when it did not overlap a numerical Fib band. Never let a
+  // stale/saved synthetic label bypass the real Fib gate.
+  const hasNumericalFibAlignment = zone.fibBand === '0.5-0.618' || isDeepFib;
   if (zone.status !== 'valid'
     || (!fibIndependentMajorLiquidity && (zone.fibStatus !== 'a-plus'
-      || (!isDeepFib && !isDbDtFib && zone.fibLevel50 === undefined)))) {
+      || !hasNumericalFibAlignment
+      || (!isDeepFib && zone.fibLevel50 === undefined)))) {
     return undefined;
   }
   const validFrom = Math.max(
@@ -669,7 +673,7 @@ export function findZoneEngulfingPattern(
     const pattern = detectEngulfingPatternAt(candles, endIndex, type4MaxCandles);
     if (!pattern || pattern.direction !== requiredDirection) continue;
     const patternCandles = candles.slice(pattern.startIndex, pattern.endIndex + 1);
-    if (!fibIndependentMajorLiquidity && !isDeepFib && !isDbDtFib) {
+    if (!fibIndependentMajorLiquidity && !isDeepFib) {
       const patternTouchesFib50 = patternCandles.some((candle) => (
         candle.low <= zone.fibLevel50! && candle.high >= zone.fibLevel50!
       ));
@@ -902,11 +906,15 @@ export function applyFibConfluence(candles: StructureCandle[], zones: StructureZ
       if (!eligible.has(zone.name)) continue;
       if (!isDouble && (zone.name === 'DT' || zone.name === 'DB')) {
         // Keep complete anchor coordinates so every retained CHoCH move can be
-        // drawn even when its other zones qualify against a different move.
+        // drawn, but do not manufacture Fib confluence from the fact that this
+        // zone is the originating DB/DT. It is A+ only when its price range
+        // actually overlaps a calculated numerical Fib band. The open-ended
+        // area beyond 0.79 toward the source is not alignment for an anchor.
         classifyFromMove(zone, anchor.startTime, sourcePrice, isSell, true);
-        zone.fibRelevant = true;
-        zone.fibBand = 'DB/DT';
-        zone.fibStatus = 'a-plus';
+        if (zone.fibBand === 'deep') {
+          zone.fibBand = undefined;
+          zone.fibStatus = 'not-valid';
+        }
         continue;
       }
       classifyFromMove(zone, anchor.startTime, sourcePrice, isSell, true);

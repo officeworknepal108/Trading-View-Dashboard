@@ -2697,13 +2697,42 @@ export const OandaProChart: React.FC = () => {
         fragment.appendChild(makeRange(entryY, targetY, true));
         fragment.appendChild(makeRange(entryY, stopY, false));
 
-        const entryLine = document.createElement('div');
-        entryLine.style.position = 'absolute';
-        entryLine.style.left = `${left}px`;
-        entryLine.style.top = `${entryY}px`;
-        entryLine.style.width = `${width}px`;
-        entryLine.style.borderTop = '1px solid rgba(30, 64, 175, 0.75)';
-        fragment.appendChild(entryLine);
+        const makeLevelLine = (
+          y: number,
+          color: string,
+          label: string,
+          dashed = false,
+        ) => {
+          const line = document.createElement('div');
+          line.style.position = 'absolute';
+          line.style.left = `${left}px`;
+          line.style.top = `${y}px`;
+          line.style.width = `${width}px`;
+          line.style.borderTop = `1px ${dashed ? 'dashed' : 'solid'} ${color}`;
+
+          const levelLabel = document.createElement('span');
+          levelLabel.style.position = 'absolute';
+          levelLabel.style.right = '2px';
+          levelLabel.style.top = '-11px';
+          levelLabel.style.padding = '0 2px';
+          levelLabel.style.background = 'rgba(255, 255, 255, 0.9)';
+          levelLabel.style.color = color;
+          levelLabel.style.fontSize = '8px';
+          levelLabel.style.fontWeight = '900';
+          levelLabel.style.lineHeight = '10px';
+          levelLabel.style.whiteSpace = 'nowrap';
+          levelLabel.textContent = label;
+          line.appendChild(levelLabel);
+          fragment.appendChild(line);
+        };
+
+        makeLevelLine(entryY, '#1e40af', `ENTRY ${formatPrice(trade.entry)}`);
+        makeLevelLine(stopY, '#be123c', `SL EXIT ${formatPrice(trade.stopLoss)}`);
+        makeLevelLine(targetY, '#047857', `TP EXIT ${formatPrice(trade.takeProfit)}`);
+        const riskFreeY = series.priceToCoordinate(trade.riskFree);
+        if (riskFreeY !== null) {
+          makeLevelLine(riskFreeY, '#a16207', `1R / BE ${formatPrice(trade.riskFree)}`, true);
+        }
 
         const badge = document.createElement('div');
         badge.style.position = 'absolute';
