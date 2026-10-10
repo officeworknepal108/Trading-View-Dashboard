@@ -68,6 +68,20 @@ routes retain 1:2 with a 100-pip cap. Existing zone, FIB/Major Liquidity, stop,
 pending-entry and 1R rules remain unchanged. Intraday routes are not part of
 this filter.
 
+## Intraday Logic
+
+Intraday entries use completed H4 structure as the main bias, H1 structure as
+continuation or pullback context, and completed M15 structure as setup
+confirmation. Both M5 and M15 engulfing entries are supported. H4 and M15 must
+match the entry direction; neutral H4, H1, or M15 conditions wait. An opposite
+H1 trend is accepted as a pullback only after M15 has realigned with H4.
+
+Mapped M15-to-M5 and H1-to-M5 setups use the existing M5 1:2 rule, 10-pip
+buffer and 100-pip maximum risk. Native M15, H1-to-M15, and H4-to-M15 routes
+use the existing M15 1:2 rule, 20-pip buffer and 200-pip maximum risk. The
+engulfing must close before entry; existing A+ FIB/Major Liquidity, zone-touch,
+pending-entry, deep-FIB stop, and 1R protection rules remain unchanged.
+
 The optional Engulfing Accuracy table is OFF by default. When enabled it counts
 only resolved trades as SL, protected RF exits, or TP, and calculates accuracy
 as TP divided by all resolved outcomes. Its statistics use a rolling window of

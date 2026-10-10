@@ -238,6 +238,33 @@ test('direct M5 entries require their direction to match M15 bias', () => {
   assert.equal(aligned.rule?.rewardRisk, 2);
 });
 
+test('M15 intraday entries require aligned H4 and M15 with clear H1 context', () => {
+  const baseRule = getDirectTradeRule('M15', 'M15')!;
+  const signal = { ...bullishSignal, timeframe: 'M15' as const };
+  const continuation = resolveDirectEntryPolicy({
+    zoneTimeframe: 'M15', signal, sourceCandles: [], baseRule,
+    m5Trend: 'neutral', m15Trend: 'bullish', h1Trend: 'bullish', h4Trend: 'bullish',
+  });
+  assert.equal(continuation.allowed, true);
+  assert.equal(continuation.reason, 'intraday-confirmed');
+  assert.equal(continuation.intraday?.setup, 'continuation');
+  assert.equal(continuation.rule?.rewardRisk, 2);
+
+  const pullback = resolveDirectEntryPolicy({
+    zoneTimeframe: 'M15', signal, sourceCandles: [], baseRule,
+    m5Trend: 'neutral', m15Trend: 'bullish', h1Trend: 'bearish', h4Trend: 'bullish',
+  });
+  assert.equal(pullback.allowed, true);
+  assert.equal(pullback.intraday?.setup, 'pullback');
+
+  const conflict = resolveDirectEntryPolicy({
+    zoneTimeframe: 'M15', signal, sourceCandles: [], baseRule,
+    m5Trend: 'neutral', m15Trend: 'bullish', h1Trend: 'bullish', h4Trend: 'bearish',
+  });
+  assert.equal(conflict.allowed, false);
+  assert.equal(conflict.reason, 'intraday-bias-mismatch');
+});
+
 test('finalized direct trade matrix returns the agreed R:R, buffer, and risk caps', () => {
   assert.deepEqual(getDirectTradeRule('M1', 'M1'), {
     zoneTimeframe: 'M1', engulfingTimeframe: 'M1', rewardRisk: 3,
