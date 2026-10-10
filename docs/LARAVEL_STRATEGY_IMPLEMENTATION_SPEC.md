@@ -507,6 +507,7 @@ and 1R management rules.
 - For a down move, a completed candle touching or crossing 0.500 starts an up move from the old level-0 low to that candle's high.
 - Retain only current and previous moves.
 - Apply active Swing FIB to M1, M5, M15, M30, and H1 zones.
+- Apply the same Swing FIB qualification to external and internal structure zones.
 - Up swing accepts BUY zones and bullish engulfing; down swing accepts SELL zones and bearish engulfing.
 - A zone overlapping either 0.500-0.618 or 0.710-0.790 becomes Swing A+.
 - The final engulfing candle must overlap the qualifying band, and the engulfing sequence must touch the zone after both zone activation and the Swing level-0 timestamp.

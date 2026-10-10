@@ -33,6 +33,30 @@ test('4H selling Swing FIB accepts only selling zones in either golden band', ()
   assert.equal(result.zones[3].swingFibStatus, undefined);
 });
 
+test('Swing FIB applies the same qualification to internal structure zones', () => {
+  const result = applySwingFibConfluence([], [
+    zone({
+      id: 'internal-primary-sell',
+      name: 'Internal QML',
+      category: 'internal',
+      bottom: 110.5,
+      top: 112,
+    }),
+    zone({
+      id: 'internal-wrong-direction',
+      name: 'Internal RBS',
+      category: 'internal',
+      isBuy: true,
+      bottom: 110.5,
+      top: 112,
+    }),
+  ], sellMove);
+
+  assert.equal(result.zones[0].swingFibBand, '0.5-0.618');
+  assert.equal(result.zones[0].swingFibStatus, 'a-plus');
+  assert.equal(result.zones[1].swingFibStatus, undefined);
+});
+
 test('Swing engulfing can form inside the deep band without touching exact 0.5', () => {
   const candles: StructureCandle[] = [
     { time: 2, open: 101, high: 102, low: 100, close: 101, complete: true },

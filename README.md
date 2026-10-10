@@ -82,6 +82,9 @@ downward day anchors at the day's highest wick and extends to the lowest wick.
 Its A+ bands and engulfing entries apply equally to external and internal
 structure zones.
 
+The 4H Swing FIB also applies its direction-matched A+ bands and engulfing
+entries equally to external and internal structure zones.
+
 ## Intraday Logic
 
 Intraday entries use completed H4 structure as the main bias, H1 structure as

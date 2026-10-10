@@ -32,10 +32,10 @@ function clearSwingConfluence(zone: StructureZone): StructureZone {
 }
 
 /**
- * Applies the active 4H Swing FIB to lower-timeframe zones. Both golden bands
- * are valid, but only zones matching the swing direction qualify. Engulfing
- * can form anywhere inside the qualifying band; touching the exact 0.5 line
- * is not required.
+ * Applies the active 4H Swing FIB to external and internal lower-timeframe
+ * structure zones. Both golden bands are valid, but only zones matching the
+ * swing direction qualify. Engulfing can form anywhere inside the qualifying
+ * band; touching the exact 0.5 line is not required.
  */
 export function applySwingFibConfluence(
   candles: StructureCandle[],
