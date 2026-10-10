@@ -68,6 +68,13 @@ routes retain 1:2 with a 100-pip cap. Existing zone, FIB/Major Liquidity, stop,
 pending-entry and 1R rules remain unchanged. Intraday routes are not part of
 this filter.
 
+Internal TJL1/TJL2 and converted Internal QML/SBR/RBS/DB/DT levels use the
+same direct-entry qualification, directional bias, risk, history and MT5
+execution pipeline as external structure. Internal CHoCH setups are also
+eligible for mapped MTF entries when their Internal QML and matching Internal
+RBS/SBR share the same pair identity. Internal and external CHoCH families are
+never combined to manufacture a setup.
+
 ## Intraday Logic
 
 Intraday entries use completed H4 structure as the main bias, H1 structure as

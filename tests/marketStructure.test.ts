@@ -633,6 +633,15 @@ test('zone engulfing requires A+ FIB, active-zone contact, the band-specific tou
   });
 
   assert.equal(findZoneEngulfingPattern(candles, eligible)?.type, 'T2');
+  assert.equal(
+    findZoneEngulfingPattern(candles, {
+      ...eligible,
+      name: 'Internal QML',
+      category: 'internal',
+    })?.type,
+    'T2',
+    'internal structure uses the same qualified direct-entry confirmation',
+  );
   assert.equal(findZoneEngulfingPattern(candles, { ...eligible, isBuy: false }), undefined);
   assert.equal(findZoneEngulfingPattern(candles, { ...eligible, fibStatus: 'not-valid' }), undefined);
   assert.equal(

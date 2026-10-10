@@ -571,10 +571,17 @@ An MTF setup is a location-specific reversal. It is not enough for a lower-timef
 
 ### 19.1 Lower CHoCH event identity
 
-- Event zones must be external MG QML/SBR/RBS/DT/DB sharing one CHoCH timestamp.
-- QML and the matching SBR/RBS must have the same `tjlPairTime`.
+- Event zones must be either external MG QML/SBR/RBS/DT/DB or internal
+  Internal QML/SBR/RBS/DT/DB sharing one CHoCH timestamp.
+- QML and the matching SBR/RBS must have the same `tjlPairTime` and belong to
+  the same external or internal structure family. Never mix the two families.
 - That pair time identifies the exact lower-timeframe structure that changed.
 - ISS does not replace this same-structure CHoCH requirement.
+
+Direct entries from Internal TJL1/TJL2 and converted Internal QML/SBR/RBS/DB/DT
+use the same active/valid, FIB, zone-touch, engulfing, bias, risk, history and
+execution rules as their external equivalents. A pending Internal TJL1 cannot
+tap or enter before its mapped confirmation.
 
 ### 19.2 Higher-timeframe context
 

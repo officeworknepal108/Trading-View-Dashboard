@@ -9,6 +9,7 @@ import {
 
 export type MtfGranularity = 'M1' | 'M5' | 'M15' | 'H1' | 'H4' | 'D';
 export type MtfConfirmationKind = 'choch' | 'iss';
+export type MtfStructureScope = 'external' | 'internal';
 
 export interface MtfTimeframeData {
   candles: StructureCandle[];
@@ -20,6 +21,7 @@ export interface MtfRow {
   higherTimeframe: MtfGranularity;
   lowerTimeframe: MtfGranularity;
   confirmationKind: MtfConfirmationKind;
+  structureScope: MtfStructureScope;
   direction: EngulfingDirection;
   confirmationTime: number;
   confirmationBarsAgo: number;
@@ -54,9 +56,22 @@ export const MTF_MAPPINGS: MtfMapping[] = [
 
 const CHOCH_ZONE_NAMES = new Set<StructureZone['name']>(['QML', 'SBR', 'RBS', 'DT', 'DB']);
 const CHOCH_SOURCE_ZONE_NAMES = new Set<StructureZone['name']>(['QML', 'SBR', 'RBS']);
+const INTERNAL_CHOCH_ZONE_NAMES = new Set<StructureZone['name']>([
+  'Internal QML',
+  'Internal SBR',
+  'Internal RBS',
+  'Internal DT',
+  'Internal DB',
+]);
+const INTERNAL_CHOCH_SOURCE_ZONE_NAMES = new Set<StructureZone['name']>([
+  'Internal QML',
+  'Internal SBR',
+  'Internal RBS',
+]);
 
 interface ConfirmationEvent {
   kind: MtfConfirmationKind;
+  structureScope: MtfStructureScope;
   time: number;
   isBuy: boolean;
   zones: StructureZone[];
@@ -93,7 +108,9 @@ function latestHigherTimeframeTouch(
     // finding any same-direction CHOCH after an older HTF tap is not enough.
     // The CHOCH break candle itself may close after price has left the HTF zone.
     const sourcePairIsInZone = event.zones.some((sourceZone) => (
-      CHOCH_SOURCE_ZONE_NAMES.has(sourceZone.name)
+      (event.structureScope === 'internal'
+        ? INTERNAL_CHOCH_SOURCE_ZONE_NAMES
+        : CHOCH_SOURCE_ZONE_NAMES).has(sourceZone.name)
       && sourceZone.tjlPairTime === event.sourceStructureTime
       && overlaps(sourceZone.bottom, sourceZone.top, zone.bottom, zone.top)
     ));
@@ -127,32 +144,50 @@ function latestHigherTimeframeTouch(
 }
 
 function buildChochEvents(zones: StructureZone[]): ConfirmationEvent[] {
-  const eventTimes = new Set(zones
-    .filter((zone) => zone.category === 'mg'
-      && zone.chochTime !== undefined
-      && CHOCH_ZONE_NAMES.has(zone.name))
-    .map((zone) => zone.chochTime!));
+  const eventKeys = new Set(zones
+    .filter((zone) => zone.chochTime !== undefined && (
+      (zone.category === 'mg' && CHOCH_ZONE_NAMES.has(zone.name))
+      || (zone.category === 'internal' && INTERNAL_CHOCH_ZONE_NAMES.has(zone.name))
+    ))
+    .map((zone) => `${zone.category}:${zone.chochTime!}`));
 
-  return [...eventTimes].map((time) => {
-    const eventZones = zones.filter((zone) => zone.category === 'mg'
+  return [...eventKeys].map((key) => {
+    const [category, rawTime] = key.split(':');
+    const time = Number(rawTime);
+    const structureScope: MtfStructureScope = category === 'internal' ? 'internal' : 'external';
+    const allowedNames = structureScope === 'internal'
+      ? INTERNAL_CHOCH_ZONE_NAMES
+      : CHOCH_ZONE_NAMES;
+    const eventZones = zones.filter((zone) => zone.category === category
       && zone.chochTime === time
-      && CHOCH_ZONE_NAMES.has(zone.name));
+      && allowedNames.has(zone.name));
     const isBuy = eventZones[0]?.isBuy ?? true;
     // A bullish CHOCH converts the preceding selling TJL1/TJL2 into QML/RBS;
     // a bearish CHOCH converts the preceding buying pair into QML/SBR. Their
     // shared pair time is the identity of the exact structure that changed.
-    const sourceTjl1 = eventZones.find((zone) => zone.name === 'QML'
+    const qmlName: StructureZone['name'] = structureScope === 'internal'
+      ? 'Internal QML'
+      : 'QML';
+    const secondSourceName: StructureZone['name'] = structureScope === 'internal'
+      ? (isBuy ? 'Internal RBS' : 'Internal SBR')
+      : (isBuy ? 'RBS' : 'SBR');
+    const sourceTjl1 = eventZones.find((zone) => zone.name === qmlName
       && zone.tjlPairTime !== undefined);
-    const sourceTjl2 = eventZones.find((zone) => zone.name === (isBuy ? 'RBS' : 'SBR')
+    const sourceTjl2 = eventZones.find((zone) => zone.name === secondSourceName
       && zone.tjlPairTime !== undefined);
     const hasMatchingSourcePair = sourceTjl1?.tjlPairTime !== undefined
       && sourceTjl1.tjlPairTime === sourceTjl2?.tjlPairTime;
-    const anchor = eventZones.find((zone) => zone.name === 'DB' || zone.name === 'DT');
+    const anchor = eventZones.find((zone) => (
+      structureScope === 'internal'
+        ? zone.name === 'Internal DB' || zone.name === 'Internal DT'
+        : zone.name === 'DB' || zone.name === 'DT'
+    ));
     const fibZone = eventZones.find((zone) => (
       zone.fibSourcePrice !== undefined && zone.fibZeroPrice !== undefined
     ));
     return {
       kind: 'choch' as const,
+      structureScope,
       time,
       isBuy,
       zones: eventZones,
@@ -179,7 +214,12 @@ function fibBandForZone(
   zone: StructureZone,
 ): { range: [number, number]; deepDiscount: boolean } | undefined {
   // CHOCH DB/DT is the originating A+ level in the existing MG Fib model.
-  if (event.kind === 'choch' && (zone.name === 'DB' || zone.name === 'DT')) {
+  if (event.kind === 'choch' && (
+    zone.name === 'DB'
+    || zone.name === 'DT'
+    || zone.name === 'Internal DB'
+    || zone.name === 'Internal DT'
+  )) {
     return { range: [zone.bottom, zone.top], deepDiscount: false };
   }
   if (event.fibSourcePrice === undefined || event.fibZeroPrice === undefined
@@ -286,10 +326,11 @@ function eventToRow(
     }
   }
   return {
-    id: `${mapping.higher}-${mapping.lower}-${event.kind}-${event.time}`,
+    id: `${mapping.higher}-${mapping.lower}-${event.structureScope}-${event.kind}-${event.time}`,
     higherTimeframe: mapping.higher,
     lowerTimeframe: mapping.lower,
     confirmationKind: event.kind,
+    structureScope: event.structureScope,
     direction: event.isBuy ? 'bullish' : 'bearish',
     confirmationTime: event.time,
     confirmationBarsAgo: confirmationIndex < 0

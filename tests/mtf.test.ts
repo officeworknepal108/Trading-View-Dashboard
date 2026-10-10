@@ -83,6 +83,53 @@ test('MTF row follows the selected LTF CHOCH and promotes only an A+ engulfing',
   )).length, 2, 'history retains the older MTF setup that the compact table omits');
 });
 
+test('MTF entry accepts a complete internal CHOCH family without mixing external zones', () => {
+  const candles = [
+    candle(100, 104, 105, 101, 102),
+    candle(200, 103, 104, 101, 102),
+    candle(300, 102, 108, 101, 107),
+    candle(400, 107, 108, 103, 104),
+    candle(500, 104, 110, 103, 109),
+  ];
+  const higherZone = zone({
+    id: 'h1-internal-context', name: 'DEMAND', category: 'supplyDemand',
+    bottom: 101, top: 105,
+  });
+  const internalQml = zone({
+    id: 'internal-qml', name: 'Internal QML', category: 'internal',
+    chochTime: 300, startTime: 100, activeFromTime: 300, tjlPairTime: 50,
+    bottom: 103, top: 105, tapTime: 400, tapBarsAgo: 1,
+    fibSourcePrice: 100, fibZeroPrice: 110,
+  });
+  const internalRbs = zone({
+    id: 'internal-rbs', name: 'Internal RBS', category: 'internal',
+    chochTime: 300, startTime: 150, activeFromTime: 300, tjlPairTime: 50,
+    bottom: 102, top: 104,
+  });
+  const internalDb = zone({
+    id: 'internal-db', name: 'Internal DB', category: 'internal',
+    chochTime: 300, startTime: 100, activeFromTime: 300,
+    bottom: 99, top: 100,
+  });
+  const externalRbs = zone({
+    id: 'external-rbs', name: 'RBS', category: 'mg',
+    chochTime: 300, tjlPairTime: 999, bottom: 102, top: 104,
+  });
+
+  const row = buildMtfRows({
+    H1: { candles, structure: structure([higherZone]) },
+    M5: {
+      candles,
+      structure: structure([internalQml, internalRbs, internalDb, externalRbs]),
+    },
+  }).find((candidate) => candidate.structureScope === 'internal');
+
+  assert.equal(row?.confirmationKind, 'choch');
+  assert.equal(row?.structureScope, 'internal');
+  assert.equal(row?.tappedZone, 'Internal QML');
+  assert.equal(row?.engulfingType, 'T4');
+});
+
 test('MTF prefers and identifies Major Liquidity when the mapped HTF DBD is tapped', () => {
   const lowerCandles = [
     candle(100, 104, 105, 101, 102),
