@@ -4,6 +4,10 @@ import type {
   StructureCandle,
   StructureZone,
 } from './marketStructure';
+import {
+  evaluateScalpingLogic,
+  type ScalpingDecision,
+} from './scalpingLogic';
 
 export type TradeTimeframe = 'M1' | 'M5' | 'M15' | 'M30' | 'H1' | 'H4' | 'D';
 export type TradeStatus = 'pending' | 'active' | 'risk-free' | 'tp-hit' | 'sl-hit';
@@ -47,9 +51,11 @@ export type EngulfingVolumeStatus = 'not-applicable' | 'unavailable' | 'failed' 
 export interface DirectEntryPolicyDecision {
   allowed: boolean;
   reason: 'unchanged' | 'volume-confirmed' | 'volume-failed'
-    | 'volume-unavailable' | 'volume-not-applicable';
+    | 'volume-unavailable' | 'volume-not-applicable'
+    | 'scalping-confirmed' | 'scalping-bias-neutral' | 'scalping-bias-mismatch';
   rule?: TradeRule;
   volume: EngulfingVolumeAssessment;
+  scalping?: ScalpingDecision;
 }
 
 export interface OpenPositionDirection {
@@ -159,18 +165,42 @@ export function resolveDirectEntryPolicy(options: {
 }): DirectEntryPolicyDecision {
   const { zoneTimeframe, signal, sourceCandles, baseRule } = options;
   const volume = assessEngulfingVolumeLogic(sourceCandles, signal);
+  const scalping = evaluateScalpingLogic({
+    zoneTimeframe,
+    signalTimeframe: signal.timeframe,
+    signalDirection: signal.direction,
+    m5Trend: options.m5Trend ?? 'neutral',
+    m15Trend: options.m15Trend ?? 'neutral',
+  });
+  if (scalping.applicable) {
+    if (!scalping.allowed) {
+      return {
+        allowed: false,
+        reason: scalping.reason === 'm15-neutral'
+          ? 'scalping-bias-neutral'
+          : 'scalping-bias-mismatch',
+        volume,
+        scalping,
+      };
+    }
+  }
+  if (zoneTimeframe === 'M1' && signal.timeframe === 'M1') {
+    if (volume.passes) {
+      return { allowed: true, reason: 'volume-confirmed', rule: baseRule, volume, scalping };
+    }
+    const status = getEngulfingVolumeStatus(volume, signal.type);
+    const reason = status === 'unavailable'
+      ? 'volume-unavailable'
+      : status === 'not-applicable' ? 'volume-not-applicable' : 'volume-failed';
+    return { allowed: false, reason, volume, scalping };
+  }
+  if (scalping.applicable) {
+    return { allowed: true, reason: 'scalping-confirmed', rule: baseRule, volume, scalping };
+  }
   if (zoneTimeframe !== 'M1' || signal.timeframe !== 'M1') {
     return { allowed: true, reason: 'unchanged', rule: baseRule, volume };
   }
-
-  if (volume.passes) {
-    return { allowed: true, reason: 'volume-confirmed', rule: baseRule, volume };
-  }
-  const status = getEngulfingVolumeStatus(volume, signal.type);
-  const reason = status === 'unavailable'
-    ? 'volume-unavailable'
-    : status === 'not-applicable' ? 'volume-not-applicable' : 'volume-failed';
-  return { allowed: false, reason, volume };
+  return { allowed: true, reason: 'unchanged', rule: baseRule, volume };
 }
 
 export function hasOppositeOpenPosition(

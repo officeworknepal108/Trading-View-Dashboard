@@ -506,6 +506,9 @@ function displayZoneName(
 }
 
 function directEntryPolicyLabel(policy: DirectEntryPolicyDecision): string {
+  if (policy.reason === 'scalping-bias-neutral') return 'M15 BIAS NEUTRAL';
+  if (policy.reason === 'scalping-bias-mismatch') return 'M15 BIAS CONFLICT';
+  if (policy.reason === 'scalping-confirmed') return 'SCALPING LOGIC PASSED';
   if (policy.reason === 'volume-confirmed') return 'VOLUME PASSED';
   if (policy.reason === 'volume-unavailable') return 'VOLUME UNAVAILABLE';
   if (policy.reason === 'volume-not-applicable') return 'NO M1 VOLUME RULE';
@@ -1612,8 +1615,16 @@ export const OandaProChart: React.FC = () => {
         signal: setup.signal,
         sourceCandles,
         baseRule: setup.rule,
-        m5Trend: 'neutral',
-        m15Trend: 'neutral',
+        m5Trend: completedTrendAt(
+          granularity === 'M5' ? displayCandles : vipCandles.M5 || [],
+          'M5',
+          setup.signal.time + TIMEFRAME_SECONDS[setup.signal.timeframe],
+        ),
+        m15Trend: completedTrendAt(
+          granularity === 'M15' ? displayCandles : vipCandles.M15 || [],
+          'M15',
+          setup.signal.time + TIMEFRAME_SECONDS[setup.signal.timeframe],
+        ),
       });
       if (!policy.allowed || !policy.rule) {
         decisions.set(setup.zone.id, { policy, oppositePositionOpen: false });

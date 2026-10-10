@@ -55,6 +55,19 @@ they add a detail row with Entry, SL, TP, R:R, actual SL pips, and the Pending,
 Active, Risk Free, TP Hit, or SL Hit state. Internal buffers and maximum-risk
 caps are deliberately not displayed.
 
+## Scalping Logic
+
+M1 and M5 scalping use the completed M15 structure trend as directional bias
+and M5 structure as continuation or pullback context. Native M1 engulfings, M1
+zones using an M5 fallback, and native M5-zone/M5-engulfing entries are allowed
+only when the completed engulfing direction matches M15. An opposite M5 trend
+is treated as a pullback once the matching engulfing has closed; a neutral M15
+bias or an engulfing against M15 waits and creates no trade. Native M1 still
+requires its agreed volume test and uses 1:3 with a 50-pip cap. M5 confirmation
+routes retain 1:2 with a 100-pip cap. Existing zone, FIB/Major Liquidity, stop,
+pending-entry and 1R rules remain unchanged. Intraday routes are not part of
+this filter.
+
 The optional Engulfing Accuracy table is OFF by default. When enabled it counts
 only resolved trades as SL, protected RF exits, or TP, and calculates accuracy
 as TP divided by all resolved outcomes. Its statistics use a rolling window of

@@ -461,6 +461,26 @@ Generic mapped fallback scanning uses valid, active, tradeable zones and matchin
 3. Swing-FIB engulfing.
 4. Day-FIB engulfing.
 
+### 15.1 Scalping Logic for M1 and M5 execution
+
+Apply this gate to native M1-zone/M1-engulfing setups, an M1 zone using its M5
+engulfing fallback, and native M5-zone/M5-engulfing setups. At the completed
+entry engulfing close, compute M5 context and the M15 market-structure trend
+using only candles that have already closed.
+
+- Bullish M1 or M5 confirmation requires bullish M15 bias.
+- Bearish M1 or M5 confirmation requires bearish M15 bias.
+- Neutral M15 bias waits and creates no trade.
+- An engulfing opposite to the M15 bias waits and creates no trade.
+- If the completed M5 trend already matches the signal, classify it as a
+  continuation. If M5 trend is opposite, the matching completed engulfing
+  confirms the pullback entry. Neutral M5 trend is accepted because the
+  completed M5 engulfing itself is the confirmation.
+
+Native M1 confirmation must additionally pass its existing volume policy. This
+gate does not alter zone qualification, R:R, stop buffers, risk caps,
+pending-entry behavior, M15/M30 routes, or H1 intraday routes.
+
 ## 16. H4 Swing FIB
 
 - Seed from the earliest non-zero H4 external swing line.
@@ -997,4 +1017,3 @@ Clearly list any ambiguity instead of inventing behavior. Use the source-of-trut
 original repository is available. Deliver the work in phases and require parity tests before moving
 from Dry Run to demo order placement.
 ```
-
