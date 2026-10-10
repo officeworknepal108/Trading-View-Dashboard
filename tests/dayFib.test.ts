@@ -11,7 +11,7 @@ function candle(day: number, hour: number, minute: number, open: number, high: n
   return { time: nepalTimestamp(day, hour, minute), open, high, low, close, complete: true };
 }
 
-test('Day Fib starts from the 9:15 Nepal candle and follows an upward day high', () => {
+test('Day Fib activates at 9:15 but starts from the earlier daily low wick on an upward day', () => {
   const moves = buildDayFibs([
     candle(2, 9, 0, 99, 102, 98, 101),
     candle(2, 9, 15, 100, 103, 99, 102),
@@ -21,7 +21,9 @@ test('Day Fib starts from the 9:15 Nepal candle and follows an upward day high',
 
   assert.equal(moves.length, 1);
   assert.equal(moves[0].direction, 'up');
-  assert.equal(moves[0].sourcePrice, 100);
+  assert.equal(moves[0].activationTime, nepalTimestamp(2, 9, 15));
+  assert.equal(moves[0].sourcePrice, 98);
+  assert.equal(moves[0].sourceTime, nepalTimestamp(2, 9, 0));
   assert.equal(moves[0].zeroPrice, 108);
   assert.equal(moves[0].zeroTime, nepalTimestamp(2, 10, 0));
 });
@@ -37,8 +39,8 @@ test('Day Fib follows the low on a downward day and resets at the next 9:15', ()
 
   assert.equal(moves.length, 2);
   assert.deepEqual(moves.map((move) => [move.direction, move.sourcePrice, move.zeroPrice]), [
-    ['down', 100, 90],
-    ['down', 110, 100],
+    ['down', 102, 90],
+    ['down', 120, 80],
   ]);
 });
 

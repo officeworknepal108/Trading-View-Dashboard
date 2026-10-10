@@ -75,6 +75,13 @@ eligible for mapped MTF entries when their Internal QML and matching Internal
 RBS/SBR share the same pair identity. Internal and external CHoCH families are
 never combined to manufacture a setup.
 
+Day FIB activates when the exact 9:15 AM Nepal candle is available, but its
+starting anchor is the relevant wick already formed since Nepal midnight. An
+upward day anchors at the day's lowest wick and extends to the highest wick; a
+downward day anchors at the day's highest wick and extends to the lowest wick.
+Its A+ bands and engulfing entries apply equally to external and internal
+structure zones.
+
 ## Intraday Logic
 
 Intraday entries use completed H4 structure as the main bias, H1 structure as

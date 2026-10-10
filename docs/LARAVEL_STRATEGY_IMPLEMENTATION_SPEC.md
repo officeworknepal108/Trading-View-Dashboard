@@ -515,14 +515,18 @@ and 1R management rules.
 ## 17. Nepal 09:15 Day FIB
 
 - Used on M1, M5, M15, and M30 only.
-- Each Nepal calendar day begins its measurement at exactly 09:15 Asia/Kathmandu.
+- Collect wick extremes from Nepal midnight, but activate the FIB only at
+  exactly 09:15 Asia/Kathmandu.
 - If the exact 09:15 candle is missing, do not create that day's FIB.
-- Level 1 is the 09:15 candle open.
-- If latest close is above the open, direction is up and level 0 follows the day's high.
-- If latest close is below the open, direction is down and level 0 follows the day's low.
+- The 09:15 candle open is the direction reference, not the FIB anchor.
+- If latest close is above that open, direction is up: level 1 starts at the
+  day's lowest wick and level 0 follows the day's highest wick.
+- If latest close is below that open, direction is down: level 1 starts at the
+  day's highest wick and level 0 follows the day's lowest wick.
 - If equal, choose the side with the greater distance from the open; ties choose up.
 - A completed historical day stays frozen.
 - Up Day FIB accepts BUY zones/bullish engulfing; down accepts SELL zones/bearish engulfing.
+- Apply the same Day FIB qualification to external and internal structure zones.
 - Either primary or deep band qualifies.
 - Final engulfing candle must overlap the selected band; the pattern must touch the active zone after activation and after the Day FIB extreme timestamp.
 - Deep Day FIB does not require exact 0.500 contact.

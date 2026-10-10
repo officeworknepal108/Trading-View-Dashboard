@@ -15,6 +15,7 @@ function zone(overrides: Partial<StructureZone>): StructureZone {
 
 const buyMove: DayFibMove = {
   sessionDate: '2026-10-02', direction: 'up',
+  activationTime: 1,
   sourceTime: 0, sourcePrice: 100,
   zeroTime: 2, zeroPrice: 120,
 };
@@ -31,6 +32,30 @@ test('buying Day FIB accepts only buying zones in either golden band', () => {
   assert.equal(result.zones[1].dayFibBand, '0.71-0.79');
   assert.equal(result.zones[2].dayFibStatus, undefined);
   assert.equal(result.zones[3].dayFibStatus, undefined);
+});
+
+test('Day FIB applies the same qualification to internal structure zones', () => {
+  const result = applyDayFibConfluence([], [
+    zone({
+      id: 'internal-primary-buy',
+      name: 'Internal QML',
+      category: 'internal',
+      bottom: 107.5,
+      top: 110,
+    }),
+    zone({
+      id: 'internal-wrong-direction',
+      name: 'Internal SBR',
+      category: 'internal',
+      isBuy: false,
+      bottom: 107.5,
+      top: 110,
+    }),
+  ], buyMove);
+
+  assert.equal(result.zones[0].dayFibBand, '0.5-0.618');
+  assert.equal(result.zones[0].dayFibStatus, 'a-plus');
+  assert.equal(result.zones[1].dayFibStatus, undefined);
 });
 
 test('Day FIB engulfing can form in the deep band without touching exact 0.5', () => {

@@ -32,8 +32,9 @@ function clearDayConfluence(zone: StructureZone): StructureZone {
 }
 
 /**
- * Applies the current 9:15 Nepal Day FIB to matching zones. Both golden bands
- * qualify, and engulfing may form anywhere inside the zone's qualifying band.
+ * Applies the current 9:15 Nepal Day FIB to matching external and internal
+ * structure zones. Both golden bands qualify, and engulfing may form anywhere
+ * inside the zone's qualifying band.
  */
 export function applyDayFibConfluence(
   candles: StructureCandle[],
@@ -67,6 +68,7 @@ export function applyDayFibConfluence(
     zone.dayFibStatus = 'a-plus';
     const [bandFirst, bandSecond] = band === '0.5-0.618' ? primary : deep;
     const validFrom = Math.max(
+      move.activationTime,
       move.zeroTime,
       zone.startTime,
       zone.activeFromTime ?? zone.startTime,

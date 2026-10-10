@@ -7,6 +7,7 @@ const SESSION_START_SECONDS = 9 * 3600 + 15 * 60;
 export interface DayFibMove {
   sessionDate: string;
   direction: 'up' | 'down';
+  activationTime: number;
   sourceTime: number;
   sourcePrice: number;
   zeroTime: number;
@@ -28,9 +29,11 @@ function nepalDateLabel(dayStart: number): string {
 }
 
 /**
- * Builds one FIB per Nepal calendar day. Level 1 is the 9:15 candle open and
- * level 0 follows the day's high when price finishes above that open, or the
- * day's low when it finishes below it. A completed day remains frozen.
+ * Builds one FIB per Nepal calendar day. The exact 9:15 candle activates the
+ * FIB and provides the direction reference, but it is not automatically the
+ * source. An upward day starts at the lowest wick formed since Nepal midnight
+ * and extends to the day's highest wick; a downward day starts at the highest
+ * wick and extends to the day's lowest wick. A completed day remains frozen.
  */
 export function buildDayFibs(candles: StructureCandle[]): DayFibMove[] {
   const ordered = [...candles].sort((first, second) => first.time - second.time);
@@ -38,43 +41,44 @@ export function buildDayFibs(candles: StructureCandle[]): DayFibMove[] {
 
   for (const candle of ordered) {
     const dayStart = nepalDayStartUtc(candle.time);
-    const sessionStart = dayStart + SESSION_START_SECONDS;
-    if (candle.time < sessionStart || candle.time >= dayStart + DAY_SECONDS) continue;
-    const sessionCandles = candlesByDay.get(dayStart) ?? [];
-    sessionCandles.push(candle);
-    candlesByDay.set(dayStart, sessionCandles);
+    if (candle.time < dayStart || candle.time >= dayStart + DAY_SECONDS) continue;
+    const dayCandles = candlesByDay.get(dayStart) ?? [];
+    dayCandles.push(candle);
+    candlesByDay.set(dayStart, dayCandles);
   }
 
   const moves: DayFibMove[] = [];
-  for (const [dayStart, sessionCandles] of candlesByDay) {
+  for (const [dayStart, dayCandles] of candlesByDay) {
     const sessionStart = dayStart + SESSION_START_SECONDS;
-    const source = sessionCandles.find((candle) => candle.time === sessionStart);
-    if (!source) continue;
+    const activation = dayCandles.find((candle) => candle.time === sessionStart);
+    if (!activation) continue;
 
-    let highCandle = source;
-    let lowCandle = source;
-    for (const candle of sessionCandles) {
+    let highCandle = dayCandles[0];
+    let lowCandle = dayCandles[0];
+    for (const candle of dayCandles) {
       if (candle.high > highCandle.high) highCandle = candle;
       if (candle.low < lowCandle.low) lowCandle = candle;
     }
 
-    const latest = sessionCandles[sessionCandles.length - 1];
-    const highDistance = highCandle.high - source.open;
-    const lowDistance = source.open - lowCandle.low;
-    const direction = latest.close > source.open
+    const latest = dayCandles[dayCandles.length - 1];
+    const highDistance = highCandle.high - activation.open;
+    const lowDistance = activation.open - lowCandle.low;
+    const direction = latest.close > activation.open
       ? 'up'
-      : latest.close < source.open
+      : latest.close < activation.open
         ? 'down'
         : highDistance >= lowDistance ? 'up' : 'down';
-    const extreme = direction === 'up' ? highCandle : lowCandle;
+    const source = direction === 'up' ? lowCandle : highCandle;
+    const zero = direction === 'up' ? highCandle : lowCandle;
 
     moves.push({
       sessionDate: nepalDateLabel(dayStart),
       direction,
+      activationTime: activation.time,
       sourceTime: source.time,
-      sourcePrice: source.open,
-      zeroTime: extreme.time,
-      zeroPrice: direction === 'up' ? extreme.high : extreme.low,
+      sourcePrice: direction === 'up' ? source.low : source.high,
+      zeroTime: zero.time,
+      zeroPrice: direction === 'up' ? zero.high : zero.low,
     });
   }
 
