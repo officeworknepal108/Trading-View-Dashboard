@@ -9,6 +9,8 @@ import {
   getEngulfingVolumeStatus,
   getMtfTradeRule,
   isDeepDiscountTradeSignal,
+  isZoneEngulfingFibQualified,
+  resolveZoneEngulfingSignal,
   resolveDirectEntryPolicy,
   type EngulfingTradeSignal,
 } from '../src/services/tradeLevels';
@@ -21,6 +23,44 @@ const bullishSignal: EngulfingTradeSignal = {
   candleCount: 2,
   timeframe: 'M1',
 };
+
+test('engulfing signals cannot resolve without their matching A+ FIB qualification', () => {
+  const outsideFibSbr = {
+    id: 'outside-fib-sbr',
+    name: 'SBR',
+    category: 'mg',
+    isBuy: false,
+    startTime: 0,
+    endTime: 1800,
+    bottom: 100,
+    top: 110,
+    active: true,
+    status: 'valid',
+    tradeable: true,
+    fibStatus: 'not-valid',
+    fallbackEngulfingType: 'T3',
+    fallbackEngulfingDirection: 'bearish',
+    fallbackEngulfingTime: 3600,
+    fallbackEngulfingCandleCount: 3,
+    fallbackEngulfingTimeframe: 'M30',
+  } satisfies StructureZone;
+  assert.equal(isZoneEngulfingFibQualified(outsideFibSbr, 'structure'), false);
+  assert.equal(resolveZoneEngulfingSignal(outsideFibSbr, 'M15'), undefined);
+
+  const alignedSbr: StructureZone = {
+    ...outsideFibSbr,
+    fibStatus: 'a-plus',
+    fibBand: '0.5-0.618',
+  };
+  assert.equal(resolveZoneEngulfingSignal(alignedSbr, 'M15')?.type, 'T3');
+
+  const majorLiquidity: StructureZone = {
+    ...outsideFibSbr,
+    name: 'DTD',
+    majorLiquidity: true,
+  };
+  assert.equal(resolveZoneEngulfingSignal(majorLiquidity, 'M15')?.type, 'T3');
+});
 
 test('half-at-1R management reports the correct net R outcome', () => {
   assert.equal(calculateHalfAtOneRResult('sl', 3), -1);

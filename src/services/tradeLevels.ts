@@ -307,13 +307,37 @@ export function formatTradeTimeframe(timeframe: string): string {
   return timeframe;
 }
 
+export type ZoneEngulfingFibSource = 'structure' | 'swing' | 'day';
+
+export function isZoneEngulfingFibQualified(
+  zone: StructureZone,
+  source: ZoneEngulfingFibSource,
+): boolean {
+  if (source === 'swing') {
+    return zone.swingFibStatus === 'a-plus'
+      && (zone.swingFibBand === '0.5-0.618' || zone.swingFibBand === '0.71-0.79');
+  }
+  if (source === 'day') {
+    return zone.dayFibStatus === 'a-plus'
+      && (zone.dayFibBand === '0.5-0.618' || zone.dayFibBand === '0.71-0.79');
+  }
+  const designatedMajorLiquidity = zone.majorLiquidity === true
+    && (zone.name === 'TJL2' || zone.name === 'DBD' || zone.name === 'DTD');
+  if (designatedMajorLiquidity) return true;
+  return zone.fibStatus === 'a-plus'
+    && (zone.fibBand === '0.5-0.618'
+      || zone.fibBand === '0.71-0.79'
+      || zone.fibBand === 'deep');
+}
+
 export function resolveZoneEngulfingSignal(
   zone: StructureZone,
   chartTimeframe: TradeTimeframe,
 ): EngulfingTradeSignal | undefined {
   // A fallback can intentionally be preferred even when the zone also has a
   // chart-timeframe engulfing (for example, 1H entries confirmed on 15M/30M).
-  if (zone.fallbackEngulfingType && zone.fallbackEngulfingDirection
+  if (isZoneEngulfingFibQualified(zone, 'structure')
+    && zone.fallbackEngulfingType && zone.fallbackEngulfingDirection
     && zone.fallbackEngulfingTime !== undefined && zone.fallbackEngulfingTimeframe) {
     return {
       type: zone.fallbackEngulfingType,
@@ -323,7 +347,8 @@ export function resolveZoneEngulfingSignal(
       timeframe: zone.fallbackEngulfingTimeframe as TradeTimeframe,
     };
   }
-  if (zone.engulfingType && zone.engulfingDirection && zone.engulfingTime !== undefined) {
+  if (isZoneEngulfingFibQualified(zone, 'structure')
+    && zone.engulfingType && zone.engulfingDirection && zone.engulfingTime !== undefined) {
     return {
       type: zone.engulfingType,
       direction: zone.engulfingDirection,
@@ -332,7 +357,8 @@ export function resolveZoneEngulfingSignal(
       timeframe: chartTimeframe,
     };
   }
-  if (zone.swingEngulfingType && zone.swingEngulfingDirection
+  if (isZoneEngulfingFibQualified(zone, 'swing')
+    && zone.swingEngulfingType && zone.swingEngulfingDirection
     && zone.swingEngulfingTime !== undefined) {
     return {
       type: zone.swingEngulfingType,
@@ -342,7 +368,8 @@ export function resolveZoneEngulfingSignal(
       timeframe: chartTimeframe,
     };
   }
-  if (zone.dayEngulfingType && zone.dayEngulfingDirection && zone.dayEngulfingTime !== undefined) {
+  if (isZoneEngulfingFibQualified(zone, 'day')
+    && zone.dayEngulfingType && zone.dayEngulfingDirection && zone.dayEngulfingTime !== undefined) {
     return {
       type: zone.dayEngulfingType,
       direction: zone.dayEngulfingDirection,

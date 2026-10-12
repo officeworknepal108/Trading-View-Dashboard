@@ -400,9 +400,10 @@ Bullish T1:
 
 - Previous candle bearish.
 - Current candle bullish and passes body strength.
+- Current candle's lower wick strictly sweeps the previous candle's low: `current.low < previous.low`.
 - `current.close > previous.high`.
 
-Bearish T1 is the inverse: previous bullish, current bearish, body strength passes, and `current.close < previous.low`.
+Bearish T1 is the inverse: previous bullish, current bearish, body strength passes, its upper wick strictly sweeps the previous high (`current.high > previous.high`), and `current.close < previous.low`.
 
 ### 14.3 Type 2
 
@@ -454,7 +455,7 @@ For Major Liquidity:
 - Still require active-zone contact and matching direction.
 - All four engulfing types are accepted.
 
-Generic mapped fallback scanning uses valid, active, tradeable zones and matching zone contact, without reapplying the zone's structure-FIB detector. Preserve the existing signal-selection priority:
+Generic mapped fallback scanning uses valid, active, tradeable zones and matching zone contact, and must reapply the same numerical structure-FIB qualification used by native engulfing. A fallback changes only the engulfing timeframe; it cannot make an ordinary QML/SBR/RBS/DB/DT tradeable outside FIB. Designated Major Liquidity remains the only structure-FIB exemption. Preserve the existing signal-selection priority:
 
 1. Fallback engulfing.
 2. Native structure engulfing.
@@ -956,7 +957,7 @@ Claude must port fixture-based tests before enabling automatic orders. At minimu
 
 ### Engulfing
 
-- Bullish/bearish T1 only after close.
+- Bullish/bearish T1 only after close and only when the second candle sweeps the first candle's opposite wick.
 - T2 sweep and close through first candle.
 - T3 sweep and close through middle candle, without body-strength restriction.
 - T4 3-10 containment and longest-pattern preference.

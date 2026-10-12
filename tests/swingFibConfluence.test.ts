@@ -61,7 +61,7 @@ test('Swing engulfing can form inside the deep band without touching exact 0.5',
   const candles: StructureCandle[] = [
     { time: 2, open: 101, high: 102, low: 100, close: 101, complete: true },
     { time: 3, open: 114.5, high: 115.4, low: 114, close: 115, complete: true },
-    { time: 4, open: 115, high: 115.2, low: 113.5, close: 113.8, complete: true },
+    { time: 4, open: 115, high: 115.5, low: 113.5, close: 113.8, complete: true },
   ];
   const result = applySwingFibConfluence(candles, [
     zone({ id: 'deep-sell', bottom: 114.2, top: 115.6 }),

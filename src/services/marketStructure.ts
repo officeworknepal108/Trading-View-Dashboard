@@ -634,10 +634,15 @@ export function detectEngulfingPatternAt(
 
   if (!hasDirectionalBodyStrength) return undefined;
   if (!second || second.complete === false) return undefined;
-  if (candleIsBearish(second) && candleIsBullish(current) && current.close > second.high) {
+  // Type 1 BUY: the green confirmation candle must first sweep below the red
+  // candle's low with its lower wick, then close above that red candle's high.
+  // SELL is the exact inverse: sweep above the green high, then close below it.
+  if (candleIsBearish(second) && candleIsBullish(current)
+    && current.low < second.low && current.close > second.high) {
     return { type: 'T1', direction: 'bullish', candleCount: 2, startIndex: endIndex - 1, endIndex };
   }
-  if (candleIsBullish(second) && candleIsBearish(current) && current.close < second.low) {
+  if (candleIsBullish(second) && candleIsBearish(current)
+    && current.high > second.high && current.close < second.low) {
     return { type: 'T1', direction: 'bearish', candleCount: 2, startIndex: endIndex - 1, endIndex };
   }
   return undefined;
@@ -697,29 +702,11 @@ export function findTradeableZoneEngulfingPattern(
   type4MaxCandles = 10,
 ): EngulfingPattern | undefined {
   if (!zone.active || zone.status !== 'valid' || zone.tradeable === false) return undefined;
-  const validFrom = Math.max(
-    zone.startTime,
-    zone.activeFromTime ?? zone.startTime,
-    zone.confirmationTime ?? zone.startTime,
-  );
-  const requiredDirection: EngulfingDirection = zone.isBuy ? 'bullish' : 'bearish';
-
-  for (let endIndex = 1; endIndex < candles.length; endIndex += 1) {
-    const finalCandle = candles[endIndex];
-    if (finalCandle.complete === false || finalCandle.time < validFrom) continue;
-    const pattern = detectEngulfingPatternAt(candles, endIndex, type4MaxCandles);
-    if (!pattern || pattern.direction !== requiredDirection) continue;
-    const touchesActiveZone = candles
-      .slice(pattern.startIndex, pattern.endIndex + 1)
-      .some((candle) => (
-        candle.time > zone.startTime
-        && candle.time >= validFrom
-        && candle.high >= zone.bottom
-        && candle.low <= zone.top
-      ));
-    if (touchesActiveZone) return pattern;
-  }
-  return undefined;
+  // A mapped fallback changes only the timeframe used to confirm engulfing.
+  // It must not bypass the same numerical structure-FIB gate used by a native
+  // confirmation. Designated Major Liquidity zones remain the sole exception,
+  // as handled inside findZoneEngulfingPattern.
+  return findZoneEngulfingPattern(candles, zone, type4MaxCandles);
 }
 
 export function applyTradeableZoneEngulfingFallback(

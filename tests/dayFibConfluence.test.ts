@@ -62,7 +62,7 @@ test('Day FIB engulfing can form in the deep band without touching exact 0.5', (
   const candles: StructureCandle[] = [
     { time: 2, open: 119, high: 120, low: 118, close: 119, complete: true },
     { time: 3, open: 105.5, high: 106, low: 104.4, close: 104.8, complete: true },
-    { time: 4, open: 104.8, high: 106.2, low: 104.6, close: 106.1, complete: true },
+    { time: 4, open: 104.8, high: 106.2, low: 104.3, close: 106.1, complete: true },
   ];
   const result = applyDayFibConfluence(candles, [
     zone({ id: 'deep-buy', bottom: 104.2, top: 105.8 }),

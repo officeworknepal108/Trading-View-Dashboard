@@ -48,6 +48,7 @@ import {
   getDirectTradeRule,
   getMtfTradeRule,
   getEngulfingVolumeStatus,
+  isZoneEngulfingFibQualified,
   isDeepDiscountTradeSignal,
   resolveDirectEntryPolicy,
   resolveZoneEngulfingSignal,
@@ -93,6 +94,13 @@ type ChochFibVisibility = [boolean, boolean, boolean, boolean];
 type ChartDrawingTool = 'rectangle' | 'fib' | 'measure' | 'note' | 'path' | 'trend';
 type ChartDrawingVisibility = 'all' | 'current-only' | 'current-and-above' | 'current-and-below';
 
+// Custom zones and drawings sit above lightweight-charts. Rebuilding those
+// layers on every pointer-driven range event can monopolize the main thread,
+// so keep their refresh rate below the native canvas refresh rate. The last
+// scheduled frame always reads the newest chart coordinates.
+const OVERLAY_REDRAW_INTERVAL_MS = 100;
+const DRAWING_REDRAW_INTERVAL_MS = 80;
+
 interface ChartDrawingPoint {
   time: number;
   price: number;
@@ -119,6 +127,10 @@ interface ChartDrawingDraft {
 interface ChartDrawingDrag {
   drawingId: string;
   pointIndex?: number;
+  rectangleCorner?: {
+    timePointIndex: number;
+    pricePointIndex: number;
+  };
   start: ChartDrawingPoint;
   originalPoints: ChartDrawingPoint[];
 }
@@ -538,12 +550,15 @@ function displayFibLabel(zone: StructureZone): string {
 
 function displayEngulfingLabel(zone: StructureZone): string | undefined {
   const labels = [
-    zone.engulfingType,
-    zone.swingEngulfingType ? `SW ${zone.swingEngulfingType}` : undefined,
-    zone.dayEngulfingType ? `DAY ${zone.dayEngulfingType}` : undefined,
+    isZoneEngulfingFibQualified(zone, 'structure') ? zone.engulfingType : undefined,
+    isZoneEngulfingFibQualified(zone, 'swing') && zone.swingEngulfingType
+      ? `SW ${zone.swingEngulfingType}` : undefined,
+    isZoneEngulfingFibQualified(zone, 'day') && zone.dayEngulfingType
+      ? `DAY ${zone.dayEngulfingType}` : undefined,
   ].filter((label): label is string => label !== undefined);
   if (labels.length > 0) return `${labels.join(' / ')} ${zone.isBuy ? 'BULL' : 'BEAR'}`;
-  return zone.fallbackEngulfingType && zone.fallbackEngulfingTimeframe
+  return isZoneEngulfingFibQualified(zone, 'structure')
+    && zone.fallbackEngulfingType && zone.fallbackEngulfingTimeframe
     ? `${formatTradeTimeframe(zone.fallbackEngulfingTimeframe)} ${zone.fallbackEngulfingType} ${zone.isBuy ? 'BULL' : 'BEAR'}`
     : undefined;
 }
@@ -1136,6 +1151,9 @@ export const OandaProChart: React.FC = () => {
   const overlayRedrawTimerRef = useRef<number | null>(null);
   const lastOverlayRedrawAtRef = useRef(0);
   const drawingRedrawFrameRef = useRef<number | null>(null);
+  const drawingRedrawTimerRef = useRef<number | null>(null);
+  const lastDrawingRedrawAtRef = useRef(0);
+  const hasChartDrawingLayerRef = useRef(false);
   const hasFittedRef = useRef(false);
   const replayTimeRef = useRef<number | null>(null);
   const pendingReplayViewportRef = useRef<{ fromOffset: number; toOffset: number } | null>(null);
@@ -1216,6 +1234,7 @@ export const OandaProChart: React.FC = () => {
   replaySelectionIndexRef.current = replaySelectionIndex;
 
   const drawingScope = liveChartDataSource;
+  hasChartDrawingLayerRef.current = chartDrawings.length > 0 || drawingDraft !== null;
 
   useEffect(() => {
     window.localStorage.setItem(CHART_DRAWINGS_STORAGE_KEY, JSON.stringify(chartDrawings));
@@ -2104,8 +2123,23 @@ export const OandaProChart: React.FC = () => {
       .slice(0, 1);
   }, [directZoneTrades, mtfRows]);
 
+  const currentlyQualifiedSetupIds = useMemo(() => {
+    const setupIds = new Set<string>();
+    for (const setup of currentDirectTradeSetups.values()) {
+      setupIds.add(`DIRECT:${granularity}:${setup.zone.id}`);
+    }
+    for (const row of allMtfTradeRows) {
+      if (row.trade) setupIds.add(`MTF:${row.id}`);
+    }
+    return setupIds;
+  }, [allMtfTradeRows, currentDirectTradeSetups, granularity]);
+
   const liveMt5TradeOverlays = useMemo<TradeOverlay[]>(() => (
     (mt5Status?.positions ?? []).flatMap((position) => {
+      // Keep an invalidated broker position visible in the MT5 LIVE status bar,
+      // but do not draw it as a current long/short setup after its live strategy
+      // qualification (including FIB) no longer exists.
+      if (!position.setupId || !currentlyQualifiedSetupIds.has(position.setupId)) return [];
       if (position.signalTimeframe !== granularity && position.zoneTimeframe !== granularity) return [];
       if (!(position.stopLoss > 0) || !(position.takeProfit > 0) || !(position.priceOpen > 0)) return [];
       const riskDistance = Math.abs(position.priceOpen - position.stopLoss);
@@ -2143,7 +2177,7 @@ export const OandaProChart: React.FC = () => {
         label: `${position.zoneTimeframe ?? '?'}→${position.signalTimeframe ?? '?'} · 1:${position.rewardRisk ?? rewardRisk}`,
       }];
     })
-  ), [granularity, mt5Status?.positions]);
+  ), [currentlyQualifiedSetupIds, granularity, mt5Status?.positions]);
 
   const visibleTradeOverlays = replayIndex === null && liveMt5TradeOverlays.length > 0
     ? liveMt5TradeOverlays
@@ -2319,6 +2353,13 @@ export const OandaProChart: React.FC = () => {
     const candleByTime = new Map<number, OandaCandle>(displayCandles.map((candle) => (
       [Number(candle.time), candle] as [number, OandaCandle]
     )));
+    const mtfBadgesByZone = new Map<string, Set<string>>();
+    for (const row of mtfRows) {
+      if (!row.higherTimeframeZoneId) continue;
+      const badges = mtfBadgesByZone.get(row.higherTimeframeZoneId) ?? new Set<string>();
+      badges.add(row.setupId);
+      mtfBadgesByZone.set(row.higherTimeframeZoneId, badges);
+    }
     const rightEdge = Math.max(0, host.clientWidth - 72);
     for (const zone of zonesRef.current) {
       const visible = zone.category === 'mg'
@@ -2411,9 +2452,7 @@ export const OandaProChart: React.FC = () => {
       if (!inactive && showFibRef.current && zone.dayFibStatus === 'a-plus' && zone.dayFibBand) {
         labelDetails.push(`DAY FIB A+ ${zone.dayFibBand}`);
       }
-      const mtfBadges = Array.from(new Set(mtfRows
-        .filter((row) => row.higherTimeframeZoneId === zone.id)
-        .map((row) => row.setupId)));
+      const mtfBadges = Array.from(mtfBadgesByZone.get(zone.id) ?? []);
       if (mtfBadges.length > 0) {
         labelDetails.push(mtfBadges.join(' / '));
       }
@@ -2638,6 +2677,8 @@ export const OandaProChart: React.FC = () => {
         const y1 = series.priceToCoordinate(structureLine.fromPrice);
         const y2 = series.priceToCoordinate(structureLine.toPrice);
         if (x1 === null || x2 === null || y1 === null || y2 === null) continue;
+        if ((x1 < 0 && x2 < 0) || (x1 > rightEdge && x2 > rightEdge)
+          || (y1 < 0 && y2 < 0) || (y1 > host.clientHeight && y2 > host.clientHeight)) continue;
 
         const bullish = structureLine.direction === 'bullish';
         const isIssLine = structureLine.type === 'iss';
@@ -2682,6 +2723,7 @@ export const OandaProChart: React.FC = () => {
             : isHigh ? candle.high : candle.low;
           const y = series.priceToCoordinate(markerPrice);
           if (x === null || y === null) continue;
+          if (x < 0 || x > rightEdge || y < -50 || y > host.clientHeight + 50) continue;
           const overlapsStructureMarker = showStructureRef.current
             && structureMarkersRef.current.some((structureMarker) => (
               Number(structureMarker.time) === Number(marker.time)
@@ -2825,17 +2867,27 @@ export const OandaProChart: React.FC = () => {
         redrawZonesRef.current();
       });
     };
-    const delay = Math.max(0, 50 - elapsed);
+    const delay = Math.max(0, OVERLAY_REDRAW_INTERVAL_MS - elapsed);
     if (delay > 0) overlayRedrawTimerRef.current = window.setTimeout(scheduleFrame, delay);
     else scheduleFrame();
   }, []);
 
   const scheduleDrawingRedraw = useCallback(() => {
-    if (drawingRedrawFrameRef.current !== null) return;
-    drawingRedrawFrameRef.current = window.requestAnimationFrame(() => {
-      drawingRedrawFrameRef.current = null;
-      setDrawingRenderVersion((version) => version + 1);
-    });
+    if (!hasChartDrawingLayerRef.current
+      || drawingRedrawFrameRef.current !== null
+      || drawingRedrawTimerRef.current !== null) return;
+    const elapsed = performance.now() - lastDrawingRedrawAtRef.current;
+    const scheduleFrame = () => {
+      drawingRedrawTimerRef.current = null;
+      drawingRedrawFrameRef.current = window.requestAnimationFrame(() => {
+        drawingRedrawFrameRef.current = null;
+        lastDrawingRedrawAtRef.current = performance.now();
+        setDrawingRenderVersion((version) => version + 1);
+      });
+    };
+    const delay = Math.max(0, DRAWING_REDRAW_INTERVAL_MS - elapsed);
+    if (delay > 0) drawingRedrawTimerRef.current = window.setTimeout(scheduleFrame, delay);
+    else scheduleFrame();
   }, []);
 
   useEffect(() => {
@@ -3177,6 +3229,10 @@ export const OandaProChart: React.FC = () => {
       if (drawingRedrawFrameRef.current !== null) {
         window.cancelAnimationFrame(drawingRedrawFrameRef.current);
         drawingRedrawFrameRef.current = null;
+      }
+      if (drawingRedrawTimerRef.current !== null) {
+        window.clearTimeout(drawingRedrawTimerRef.current);
+        drawingRedrawTimerRef.current = null;
       }
       chart.remove();
       chartRef.current = null;
@@ -3577,6 +3633,7 @@ export const OandaProChart: React.FC = () => {
     event: React.MouseEvent<SVGElement>,
     drawing: ChartDrawing,
     pointIndex?: number,
+    rectangleCorner?: ChartDrawingDrag['rectangleCorner'],
   ) => {
     if (previewChartDrawing) return;
     event.preventDefault();
@@ -3588,6 +3645,7 @@ export const OandaProChart: React.FC = () => {
     setDrawingDrag({
       drawingId: drawing.id,
       pointIndex,
+      rectangleCorner,
       start,
       originalPoints: drawing.points.map((point) => ({ ...point })),
     });
@@ -3598,7 +3656,13 @@ export const OandaProChart: React.FC = () => {
     const currentPoint = chartDrawingPointFromClient(clientX, clientY);
     if (!currentPoint) return;
     let points: ChartDrawingPoint[];
-    if (drawingDrag.pointIndex !== undefined) {
+    if (drawingDrag.rectangleCorner !== undefined) {
+      const { timePointIndex, pricePointIndex } = drawingDrag.rectangleCorner;
+      points = drawingDrag.originalPoints.map((point, index) => ({
+        time: index === timePointIndex ? currentPoint.time : point.time,
+        price: index === pricePointIndex ? currentPoint.price : point.price,
+      }));
+    } else if (drawingDrag.pointIndex !== undefined) {
       const draggedDrawing = chartDrawings.find((drawing) => drawing.id === drawingDrag.drawingId);
       const oppositePoint = drawingDrag.originalPoints[drawingDrag.pointIndex === 0 ? 1 : 0];
       const draggedPoint = shiftKey && draggedDrawing?.tool === 'trend' && oppositePoint
@@ -3681,7 +3745,35 @@ export const OandaProChart: React.FC = () => {
         style={preview ? undefined : { cursor: 'move' }}
       >
         {content}
-        {selected && drawing.points.map((point, index) => {
+        {selected && (drawing.tool === 'rectangle' && drawing.points.length >= 2
+          ? ([
+            { timePointIndex: 0, pricePointIndex: 0 },
+            { timePointIndex: 0, pricePointIndex: 1 },
+            { timePointIndex: 1, pricePointIndex: 0 },
+            { timePointIndex: 1, pricePointIndex: 1 },
+          ] as const).map((corner) => {
+            const point = {
+              time: drawing.points[corner.timePointIndex].time,
+              price: drawing.points[corner.pricePointIndex].price,
+            };
+            const coordinate = chartDrawingPointToCoordinate(point);
+            if (!coordinate) return null;
+            return (
+              <circle
+                key={`${drawing.id}-corner-${corner.timePointIndex}-${corner.pricePointIndex}`}
+                cx={coordinate.x}
+                cy={coordinate.y}
+                r="4"
+                fill="white"
+                stroke="#7c3aed"
+                strokeWidth="1.5"
+                pointerEvents="all"
+                onMouseDown={(event) => startChartDrawingDrag(event, drawing, undefined, corner)}
+                style={{ cursor: 'nwse-resize' }}
+              />
+            );
+          })
+          : drawing.points.map((point, index) => {
           const coordinate = chartDrawingPointToCoordinate(point);
           if (!coordinate) return null;
           return (
@@ -3698,7 +3790,7 @@ export const OandaProChart: React.FC = () => {
               style={{ cursor: 'grab' }}
             />
           );
-        })}
+        }))}
       </g>
     );
 
@@ -4950,9 +5042,14 @@ export const OandaProChart: React.FC = () => {
           }}
         >
           <div ref={hostRef} className="absolute inset-0" />
-          <div ref={zoneLayerRef} className="pointer-events-none absolute inset-0 z-10 overflow-hidden" />
+          <div
+            ref={zoneLayerRef}
+            className="pointer-events-none absolute inset-0 z-10 overflow-hidden"
+            style={{ contain: 'layout paint style' }}
+          />
           <svg
             className="pointer-events-none absolute inset-0 z-[18] h-full w-full overflow-hidden"
+            style={{ contain: 'layout paint style' }}
             aria-label="Saved chart drawings"
           >
             {visibleChartDrawings.map((drawing) => renderChartDrawing(drawing))}

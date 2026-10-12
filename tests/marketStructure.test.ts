@@ -370,19 +370,27 @@ test('deep FIB invalidation requires a completed close beyond 0.79, not a wick o
   ], 1, 100, true), 3);
 });
 
-test('engulfing detector recognizes bullish and bearish Type 1 patterns only after close', () => {
+test('Type 1 requires the second candle to sweep the first wick before closing beyond it', () => {
   const bullish: StructureCandle[] = [
     { time: 1, open: 12, high: 13, low: 9, close: 10, complete: true },
-    { time: 2, open: 10, high: 14, low: 9.5, close: 13.5, complete: true },
+    { time: 2, open: 10, high: 14, low: 8.5, close: 13.5, complete: true },
   ];
   const bearish: StructureCandle[] = [
     { time: 1, open: 10, high: 13, low: 9, close: 12, complete: true },
-    { time: 2, open: 12, high: 12.5, low: 8, close: 8.5, complete: true },
+    { time: 2, open: 12, high: 13.5, low: 8, close: 8.5, complete: true },
   ];
 
   assert.equal(detectEngulfingPatternAt(bullish, 1)?.type, 'T1');
   assert.equal(detectEngulfingPatternAt(bullish, 1)?.direction, 'bullish');
   assert.equal(detectEngulfingPatternAt(bearish, 1)?.direction, 'bearish');
+  assert.equal(detectEngulfingPatternAt([
+    bullish[0],
+    { ...bullish[1], low: 9.5 },
+  ], 1), undefined, 'a bullish T1 without a lower-wick sweep must fail');
+  assert.equal(detectEngulfingPatternAt([
+    bearish[0],
+    { ...bearish[1], high: 12.5 },
+  ], 1), undefined, 'a bearish T1 without an upper-wick sweep must fail');
   bullish[1].complete = false;
   assert.equal(detectEngulfingPatternAt(bullish, 1), undefined);
 });
@@ -390,7 +398,7 @@ test('engulfing detector recognizes bullish and bearish Type 1 patterns only aft
 test('tradeable-zone fallback uses 30m engulfing only when the chart timeframe has none', () => {
   const thirtyMinuteCandles: StructureCandle[] = [
     { time: 1800, open: 12, high: 13, low: 9, close: 10, complete: true },
-    { time: 3600, open: 10, high: 14, low: 9.5, close: 13.5, complete: true },
+    { time: 3600, open: 10, high: 14, low: 8.5, close: 13.5, complete: true },
   ];
   const buyZone = zone({
     isBuy: true,
@@ -399,6 +407,9 @@ test('tradeable-zone fallback uses 30m engulfing only when the chart timeframe h
     bottom: 9,
     top: 13,
     tradeable: true,
+    fibStatus: 'a-plus',
+    fibBand: '0.5-0.618',
+    fibLevel50: 11,
   });
 
   assert.equal(findTradeableZoneEngulfingPattern(thirtyMinuteCandles, buyZone)?.type, 'T1');
@@ -445,6 +456,30 @@ test('tradeable-zone fallback uses 30m engulfing only when the chart timeframe h
   assert.equal(
     findTradeableZoneEngulfingPattern(thirtyMinuteCandles, { ...buyZone, tradeable: false }),
     undefined,
+  );
+
+  const outsideFib = {
+    ...buyZone,
+    name: 'SBR' as const,
+    fibStatus: 'not-valid' as const,
+    fibBand: undefined,
+    fibLevel50: undefined,
+  };
+  assert.equal(
+    findTradeableZoneEngulfingPattern(thirtyMinuteCandles, outsideFib),
+    undefined,
+    'a mapped engulfing cannot bypass the numerical FIB requirement for SBR',
+  );
+
+  const majorLiquidity = {
+    ...outsideFib,
+    name: 'DTD' as const,
+    majorLiquidity: true,
+  };
+  assert.equal(
+    findTradeableZoneEngulfingPattern(thirtyMinuteCandles, majorLiquidity)?.type,
+    'T1',
+    'designated Major Liquidity remains exempt from structure FIB alignment',
   );
 });
 
@@ -536,7 +571,7 @@ test('Types 1, 2, and 4 reject a weak confirmation while Type 3 follows sweep ge
       type: 'T1',
       candles: [
         { time: 1, open: 12, high: 13, low: 9, close: 10, complete: true },
-        { time: 2, open: 10, high: 14, low: 9.5, close: 13.5, complete: true },
+        { time: 2, open: 10, high: 14, low: 8.5, close: 13.5, complete: true },
       ],
     },
     {
@@ -598,7 +633,7 @@ test('bearish Type 3 accepts the chart-confirmed continuation candle with a long
 test('bearish confirmation uses its lower wick and accepts a wick equal to the body', () => {
   const bearish: StructureCandle[] = [
     { time: 1, open: 10, high: 13, low: 9, close: 12, complete: true },
-    { time: 2, open: 12, high: 12.5, low: 5, close: 8.5, complete: true },
+    { time: 2, open: 12, high: 13.5, low: 5, close: 8.5, complete: true },
   ];
 
   assert.equal(
@@ -753,7 +788,7 @@ test('single CHoCH DB/DT anchors are not forced A+ outside numerical FIB bands',
 test('Major Liquidity accepts a zone-touching engulfing without any FIB alignment', () => {
   const candles: StructureCandle[] = [
     { time: 1, open: 12, high: 13, low: 9, close: 10, complete: true },
-    { time: 2, open: 10, high: 14, low: 9.5, close: 13.5, complete: true },
+    { time: 2, open: 10, high: 14, low: 8.5, close: 13.5, complete: true },
   ];
   const majorLiquidity = zone({
     id: 'major-liquidity', name: 'DBD', isBuy: true, majorLiquidity: true,
@@ -779,7 +814,7 @@ test('Major Liquidity accepts every engulfing type without FIB alignment', () =>
       type: 'T1',
       candles: [
         { time: 1, open: 12, high: 13, low: 9, close: 10, complete: true },
-        { time: 2, open: 10, high: 14, low: 9.5, close: 13.5, complete: true },
+        { time: 2, open: 10, high: 14, low: 8.5, close: 13.5, complete: true },
       ],
     },
     {
