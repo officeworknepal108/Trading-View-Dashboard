@@ -9,11 +9,13 @@ import {
   classifyDoubleChoch,
   classifyFibOverlap,
   detectEngulfingPatternAt,
+  deduplicateStructureZones,
   doesInvalidateZone,
   findDeepFibInvalidationTime,
   findTjlFibSource,
   findZoneEngulfingPattern,
   findTradeableZoneEngulfingPattern,
+  isZoneEligibleForEngulfingEntry,
   findIssFiveWaves,
   findFirstZoneTapIndex,
   findVipSupportTap,
@@ -87,6 +89,15 @@ test('CHoCH classification follows Valid, Air, VIP, and pending trade rules', ()
     classifyChoch({ tjl1Confirmed: true, tjl2Confirmed: false, vipZoneTapped: true }),
     { chochClass: 'pending', tradeable: false },
   );
+});
+
+test('overlapping ISS paths emit one canonical zone per structure ID', () => {
+  const first = zone({ id: 'same-internal-qml', name: 'Internal QML', tapTime: 100 });
+  const latest = zone({ id: 'same-internal-qml', name: 'Internal QML', tapTime: 200 });
+  const distinct = zone({ id: 'distinct-zone', name: 'Internal SBR' });
+  const result = deduplicateStructureZones([first, latest, distinct]);
+  assert.equal(result.length, 2);
+  assert.equal(result.find((item) => item.id === 'same-internal-qml')?.tapTime, 200);
 });
 
 test('FIB overlap accepts primary for TJL1 and both primary and deep for TJL2', () => {
@@ -457,6 +468,20 @@ test('tradeable-zone fallback uses 30m engulfing only when the chart timeframe h
     findTradeableZoneEngulfingPattern(thirtyMinuteCandles, { ...buyZone, tradeable: false }),
     undefined,
   );
+
+  const airQmlAfterTap = {
+    ...buyZone,
+    name: 'QML' as const,
+    chochClass: 'air' as const,
+    tradeable: false,
+    tapTime: 1800,
+  };
+  assert.equal(isZoneEligibleForEngulfingEntry(airQmlAfterTap), true);
+  assert.equal(findTradeableZoneEngulfingPattern(thirtyMinuteCandles, airQmlAfterTap)?.type, 'T1');
+  assert.equal(isZoneEligibleForEngulfingEntry({
+    ...airQmlAfterTap,
+    name: 'SBR',
+  }), false, 'the engulfing promotion is limited to QML');
 
   const outsideFib = {
     ...buyZone,

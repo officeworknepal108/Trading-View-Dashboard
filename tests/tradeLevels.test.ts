@@ -12,6 +12,7 @@ import {
   isZoneEngulfingFibQualified,
   resolveZoneEngulfingSignal,
   resolveDirectEntryPolicy,
+  timeframeWindowCutoff,
   type EngulfingTradeSignal,
 } from '../src/services/tradeLevels';
 import type { StructureCandle, StructureZone } from '../src/services/marketStructure';
@@ -23,6 +24,10 @@ const bullishSignal: EngulfingTradeSignal = {
   candleCount: 2,
   timeframe: 'M1',
 };
+
+test('an open higher-timeframe bar exposes its full window to completed lower-timeframe candles', () => {
+  assert.equal(timeframeWindowCutoff(10_800, 3_600), 14_400);
+});
 
 test('engulfing signals cannot resolve without their matching A+ FIB qualification', () => {
   const outsideFibSbr = {

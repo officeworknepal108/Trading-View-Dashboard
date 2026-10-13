@@ -21,6 +21,7 @@ import {
 import {
   analyzeMarketStructure,
   applyTradeableZoneEngulfingFallback,
+  isZoneEligibleForEngulfingEntry,
   type StructureCandle,
 } from './src/services/marketStructure';
 import { buildAlternatingSwingFibs } from './src/services/swingFib';
@@ -39,6 +40,7 @@ import {
   isDeepDiscountTradeSignal,
   resolveDirectEntryPolicy,
   resolveZoneEngulfingSignal,
+  timeframeWindowCutoff,
   type EngulfingTradeSignal,
   type TradeTimeframe,
 } from './src/services/tradeLevels';
@@ -572,7 +574,7 @@ async function scanMt5AutomationSignals(): Promise<number> {
     const sourceCandles = candles[zoneTimeframe];
     const latest = sourceCandles[sourceCandles.length - 1];
     if (!latest) continue;
-    const cutoff = latest.time + (latest.complete === false ? 0 : AUTOMATION_SECONDS[zoneTimeframe]);
+    const cutoff = timeframeWindowCutoff(latest.time, AUTOMATION_SECONDS[zoneTimeframe]);
     let zones = applySwingFibConfluence(
       sourceCandles,
       structures[zoneTimeframe]?.zones ?? [],
@@ -601,7 +603,7 @@ async function scanMt5AutomationSignals(): Promise<number> {
       zones = applyOneMinuteGenesisQml(zones, sourceCandles, candles.D);
     }
     for (const zone of zones) {
-      if (!zone.active || zone.status !== 'valid' || zone.tradeable === false) continue;
+      if (!isZoneEligibleForEngulfingEntry(zone)) continue;
       const signal = resolveZoneEngulfingSignal(zone, zoneTimeframe);
       if (!signal) continue;
       const baseRule = getDirectTradeRule(zoneTimeframe, signal.timeframe);

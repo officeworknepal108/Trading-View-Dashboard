@@ -701,12 +701,36 @@ export function findTradeableZoneEngulfingPattern(
   zone: StructureZone,
   type4MaxCandles = 10,
 ): EngulfingPattern | undefined {
-  if (!zone.active || zone.status !== 'valid' || zone.tradeable === false) return undefined;
+  if (!isZoneEligibleForEngulfingEntry(zone)) return undefined;
   // A mapped fallback changes only the timeframe used to confirm engulfing.
   // It must not bypass the same numerical structure-FIB gate used by a native
   // confirmation. Designated Major Liquidity zones remain the sole exception,
   // as handled inside findZoneEngulfingPattern.
   return findZoneEngulfingPattern(candles, zone, type4MaxCandles);
+}
+
+/**
+ * An AIR CHoCH is not tradeable on structure alone. A touched QML that later
+ * earns numerical A+ Fib alignment can, however, be promoted by a completed
+ * engulfing confirmation. This keeps other AIR zones blocked while supporting
+ * the agreed QML + lower-timeframe engulfing entry route.
+ */
+export function isZoneEligibleForEngulfingEntry(zone: StructureZone): boolean {
+  if (!zone.active || zone.status !== 'valid') return false;
+  if (zone.tradeable !== false) return true;
+  return (zone.name === 'QML' || zone.name === 'Internal QML')
+    && zone.tapTime !== undefined
+    && zone.fibStatus === 'a-plus'
+    && (zone.fibBand === '0.5-0.618'
+      || zone.fibBand === '0.71-0.79'
+      || zone.fibBand === 'deep');
+}
+
+/** Keep one canonical zone when overlapping ISS paths emit the same structure ID. */
+export function deduplicateStructureZones(zones: StructureZone[]): StructureZone[] {
+  const unique = new Map<string, StructureZone>();
+  for (const zone of zones) unique.set(zone.id, zone);
+  return Array.from(unique.values());
 }
 
 export function applyTradeableZoneEngulfingFallback(
@@ -1765,6 +1789,15 @@ export function analyzeMarketStructure(candles: StructureCandle[], options: {
   internalMarkers.push(...iss.internalMarkers);
   zones.push(...iss.zones);
   lines.push(...iss.lines);
+  const uniqueZones = deduplicateStructureZones(zones);
+  zones.splice(0, zones.length, ...uniqueZones);
+  const uniqueLines = Array.from(new Map(lines.map((line) => [line.id, line])).values());
+  lines.splice(0, lines.length, ...uniqueLines);
+  const uniqueInternalMarkers = Array.from(new Map(internalMarkers.map((marker) => [
+    `${String(marker.time)}:${marker.position}:${marker.text}`,
+    marker,
+  ])).values());
+  internalMarkers.splice(0, internalMarkers.length, ...uniqueInternalMarkers);
   applyFibConfluence(candles, zones);
   const engulfingMarkers = applyEngulfingConfluence(candles, zones);
   const visibleLines = lines.length > 160

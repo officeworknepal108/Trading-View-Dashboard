@@ -23,6 +23,7 @@ import {
 import {
   analyzeMarketStructure,
   applyTradeableZoneEngulfingFallback,
+  isZoneEligibleForEngulfingEntry,
   StructureLine,
   StructureZone,
 } from '../services/marketStructure';
@@ -52,6 +53,7 @@ import {
   isDeepDiscountTradeSignal,
   resolveDirectEntryPolicy,
   resolveZoneEngulfingSignal,
+  timeframeWindowCutoff,
   type EngulfingTradeSignal,
   type DirectEntryPolicyDecision,
   type TradeLevels,
@@ -419,13 +421,9 @@ function mt5StatusRenderSignature(status: Mt5AutomationStatus): string {
 function tradeStatusLabel(trade: TradeLevels): string {
   if (trade.status === 'pending') return 'CHART PENDING';
   if (trade.status === 'active') return `CHART ACTIVE · 1R AT ${formatPrice(trade.riskFree)}`;
-  if (trade.status === 'risk-free') return `CHART RF HIT · ${formatPrice(trade.riskFree)}`;
-  if (trade.status === 'tp-hit') {
-    return trade.rewardRisk === 1
-      ? `CHART TP HIT · RF ${formatPrice(trade.riskFree)}`
-      : 'CHART TP HIT';
-  }
-  return 'CHART SL HIT';
+  if (trade.status === 'risk-free') return 'RF HIT';
+  if (trade.status === 'tp-hit') return 'TP HIT';
+  return 'SL HIT';
 }
 
 const TradeStatusText: React.FC<{ trade: TradeLevels }> = ({ trade }) => {
@@ -436,8 +434,9 @@ const TradeStatusText: React.FC<{ trade: TradeLevels }> = ({ trade }) => {
   );
 
   if (trade.status === 'active') return <>CHART ACTIVE · 1R AT {riskFreePrice}</>;
-  if (trade.status === 'risk-free') return <>CHART RF HIT · {riskFreePrice}</>;
-  if (trade.status === 'tp-hit' && trade.rewardRisk === 1) return <>CHART TP HIT · RF {riskFreePrice}</>;
+  if (trade.status === 'risk-free') return <>RF HIT</>;
+  if (trade.status === 'tp-hit') return <>TP HIT</>;
+  if (trade.status === 'sl-hit') return <>SL HIT</>;
   return <>{tradeStatusLabel(trade)}</>;
 };
 
@@ -473,17 +472,6 @@ function mt5SignalStatusClassName(signal: Mt5StoredSignal): string {
 
 function isCompletedTrade(trade: TradeLevels | undefined): boolean {
   return trade?.result !== undefined;
-}
-
-function shouldShowTradeInZoneTable(
-  trade: TradeLevels | undefined,
-  chartCandles: OandaCandle[],
-): boolean {
-  if (!isCompletedTrade(trade)) return true;
-  if (trade?.resolvedAt === undefined) return false;
-  const resolvedIndex = chartCandles.findIndex((candle) => candle.time === trade.resolvedAt);
-  if (resolvedIndex < 0) return false;
-  return chartCandles.length - 1 - resolvedIndex <= 1;
 }
 
 const TradeDetailsRow: React.FC<{
@@ -1555,8 +1543,10 @@ export const OandaProChart: React.FC = () => {
     const fallbackGranularities = DIRECT_ENGULFING_FALLBACKS[granularity] ?? [];
     const latestChartCandle = displayCandles[displayCandles.length - 1];
     if (!latestChartCandle) return dayFibConfluence.zones;
-    const cutoff = latestChartCandle.time
-      + (latestChartCandle.complete ? TIMEFRAME_SECONDS[granularity] : 0);
+    const cutoff = timeframeWindowCutoff(
+      latestChartCandle.time,
+      TIMEFRAME_SECONDS[granularity],
+    );
     let zones = fallbackGranularities.reduce((currentZones, fallbackGranularity) => {
       const fallbackCandles = (vipCandles[fallbackGranularity] || []).filter((candle) => (
         candle.complete && marketCandleCloseTime(candle.time, fallbackGranularity) <= cutoff
@@ -1580,7 +1570,7 @@ export const OandaProChart: React.FC = () => {
     const setups = new Map<string, TrackedDirectTradeSetup>();
     const zoneTimeframe = granularity as TradeTimeframe;
     for (const zone of displayZones) {
-      if (!zone.active || zone.status !== 'valid' || zone.tradeable === false) continue;
+      if (!isZoneEligibleForEngulfingEntry(zone)) continue;
       const signal = resolveZoneEngulfingSignal(zone, zoneTimeframe);
       if (!signal) continue;
       const rule = getDirectTradeRule(zoneTimeframe, signal.timeframe);
@@ -1626,8 +1616,10 @@ export const OandaProChart: React.FC = () => {
     }>();
     const latestChartCandle = displayCandles[displayCandles.length - 1];
     if (!latestChartCandle) return decisions;
-    const cutoff = latestChartCandle.time
-      + (latestChartCandle.complete ? TIMEFRAME_SECONDS[granularity] : 0);
+    const cutoff = timeframeWindowCutoff(
+      latestChartCandle.time,
+      TIMEFRAME_SECONDS[granularity],
+    );
     const setups = new Map<string, TrackedDirectTradeSetup>();
     for (const setup of trackedDirectTradeSetups.values()) {
       if (setup.scope === tradeTrackingScope) setups.set(setup.zone.id, setup);
@@ -1912,7 +1904,8 @@ export const OandaProChart: React.FC = () => {
     // Reconstruct direct engulfing outcomes from every historical zone that
     // retained a qualified signal, including zones invalidated after entry.
     for (const zone of displayZones) {
-      if (zone.status === 'rejected' || zone.tradeable === false) continue;
+      if (zone.status === 'rejected'
+        || (!isZoneEligibleForEngulfingEntry(zone) && zone.tradeable === false)) continue;
       const signal = resolveZoneEngulfingSignal(zone, granularity);
       if (!signal) continue;
       const baseRule = getDirectTradeRule(granularity, signal.timeframe);
@@ -2221,10 +2214,9 @@ export const OandaProChart: React.FC = () => {
     .filter((zone) => zone.active && zone.status === 'valid'
       && (showInternal || zone.category !== 'internal')
       && zone.doubleChochStatus === undefined
-      && zone.tapTime !== undefined && (zone.tapBarsAgo ?? Infinity) <= 50
-      && shouldShowTradeInZoneTable(directZoneTrades.get(zone.id), displayCandles))
+      && zone.tapTime !== undefined && (zone.tapBarsAgo ?? Infinity) <= 50)
     .sort((a, b) => (b.tapTime ?? b.startTime) - (a.tapTime ?? a.startTime))
-    .slice(0, 8), [directZoneTrades, displayCandles, displayZones, showInternal]);
+    .slice(0, 8), [displayZones, showInternal]);
   const completedTradeZoneRows = useMemo(() => {
     const activeZoneIds = new Set(displayZones
       .filter((zone) => zone.active && zone.status === 'valid')
@@ -2234,10 +2226,12 @@ export const OandaProChart: React.FC = () => {
       if (setup.scope !== tradeTrackingScope || activeZoneIds.has(setup.zone.id)) continue;
       const trade = directZoneTrades.get(setup.zone.id);
       if (trade?.status !== 'sl-hit' && trade?.status !== 'tp-hit' && trade?.status !== 'risk-free') continue;
-      if (!shouldShowTradeInZoneTable(trade, displayCandles)) continue;
+      const row = displayZones.find((zone) => zone.id === setup.zone.id) ?? setup.zone;
+      if ((!showInternal && row.category === 'internal')
+        || (row.tapBarsAgo ?? Infinity) > 50) continue;
       rows.set(
         setup.zone.id,
-        displayZones.find((zone) => zone.id === setup.zone.id) ?? setup.zone,
+        row,
       );
     }
     return Array.from(rows.values())
@@ -2245,8 +2239,8 @@ export const OandaProChart: React.FC = () => {
     .slice(0, 4);
   }, [
     directZoneTrades,
-    displayCandles,
     displayZones,
+    showInternal,
     trackedDirectTradeSetups,
     tradeTrackingScope,
   ]);
@@ -2254,7 +2248,6 @@ export const OandaProChart: React.FC = () => {
   const doubleChochRows = useMemo(() => displayZones
     .filter((zone) => zone.active && zone.status === 'valid'
       && zone.doubleChochStatus !== undefined
-      && shouldShowTradeInZoneTable(directZoneTrades.get(zone.id), displayCandles)
       && (zone.tapTime !== undefined
         ? (zone.tapBarsAgo ?? Infinity) <= 50
         : zone.doubleChochStatus === 'pending'
@@ -2267,7 +2260,7 @@ export const OandaProChart: React.FC = () => {
     .sort((a, b) => (b.tapTime ?? b.doubleChochTime ?? b.startTime)
       - (a.tapTime ?? a.doubleChochTime ?? a.startTime)
       || b.startTime - a.startTime)
-    .slice(0, 8), [directZoneTrades, displayCandles, displayZones, granularity, latestDisplayCandleTime]);
+    .slice(0, 8), [displayZones, granularity, latestDisplayCandleTime]);
   const pendingConfirmationRows = useMemo(() => displayZones
     .filter((zone) => (zone.name === 'TJL1' || zone.name === 'ISS L3' || zone.name === 'Internal TJL1')
       && zone.active && zone.status === 'pending'
@@ -5426,7 +5419,7 @@ export const OandaProChart: React.FC = () => {
                         {mt5Signal
                           ? <span className={mt5SignalStatusClassName(mt5Signal)}>{mt5SignalStatusLabel(mt5Signal)}</span>
                           : isCompletedTrade(trade)
-                          ? <TradeStatusText trade={trade!} />
+                          ? <>{zone.tapBarsAgo} bars · <TradeStatusText trade={trade!} /></>
                           : pending
                           ? `WAIT ${confirmationLabel} ${confirmationSide} · NO TRADE`
                           : zone.tapTime === undefined
@@ -5511,7 +5504,7 @@ export const OandaProChart: React.FC = () => {
                         </span>
                       ) : isCompletedTrade(trade) ? (
                         <span className={trade?.status === 'sl-hit' ? 'text-rose-700' : 'text-emerald-700'}>
-                          <TradeStatusText trade={trade!} />
+                          {zone.tapBarsAgo} bars · <TradeStatusText trade={trade!} />
                         </span>
                       ) : entryDecision && !entryDecision.policy.allowed ? (
                         <span className="text-rose-700">
@@ -5563,7 +5556,9 @@ export const OandaProChart: React.FC = () => {
                           ? mt5SignalStatusClassName(mt5Signal)
                           : trade.status === 'sl-hit' ? 'text-rose-700' : 'text-emerald-700'
                         }`}>
-                          {mt5Signal ? mt5SignalStatusLabel(mt5Signal) : <TradeStatusText trade={trade} />}
+                          {zone.tapBarsAgo} bars · {mt5Signal
+                            ? mt5SignalStatusLabel(mt5Signal)
+                            : <TradeStatusText trade={trade} />}
                         </td>
                       </tr>
                     </React.Fragment>

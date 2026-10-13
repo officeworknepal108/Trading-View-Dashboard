@@ -266,6 +266,11 @@ const TIMEFRAME_SECONDS: Record<TradeTimeframe, number> = {
   D: 86400,
 };
 
+/** End of the current higher-timeframe window, including an open live bar. */
+export function timeframeWindowCutoff(openTime: number, barSeconds: number): number {
+  return openTime + barSeconds;
+}
+
 const DIRECT_RULES: Record<string, Omit<TradeRule, 'zoneTimeframe' | 'engulfingTimeframe'>> = {
   'M1:M1': { rewardRisk: 3, stopBufferPips: 10, maximumRiskPips: 50 },
   'M1:M5': { rewardRisk: 2, stopBufferPips: 10, maximumRiskPips: 100 },
