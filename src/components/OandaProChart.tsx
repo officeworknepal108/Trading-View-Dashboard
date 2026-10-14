@@ -2424,6 +2424,7 @@ export const OandaProChart: React.FC = () => {
           );
         } else {
           labelDetails.push('VALID DOUBLE CHoCH');
+          if (zone.tradeable === false) labelDetails.push('NO TRADE');
         }
       } else if (zone.name === 'TJL1' || zone.name === 'ISS L3' || zone.name === 'Internal TJL1') {
         labelDetails.push(pending
@@ -5420,11 +5421,13 @@ export const OandaProChart: React.FC = () => {
                           ? <span className={mt5SignalStatusClassName(mt5Signal)}>{mt5SignalStatusLabel(mt5Signal)}</span>
                           : isCompletedTrade(trade)
                           ? <>{zone.tapBarsAgo} bars · <TradeStatusText trade={trade!} /></>
-                          : pending
-                          ? `WAIT ${confirmationLabel} ${confirmationSide} · NO TRADE`
-                          : zone.tapTime === undefined
-                            ? 'VALID DOUBLE CHoCH · NO TRADE'
-                            : `${zone.tapBarsAgo} bars · ${confirmationLabel} CONFIRMED · TRADE`}
+                           : pending
+                           ? `WAIT ${confirmationLabel} ${confirmationSide} · NO TRADE`
+                           : zone.tradeable === false
+                             ? 'VALID DOUBLE CHoCH · NO TRADE'
+                           : zone.tapTime === undefined
+                             ? 'VALID DOUBLE CHoCH · NO TRADE'
+                             : `${zone.tapBarsAgo} bars · ${confirmationLabel} CONFIRMED · TRADE`}
                       </td>
                     </tr>
                     {trade && !isCompletedTrade(trade)

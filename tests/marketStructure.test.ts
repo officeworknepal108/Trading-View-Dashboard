@@ -16,6 +16,7 @@ import {
   findZoneEngulfingPattern,
   findTradeableZoneEngulfingPattern,
   isZoneEligibleForEngulfingEntry,
+  isDoubleChochZoneTradeable,
   findIssFiveWaves,
   findFirstZoneTapIndex,
   findVipSupportTap,
@@ -899,7 +900,7 @@ test('a later zone invalidation does not erase an earlier TJL1 confirmation', ()
   assert.equal(wasTjl1ConfirmedBy(confirmedThenInvalidated, 100), false);
 });
 
-test('Double CHoCH accepts confirmed Valid, AIR, or VIP origins and waits for mapped HTF confirmation', () => {
+test('Double CHoCH accepts every structural CHoCH origin and waits for its own mapped HTF confirmation', () => {
   assert.deepEqual(classifyDoubleChoch('valid', false), {
     doubleChochStatus: 'pending',
     doubleChochOriginClass: 'valid',
@@ -915,7 +916,28 @@ test('Double CHoCH accepts confirmed Valid, AIR, or VIP origins and waits for ma
     doubleChochOriginClass: 'vip',
     tradeable: false,
   });
-  assert.equal(classifyDoubleChoch('pending', true), undefined);
+  assert.deepEqual(classifyDoubleChoch('pending', false), {
+    doubleChochStatus: 'pending',
+    doubleChochOriginClass: 'pending',
+    tradeable: false,
+  });
+  assert.deepEqual(classifyDoubleChoch('pending', true), {
+    doubleChochStatus: 'valid',
+    doubleChochOriginClass: 'pending',
+    tradeable: true,
+  });
+  assert.equal(classifyDoubleChoch(undefined, true), undefined);
+});
+
+test('a Double CHoCH from Pending permits trades only from QML A++ and its new DTD or DBD', () => {
+  assert.equal(isDoubleChochZoneTradeable('pending', 'pending', 'DTD'), false);
+  assert.equal(isDoubleChochZoneTradeable('pending', 'valid', 'DTD'), true);
+  assert.equal(isDoubleChochZoneTradeable('pending', 'valid', 'DBD'), true);
+  assert.equal(isDoubleChochZoneTradeable('pending', 'valid', 'QML A+'), false);
+  assert.equal(isDoubleChochZoneTradeable('pending', 'valid', 'QML A++'), true);
+  assert.equal(isDoubleChochZoneTradeable('pending', 'valid', 'SBR'), false);
+  assert.equal(isDoubleChochZoneTradeable('pending', 'valid', 'RBS'), false);
+  assert.equal(isDoubleChochZoneTradeable('valid', 'valid', 'QML A+'), true);
 });
 
 test('VIP support requires a mapped HTF zone tap before CHoCH while that zone is valid', () => {

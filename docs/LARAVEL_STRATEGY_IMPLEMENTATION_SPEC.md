@@ -315,7 +315,7 @@ VIP rules:
 
 ## 11. Double CHoCH
 
-A first CHoCH with class Valid, AIR, or VIP may seed Double CHoCH. Pending cannot.
+A first structural CHoCH of any class, including Pending, may seed Double CHoCH. The origin class is retained as metadata but does not rename the second structural reversal as an ordinary CHoCH.
 
 - From a bullish first CHoCH, a later full body below the pending DB extreme forms bearish Double CHoCH.
 - From a bearish first CHoCH, a later full body above the pending DT extreme forms bullish Double CHoCH.
@@ -324,7 +324,8 @@ A first CHoCH with class Valid, AIR, or VIP may seed Double CHoCH. Pending canno
 - Convert the DB/DT extreme to opposite SBR/RBS.
 - Add DTD on bearish Double CHoCH or DBD on bullish Double CHoCH.
 - DBD and DTD are always Major Liquidity.
-- Double CHoCH remains pending until its own mapped higher-timeframe confirmation and becomes tradeable only after confirmation.
+- Double CHoCH remains pending until its own mapped higher-timeframe confirmation and becomes tradeable only after confirmation. A Pending origin therefore produces `DOUBLE CHoCH · PENDING` at formation, not an ordinary CHoCH.
+- If the first CHoCH origin class was Pending, only QML A++ and the new DTD/DBD may become tradeable after the Double CHoCH confirms. QML A+ and converted SBR/RBS remain visible context marked No Trade.
 
 ## 12. Major Liquidity
 

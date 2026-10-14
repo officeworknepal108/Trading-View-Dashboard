@@ -23,7 +23,7 @@ function hasFullBodyClosedBeyond(
 
 export type ChochClass = 'pending' | 'valid' | 'air' | 'vip';
 export type DoubleChochStatus = 'pending' | 'valid';
-export type DoubleChochOriginClass = Extract<ChochClass, 'valid' | 'air' | 'vip'>;
+export type DoubleChochOriginClass = ChochClass;
 export type FibBand = '0.5-0.618' | '0.71-0.79' | 'deep' | 'DB/DT';
 export type EngulfingType = 'T1' | 'T2' | 'T3' | 'T4';
 export type EngulfingDirection = 'bullish' | 'bearish';
@@ -1110,15 +1110,32 @@ export function classifyDoubleChoch(
   originClass: ChochClass | undefined,
   higherTimeframeConfirmed: boolean,
 ): Pick<DoubleChochMetadata, 'doubleChochStatus' | 'doubleChochOriginClass' | 'tradeable'> | undefined {
-  // Double CHoCH is a same-timeframe structural event. Any already-confirmed
-  // first CHoCH (Valid, AIR, or VIP) can form it; mapped HTF confirmation is
-  // evaluated separately and only controls whether its zones are tradeable.
-  if (originClass !== 'valid' && originClass !== 'air' && originClass !== 'vip') return undefined;
+  // Double CHoCH is a same-timeframe structural event, so even a first CHoCH
+  // whose mapped confirmation is still pending can seed the reversal. The
+  // Double CHoCH's own mapped HTF confirmation separately controls whether its
+  // converted zones are pending or valid/tradeable.
+  if (!originClass) return undefined;
   return {
     doubleChochStatus: higherTimeframeConfirmed ? 'valid' : 'pending',
     doubleChochOriginClass: originClass,
     tradeable: higherTimeframeConfirmed,
   };
+}
+
+export function isDoubleChochZoneTradeable(
+  originClass: DoubleChochOriginClass | undefined,
+  status: DoubleChochStatus | undefined,
+  zoneName: StructureZone['name'],
+): boolean {
+  if (status !== 'valid') return false;
+  // When the first CHoCH never received its mapped confirmation, the reversal
+  // is still a structural Double CHoCH but only QML A++ and its new Major
+  // Liquidity origin (DTD/DBD) may produce a trade. QML A+ and converted
+  // SBR/RBS zones remain context.
+  return originClass !== 'pending'
+    || zoneName === 'QML A++'
+    || zoneName === 'DTD'
+    || zoneName === 'DBD';
 }
 
 export function wasTjl1ConfirmedBy(
@@ -1360,6 +1377,11 @@ export function analyzeMarketStructure(candles: StructureCandle[], options: {
     for (const zone of contextZones) {
       if (zone) {
         Object.assign(zone, context);
+        zone.tradeable = isDoubleChochZoneTradeable(
+          context.doubleChochOriginClass,
+          context.doubleChochStatus,
+          zone.name,
+        );
         if (context.doubleChochTime !== undefined) {
           activateZoneAfterChoch(zone, context.doubleChochTime, sourceBarSeconds);
         }
