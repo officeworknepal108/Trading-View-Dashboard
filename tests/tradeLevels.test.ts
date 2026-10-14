@@ -151,81 +151,31 @@ test('volume assessment reports valid, best, failed, unavailable, and not-applic
   assert.equal(getEngulfingVolumeStatus({ applicable: false, passes: false, bestQuality: false }, 'T4'), 'not-applicable');
 });
 
-test('native M1 entries require volume, follow M15 bias, and may confirm an M5 pullback', () => {
+test('native M1 entries retain their volume policy without a timeframe-bias gate', () => {
   const baseRule = getDirectTradeRule('M1', 'M1')!;
   const validVolume = [volumeCandle(0, 120), volumeCandle(60, 80)];
   const invalidVolume = [volumeCandle(0, 80), volumeCandle(60, 120)];
-
-  const aligned = resolveDirectEntryPolicy({
-    zoneTimeframe: 'M1',
-    signal: bullishSignal,
-    sourceCandles: invalidVolume,
-    baseRule,
-    m5Trend: 'bullish',
-    m15Trend: 'bullish',
-  });
-  assert.equal(aligned.allowed, false);
-  assert.equal(aligned.reason, 'volume-failed');
-  assert.equal(aligned.rule, undefined);
-
-  const validCounterTrendVolume = resolveDirectEntryPolicy({
-    zoneTimeframe: 'M1',
-    signal: bullishSignal,
-    sourceCandles: validVolume,
-    baseRule,
-    m5Trend: 'bearish',
-    m15Trend: 'bullish',
-  });
-  assert.equal(validCounterTrendVolume.allowed, true);
-  assert.equal(validCounterTrendVolume.reason, 'volume-confirmed');
-  assert.equal(validCounterTrendVolume.rule?.rewardRisk, 3);
-  assert.equal(validCounterTrendVolume.volume.passes, true);
-  assert.equal(validCounterTrendVolume.scalping?.setup, 'pullback');
 
   const blockedByVolume = resolveDirectEntryPolicy({
     zoneTimeframe: 'M1',
     signal: bullishSignal,
     sourceCandles: invalidVolume,
     baseRule,
-    m5Trend: 'bearish',
-    m15Trend: 'bullish',
   });
   assert.equal(blockedByVolume.allowed, false);
   assert.equal(blockedByVolume.reason, 'volume-failed');
   assert.equal(blockedByVolume.rule, undefined);
 
-  const blockedByBias = resolveDirectEntryPolicy({
+  const confirmedByVolume = resolveDirectEntryPolicy({
     zoneTimeframe: 'M1',
     signal: bullishSignal,
     sourceCandles: validVolume,
     baseRule,
-    m5Trend: 'bearish',
-    m15Trend: 'bearish',
   });
-  assert.equal(blockedByBias.allowed, false);
-  assert.equal(blockedByBias.reason, 'scalping-bias-mismatch');
-
-  const bearishCounterTrendVolume = resolveDirectEntryPolicy({
-    zoneTimeframe: 'M1',
-    signal: { ...bullishSignal, direction: 'bearish' },
-    sourceCandles: validVolume,
-    baseRule,
-    m5Trend: 'bullish',
-    m15Trend: 'bearish',
-  });
-  assert.equal(bearishCounterTrendVolume.allowed, true);
-  assert.equal(bearishCounterTrendVolume.reason, 'volume-confirmed');
-  assert.equal(bearishCounterTrendVolume.volume.passes, true);
-
-  const disagreementWithoutVolume = resolveDirectEntryPolicy({
-    zoneTimeframe: 'M1',
-    signal: bullishSignal,
-    sourceCandles: invalidVolume,
-    baseRule,
-    m5Trend: 'bullish',
-    m15Trend: 'neutral',
-  });
-  assert.equal(disagreementWithoutVolume.allowed, false);
+  assert.equal(confirmedByVolume.allowed, true);
+  assert.equal(confirmedByVolume.reason, 'volume-confirmed');
+  assert.equal(confirmedByVolume.rule?.rewardRisk, 3);
+  assert.equal(confirmedByVolume.volume.passes, true);
 });
 
 test('an opposite open position reduces only the new trade rule to 1:1', () => {
@@ -240,74 +190,24 @@ test('an opposite open position reduces only the new trade rule to 1:1', () => {
   assert.equal(baseRule.rewardRisk, 3, 'the shared base rule must remain unchanged');
 });
 
-test('M1 structure with M5 engulfing uses Scalping Logic and preserves the 1:2 route', () => {
-  const baseRule = getDirectTradeRule('M1', 'M5')!;
-  const decision = resolveDirectEntryPolicy({
-    zoneTimeframe: 'M1',
-    signal: { ...bullishSignal, timeframe: 'M5' },
-    sourceCandles: [],
-    baseRule,
-    m5Trend: 'bearish',
-    m15Trend: 'bullish',
-  });
-  assert.equal(decision.allowed, true);
-  assert.equal(decision.reason, 'scalping-confirmed');
-  assert.equal(decision.scalping?.setup, 'pullback');
-  assert.equal(decision.rule?.rewardRisk, 2);
-});
-
-test('direct M5 entries require their direction to match M15 bias', () => {
-  const baseRule = getDirectTradeRule('M5', 'M5')!;
-  const decision = resolveDirectEntryPolicy({
-    zoneTimeframe: 'M5',
-    signal: { ...bullishSignal, timeframe: 'M5' },
-    sourceCandles: [],
-    baseRule,
-    m5Trend: 'bearish',
-    m15Trend: 'bearish',
-  });
-  assert.equal(decision.allowed, false);
-  assert.equal(decision.reason, 'scalping-bias-mismatch');
-  assert.equal(decision.rule, undefined);
-
-  const aligned = resolveDirectEntryPolicy({
-    zoneTimeframe: 'M5',
-    signal: { ...bullishSignal, timeframe: 'M5' },
-    sourceCandles: [],
-    baseRule,
-    m5Trend: 'bullish',
-    m15Trend: 'bullish',
-  });
-  assert.equal(aligned.allowed, true);
-  assert.equal(aligned.reason, 'scalping-confirmed');
-  assert.equal(aligned.rule?.rewardRisk, 2);
-});
-
-test('M15 intraday entries require aligned H4 and M15 with clear H1 context', () => {
-  const baseRule = getDirectTradeRule('M15', 'M15')!;
-  const signal = { ...bullishSignal, timeframe: 'M15' as const };
-  const continuation = resolveDirectEntryPolicy({
-    zoneTimeframe: 'M15', signal, sourceCandles: [], baseRule,
-    m5Trend: 'neutral', m15Trend: 'bullish', h1Trend: 'bullish', h4Trend: 'bullish',
-  });
-  assert.equal(continuation.allowed, true);
-  assert.equal(continuation.reason, 'intraday-confirmed');
-  assert.equal(continuation.intraday?.setup, 'continuation');
-  assert.equal(continuation.rule?.rewardRisk, 2);
-
-  const pullback = resolveDirectEntryPolicy({
-    zoneTimeframe: 'M15', signal, sourceCandles: [], baseRule,
-    m5Trend: 'neutral', m15Trend: 'bullish', h1Trend: 'bearish', h4Trend: 'bullish',
-  });
-  assert.equal(pullback.allowed, true);
-  assert.equal(pullback.intraday?.setup, 'pullback');
-
-  const conflict = resolveDirectEntryPolicy({
-    zoneTimeframe: 'M15', signal, sourceCandles: [], baseRule,
-    m5Trend: 'neutral', m15Trend: 'bullish', h1Trend: 'bullish', h4Trend: 'bearish',
-  });
-  assert.equal(conflict.allowed, false);
-  assert.equal(conflict.reason, 'intraday-bias-mismatch');
+test('non-native-M1 direct routes pass through without scalping or intraday gates', () => {
+  for (const [zoneTimeframe, signalTimeframe] of [
+    ['M1', 'M5'],
+    ['M5', 'M5'],
+    ['M15', 'M15'],
+    ['H1', 'M15'],
+  ] as const) {
+    const baseRule = getDirectTradeRule(zoneTimeframe, signalTimeframe)!;
+    const decision = resolveDirectEntryPolicy({
+      zoneTimeframe,
+      signal: { ...bullishSignal, timeframe: signalTimeframe },
+      sourceCandles: [],
+      baseRule,
+    });
+    assert.equal(decision.allowed, true);
+    assert.equal(decision.reason, 'unchanged');
+    assert.equal(decision.rule, baseRule);
+  }
 });
 
 test('finalized direct trade matrix returns the agreed R:R, buffer, and risk caps', () => {

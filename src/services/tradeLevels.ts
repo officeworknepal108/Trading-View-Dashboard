@@ -4,15 +4,6 @@ import type {
   StructureCandle,
   StructureZone,
 } from './marketStructure';
-import {
-  evaluateScalpingLogic,
-  type ScalpingDecision,
-} from './scalpingLogic';
-import {
-  evaluateIntradayLogic,
-  type IntradayDecision,
-} from './intradayLogic';
-
 export type TradeTimeframe = 'M1' | 'M5' | 'M15' | 'M30' | 'H1' | 'H4' | 'D';
 export type TradeStatus = 'pending' | 'active' | 'risk-free' | 'tp-hit' | 'sl-hit';
 export type TradeResult = 'sl' | 'rf' | 'tp';
@@ -55,13 +46,9 @@ export type EngulfingVolumeStatus = 'not-applicable' | 'unavailable' | 'failed' 
 export interface DirectEntryPolicyDecision {
   allowed: boolean;
   reason: 'unchanged' | 'volume-confirmed' | 'volume-failed'
-    | 'volume-unavailable' | 'volume-not-applicable'
-    | 'scalping-confirmed' | 'scalping-bias-neutral' | 'scalping-bias-mismatch'
-    | 'intraday-confirmed' | 'intraday-bias-neutral' | 'intraday-bias-mismatch';
+    | 'volume-unavailable' | 'volume-not-applicable';
   rule?: TradeRule;
   volume: EngulfingVolumeAssessment;
-  scalping?: ScalpingDecision;
-  intraday?: IntradayDecision;
 }
 
 export interface OpenPositionDirection {
@@ -166,69 +153,18 @@ export function resolveDirectEntryPolicy(options: {
   signal: EngulfingTradeSignal;
   sourceCandles: StructureCandle[];
   baseRule: TradeRule;
-  m5Trend?: MarketTrend;
-  m15Trend?: MarketTrend;
-  h1Trend?: MarketTrend;
-  h4Trend?: MarketTrend;
 }): DirectEntryPolicyDecision {
   const { zoneTimeframe, signal, sourceCandles, baseRule } = options;
   const volume = assessEngulfingVolumeLogic(sourceCandles, signal);
-  const scalping = evaluateScalpingLogic({
-    zoneTimeframe,
-    signalTimeframe: signal.timeframe,
-    signalDirection: signal.direction,
-    m5Trend: options.m5Trend ?? 'neutral',
-    m15Trend: options.m15Trend ?? 'neutral',
-  });
-  const intraday = evaluateIntradayLogic({
-    setupTimeframe: zoneTimeframe,
-    entryTimeframe: signal.timeframe,
-    signalDirection: signal.direction,
-    h4Trend: options.h4Trend ?? 'neutral',
-    h1Trend: options.h1Trend ?? 'neutral',
-    m15Trend: options.m15Trend ?? 'neutral',
-  });
-  if (scalping.applicable) {
-    if (!scalping.allowed) {
-      return {
-        allowed: false,
-        reason: scalping.reason === 'm15-neutral'
-          ? 'scalping-bias-neutral'
-          : 'scalping-bias-mismatch',
-        volume,
-        scalping,
-      };
-    }
-  }
-  if (intraday.applicable && !intraday.allowed && !scalping.applicable) {
-    const neutral = ['h4-neutral', 'h1-neutral', 'm15-neutral'].includes(intraday.reason);
-    return {
-      allowed: false,
-      reason: neutral ? 'intraday-bias-neutral' : 'intraday-bias-mismatch',
-      volume,
-      scalping,
-      intraday,
-    };
-  }
   if (zoneTimeframe === 'M1' && signal.timeframe === 'M1') {
     if (volume.passes) {
-      return { allowed: true, reason: 'volume-confirmed', rule: baseRule, volume, scalping };
+      return { allowed: true, reason: 'volume-confirmed', rule: baseRule, volume };
     }
     const status = getEngulfingVolumeStatus(volume, signal.type);
     const reason = status === 'unavailable'
       ? 'volume-unavailable'
       : status === 'not-applicable' ? 'volume-not-applicable' : 'volume-failed';
-    return { allowed: false, reason, volume, scalping };
-  }
-  if (scalping.applicable) {
-    return {
-      allowed: true, reason: 'scalping-confirmed', rule: baseRule, volume, scalping, intraday,
-    };
-  }
-  if (intraday.applicable) {
-    return {
-      allowed: true, reason: 'intraday-confirmed', rule: baseRule, volume, scalping, intraday,
-    };
+    return { allowed: false, reason, volume };
   }
   if (zoneTimeframe !== 'M1' || signal.timeframe !== 'M1') {
     return { allowed: true, reason: 'unchanged', rule: baseRule, volume };

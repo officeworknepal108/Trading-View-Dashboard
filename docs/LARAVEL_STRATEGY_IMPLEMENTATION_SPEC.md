@@ -463,42 +463,6 @@ Generic mapped fallback scanning uses valid, active, tradeable zones and matchin
 3. Swing-FIB engulfing.
 4. Day-FIB engulfing.
 
-### 15.1 Scalping Logic for M1 and M5 execution
-
-Apply this gate to native M1-zone/M1-engulfing setups, an M1 zone using its M5
-engulfing fallback, and native M5-zone/M5-engulfing setups. At the completed
-entry engulfing close, compute M5 context and the M15 market-structure trend
-using only candles that have already closed.
-
-- Bullish M1 or M5 confirmation requires bullish M15 bias.
-- Bearish M1 or M5 confirmation requires bearish M15 bias.
-- Neutral M15 bias waits and creates no trade.
-- An engulfing opposite to the M15 bias waits and creates no trade.
-- If the completed M5 trend already matches the signal, classify it as a
-  continuation. If M5 trend is opposite, the matching completed engulfing
-  confirms the pullback entry. Neutral M5 trend is accepted because the
-  completed M5 engulfing itself is the confirmation.
-
-Native M1 confirmation must additionally pass its existing volume policy. This
-gate does not alter zone qualification, R:R, stop buffers, risk caps,
-pending-entry behavior, M15/M30 routes, or H1 intraday routes.
-
-### 15.2 Intraday Logic for M5 and M15 execution
-
-Apply Intraday Logic to M5 entries from M15/H1 setup timeframes and M15
-entries from M15/H1/H4 setup timeframes. At the engulfing close, use only
-already-completed higher-timeframe candles:
-
-- H4 is the main bias and must match the engulfing direction.
-- H1 must be directional. Matching H1 is continuation; opposite H1 is a
-  pullback and may continue only after M15 realigns with H4.
-- M15 must match both H4 and the engulfing direction.
-- Neutral H4, H1, or M15 waits and creates no intraday trade.
-
-The completed M5 or M15 engulfing remains the entry trigger. Preserve the
-existing route-specific R:R, buffer, maximum-risk, pending-entry, deep-FIB,
-and 1R management rules.
-
 ## 16. H4 Swing FIB
 
 - Seed from the earliest non-zero H4 external swing line.

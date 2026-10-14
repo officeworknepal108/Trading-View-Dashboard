@@ -63,10 +63,6 @@ import {
 } from '../services/tradeLevels';
 import { applyOneMinuteGenesisQml, executionZoneName } from '../services/oneMinuteGenesis';
 import {
-  evaluateIntradayLogic,
-  type IntradayDecision,
-} from '../services/intradayLogic';
-import {
   DEFAULT_TRADE_RECORD_FILTERS,
   filterTradeRecords,
   tradeRecordDatePeriodKey,
@@ -336,47 +332,18 @@ function marketCandleCloseTime(time: number, granularity: MarketGranularity): nu
   ) / 1000;
 }
 
-function completedTrendAt(
-  candles: OandaCandle[],
-  granularity: OandaGranularity,
-  cutoff: number,
-): 'bullish' | 'bearish' | 'neutral' {
-  const completedCandles = candles.filter((candle) => (
-    candle.complete && marketCandleCloseTime(candle.time, granularity) <= cutoff
-  ));
-  if (completedCandles.length === 0) return 'neutral';
-  return analyzeMarketStructure(completedCandles, {
-    allowSupplyDemand: ['H1', 'H4', 'D'].includes(granularity),
-    sourceBarSeconds: TIMEFRAME_SECONDS[granularity],
-    confirmationBarSeconds: TJL1_CONFIRMATION_SECONDS[granularity],
-    zoneVisualBars: 30,
-  }).trend;
-}
-
 function resolveRuleForDirectEntry(options: {
   zoneTimeframe: TradeTimeframe;
   signal: EngulfingTradeSignal;
   sourceCandles: OandaCandle[];
   baseRule: TradeRule;
-  m5Candles: OandaCandle[];
-  m15Candles: OandaCandle[];
-  h1Candles: OandaCandle[];
-  h4Candles: OandaCandle[];
 }): TradeRule | undefined {
-  const {
-    zoneTimeframe, signal, sourceCandles, baseRule, m5Candles, m15Candles,
-    h1Candles, h4Candles,
-  } = options;
-  const signalClose = signal.time + TIMEFRAME_SECONDS[signal.timeframe];
+  const { zoneTimeframe, signal, sourceCandles, baseRule } = options;
   return resolveDirectEntryPolicy({
     zoneTimeframe,
     signal,
     sourceCandles,
     baseRule,
-    m5Trend: completedTrendAt(m5Candles, 'M5', signalClose),
-    m15Trend: completedTrendAt(m15Candles, 'M15', signalClose),
-    h1Trend: completedTrendAt(h1Candles, 'H1', signalClose),
-    h4Trend: completedTrendAt(h4Candles, 'H4', signalClose),
   }).rule;
 }
 
@@ -516,12 +483,6 @@ function displayZoneName(
 }
 
 function directEntryPolicyLabel(policy: DirectEntryPolicyDecision): string {
-  if (policy.reason === 'scalping-bias-neutral') return 'M15 BIAS NEUTRAL';
-  if (policy.reason === 'scalping-bias-mismatch') return 'M15 BIAS CONFLICT';
-  if (policy.reason === 'scalping-confirmed') return 'SCALPING LOGIC PASSED';
-  if (policy.reason === 'intraday-bias-neutral') return 'INTRADAY BIAS NEUTRAL';
-  if (policy.reason === 'intraday-bias-mismatch') return 'INTRADAY BIAS CONFLICT';
-  if (policy.reason === 'intraday-confirmed') return 'INTRADAY LOGIC PASSED';
   if (policy.reason === 'volume-confirmed') return 'VOLUME PASSED';
   if (policy.reason === 'volume-unavailable') return 'VOLUME UNAVAILABLE';
   if (policy.reason === 'volume-not-applicable') return 'NO M1 VOLUME RULE';
@@ -694,7 +655,6 @@ function mtfSignalLabel(row: DisplayMtfRow, trade: TradeLevels | undefined): str
   if (isCompletedTrade(trade)) return tradeStatusLabel(trade);
   if (!row.tappedZone) return 'Waiting for zone tap';
   if (!row.engulfingType) return 'Waiting';
-  if (row.intraday?.applicable && !row.intraday.allowed) return 'WAIT · INTRADAY BIAS';
   const type = row.engulfingType.replace('T', 'Type ');
   return `${type} ${row.direction === 'bullish' ? 'BUY' : 'SELL'} ${
     trade ? 'MTF ENTRY' : 'CONFIRMED'
@@ -705,7 +665,6 @@ type DisplayMtfRow = MtfRow & {
   setupId: string;
   trade?: TradeLevels;
   tradeBarsAgo?: number;
-  intraday?: IntradayDecision;
 };
 
 const MultiTimeframeEntryTable: React.FC<{ rows: DisplayMtfRow[] }> = ({ rows }) => {
@@ -1641,26 +1600,6 @@ export const OandaProChart: React.FC = () => {
         signal: setup.signal,
         sourceCandles,
         baseRule: setup.rule,
-        m5Trend: completedTrendAt(
-          granularity === 'M5' ? displayCandles : vipCandles.M5 || [],
-          'M5',
-          setup.signal.time + TIMEFRAME_SECONDS[setup.signal.timeframe],
-        ),
-        m15Trend: completedTrendAt(
-          granularity === 'M15' ? displayCandles : vipCandles.M15 || [],
-          'M15',
-          setup.signal.time + TIMEFRAME_SECONDS[setup.signal.timeframe],
-        ),
-        h1Trend: completedTrendAt(
-          granularity === 'H1' ? displayCandles : vipCandles.H1 || [],
-          'H1',
-          setup.signal.time + TIMEFRAME_SECONDS[setup.signal.timeframe],
-        ),
-        h4Trend: completedTrendAt(
-          granularity === 'H4' ? displayCandles : vipCandles.H4 || [],
-          'H4',
-          setup.signal.time + TIMEFRAME_SECONDS[setup.signal.timeframe],
-        ),
       });
       if (!policy.allowed || !policy.rule) {
         decisions.set(setup.zone.id, { policy, oppositePositionOpen: false });
@@ -1814,7 +1753,6 @@ export const OandaProChart: React.FC = () => {
         setupIds.set(setupKey, setupId);
       }
       let trade: TradeLevels | undefined;
-      let intraday: IntradayDecision | undefined;
       const lowerTimeframeData = tableTimeframeData[row.lowerTimeframe];
       if (row.engulfingType && row.engulfingTime !== undefined && lowerTimeframeData) {
         const signal: EngulfingTradeSignal = {
@@ -1825,16 +1763,7 @@ export const OandaProChart: React.FC = () => {
           timeframe: row.lowerTimeframe,
         };
         const rule = getMtfTradeRule(row.higherTimeframe, row.lowerTimeframe);
-        const signalClose = signal.time + TIMEFRAME_SECONDS[signal.timeframe];
-        intraday = evaluateIntradayLogic({
-          setupTimeframe: row.higherTimeframe,
-          entryTimeframe: row.lowerTimeframe,
-          signalDirection: signal.direction,
-          h4Trend: completedTrendAt(tableTimeframeData.H4?.candles || [], 'H4', signalClose),
-          h1Trend: completedTrendAt(tableTimeframeData.H1?.candles || [], 'H1', signalClose),
-          m15Trend: completedTrendAt(tableTimeframeData.M15?.candles || [], 'M15', signalClose),
-        });
-        if (rule && (!intraday.applicable || intraday.allowed)) {
+        if (rule) {
           trade = calculateTradeLevels({
             sourceCandles: lowerTimeframeData.candles,
             executionCandles: lowerTimeframeData.candles,
@@ -1850,7 +1779,7 @@ export const OandaProChart: React.FC = () => {
       const tradeBarsAgo = tradeIndex >= 0 && lowerTimeframeData
         ? lowerTimeframeData.candles.length - 1 - tradeIndex
         : undefined;
-      return { ...row, setupId, trade, tradeBarsAgo, intraday };
+      return { ...row, setupId, trade, tradeBarsAgo };
     });
   },
     [activeMtfRows, tableTimeframeData],
@@ -1918,10 +1847,6 @@ export const OandaProChart: React.FC = () => {
         signal,
         sourceCandles,
         baseRule,
-        m5Candles: granularity === 'M5' ? displayCandles : vipCandles.M5 || [],
-        m15Candles: granularity === 'M15' ? displayCandles : vipCandles.M15 || [],
-        h1Candles: granularity === 'H1' ? displayCandles : vipCandles.H1 || [],
-        h4Candles: granularity === 'H4' ? displayCandles : vipCandles.H4 || [],
       });
       if (!rule) continue;
       const executionCandles = TIMEFRAME_SECONDS[signal.timeframe]
@@ -1960,16 +1885,6 @@ export const OandaProChart: React.FC = () => {
         candleCount: row.engulfingCandleCount ?? 2,
         timeframe: row.lowerTimeframe,
       };
-      const signalClose = signal.time + TIMEFRAME_SECONDS[signal.timeframe];
-      const intraday = evaluateIntradayLogic({
-        setupTimeframe: row.higherTimeframe,
-        entryTimeframe: row.lowerTimeframe,
-        signalDirection: signal.direction,
-        h4Trend: completedTrendAt(tableTimeframeData.H4?.candles || [], 'H4', signalClose),
-        h1Trend: completedTrendAt(tableTimeframeData.H1?.candles || [], 'H1', signalClose),
-        m15Trend: completedTrendAt(tableTimeframeData.M15?.candles || [], 'M15', signalClose),
-      });
-      if (intraday.applicable && !intraday.allowed) continue;
       const trade = calculateTradeLevels({
         sourceCandles: lowerTimeframeData.candles,
         executionCandles: lowerTimeframeData.candles,

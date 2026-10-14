@@ -30,7 +30,6 @@ import { applySwingFibConfluence } from './src/services/swingFibConfluence';
 import { applyDayFibConfluence } from './src/services/dayFibConfluence';
 import { applyOneMinuteGenesisQml, executionZoneName } from './src/services/oneMinuteGenesis';
 import { buildMtfRows, type MtfGranularity, type MtfTimeframeData } from './src/services/mtf';
-import { evaluateIntradayLogic } from './src/services/intradayLogic';
 import {
   calculateTradeLevels,
   assessEngulfingVolumeLogic,
@@ -614,10 +613,6 @@ async function scanMt5AutomationSignals(): Promise<number> {
         signal,
         sourceCandles: candles[signal.timeframe],
         baseRule,
-        m5Trend: completedAutomationTrendAt(candles.M5, 'M5', signalClose),
-        m15Trend: completedAutomationTrendAt(candles.M15, 'M15', signalClose),
-        h1Trend: completedAutomationTrendAt(candles.H1, 'H1', signalClose),
-        h4Trend: completedAutomationTrendAt(candles.H4, 'H4', signalClose),
       });
       if (!policy.allowed || !policy.rule) continue;
       const executionCandles = AUTOMATION_SECONDS[signal.timeframe] < AUTOMATION_SECONDS[zoneTimeframe]
@@ -687,15 +682,6 @@ async function scanMt5AutomationSignals(): Promise<number> {
       timeframe: row.lowerTimeframe,
     };
     const signalClose = signal.time + AUTOMATION_SECONDS[signal.timeframe];
-    const intraday = evaluateIntradayLogic({
-      setupTimeframe: row.higherTimeframe,
-      entryTimeframe: row.lowerTimeframe,
-      signalDirection: signal.direction,
-      h4Trend: completedAutomationTrendAt(candles.H4, 'H4', signalClose),
-      h1Trend: completedAutomationTrendAt(candles.H1, 'H1', signalClose),
-      m15Trend: completedAutomationTrendAt(candles.M15, 'M15', signalClose),
-    });
-    if (intraday.applicable && !intraday.allowed) continue;
     const trade = calculateTradeLevels({
       sourceCandles: candles[row.lowerTimeframe],
       executionCandles: candles[row.lowerTimeframe],
