@@ -4,6 +4,7 @@ import type {
   StructureCandle,
   StructureZone,
 } from './marketStructure';
+import { isZoneEligibleForEngulfingEntry } from './marketStructure';
 export type TradeTimeframe = 'M1' | 'M5' | 'M15' | 'M30' | 'H1' | 'H4' | 'D';
 export type TradeStatus = 'pending' | 'active' | 'risk-free' | 'tp-hit' | 'sl-hit';
 export type TradeResult = 'sl' | 'rf' | 'tp';
@@ -72,6 +73,30 @@ export interface TradeLevels {
 }
 
 export const TRADE_PIP_SIZE = 0.1;
+
+export interface TradeableFibZoneMeasurement {
+  pips: number;
+  midline: number;
+}
+
+export function measureTradeableFibZone(
+  zone: StructureZone,
+): TradeableFibZoneMeasurement | undefined {
+  const fibAligned = (zone.fibStatus === 'a-plus' && zone.fibBand !== undefined)
+    || (zone.swingFibStatus === 'a-plus' && zone.swingFibBand !== undefined)
+    || (zone.dayFibStatus === 'a-plus' && zone.dayFibBand !== undefined);
+  if (!fibAligned || zone.tapTime === undefined || !isZoneEligibleForEngulfingEntry(zone)) {
+    return undefined;
+  }
+
+  const top = Math.max(zone.top, zone.bottom);
+  const bottom = Math.min(zone.top, zone.bottom);
+  if (!Number.isFinite(top) || !Number.isFinite(bottom) || top <= bottom) return undefined;
+  return {
+    pips: roundPips((top - bottom) / TRADE_PIP_SIZE),
+    midline: (top + bottom) / 2,
+  };
+}
 
 function validVolume(candle: StructureCandle | undefined): number | undefined {
   return candle && Number.isFinite(candle.volume) && candle.volume! >= 0

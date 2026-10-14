@@ -449,6 +449,7 @@ For a normal structure-FIB trade:
 - At least one candle in the engulfing sequence must touch the active zone after activation.
 - Primary-band setups must also have at least one pattern candle trade through exact FIB 0.500.
 - Deep, extended-deep, and DB/DT setups do not require exact 0.500 contact.
+- After the first valid revisit/touch of an active, valid, tradeable zone with Structure, Swing, or Day A+ FIB alignment, display its full XAUUSD width in pips using `0.1 = 1 pip` and draw the exact zone midline at `(top + bottom) / 2`. Before `tapTime` exists, show neither measurement nor line. Keep the midpoint price itself hidden.
 
 For Major Liquidity:
 

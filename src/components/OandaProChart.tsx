@@ -51,6 +51,7 @@ import {
   getEngulfingVolumeStatus,
   isZoneEngulfingFibQualified,
   isDeepDiscountTradeSignal,
+  measureTradeableFibZone,
   resolveDirectEntryPolicy,
   resolveZoneEngulfingSignal,
   timeframeWindowCutoff,
@@ -495,6 +496,10 @@ function displayFibLabel(zone: StructureZone): string {
     return 'FIB DEEP DISCOUNT';
   }
   return `A+ FIB ${zone.fibBand}`;
+}
+
+function formatZonePips(pips: number): string {
+  return pips.toLocaleString(undefined, { maximumFractionDigits: 2 });
 }
 
 function displayEngulfingLabel(zone: StructureZone): string | undefined {
@@ -2314,14 +2319,31 @@ export const OandaProChart: React.FC = () => {
       const border = inactive
         ? 'rgba(71, 85, 105, 0.72)'
         : pending ? demand ? 'rgba(5, 150, 105, 0.72)' : 'rgba(225, 29, 72, 0.72)' : isIss ? 'rgba(180, 83, 9, 0.72)' : isInternal ? 'rgba(109, 40, 217, 0.72)' : demand ? 'rgba(5, 150, 105, 0.65)' : 'rgba(225, 29, 72, 0.65)';
+      const zoneTopCoordinate = Math.min(top, bottom);
+      const zoneHeight = Math.max(2, Math.abs(bottom - top));
       box.style.position = 'absolute';
       box.style.left = `${left}px`;
       box.style.width = `${right - left}px`;
-      box.style.top = `${Math.min(top, bottom)}px`;
-      box.style.height = `${Math.max(2, Math.abs(bottom - top))}px`;
+      box.style.top = `${zoneTopCoordinate}px`;
+      box.style.height = `${zoneHeight}px`;
       box.style.background = fill;
       box.style.borderTop = `1px solid ${border}`;
       box.style.borderBottom = `1px solid ${border}`;
+
+      const measurement = measureTradeableFibZone(zone);
+      if (measurement) {
+        const midlineCoordinate = series.priceToCoordinate(measurement.midline);
+        if (midlineCoordinate !== null) {
+          const midline = document.createElement('div');
+          midline.style.position = 'absolute';
+          midline.style.left = '0';
+          midline.style.right = '0';
+          midline.style.top = `${Math.max(0, Math.min(zoneHeight, midlineCoordinate - zoneTopCoordinate))}px`;
+          midline.style.borderTop = '1px dashed rgba(15, 23, 42, 0.78)';
+          midline.style.pointerEvents = 'none';
+          box.appendChild(midline);
+        }
+      }
 
       const label = document.createElement('span');
       const name = isMg || isIss || isInternal
@@ -2329,6 +2351,9 @@ export const OandaProChart: React.FC = () => {
         : demand ? 'DEMAND' : 'SUPPLY';
       const labelDetails: string[] = [];
       if (zone.majorLiquidity) labelDetails.push('MAJOR LIQUIDITY');
+      if (measurement) {
+        labelDetails.push(`${formatZonePips(measurement.pips)} PIPS`);
+      }
       if (inactive) {
         if (rejected) labelDetails.push('REJECTED');
       } else if (showsDoubleChochStatus) {
@@ -5287,6 +5312,7 @@ export const OandaProChart: React.FC = () => {
                   const confirmationSide = zone.doubleChochConfirmationDirection === 'up' ? 'ABOVE' : 'BELOW';
                   const trade = directZoneTrades.get(zone.id);
                   const mt5Signal = directZoneMt5Signals.get(zone.id);
+                  const measurement = measureTradeableFibZone(zone);
                   return (
                     <React.Fragment key={`double-${zone.id}`}>
                     <tr className={`border-t text-slate-700 ${
@@ -5321,7 +5347,14 @@ export const OandaProChart: React.FC = () => {
                       <td className={`px-2 py-1 font-bold ${zone.isBuy ? 'text-emerald-700' : 'text-rose-700'}`}>
                         {zone.isBuy ? 'BUY' : 'SELL'}
                       </td>
-                      <td className="px-2 py-1 whitespace-nowrap">{formatPrice(zone.bottom)} – {formatPrice(zone.top)}</td>
+                      <td className="px-2 py-1 whitespace-nowrap">
+                        <div>{formatPrice(zone.bottom)} – {formatPrice(zone.top)}</div>
+                        {measurement && (
+                          <div className="text-[8px] font-black text-slate-600">
+                            {formatZonePips(measurement.pips)} PIPS
+                          </div>
+                        )}
+                      </td>
                       <td className={`px-2 py-1 text-center font-black whitespace-nowrap ${
                         zone.isBuy ? 'text-emerald-700' : 'text-rose-700'
                       }`}>
@@ -5354,6 +5387,7 @@ export const OandaProChart: React.FC = () => {
                   const trade = directZoneTrades.get(zone.id);
                   const entryDecision = directZoneEntryDecisions.get(zone.id);
                   const mt5Signal = directZoneMt5Signals.get(zone.id);
+                  const measurement = measureTradeableFibZone(zone);
                   return (
                   <React.Fragment key={zone.id}>
                   <tr className="border-t border-slate-100 text-slate-700">
@@ -5407,7 +5441,14 @@ export const OandaProChart: React.FC = () => {
                     <td className={`px-2 py-1 font-bold ${zone.isBuy ? 'text-emerald-700' : 'text-rose-700'}`}>
                       {zone.isBuy ? 'BUY' : 'SELL'}
                     </td>
-                    <td className="px-2 py-1 whitespace-nowrap">{formatPrice(zone.bottom)} – {formatPrice(zone.top)}</td>
+                    <td className="px-2 py-1 whitespace-nowrap">
+                      <div>{formatPrice(zone.bottom)} – {formatPrice(zone.top)}</div>
+                      {measurement && (
+                        <div className="text-[8px] font-black text-slate-600">
+                          {formatZonePips(measurement.pips)} PIPS
+                        </div>
+                      )}
+                    </td>
                     <td className={`px-2 py-1 text-center font-black whitespace-nowrap ${
                       zone.isBuy ? 'text-emerald-700' : 'text-rose-700'
                     }`}>

@@ -10,6 +10,7 @@ import {
   getMtfTradeRule,
   isDeepDiscountTradeSignal,
   isZoneEngulfingFibQualified,
+  measureTradeableFibZone,
   resolveZoneEngulfingSignal,
   resolveDirectEntryPolicy,
   timeframeWindowCutoff,
@@ -65,6 +66,36 @@ test('engulfing signals cannot resolve without their matching A+ FIB qualificati
     majorLiquidity: true,
   };
   assert.equal(resolveZoneEngulfingSignal(majorLiquidity, 'M15')?.type, 'T3');
+});
+
+test('tradeable FIB-aligned zones expose their full pip width and exact midline', () => {
+  const alignedZone: StructureZone = {
+    id: 'measured-tjl2',
+    name: 'TJL2',
+    category: 'mg',
+    isBuy: true,
+    startTime: 0,
+    endTime: 1800,
+    tapTime: 1200,
+    bottom: 4147.5,
+    top: 4150.5,
+    active: true,
+    status: 'valid',
+    tradeable: true,
+    fibStatus: 'a-plus',
+    fibBand: '0.5-0.618',
+  };
+  assert.deepEqual(measureTradeableFibZone(alignedZone), {
+    pips: 30,
+    midline: 4149,
+  });
+  assert.equal(measureTradeableFibZone({ ...alignedZone, tradeable: false }), undefined);
+  assert.equal(measureTradeableFibZone({ ...alignedZone, tapTime: undefined }), undefined);
+  assert.equal(measureTradeableFibZone({
+    ...alignedZone,
+    fibStatus: undefined,
+    fibBand: undefined,
+  }), undefined);
 });
 
 test('half-at-1R management reports the correct net R outcome', () => {
