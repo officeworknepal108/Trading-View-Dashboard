@@ -50,6 +50,7 @@ import {
   saveAgentMemory,
   summarizeTradeMemory,
 } from './src/services/agentKnowledge';
+import { deduplicateTradeRecords } from './src/services/tradeRecordDeduplication';
 
 const GRANULARITIES = new Set(['M1', 'M5', 'M15', 'M30', 'H1', 'H4', 'D', 'W', 'MO']);
 const JOURNAL_FILE = path.resolve(process.cwd(), 'data', 'trade-journal.json');
@@ -565,7 +566,6 @@ async function scanMt5AutomationSignals(): Promise<number> {
       zeroPrice: h4SeedLine.toPrice,
     })
     : [];
-  const currentSwingFib = swingFibMoves[swingFibMoves.length - 1];
   const candidates: Mt5SignalInput[] = [];
   const now = Math.floor(Date.now() / 1000);
 
@@ -577,7 +577,7 @@ async function scanMt5AutomationSignals(): Promise<number> {
     let zones = applySwingFibConfluence(
       sourceCandles,
       structures[zoneTimeframe]?.zones ?? [],
-      currentSwingFib,
+      swingFibMoves,
     ).zones;
     if (['M1', 'M5', 'M15', 'M30'].includes(zoneTimeframe)) {
       const dayFibMoves = buildDayFibs(sourceCandles);
@@ -1217,7 +1217,7 @@ async function startServer() {
 
   app.get('/api/journal/trades', async (_req, res) => {
     try {
-      const trades = await readJournalTrades();
+      const trades = deduplicateTradeRecords(await readJournalTrades());
       res.setHeader('Cache-Control', 'no-store');
       return res.json({ ok: true, trades });
     } catch (error) {
@@ -1249,7 +1249,7 @@ async function startServer() {
         await writeJournalTrades(mergedTrades);
         return mergedTrades;
       });
-      return res.json({ ok: true, trades });
+      return res.json({ ok: true, trades: deduplicateTradeRecords(trades) });
     } catch (error) {
       return res.status(500).json({
         ok: false,

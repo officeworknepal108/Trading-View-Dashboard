@@ -396,6 +396,29 @@ test('completed outcomes classify SL, protected RF exit, and same-candle TP prio
   assert.equal(tpTrade?.resolvedAt, 120);
 });
 
+test('1R keeps the trade open through an entry retrace until the displayed SL or TP is hit', () => {
+  const sourceCandles: StructureCandle[] = [
+    { time: 0, open: 12, high: 13, low: 9, close: 10, complete: true },
+    { time: 60, open: 10, high: 14, low: 9.5, close: 13.5, complete: true },
+  ];
+  const trade = calculateTradeLevels({
+    sourceCandles,
+    executionCandles: [
+      ...sourceCandles,
+      { time: 120, open: 11, high: 15, low: 10, close: 14, complete: true },
+      // Price returns through the 11 entry, but neither the displayed 8 SL nor
+      // the 20 TP is touched, so RF is active rather than a completed result.
+      { time: 180, open: 14, high: 14, low: 10, close: 11, complete: true },
+    ],
+    signal: bullishSignal,
+    rule: getDirectTradeRule('M1', 'M1')!,
+  });
+
+  assert.equal(trade?.status, 'risk-free');
+  assert.equal(trade?.result, undefined);
+  assert.equal(trade?.resolvedAt, undefined);
+});
+
 test('MTF entry uses the actual engulfing timeframe rule when the pair has no direct rule', () => {
   const rule = getMtfTradeRule('H1', 'M5');
   assert.equal(rule?.rewardRisk, 2);
