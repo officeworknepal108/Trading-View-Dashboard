@@ -83,6 +83,7 @@ export interface StructureZone {
   vipSupportTimeframe?: string;
   vipSupportZone?: StructureZone['name'];
   vipSupportTapTime?: number;
+  confirmationRouteDisabled?: boolean;
   doubleChochStatus?: DoubleChochStatus;
   doubleChochOriginClass?: DoubleChochOriginClass;
   doubleChochTime?: number;
@@ -152,11 +153,13 @@ export interface StructureZone {
 
 type ChochMetadata = Pick<StructureZone,
   'chochClass' | 'tradeable' | 'chochTime' | 'chochConfirmationTime'
-  | 'vipSupportTimeframe' | 'vipSupportZone' | 'vipSupportTapTime'>;
+  | 'vipSupportTimeframe' | 'vipSupportZone' | 'vipSupportTapTime'
+  | 'confirmationRouteDisabled'>;
 
 type DoubleChochMetadata = Pick<StructureZone,
   'doubleChochStatus' | 'doubleChochOriginClass' | 'doubleChochTime'
-  | 'doubleChochConfirmationTime' | 'doubleChochConfirmationDirection' | 'tradeable'>;
+  | 'doubleChochConfirmationTime' | 'doubleChochConfirmationDirection' | 'tradeable'
+  | 'confirmationRouteDisabled'>;
 
 export interface StructureLine {
   id: string;
@@ -168,6 +171,8 @@ export interface StructureLine {
   toPrice: number;
   label?: string;
 }
+
+export const DISABLED_HIGHER_TIMEFRAME_CONFIRMATION = -1;
 
 export type IssMarker = SeriesMarker<UTCTimestamp> & {
   // The precise wave vertex. Rendering from this value keeps the label tied to
@@ -334,6 +339,9 @@ export function resolveTjl1Confirmation(candles: StructureCandle[], options: {
   confirmationBarSeconds?: number;
 }): Pick<StructureZone, 'status' | 'tjl1ConfirmationAttempts' | 'confirmationTime' | 'confirmationWindowCloseTime'> {
   const confirmationSeconds = options.confirmationBarSeconds;
+  if (confirmationSeconds === DISABLED_HIGHER_TIMEFRAME_CONFIRMATION) {
+    return { status: 'pending', tjl1ConfirmationAttempts: 0 };
+  }
   if (!confirmationSeconds || confirmationSeconds <= options.sourceBarSeconds) {
     return {
       status: 'valid',
@@ -716,6 +724,7 @@ export function findTradeableZoneEngulfingPattern(
  * the agreed QML + lower-timeframe engulfing entry route.
  */
 export function isZoneEligibleForEngulfingEntry(zone: StructureZone): boolean {
+  if (zone.confirmationRouteDisabled) return false;
   if (!zone.active || zone.status !== 'valid') return false;
   if (zone.tradeable !== false) return true;
   return (zone.name === 'QML' || zone.name === 'Internal QML')
@@ -1328,6 +1337,8 @@ export function analyzeMarketStructure(candles: StructureCandle[], options: {
       vipSupportTimeframe: vipTap?.timeframe,
       vipSupportZone: vipTap?.zone.name,
       vipSupportTapTime: vipTap?.tapTime,
+      confirmationRouteDisabled: options.confirmationBarSeconds
+        === DISABLED_HIGHER_TIMEFRAME_CONFIRMATION,
     };
   };
 
@@ -1367,6 +1378,8 @@ export function analyzeMarketStructure(candles: StructureCandle[], options: {
       doubleChochTime: sourceDoubleChochTime,
       doubleChochConfirmationTime: confirmation.confirmationTime,
       doubleChochConfirmationDirection: confirmationDirection,
+      confirmationRouteDisabled: options.confirmationBarSeconds
+        === DISABLED_HIGHER_TIMEFRAME_CONFIRMATION,
     };
   };
 

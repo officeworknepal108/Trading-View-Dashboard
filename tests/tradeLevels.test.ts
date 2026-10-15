@@ -247,7 +247,7 @@ test('finalized direct trade matrix returns the agreed R:R, buffer, and risk cap
     stopBufferPips: 10, maximumRiskPips: 50,
   });
   assert.equal(getDirectTradeRule('M1', 'M5')?.rewardRisk, 2);
-  assert.equal(getDirectTradeRule('M5', 'M15')?.rewardRisk, 1);
+  assert.equal(getDirectTradeRule('M5', 'M15'), undefined);
   assert.equal(getDirectTradeRule('M15', 'M30')?.maximumRiskPips, 300);
   assert.deepEqual(getDirectTradeRule('H1', 'M15'), {
     zoneTimeframe: 'H1', engulfingTimeframe: 'M15', rewardRisk: 2,

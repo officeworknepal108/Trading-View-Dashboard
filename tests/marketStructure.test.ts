@@ -27,6 +27,7 @@ import {
   markMajorLiquidityZone,
   promoteTjl2ToMajorLiquidity,
   resolveTjl1Confirmation,
+  DISABLED_HIGHER_TIMEFRAME_CONFIRMATION,
   selectFreshVipSupportTap,
   selectTwoCandleRetracementPivot,
   wasTjl1ConfirmedBy,
@@ -1054,6 +1055,27 @@ test('TJL1 stays pending when completed mapped candles have not closed through i
   assert.equal(result.status, 'pending');
   assert.equal(result.tjl1ConfirmationAttempts, 1);
   assert.equal(result.confirmationWindowCloseTime, 3600);
+});
+
+test('a removed higher-timeframe confirmation route can never validate structure', () => {
+  const result = resolveTjl1Confirmation([
+    candle(0, 105), candle(300, 106), candle(600, 112), candle(900, 114),
+  ], {
+    confirmationDirection: 'up',
+    bottom: 100,
+    top: 110,
+    formationTime: 300,
+    sourceBarSeconds: 300,
+    confirmationBarSeconds: DISABLED_HIGHER_TIMEFRAME_CONFIRMATION,
+  });
+
+  assert.equal(result.status, 'pending');
+  assert.equal(result.confirmationTime, undefined);
+  assert.equal(result.confirmationWindowCloseTime, undefined);
+  assert.equal(isZoneEligibleForEngulfingEntry(zone({
+    confirmationRouteDisabled: true,
+    tradeable: true,
+  })), false);
 });
 
 test('directional TJL1 invalidation requires the completed body outside the zone', () => {

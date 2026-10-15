@@ -21,6 +21,7 @@ import {
 import {
   analyzeMarketStructure,
   applyTradeableZoneEngulfingFallback,
+  DISABLED_HIGHER_TIMEFRAME_CONFIRMATION,
   isZoneEligibleForEngulfingEntry,
   type StructureCandle,
 } from './src/services/marketStructure';
@@ -78,17 +79,18 @@ const DEFAULT_MT5_CONFIG: Mt5AutomationConfig = {
 const AUTOMATION_TIMEFRAMES: TradeTimeframe[] = ['M1', 'M5', 'M15', 'M30', 'H1', 'H4', 'D'];
 const AUTOMATION_DIRECT_TIMEFRAMES: TradeTimeframe[] = ['M1', 'M5', 'M15', 'H1'];
 const AUTOMATION_FALLBACKS: Partial<Record<TradeTimeframe, TradeTimeframe[]>> = {
-  M1: ['M5'], M5: ['M15'], M15: ['M30'], H1: ['M15', 'M30'],
+  M1: ['M5'], M15: ['M30'], H1: ['M15', 'M30'],
 };
 const AUTOMATION_VIP_SUPPORT: Partial<Record<TradeTimeframe, TradeTimeframe[]>> = {
-  M1: ['M5', 'M15'], M5: ['M15', 'H1'], M15: ['H1', 'H4'], M30: ['H1', 'H4'],
+  M1: ['M5', 'M15'], M5: ['H1'], M15: ['H1', 'H4'], M30: ['H1', 'H4'],
   H1: ['H4', 'D'],
 };
 const AUTOMATION_SECONDS: Record<TradeTimeframe, number> = {
   M1: 60, M5: 300, M15: 900, M30: 1800, H1: 3600, H4: 14400, D: 86400,
 };
 const AUTOMATION_CONFIRMATION_SECONDS: Partial<Record<TradeTimeframe, number>> = {
-  M1: 300, M5: 900, M15: 3600, M30: 3600, H1: 14400, H4: 86400, D: 604800,
+  M1: 300, M5: DISABLED_HIGHER_TIMEFRAME_CONFIRMATION,
+  M15: 3600, M30: 3600, H1: 14400, H4: 86400, D: 604800,
 };
 
 interface Mt5BridgeHeartbeat {

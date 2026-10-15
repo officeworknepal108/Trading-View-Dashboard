@@ -236,7 +236,6 @@ const DIRECT_RULES: Record<string, Omit<TradeRule, 'zoneTimeframe' | 'engulfingT
   'M1:M1': { rewardRisk: 3, stopBufferPips: 10, maximumRiskPips: 50 },
   'M1:M5': { rewardRisk: 2, stopBufferPips: 10, maximumRiskPips: 100 },
   'M5:M5': { rewardRisk: 2, stopBufferPips: 10, maximumRiskPips: 100 },
-  'M5:M15': { rewardRisk: 1, stopBufferPips: 20, maximumRiskPips: 200 },
   'M15:M15': { rewardRisk: 2, stopBufferPips: 20, maximumRiskPips: 200 },
   'M15:M30': { rewardRisk: 1, stopBufferPips: 20, maximumRiskPips: 300 },
   'H1:M15': { rewardRisk: 2, stopBufferPips: 20, maximumRiskPips: 200 },

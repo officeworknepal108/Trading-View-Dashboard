@@ -23,6 +23,7 @@ import {
 import {
   analyzeMarketStructure,
   applyTradeableZoneEngulfingFallback,
+  DISABLED_HIGHER_TIMEFRAME_CONFIRMATION,
   isZoneEligibleForEngulfingEntry,
   StructureLine,
   StructureZone,
@@ -336,7 +337,7 @@ const PRESENT_VIEW_PRICE_SCALE_WIDTH = 80;
 
 const TJL1_CONFIRMATION_SECONDS: Partial<Record<MarketGranularity, number>> = {
   M1: 300,
-  M5: 900,
+  M5: DISABLED_HIGHER_TIMEFRAME_CONFIRMATION,
   M15: 3600,
   M30: 3600,
   H1: 14400,
@@ -347,7 +348,7 @@ const TJL1_CONFIRMATION_SECONDS: Partial<Record<MarketGranularity, number>> = {
 const VIP_SUPPORT_GRANULARITIES: Record<OandaGranularity, MarketGranularity[]> = {
   // A fresh valid zone from either mapped timeframe can qualify VIP CHoCH.
   M1: ['M5', 'M15'],
-  M5: ['M15', 'H1'],
+  M5: ['H1'],
   M15: ['H1', 'H4'],
   M30: ['H1', 'H4'],
   H1: ['H4', 'D'],
@@ -357,7 +358,6 @@ const VIP_SUPPORT_GRANULARITIES: Record<OandaGranularity, MarketGranularity[]> =
 
 const DIRECT_ENGULFING_FALLBACKS: Partial<Record<OandaGranularity, OandaGranularity[]>> = {
   M1: ['M5'],
-  M5: ['M15'],
   M15: ['M30'],
   H1: ['M15', 'M30'],
 };
@@ -2234,6 +2234,14 @@ export const OandaProChart: React.FC = () => {
         }
       }
       for (const [id, overlay] of next) {
+        const directZoneId = directTradeOverlayZoneId(overlay);
+        if (overlay.chartTimeframe === 'M5' && directZoneId
+          && displayZones.some((zone) => (
+            zone.id === directZoneId && zone.confirmationRouteDisabled
+          ))) {
+          next.delete(id);
+          continue;
+        }
         if (overlay.chartTimeframe !== granularity) continue;
         const resolved = resolveRetainedTrade(overlay.trade, displayCandles);
         if (isCompletedTrade(resolved)) next.delete(id);
@@ -2256,7 +2264,7 @@ export const OandaProChart: React.FC = () => {
         .join('|');
       return signature(next) === signature(existing) ? existing : next;
     });
-  }, [displayCandles, granularity, tradeOverlays]);
+  }, [displayCandles, displayZones, granularity, tradeOverlays]);
 
   const retainedChartTradesForTimeframe = useMemo(() => {
     const firstTradeBySetup = new Map<string, TradeOverlay>();
