@@ -282,6 +282,16 @@ function loadStoredRetainedChartTrades(): Map<string, TradeOverlay> {
   }
 }
 
+function tradeOverlaySetupKey(overlay: TradeOverlay): string {
+  const parts = overlay.id.split(':');
+  return parts.length > 3 ? parts.slice(0, -2).join(':') : overlay.id;
+}
+
+function directTradeOverlayZoneId(overlay: TradeOverlay): string | undefined {
+  const setupKey = tradeOverlaySetupKey(overlay);
+  return setupKey.startsWith('DIRECT:') ? setupKey.slice('DIRECT:'.length) : undefined;
+}
+
 type AccuracyTradeRecord = JournalTradeRecord;
 type LiveMt5Position = Mt5AutomationStatus['positions'][number];
 
@@ -1654,20 +1664,14 @@ export const OandaProChart: React.FC = () => {
   }, [displayZones, granularity, tradeTrackingScope]);
 
   useEffect(() => {
-    setTrackedDirectTradeSetups(new Map<string, TrackedDirectTradeSetup>());
-  }, [granularity, liveChartDataSource, replayIndex === null]);
-
-  useEffect(() => {
     if (currentDirectTradeSetups.size === 0) return;
     setTrackedDirectTradeSetups((existing) => {
       let changed = false;
       const next = new Map<string, TrackedDirectTradeSetup>(existing);
       for (const [key, setup] of currentDirectTradeSetups) {
-        const previous = next.get(key);
-        if (!previous
-          || previous.signal.time !== setup.signal.time
-          || previous.signal.type !== setup.signal.type
-          || previous.signal.timeframe !== setup.signal.timeframe) {
+        // A zone gets one entry only. Once its first valid engulfing has been
+        // captured, a later T1/T2/T3/T4 on that same zone cannot replace it.
+        if (!next.has(key)) {
           next.set(key, setup);
           changed = true;
         }
@@ -1692,7 +1696,9 @@ export const OandaProChart: React.FC = () => {
     for (const setup of trackedDirectTradeSetups.values()) {
       if (setup.scope === tradeTrackingScope) setups.set(setup.zone.id, setup);
     }
-    for (const setup of currentDirectTradeSetups.values()) setups.set(setup.zone.id, setup);
+    for (const setup of currentDirectTradeSetups.values()) {
+      if (!setups.has(setup.zone.id)) setups.set(setup.zone.id, setup);
+    }
 
     for (const setup of setups.values()) {
       const sourceCandles = setup.signal.timeframe === granularity
@@ -2233,6 +2239,17 @@ export const OandaProChart: React.FC = () => {
         if (isCompletedTrade(resolved)) next.delete(id);
         else next.set(id, { ...overlay, trade: resolved });
       }
+      const firstTradeBySetup = new Map<string, { id: string; signalAt: number }>();
+      for (const [id, overlay] of next) {
+        const setupKey = tradeOverlaySetupKey(overlay);
+        const previous = firstTradeBySetup.get(setupKey);
+        if (!previous || overlay.trade.signal.time < previous.signalAt) {
+          if (previous) next.delete(previous.id);
+          firstTradeBySetup.set(setupKey, { id, signalAt: overlay.trade.signal.time });
+        } else {
+          next.delete(id);
+        }
+      }
       const signature = (entries: Map<string, TradeOverlay>) => Array.from(entries)
         .map(([id, overlay]) => `${id}:${overlay.trade.status}:${overlay.trade.resolvedAt ?? ''}`)
         .sort()
@@ -2241,11 +2258,18 @@ export const OandaProChart: React.FC = () => {
     });
   }, [displayCandles, granularity, tradeOverlays]);
 
-  const retainedChartTradesForTimeframe = useMemo(() => (
-    [...retainedChartTradeOverlays.values()]
+  const retainedChartTradesForTimeframe = useMemo(() => {
+    const firstTradeBySetup = new Map<string, TradeOverlay>();
+    const candidates = [...retainedChartTradeOverlays.values()]
       .filter((overlay) => overlay.chartTimeframe === granularity)
-      .sort((first, second) => second.trade.calculatedAt - first.trade.calculatedAt)
-  ), [granularity, retainedChartTradeOverlays]);
+      .sort((first, second) => first.trade.signal.time - second.trade.signal.time);
+    for (const overlay of candidates) {
+      const setupKey = tradeOverlaySetupKey(overlay);
+      if (!firstTradeBySetup.has(setupKey)) firstTradeBySetup.set(setupKey, overlay);
+    }
+    return [...firstTradeBySetup.values()]
+      .sort((first, second) => second.trade.calculatedAt - first.trade.calculatedAt);
+  }, [granularity, retainedChartTradeOverlays]);
 
   const liveMt5TradeOverlays = useMemo<TradeOverlay[]>(() => (
     (mt5Status?.positions ?? []).flatMap((position) => {
@@ -2305,14 +2329,23 @@ export const OandaProChart: React.FC = () => {
 
   const visibleTradeOverlays = useMemo(() => {
     const overlays = new Map<string, TradeOverlay>();
+    const chartSetupKeys = new Set<string>();
     const addOverlay = (overlay: TradeOverlay) => {
+      const setupKey = tradeOverlaySetupKey(overlay);
+      if ((setupKey.startsWith('DIRECT:') || setupKey.startsWith('MTF:'))
+        && chartSetupKeys.has(setupKey)) return;
       const signature = [
         overlay.trade.entry,
         overlay.trade.stopLoss,
         overlay.trade.takeProfit,
         overlay.trade.signal.direction,
       ].join(':');
-      if (!overlays.has(signature)) overlays.set(signature, overlay);
+      if (!overlays.has(signature)) {
+        overlays.set(signature, overlay);
+        if (setupKey.startsWith('DIRECT:') || setupKey.startsWith('MTF:')) {
+          chartSetupKeys.add(setupKey);
+        }
+      }
     };
     // Broker positions take priority when a chart setup represents the same
     // execution, but they no longer replace other unresolved chart trades.
@@ -2357,13 +2390,19 @@ export const OandaProChart: React.FC = () => {
   const headerCandlesByTime = useMemo(() => new Map(displayCandles.map((candle, index) => (
     [candle.time, { candle, previous: index > 0 ? displayCandles[index - 1] : null }] as const
   ))), [displayCandles]);
+  const retainedDirectTradeZoneIds = useMemo(() => new Set(
+    retainedChartTradesForTimeframe
+      .map(directTradeOverlayZoneId)
+      .filter((zoneId): zoneId is string => Boolean(zoneId)),
+  ), [retainedChartTradesForTimeframe]);
   const zoneTableRows = useMemo(() => displayZones
     .filter((zone) => zone.active && zone.status === 'valid'
+      && !retainedDirectTradeZoneIds.has(zone.id)
       && (showInternal || zone.category !== 'internal')
       && zone.doubleChochStatus === undefined
       && zone.tapTime !== undefined && (zone.tapBarsAgo ?? Infinity) <= 50)
     .sort((a, b) => (b.tapTime ?? b.startTime) - (a.tapTime ?? a.startTime))
-    .slice(0, 8), [displayZones, showInternal]);
+    .slice(0, 8), [displayZones, retainedDirectTradeZoneIds, showInternal]);
   const retainedTradeZoneRows = useMemo(() => {
     const activeZoneIds = new Set([
       ...zoneTableRows.map((zone) => zone.id),
@@ -2374,7 +2413,8 @@ export const OandaProChart: React.FC = () => {
     ]);
     const rows = new Map<string, StructureZone>();
     for (const setup of trackedDirectTradeSetups.values()) {
-      if (setup.scope !== tradeTrackingScope || activeZoneIds.has(setup.zone.id)) continue;
+      if (setup.scope !== tradeTrackingScope || activeZoneIds.has(setup.zone.id)
+        || retainedDirectTradeZoneIds.has(setup.zone.id)) continue;
       const trade = directZoneTrades.get(setup.zone.id);
       if (!trade) continue;
       const row = displayZones.find((zone) => zone.id === setup.zone.id) ?? setup.zone;
@@ -2394,6 +2434,7 @@ export const OandaProChart: React.FC = () => {
     directZoneTrades,
     displayZones,
     showInternal,
+    retainedDirectTradeZoneIds,
     trackedDirectTradeSetups,
     tradeTrackingScope,
     zoneTableRows,

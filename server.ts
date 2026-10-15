@@ -377,7 +377,12 @@ async function enqueueMt5Signal(
   }
   return serializeMt5Mutation(async () => {
     const signals = await readMt5Signals();
-    const liveStatuses = new Set<Mt5SignalStatus>(['QUEUED', 'CLAIMED', 'PLACED', 'ACTIVE', 'RISK_FREE']);
+    // A zone/setup is single-use once an order has entered its execution
+    // lifecycle. Later engulfing patterns on the same DT/TJL/QML must not
+    // create another entry, even after the first trade has closed.
+    const consumedSetupStatuses = new Set<Mt5SignalStatus>([
+      'QUEUED', 'CLAIMED', 'PLACED', 'ACTIVE', 'RISK_FREE', 'TP', 'SL', 'RF',
+    ]);
     const existing = signals.find((signal) => signal.id === candidate.id || (
       signal.symbol === candidate.symbol
       && signal.signalTimeframe === candidate.signalTimeframe
@@ -386,7 +391,7 @@ async function enqueueMt5Signal(
     ) || (
       candidate.setupId !== undefined
       && signal.setupId === candidate.setupId
-      && liveStatuses.has(signal.status)
+      && consumedSetupStatuses.has(signal.status)
     ));
     if (existing) {
       const zones = new Set([existing.zoneName, ...(existing.confluenceZones ?? []), candidate.zoneName,
