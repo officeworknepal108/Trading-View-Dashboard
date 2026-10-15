@@ -34,7 +34,7 @@ export function buildAlternatingSwingFibs(
   let active = initial;
 
   for (const candle of candles) {
-    if (candle.complete === false || candle.time <= active.zeroTime) continue;
+    if (candle.time <= active.zeroTime) continue;
 
     if (active.direction === 'up') {
       if (candle.high > active.zeroPrice) {
@@ -42,6 +42,9 @@ export function buildAlternatingSwingFibs(
         active.zeroTime = candle.time;
         continue;
       }
+      // The live H4 candle may extend level 0 to the latest high, but it cannot
+      // confirm a new opposite Swing FIB until that candle is complete.
+      if (candle.complete === false) continue;
       const midpoint = active.zeroPrice + (active.sourcePrice - active.zeroPrice) * 0.5;
       if (candle.low > midpoint) continue;
       active = {
@@ -61,6 +64,9 @@ export function buildAlternatingSwingFibs(
       active.zeroTime = candle.time;
       continue;
     }
+    // Apply the mirrored rule to a live downward Swing FIB: track its latest
+    // low immediately, while waiting for a completed candle to reverse it.
+    if (candle.complete === false) continue;
     const midpoint = active.zeroPrice + (active.sourcePrice - active.zeroPrice) * 0.5;
     if (candle.high < midpoint) continue;
     active = {

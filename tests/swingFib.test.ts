@@ -45,9 +45,29 @@ test('swing FIB alternates at 0.5 and retains only current and previous moves', 
   ]);
 });
 
-test('unfinished H4 candle cannot extend or reverse the swing FIB', () => {
+test('unfinished H4 candle extends the active extreme but cannot reverse the swing FIB', () => {
   const moves = buildAlternatingSwingFibs([
     candle(200, 250, 90, false),
+  ], {
+    sourceTime: 0,
+    sourcePrice: 100,
+    zeroTime: 100,
+    zeroPrice: 200,
+  });
+
+  assert.deepEqual(moves, [{
+    direction: 'up',
+    sourceTime: 0,
+    sourcePrice: 100,
+    zeroTime: 200,
+    zeroPrice: 250,
+    startedAt: 0,
+  }]);
+});
+
+test('unfinished H4 candle touching 0.5 cannot activate the opposite swing', () => {
+  const moves = buildAlternatingSwingFibs([
+    candle(200, 190, 140, false),
   ], {
     sourceTime: 0,
     sourcePrice: 100,

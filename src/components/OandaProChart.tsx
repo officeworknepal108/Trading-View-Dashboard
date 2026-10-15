@@ -1493,7 +1493,7 @@ export const OandaProChart: React.FC = () => {
     displayCandles,
     structure.zones,
     ['M1', 'M5', 'M15', 'M30', 'H1'].includes(granularity)
-      ? swingFibMoves[swingFibMoves.length - 1]
+      ? swingFibMoves
       : undefined,
   ), [displayCandles, granularity, structure.zones, swingFibMoves]);
   const dayFibConfluence = useMemo(() => applyDayFibConfluence(
@@ -2339,7 +2339,7 @@ export const OandaProChart: React.FC = () => {
           midline.style.left = '0';
           midline.style.right = '0';
           midline.style.top = `${Math.max(0, Math.min(zoneHeight, midlineCoordinate - zoneTopCoordinate))}px`;
-          midline.style.borderTop = '1px dashed rgba(15, 23, 42, 0.78)';
+          midline.style.borderTop = `1px dashed ${border}`;
           midline.style.pointerEvents = 'none';
           box.appendChild(midline);
         }
@@ -2539,9 +2539,29 @@ export const OandaProChart: React.FC = () => {
           ];
         });
 
+        const fibAnchorCoordinate = (anchorTime: number) => {
+          const exactCoordinate = chart.timeScale().timeToCoordinate(anchorTime as UTCTimestamp);
+          if (exactCoordinate !== null) return exactCoordinate;
+
+          // Higher-timeframe candles can begin inside a lower-timeframe market
+          // gap (for example, an H4 candle at 21:00 while the next M15 candle
+          // starts at 22:00). Map that anchor forward to the first available
+          // chart candle, but do not pull anchors in from outside loaded data.
+          let low = 0;
+          let high = displayCandles.length;
+          while (low < high) {
+            const middle = Math.floor((low + high) / 2);
+            if (displayCandles[middle].time < anchorTime) low = middle + 1;
+            else high = middle;
+          }
+          const fallbackCandle = displayCandles[low];
+          if (!fallbackCandle || low === 0 && fallbackCandle.time > anchorTime) return null;
+          return chart.timeScale().timeToCoordinate(fallbackCandle.time as UTCTimestamp);
+        };
+
         for (const zone of latestFibMoves) {
-          const sourceX = chart.timeScale().timeToCoordinate(zone.fibSourceTime as UTCTimestamp);
-          const zeroX = chart.timeScale().timeToCoordinate(zone.fibZeroTime as UTCTimestamp);
+          const sourceX = fibAnchorCoordinate(zone.fibSourceTime!);
+          const zeroX = fibAnchorCoordinate(zone.fibZeroTime!);
           const sourceY = series.priceToCoordinate(zone.fibSourcePrice);
           const zeroY = series.priceToCoordinate(zone.fibZeroPrice);
           if (sourceX === null || zeroX === null || sourceY === null || zeroY === null) continue;

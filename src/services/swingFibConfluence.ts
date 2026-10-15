@@ -33,37 +33,54 @@ function clearSwingConfluence(zone: StructureZone): StructureZone {
 
 /**
  * Applies the active 4H Swing FIB to external and internal lower-timeframe
- * structure zones. Both golden bands are valid, but only zones matching the
- * swing direction qualify. Engulfing can form anywhere inside the qualifying
- * band; touching the exact 0.5 line is not required.
+ * structure zones. Both golden bands of the latest move are valid. Once an
+ * opposite move activates, the previous move remains eligible only in its
+ * 0.5-0.618 band. In every case, the zone must match the move direction.
  */
 export function applySwingFibConfluence(
   candles: StructureCandle[],
   zones: StructureZone[],
-  move: SwingFibMove | undefined,
+  moveOrMoves: SwingFibMove | SwingFibMove[] | undefined,
   type4MaxCandles = 10,
 ): SwingFibConfluenceResult {
   const nextZones = zones.map(clearSwingConfluence);
-  if (!move || move.sourcePrice === move.zeroPrice) {
+  const moves = (Array.isArray(moveOrMoves)
+    ? moveOrMoves
+    : moveOrMoves ? [moveOrMoves] : [])
+    .filter((move) => move.sourcePrice !== move.zeroPrice)
+    .slice(-2);
+  if (moves.length === 0) {
     return { zones: nextZones, engulfingMarkers: [] };
   }
-
-  const level = (ratio: number) => (
-    move.zeroPrice + (move.sourcePrice - move.zeroPrice) * ratio
-  );
-  const primary = [level(0.5), level(0.618)] as const;
-  const deep = [level(0.71), level(0.79)] as const;
-  const requiredDirection: EngulfingDirection = move.direction === 'up' ? 'bullish' : 'bearish';
-  const requiredIsBuy = move.direction === 'up';
+  const contexts = [...moves].reverse().map((move, index) => {
+    const level = (ratio: number) => (
+      move.zeroPrice + (move.sourcePrice - move.zeroPrice) * ratio
+    );
+    return {
+      move,
+      primary: [level(0.5), level(0.618)] as const,
+      deep: [level(0.71), level(0.79)] as const,
+      allowDeep: index === 0,
+      requiredDirection: (move.direction === 'up' ? 'bullish' : 'bearish') as EngulfingDirection,
+      requiredIsBuy: move.direction === 'up',
+    };
+  });
   const markerKeys = new Set<string>();
   const engulfingMarkers: SeriesMarker<UTCTimestamp>[] = [];
 
   for (const zone of nextZones) {
-    if (!zone.active || zone.status !== 'valid' || zone.isBuy !== requiredIsBuy) continue;
-    const band: SwingFibBand | undefined = overlaps(zone.bottom, zone.top, ...primary)
-      ? '0.5-0.618'
-      : overlaps(zone.bottom, zone.top, ...deep) ? '0.71-0.79' : undefined;
-    if (!band) continue;
+    if (!zone.active || zone.status !== 'valid') continue;
+    const match = contexts.flatMap((context) => {
+      if (zone.isBuy !== context.requiredIsBuy) return [];
+      const band: SwingFibBand | undefined = overlaps(zone.bottom, zone.top, ...context.primary)
+        ? '0.5-0.618'
+        : context.allowDeep && overlaps(zone.bottom, zone.top, ...context.deep)
+          ? '0.71-0.79'
+          : undefined;
+      return band ? [{ ...context, band }] : [];
+    })[0];
+    if (!match) continue;
+    const { band, move, primary, deep, requiredDirection } = match;
 
     zone.swingFibBand = band;
     zone.swingFibStatus = 'a-plus';

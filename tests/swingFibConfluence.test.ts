@@ -19,6 +19,12 @@ const sellMove: SwingFibMove = {
   zeroTime: 2, zeroPrice: 100,
 };
 
+const previousBuyMove: SwingFibMove = {
+  direction: 'up', startedAt: -10,
+  sourceTime: -10, sourcePrice: 100,
+  zeroTime: 0, zeroPrice: 120,
+};
+
 test('4H selling Swing FIB accepts only selling zones in either golden band', () => {
   const result = applySwingFibConfluence([], [
     zone({ id: 'primary-sell', bottom: 110.5, top: 112 }),
@@ -31,6 +37,21 @@ test('4H selling Swing FIB accepts only selling zones in either golden band', ()
   assert.equal(result.zones[1].swingFibBand, '0.71-0.79');
   assert.equal(result.zones[2].swingFibStatus, undefined);
   assert.equal(result.zones[3].swingFibStatus, undefined);
+});
+
+test('previous Swing FIB retains only its primary band while latest retains both bands', () => {
+  const result = applySwingFibConfluence([], [
+    zone({ id: 'previous-primary-buy', isBuy: true, bottom: 108, top: 109 }),
+    zone({ id: 'previous-deep-buy', isBuy: true, bottom: 104.5, top: 105.5 }),
+    zone({ id: 'latest-primary-sell', bottom: 110.5, top: 112 }),
+    zone({ id: 'latest-deep-sell', bottom: 114.5, top: 115.5 }),
+  ], [previousBuyMove, sellMove]);
+
+  assert.equal(result.zones[0].swingFibBand, '0.5-0.618');
+  assert.equal(result.zones[0].swingFibStatus, 'a-plus');
+  assert.equal(result.zones[1].swingFibStatus, undefined);
+  assert.equal(result.zones[2].swingFibBand, '0.5-0.618');
+  assert.equal(result.zones[3].swingFibBand, '0.71-0.79');
 });
 
 test('Swing FIB applies the same qualification to internal structure zones', () => {
