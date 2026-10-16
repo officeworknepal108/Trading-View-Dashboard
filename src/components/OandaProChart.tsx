@@ -50,6 +50,7 @@ import {
   getDirectTradeRule,
   getMtfTradeRule,
   getEngulfingVolumeStatus,
+  findDirectZoneReentrySignal,
   isZoneEngulfingFibQualified,
   isDeepDiscountTradeSignal,
   measureTradeableFibZone,
@@ -74,6 +75,7 @@ import {
 import { deduplicateTradeRecords } from '../services/tradeRecordDeduplication';
 import {
   isDirectTradeOverlay,
+  isTradeOverlayTerminated,
   isTradeOverlayVisibleOnTimeframe,
   resolveTradeOverlaySetupKey,
   tradeOverlayEntryEventKey,
@@ -267,6 +269,7 @@ interface TrackedDirectTradeSetup {
 interface DirectZoneEntryDecision {
   policy: DirectEntryPolicyDecision;
   trade?: TradeLevels;
+  trades?: TradeLevels[];
   oppositePositionOpen: boolean;
 }
 
@@ -1792,6 +1795,7 @@ export const OandaProChart: React.FC = () => {
     }
 
     for (const setup of setups.values()) {
+      const currentZone = displayZones.find((zone) => zone.id === setup.zone.id) ?? setup.zone;
       const sourceCandles = setup.signal.timeframe === granularity
         ? displayCandles
         : (vipCandles[setup.signal.timeframe] || []).filter((candle) => (
@@ -1821,11 +1825,54 @@ export const OandaProChart: React.FC = () => {
         executionCandles,
         signal: setup.signal,
         rule: adjusted.rule,
-        omitStopBuffer: isDeepDiscountTradeSignal(setup.zone, setup.signal),
+        omitStopBuffer: isDeepDiscountTradeSignal(currentZone, setup.signal),
       });
+      const attempts = trade ? [trade] : [];
+      if (trade?.result === 'sl' && trade.resolvedAt !== undefined
+        && currentZone.active && currentZone.status === 'valid') {
+        const reentrySignal = findDirectZoneReentrySignal({
+          zone: currentZone,
+          candles: sourceCandles,
+          timeframe: setup.signal.timeframe,
+          afterTime: trade.resolvedAt,
+        });
+        if (reentrySignal) {
+          const reentryPolicy = resolveDirectEntryPolicy({
+            zoneTimeframe: granularity,
+            signal: reentrySignal,
+            sourceCandles,
+            baseRule: setup.rule,
+          });
+          if (reentryPolicy.allowed && reentryPolicy.rule) {
+            const reentryAdjusted = applyOppositePositionRewardRisk(
+              reentryPolicy.rule,
+              replayIndex === null ? mt5Status?.positions : undefined,
+              reentrySignal.direction,
+            );
+            const reentryTrade = calculateTradeLevels({
+              sourceCandles,
+              executionCandles,
+              signal: reentrySignal,
+              rule: reentryAdjusted.rule,
+              omitStopBuffer: isDeepDiscountTradeSignal(currentZone, reentrySignal),
+            });
+            if (reentryTrade) {
+              attempts.push(reentryTrade);
+              decisions.set(setup.zone.id, {
+                policy: reentryPolicy,
+                trade: reentryTrade,
+                trades: attempts,
+                oppositePositionOpen: reentryAdjusted.oppositePositionOpen,
+              });
+              continue;
+            }
+          }
+        }
+      }
       decisions.set(setup.zone.id, {
         policy,
         trade,
+        trades: attempts,
         oppositePositionOpen: adjusted.oppositePositionOpen,
       });
     }
@@ -1833,6 +1880,7 @@ export const OandaProChart: React.FC = () => {
   }, [
     currentDirectTradeSetups,
     displayCandles,
+    displayZones,
     granularity,
     mt5Status?.positions,
     replayIndex,
@@ -2121,14 +2169,16 @@ export const OandaProChart: React.FC = () => {
     for (const setup of currentDirectTradeSetups.values()) {
       directSetups.set(setup.zone.id, setup);
     }
-    for (const [zoneId, trade] of directZoneTrades) {
+    for (const [zoneId, decision] of directZoneEntryDecisions) {
       const setup = directSetups.get(zoneId);
       if (!setup) continue;
-      const id = `DIRECT:${zoneId}:${setup.signal.time}:${trade.entry}`;
       const sourceCandles = setup.signal.timeframe === granularity
         ? displayCandles
         : vipCandles[setup.signal.timeframe] || [];
-      addRecord(id, executionZoneName(setup.zone), granularity, 'ENGULFING', trade, sourceCandles);
+      for (const trade of decision.trades ?? (decision.trade ? [decision.trade] : [])) {
+        const id = `DIRECT:${zoneId}:${trade.signal.time}:${trade.entry}`;
+        addRecord(id, executionZoneName(setup.zone), granularity, 'ENGULFING', trade, sourceCandles);
+      }
     }
     for (const row of mtfRows) {
       if (!row.trade) continue;
@@ -2147,6 +2197,7 @@ export const OandaProChart: React.FC = () => {
     currentDirectTradeSetups,
     displayCandles,
     displayZones,
+    directZoneEntryDecisions,
     directZoneTrades,
     granularity,
     mtfRows,
@@ -2453,14 +2504,43 @@ export const OandaProChart: React.FC = () => {
     })
   ), [liveMt5TradeOverlays, mt5Status?.positions, mt5Status?.recentSignals]);
 
+  const completedChartTradeKeys = useMemo(() => {
+    const setupKeys = new Set<string>();
+    const entryEventKeys = new Set<string>();
+    for (const [zoneId, trade] of directZoneTrades) {
+      if (!isCompletedTrade(trade)) continue;
+      setupKeys.add(resolveTradeOverlaySetupKey(
+        `DIRECT:${zoneId}:${trade.signal.time}:${trade.entry}`,
+      ));
+      entryEventKeys.add(tradeOverlayEntryEventKey(trade.signal));
+    }
+    for (const row of mtfRows) {
+      if (!row.trade || !isCompletedTrade(row.trade)) continue;
+      setupKeys.add(resolveTradeOverlaySetupKey(
+        `MTF:${row.id}:${row.engulfingTime}:${row.trade.entry}`,
+      ));
+      entryEventKeys.add(tradeOverlayEntryEventKey(row.trade.signal));
+    }
+    return { setupKeys, entryEventKeys };
+  }, [directZoneTrades, mtfRows]);
+
   const visibleTradeOverlays = useMemo(() => {
     const overlays = new Map<string, TradeOverlay>();
     const chartSetupKeys = new Set<string>();
     const entryEventKeys = new Set<string>();
     const addOverlay = (overlay: TradeOverlay) => {
-      if (!isTradeOverlayVisibleOnTimeframe(overlay.chartTimeframe, granularity)) return;
+      // A terminal chart result owns the visual lifecycle. This also suppresses
+      // a stale retained or MT5-active copy of the same execution immediately.
       const setupKey = tradeOverlaySetupKey(overlay);
       const entryEventKey = tradeOverlayEntryEventKey(overlay.trade.signal);
+      if (isTradeOverlayTerminated(
+        setupKey,
+        entryEventKey,
+        isCompletedTrade(overlay.trade),
+        completedChartTradeKeys.setupKeys,
+        completedChartTradeKeys.entryEventKeys,
+      )) return;
+      if (!isTradeOverlayVisibleOnTimeframe(overlay.chartTimeframe, granularity)) return;
       if ((setupKey.startsWith('DIRECT:') || setupKey.startsWith('MTF:'))
         && chartSetupKeys.has(setupKey)) return;
       // OANDA/chart recalculation can revise a zone ID or its SL/TP after MT5
@@ -2487,7 +2567,7 @@ export const OandaProChart: React.FC = () => {
     tradeOverlays.forEach(addOverlay);
     return Array.from(overlays.values())
       .sort((first, second) => second.trade.calculatedAt - first.trade.calculatedAt);
-  }, [liveMt5TradeOverlays, replayIndex, retainedChartTradesForTimeframe, tradeOverlays]);
+  }, [completedChartTradeKeys, liveMt5TradeOverlays, replayIndex, retainedChartTradesForTimeframe, tradeOverlays]);
 
   const mtfEntryMarkers = useMemo(() => {
     const markerKeys = new Set<string>();
@@ -3140,6 +3220,9 @@ export const OandaProChart: React.FC = () => {
     if (showTradeLevelsRef.current) {
       for (const overlay of tradeOverlaysRef.current) {
         const { trade } = overlay;
+        // Completed trades remain available to tables/history, but never keep
+        // an entry/SL/TP chart drawing after their terminal candle is known.
+        if (isCompletedTrade(trade)) continue;
         const anchor = displayCandles.find((candle) => (
           trade.calculatedAt >= candle.time
           && trade.calculatedAt < marketCandleCloseTime(candle.time, granularity)
@@ -3162,8 +3245,6 @@ export const OandaProChart: React.FC = () => {
           : Math.min(rightEdge, Math.max(left + 8, latestCandleX + 6));
         const width = drawingRight - left;
         if (width < 8 || left >= rightEdge) continue;
-        const completed = trade.status === 'tp-hit' || trade.status === 'sl-hit';
-
         const makeRange = (firstY: number, secondY: number, reward: boolean) => {
           const range = document.createElement('div');
           range.style.position = 'absolute';
@@ -3173,7 +3254,7 @@ export const OandaProChart: React.FC = () => {
           range.style.height = `${Math.max(1, Math.abs(secondY - firstY))}px`;
           range.style.background = reward ? 'rgba(16, 185, 129, 0.18)' : 'rgba(244, 63, 94, 0.16)';
           range.style.border = `1px solid ${reward ? 'rgba(5, 150, 105, 0.34)' : 'rgba(225, 29, 72, 0.32)'}`;
-          range.style.opacity = completed ? '0.62' : '1';
+          range.style.opacity = '1';
           return range;
         };
         fragment.appendChild(makeRange(entryY, targetY, true));
@@ -5832,7 +5913,11 @@ export const OandaProChart: React.FC = () => {
                       <td className={`px-2 py-1 text-center font-black whitespace-nowrap ${
                         zone.isBuy ? 'text-emerald-700' : 'text-rose-700'
                       }`}>
-                        {showEngulfing ? displayEngulfingLabel(zone) ?? '—' : '—'}
+                        {showEngulfing
+                          ? trade
+                            ? `${trade.signal.type} ${trade.signal.direction === 'bullish' ? 'BULL' : 'BEAR'}`
+                            : displayEngulfingLabel(zone) ?? '—'
+                          : '—'}
                       </td>
                       <td className={`px-2 py-1 text-right font-black whitespace-nowrap ${
                         trade?.status === 'sl-hit'
@@ -5842,7 +5927,10 @@ export const OandaProChart: React.FC = () => {
                         {mt5Signal
                           ? <span className={mt5SignalStatusClassName(mt5Signal)}>{mt5SignalStatusLabel(mt5Signal)}</span>
                           : isCompletedTrade(trade)
-                          ? <>{zone.tapBarsAgo} bars · <TradeStatusText trade={trade!} /></>
+                          ? <>{zone.tapBarsAgo} bars · <TradeStatusText trade={trade!} />
+                            {trade?.result === 'sl' && zone.active && zone.status === 'valid'
+                              ? ' · WAIT RE-ENTRY'
+                              : ''}</>
                            : pending
                            ? `WAIT ${confirmationLabel} ${confirmationSide} · NO TRADE`
                            : zone.tradeable === false
@@ -5935,10 +6023,14 @@ export const OandaProChart: React.FC = () => {
                         </div>
                       )}
                     </td>
-                    <td className={`px-2 py-1 text-center font-black whitespace-nowrap ${
-                      zone.isBuy ? 'text-emerald-700' : 'text-rose-700'
-                    }`}>
-                      {showEngulfing ? confluenceEngulfingLabel(zone) ?? '—' : '—'}
+                      <td className={`px-2 py-1 text-center font-black whitespace-nowrap ${
+                        zone.isBuy ? 'text-emerald-700' : 'text-rose-700'
+                      }`}>
+                        {showEngulfing
+                          ? trade
+                            ? `${trade.signal.type} ${trade.signal.direction === 'bullish' ? 'BULL' : 'BEAR'}`
+                            : confluenceEngulfingLabel(zone) ?? '—'
+                          : '—'}
                     </td>
                     <td className={`px-2 py-1 text-right font-bold whitespace-nowrap ${
                       trade?.status === 'sl-hit' ? 'text-rose-700' : ''
@@ -5950,6 +6042,9 @@ export const OandaProChart: React.FC = () => {
                       ) : isCompletedTrade(trade) ? (
                         <span className={trade?.status === 'sl-hit' ? 'text-rose-700' : 'text-emerald-700'}>
                           {tapBarsAgo} bars · <TradeStatusText trade={trade!} />
+                          {trade?.result === 'sl' && zone.active && zone.status === 'valid'
+                            ? ' · WAIT RE-ENTRY'
+                            : ''}
                         </span>
                       ) : entryDecision && !entryDecision.policy.allowed ? (
                         <span className="text-rose-700">

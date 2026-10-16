@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
   isDirectTradeOverlay,
+  isTradeOverlayTerminated,
   isTradeOverlayVisibleOnTimeframe,
   normalizeTradeSetupId,
   resolveTradeOverlaySetupKey,
@@ -64,4 +65,22 @@ test('matches recalculated and broker drawings from the same entry event', () =>
 
   assert.equal(chartEvent, brokerEvent);
   assert.notEqual(chartEvent, laterEvent);
+});
+
+test('removes every drawing copy immediately after SL or TP completes its execution', () => {
+  const completedSetups = new Set(['DIRECT:zone-a', 'MTF:setup-42']);
+  const completedEvents = new Set(['M15:bullish:1792171800']);
+
+  assert.equal(isTradeOverlayTerminated(
+    'DIRECT:zone-a', 'M15:bullish:1792171800', false, completedSetups, completedEvents,
+  ), true, 'a stale active copy cannot outlive a completed setup');
+  assert.equal(isTradeOverlayTerminated(
+    'DIRECT:recalculated-zone', 'M15:bullish:1792171800', false, completedSetups, completedEvents,
+  ), true, 'a recalculated ID is still removed by its completed entry event');
+  assert.equal(isTradeOverlayTerminated(
+    'DIRECT:zone-b', 'M15:bearish:1792172700', true, completedSetups, completedEvents,
+  ), true, 'a completed overlay never draws itself');
+  assert.equal(isTradeOverlayTerminated(
+    'DIRECT:zone-b', 'M15:bearish:1792172700', false, completedSetups, completedEvents,
+  ), false, 'an unrelated unresolved execution remains visible');
 });

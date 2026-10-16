@@ -3,6 +3,8 @@ import test from 'node:test';
 import {
   activateZoneAfterChoch,
   applyFibConfluence,
+  applyIssLevel3Lifecycle,
+  applySingleChochMetadataToZone,
   applyTradeableZoneEngulfingFallback,
   applyIssFibAnchors,
   classifyChoch,
@@ -27,9 +29,11 @@ import {
   markMajorLiquidityZone,
   promoteTjl2ToMajorLiquidity,
   resolveTjl1Confirmation,
+  rejectPendingIssLevel3OnExternalReset,
   DISABLED_HIGHER_TIMEFRAME_CONFIRMATION,
   selectFreshVipSupportTap,
   selectTwoCandleRetracementPivot,
+  supersedePendingIssLevel3,
   supersedePendingTjl1,
   wasTjl1ConfirmedBy,
   type StructureCandle,
@@ -739,7 +743,7 @@ test('zone engulfing requires A+ FIB, active-zone contact, the band-specific tou
       fibLevel50: undefined,
     }),
     undefined,
-    'an originating DB/DT label cannot replace numerical FIB alignment',
+    'a DB/DT band label cannot make a different zone type inherently tradeable',
   );
   assert.equal(
     findZoneEngulfingPattern(candles, {
@@ -794,10 +798,10 @@ test('zone engulfing requires A+ FIB, active-zone contact, the band-specific tou
     fibStatus: 'a-plus',
     fibBand: 'DB/DT',
     fibLevel50: undefined,
-  })), undefined, 'a DT engulfing without numerical FIB alignment cannot qualify');
+  }))?.type, 'T4', 'an ordinary DT is inherently deep-discount and needs only its zone-touching engulfing');
 });
 
-test('single CHoCH DB/DT anchors are not forced A+ outside numerical FIB bands', () => {
+test('single CHoCH DB/DT anchors are inherently deep-discount and tradeable', () => {
   const candles: StructureCandle[] = [
     { time: 0, open: 118, high: 120, low: 117, close: 119, complete: true },
     { time: 10, open: 119, high: 119, low: 100, close: 102, complete: true },
@@ -816,9 +820,36 @@ test('single CHoCH DB/DT anchors are not forced A+ outside numerical FIB bands',
 
   applyFibConfluence(candles, zones);
 
-  assert.equal(zones[0].fibStatus, 'not-valid');
-  assert.equal(zones[0].fibBand, undefined);
+  assert.equal(zones[0].fibStatus, 'a-plus');
+  assert.equal(zones[0].fibBand, 'DB/DT');
   assert.equal(zones[0].fibLevel50, 110);
+});
+
+test('single CHoCH DB/DT stays valid without inheriting the HTF confirmation lock', () => {
+  const pendingContext = {
+    chochClass: 'pending' as const,
+    tradeable: false,
+    chochTime: 500,
+    chochConfirmationTime: undefined,
+    confirmationRouteDisabled: true,
+  };
+  const db = zone({
+    name: 'DB', isBuy: true, status: 'valid', active: true,
+  });
+  applySingleChochMetadataToZone(db, pendingContext);
+
+  assert.equal(db.status, 'valid');
+  assert.equal(db.active, true);
+  assert.equal(db.chochTime, 500, 'the CHoCH origin remains available for normal FIB anchoring');
+  assert.equal(db.chochClass, undefined);
+  assert.equal(db.tradeable, undefined);
+  assert.equal(db.confirmationRouteDisabled, undefined);
+
+  const qml = zone({ name: 'QML', status: 'valid', active: true });
+  applySingleChochMetadataToZone(qml, pendingContext);
+  assert.equal(qml.chochClass, 'pending', 'non-extreme CHoCH zones keep the existing confirmation rule');
+  assert.equal(qml.tradeable, false);
+  assert.equal(qml.confirmationRouteDisabled, true);
 });
 
 test('Major Liquidity accepts a zone-touching engulfing without any FIB alignment', () => {
@@ -1127,6 +1158,78 @@ test('a newer same-direction TJL1 structurally supersedes only zones still pendi
 
   const tjl2 = zone({ name: 'TJL2', status: 'pending' });
   assert.equal(supersedePendingTjl1(tjl2, 400), false);
+});
+
+test('a newer ISS Level 3 supersedes an older pending Level 3 regardless of direction', () => {
+  const newerBuy = zone({
+    id: 'new-buy-l3', name: 'ISS L3', category: 'iss', isBuy: true, status: 'pending',
+  });
+  const pendingBuy = zone({
+    id: 'old-buy-l3', name: 'ISS L3', category: 'iss', isBuy: true, status: 'pending',
+    tapTime: 300, tapBarsAgo: 2,
+  });
+  assert.equal(supersedePendingIssLevel3(pendingBuy, newerBuy, 400), true);
+  assert.equal(pendingBuy.status, 'superseded');
+  assert.equal(pendingBuy.active, false);
+  assert.equal(pendingBuy.supersededAt, 400);
+  assert.equal(pendingBuy.tapTime, undefined);
+
+  const confirmsLater = zone({
+    id: 'future-buy-l3', name: 'ISS L3', category: 'iss', isBuy: true,
+    status: 'valid', confirmationTime: 500,
+  });
+  assert.equal(supersedePendingIssLevel3(confirmsLater, newerBuy, 400), true);
+  assert.equal(confirmsLater.status, 'superseded');
+
+  const alreadyConfirmed = zone({
+    id: 'confirmed-buy-l3', name: 'ISS L3', category: 'iss', isBuy: true,
+    status: 'valid', confirmationTime: 300,
+  });
+  assert.equal(supersedePendingIssLevel3(alreadyConfirmed, newerBuy, 400), false);
+  assert.equal(alreadyConfirmed.status, 'valid');
+
+  const oppositeSell = zone({
+    id: 'old-sell-l3', name: 'ISS L3', category: 'iss', isBuy: false, status: 'pending',
+  });
+  assert.equal(supersedePendingIssLevel3(oppositeSell, newerBuy, 400), true);
+  assert.equal(oppositeSell.status, 'superseded');
+
+  const level4 = zone({ name: 'ISS L4', category: 'iss', isBuy: true, status: 'pending' });
+  assert.equal(supersedePendingIssLevel3(level4, newerBuy, 400), false);
+});
+
+test('external CHoCH rejects pending ISS Level 3 while internal CHoCH leaves it intact', () => {
+  const pending = zone({
+    id: 'pending-l3', name: 'ISS L3', category: 'iss', status: 'pending',
+    issCompletionTime: 300, tapTime: 350, tapBarsAgo: 2,
+  });
+
+  // Internal CHoCH times are not external reset inputs.
+  applyIssLevel3Lifecycle([pending], 100, []);
+  assert.equal(pending.status, 'pending');
+  assert.equal(pending.active, true);
+
+  applyIssLevel3Lifecycle([pending], 100, [500]);
+  assert.equal(pending.status, 'rejected');
+  assert.equal(pending.active, false);
+  assert.equal(pending.structureResetAt, 600);
+  assert.equal(pending.tapTime, undefined);
+});
+
+test('ISS Level 3 confirmed before an external CHoCH keeps its normal lifecycle', () => {
+  const confirmedBeforeReset = zone({
+    id: 'confirmed-l3', name: 'ISS L3', category: 'iss', status: 'valid',
+    issCompletionTime: 300, confirmationTime: 550,
+  });
+  assert.equal(rejectPendingIssLevel3OnExternalReset(confirmedBeforeReset, 600), false);
+  assert.equal(confirmedBeforeReset.status, 'valid');
+
+  const confirmsAtReset = zone({
+    id: 'same-close-l3', name: 'ISS L3', category: 'iss', status: 'valid',
+    issCompletionTime: 300, confirmationTime: 600,
+  });
+  assert.equal(rejectPendingIssLevel3OnExternalReset(confirmsAtReset, 600), true);
+  assert.equal(confirmsAtReset.status, 'rejected');
 });
 
 test('a removed higher-timeframe confirmation route can never validate structure', () => {

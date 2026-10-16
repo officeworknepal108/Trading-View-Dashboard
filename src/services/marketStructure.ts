@@ -72,8 +72,9 @@ export interface StructureZone {
   majorLiquiditySweepTime?: number;
   majorLiquidityBosTime?: number;
   invalidatedAt?: number;
-  // A newer same-direction TJL1 replaces a still-pending TJL1. Supersession is
-  // structural (not merely visual), so the old zone can never confirm or trade.
+  structureResetAt?: number;
+  // A newer same-direction mapped-confirmation zone replaces an older one that
+  // was still pending. Supersession is structural, so it cannot later revive.
   supersededAt?: number;
   tapTime?: number;
   tapBarsAgo?: number;
@@ -158,6 +159,28 @@ type ChochMetadata = Pick<StructureZone,
   'chochClass' | 'tradeable' | 'chochTime' | 'chochConfirmationTime'
   | 'vipSupportTimeframe' | 'vipSupportZone' | 'vipSupportTapTime'
   | 'confirmationRouteDisabled'>;
+
+export function applySingleChochMetadataToZone(
+  zone: StructureZone,
+  context: ChochMetadata,
+): void {
+  if (zone.name === 'DB' || zone.name === 'DT') {
+    // The new extreme is already a completed same-timeframe structure zone.
+    // Retain its CHoCH origin for FIB anchoring, but do not turn the DB/DT
+    // itself into a mapped-HTF pending zone. Its inherent deep-discount status
+    // plus a matching zone-touching engulfing decide whether it can trade.
+    zone.chochTime = context.chochTime;
+    zone.chochClass = undefined;
+    zone.tradeable = undefined;
+    zone.chochConfirmationTime = undefined;
+    zone.vipSupportTimeframe = undefined;
+    zone.vipSupportZone = undefined;
+    zone.vipSupportTapTime = undefined;
+    zone.confirmationRouteDisabled = undefined;
+    return;
+  }
+  Object.assign(zone, context);
+}
 
 type DoubleChochMetadata = Pick<StructureZone,
   'doubleChochStatus' | 'doubleChochOriginClass' | 'doubleChochTime'
@@ -423,9 +446,11 @@ export function doesInvalidateZone(zone: StructureZone, candle: StructureCandle)
     : bodyLow > zone.top;
 }
 
-export function supersedePendingTjl1(zone: StructureZone, supersededAt: number): boolean {
-  const isTjl1 = zone.name === 'TJL1' || zone.name === 'Internal TJL1';
-  if (!isTjl1 || !zone.active
+function supersedePendingMappedConfirmationZone(
+  zone: StructureZone,
+  supersededAt: number,
+): boolean {
+  if (!zone.active
     || zone.status === 'rejected' || zone.status === 'invalidated' || zone.status === 'superseded') {
     return false;
   }
@@ -439,6 +464,69 @@ export function supersedePendingTjl1(zone: StructureZone, supersededAt: number):
   zone.tapTime = undefined;
   zone.tapBarsAgo = undefined;
   return true;
+}
+
+export function supersedePendingTjl1(zone: StructureZone, supersededAt: number): boolean {
+  const isTjl1 = zone.name === 'TJL1' || zone.name === 'Internal TJL1';
+  return isTjl1 && supersedePendingMappedConfirmationZone(zone, supersededAt);
+}
+
+export function supersedePendingIssLevel3(
+  zone: StructureZone,
+  newerZone: StructureZone,
+  supersededAt: number,
+): boolean {
+  if (zone === newerZone || zone.name !== 'ISS L3' || newerZone.name !== 'ISS L3') return false;
+  return supersedePendingMappedConfirmationZone(zone, supersededAt);
+}
+
+export function rejectPendingIssLevel3OnExternalReset(
+  zone: StructureZone,
+  resetAt: number,
+): boolean {
+  if (zone.name !== 'ISS L3' || !zone.active
+    || zone.status === 'rejected' || zone.status === 'invalidated' || zone.status === 'superseded') {
+    return false;
+  }
+  // A mapped confirmation must complete strictly before the external CHoCH.
+  // A future or same-close confirmation cannot revive the previous structure.
+  if (zone.confirmationTime !== undefined && zone.confirmationTime < resetAt) return false;
+  zone.active = false;
+  zone.status = 'rejected';
+  zone.structureResetAt = resetAt;
+  zone.tapTime = undefined;
+  zone.tapBarsAgo = undefined;
+  return true;
+}
+
+export function applyIssLevel3Lifecycle(
+  zones: StructureZone[],
+  sourceBarSeconds: number,
+  externalChochTimes: number[],
+): void {
+  const level3Zones = zones
+    .filter((zone) => zone.name === 'ISS L3')
+    .sort((first, second) => (
+      (first.issCompletionTime ?? first.startTime)
+      - (second.issCompletionTime ?? second.startTime)
+    ));
+
+  // A new completed ISS establishes the newest structural candidate. Any
+  // older ISS L3 that had not confirmed yet is stale, regardless of direction.
+  let latestLevel3: StructureZone | undefined;
+  for (const level3 of level3Zones) {
+    const replacementTime = (level3.issCompletionTime ?? level3.startTime) + sourceBarSeconds;
+    if (latestLevel3) supersedePendingIssLevel3(latestLevel3, level3, replacementTime);
+    latestLevel3 = level3;
+  }
+
+  const sortedExternalChochTimes = [...externalChochTimes].sort((a, b) => a - b);
+  for (const level3 of level3Zones) {
+    const completionTime = level3.issCompletionTime ?? level3.startTime;
+    const resetCandleTime = sortedExternalChochTimes.find((time) => time > completionTime);
+    if (resetCandleTime === undefined) continue;
+    rejectPendingIssLevel3OnExternalReset(level3, resetCandleTime + sourceBarSeconds);
+  }
 }
 
 export function markMajorLiquidityZone(zone: StructureZone, bosTime: number): boolean {
@@ -685,12 +773,11 @@ export function findZoneEngulfingPattern(
 ): EngulfingPattern | undefined {
   const fibIndependentMajorLiquidity = usesMajorLiquidityTradingRules(zone);
   const isDeepFib = zone.fibBand === '0.71-0.79' || zone.fibBand === 'deep';
-  // "DB/DT" was a synthetic label that marked every originating CHoCH
-  // anchor A+ even when it did not overlap a numerical Fib band. Never let a
-  // stale/saved synthetic label bypass the real Fib gate.
+  const inherentDbDtDeepDiscount = zone.name === 'DB' || zone.name === 'DT';
+  const fibIndependentEntry = fibIndependentMajorLiquidity || inherentDbDtDeepDiscount;
   const hasNumericalFibAlignment = zone.fibBand === '0.5-0.618' || isDeepFib;
   if (zone.status !== 'valid'
-    || (!fibIndependentMajorLiquidity && (zone.fibStatus !== 'a-plus'
+    || (!fibIndependentEntry && (zone.fibStatus !== 'a-plus'
       || !hasNumericalFibAlignment
       || (!isDeepFib && zone.fibLevel50 === undefined)))) {
     return undefined;
@@ -708,7 +795,7 @@ export function findZoneEngulfingPattern(
     const pattern = detectEngulfingPatternAt(candles, endIndex, type4MaxCandles);
     if (!pattern || pattern.direction !== requiredDirection) continue;
     const patternCandles = candles.slice(pattern.startIndex, pattern.endIndex + 1);
-    if (!fibIndependentMajorLiquidity && !isDeepFib) {
+    if (!fibIndependentEntry && !isDeepFib) {
       const patternTouchesFib50 = patternCandles.some((candle) => (
         candle.low <= zone.fibLevel50! && candle.high >= zone.fibLevel50!
       ));
@@ -947,16 +1034,14 @@ export function applyFibConfluence(candles: StructureCandle[], zones: StructureZ
     for (const zone of group) {
       if (!eligible.has(zone.name)) continue;
       if (!isDouble && (zone.name === 'DT' || zone.name === 'DB')) {
-        // Keep complete anchor coordinates so every retained CHoCH move can be
-        // drawn, but do not manufacture Fib confluence from the fact that this
-        // zone is the originating DB/DT. It is A+ only when its price range
-        // actually overlaps a calculated numerical Fib band. The open-ended
-        // area beyond 0.79 toward the source is not alignment for an anchor.
+        // Ordinary DB/DT is inherently the CHoCH move's deepest liquidity
+        // origin. Keep its calculated anchors for drawing, but its entry does
+        // not require an additional numerical FIB overlap.
         classifyFromMove(zone, anchor.startTime, sourcePrice, isSell, true);
-        if (zone.fibBand === 'deep') {
-          zone.fibBand = undefined;
-          zone.fibStatus = 'not-valid';
-        }
+        zone.fibRelevant = true;
+        zone.fibBand = 'DB/DT';
+        zone.fibStatus = 'a-plus';
+        zone.fibDeepInvalidatedAt = undefined;
         continue;
       }
       classifyFromMove(zone, anchor.startTime, sourcePrice, isSell, true);
@@ -1368,7 +1453,7 @@ export function analyzeMarketStructure(candles: StructureCandle[], options: {
   const applyChochContext = (context: ChochMetadata, ...contextZones: Array<StructureZone | null>) => {
     for (const zone of contextZones) {
       if (zone) {
-        Object.assign(zone, context);
+        applySingleChochMetadataToZone(zone, context);
         if (context.chochTime !== undefined) {
           activateZoneAfterChoch(zone, context.chochTime, sourceBarSeconds);
         }
@@ -2115,6 +2200,10 @@ export function findIssFiveWaves(
       }
     }
   }
+
+  // Only external CHoCH timestamps are supplied here. Internal CHoCH events
+  // deliberately remain inside the parent ISS lifecycle and do not reset L3.
+  applyIssLevel3Lifecycle(zones, sourceBarSeconds, externalStructureTimes);
 
   const activateInternalZone = (
     zone: StructureZone,

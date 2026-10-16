@@ -6,6 +6,7 @@ import {
   MT5_RISK_PERCENT_OPTIONS,
   applySignalOppositePositionTarget,
   buildMt5SignalId,
+  canQueueSingleSlReentry,
   calculateXauUsdLotSize,
   isExecutableTrade,
   isMt5EntryTimeframeEnabled,
@@ -24,6 +25,18 @@ test('MT5 risk selector exposes only the agreed percentages and normalizes legac
   assert.equal(normalizeMt5RiskPercent(2.6), 2.5);
   assert.equal(normalizeMt5RiskPercent(5), 5);
   assert.equal(normalizeMt5RiskPercent('invalid', 1), 1);
+});
+
+test('MT5 permits exactly one later retry only after a full SL', () => {
+  assert.equal(canQueueSingleSlReentry([{ status: 'SL', signalAt: 100 }], 200), true);
+  assert.equal(canQueueSingleSlReentry([{ status: 'SL', signalAt: 100 }], 100), false);
+  assert.equal(canQueueSingleSlReentry([{ status: 'RF', signalAt: 100 }], 200), false);
+  assert.equal(canQueueSingleSlReentry([{ status: 'TP', signalAt: 100 }], 200), false);
+  assert.equal(canQueueSingleSlReentry([{ status: 'ACTIVE', signalAt: 100 }], 200), false);
+  assert.equal(canQueueSingleSlReentry([
+    { status: 'SL', signalAt: 100 },
+    { status: 'SL', signalAt: 200 },
+  ], 300), false, 'a second SL cannot create a third attempt');
 });
 
 test('MT5 entry timeframe selector accepts supported choices and can disable M1', () => {

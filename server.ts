@@ -12,6 +12,7 @@ import {
   normalizeMt5EnabledTimeframes,
   normalizeMt5RiskPercent,
   isExecutableTrade,
+  canQueueSingleSlReentry,
   tradeToMt5Signal,
   Mt5AutomationConfig,
   type Mt5SignalInput,
@@ -38,6 +39,7 @@ import {
   getDirectTradeRule,
   getMtfTradeRule,
   isDeepDiscountTradeSignal,
+  findDirectZoneReentrySignal,
   resolveDirectEntryPolicy,
   resolveZoneEngulfingSignal,
   timeframeWindowCutoff,
@@ -379,22 +381,23 @@ async function enqueueMt5Signal(
   }
   return serializeMt5Mutation(async () => {
     const signals = await readMt5Signals();
-    // A zone/setup is single-use once an order has entered its execution
-    // lifecycle. Later engulfing patterns on the same DT/TJL/QML must not
-    // create another entry, even after the first trade has closed.
+    // A setup normally remains single-use. Its sole exception is one fresh
+    // engulfing retry after the first attempt has closed as a full SL.
     const consumedSetupStatuses = new Set<Mt5SignalStatus>([
       'QUEUED', 'CLAIMED', 'PLACED', 'ACTIVE', 'RISK_FREE', 'TP', 'SL', 'RF',
     ]);
-    const existing = signals.find((signal) => signal.id === candidate.id || (
+    const exactExisting = signals.find((signal) => signal.id === candidate.id || (
       signal.symbol === candidate.symbol
       && signal.signalTimeframe === candidate.signalTimeframe
       && signal.direction === candidate.direction
       && signal.signalAt === candidate.signalAt
-    ) || (
-      candidate.setupId !== undefined
-      && signal.setupId === candidate.setupId
-      && consumedSetupStatuses.has(signal.status)
     ));
+    const priorSetupAttempts = candidate.setupId === undefined ? [] : signals.filter((signal) => (
+      signal.setupId === candidate.setupId && consumedSetupStatuses.has(signal.status)
+    ));
+    const setupAllowsReentry = candidate.source === 'ENGULFING'
+      && canQueueSingleSlReentry(priorSetupAttempts, candidate.signalAt);
+    const existing = exactExisting ?? (!setupAllowsReentry ? priorSetupAttempts[0] : undefined);
     if (existing) {
       const zones = new Set([existing.zoneName, ...(existing.confluenceZones ?? []), candidate.zoneName,
         ...(candidate.confluenceZones ?? [])]);
@@ -625,13 +628,44 @@ async function scanMt5AutomationSignals(): Promise<number> {
       const executionCandles = AUTOMATION_SECONDS[signal.timeframe] < AUTOMATION_SECONDS[zoneTimeframe]
         ? candles[signal.timeframe]
         : sourceCandles;
-      const trade = calculateTradeLevels({
+      let trade = calculateTradeLevels({
         sourceCandles: candles[signal.timeframe],
         executionCandles,
         signal,
         rule: policy.rule,
         omitStopBuffer: isDeepDiscountTradeSignal(zone, signal),
       });
+      if (trade?.result === 'sl' && trade.resolvedAt !== undefined
+        && zone.active && zone.status === 'valid') {
+        const reentrySignal = findDirectZoneReentrySignal({
+          zone,
+          candles: candles[signal.timeframe],
+          timeframe: signal.timeframe,
+          afterTime: trade.resolvedAt,
+        });
+        if (reentrySignal) {
+          const reentryPolicy = resolveDirectEntryPolicy({
+            zoneTimeframe,
+            signal: reentrySignal,
+            sourceCandles: candles[reentrySignal.timeframe],
+            baseRule,
+          });
+          if (reentryPolicy.allowed && reentryPolicy.rule) {
+            const reentryExecutionCandles = AUTOMATION_SECONDS[reentrySignal.timeframe]
+              < AUTOMATION_SECONDS[zoneTimeframe]
+              ? candles[reentrySignal.timeframe]
+              : sourceCandles;
+            const reentryTrade = calculateTradeLevels({
+              sourceCandles: candles[reentrySignal.timeframe],
+              executionCandles: reentryExecutionCandles,
+              signal: reentrySignal,
+              rule: reentryPolicy.rule,
+              omitStopBuffer: isDeepDiscountTradeSignal(zone, reentrySignal),
+            });
+            if (reentryTrade) trade = reentryTrade;
+          }
+        }
+      }
       if (!trade || !isExecutableTrade(trade)) continue;
       const volumeContext = journalVolumeContext(candles[signal.timeframe], signal);
       let fibSource = zone.majorLiquidity ? 'MAJOR LIQUIDITY' : 'ZONE FIB';

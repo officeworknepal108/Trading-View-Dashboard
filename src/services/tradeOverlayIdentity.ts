@@ -38,3 +38,15 @@ export function tradeOverlayEntryEventKey(signal: {
 }): string {
   return `${signal.timeframe}:${signal.direction}:${Math.floor(signal.time)}`;
 }
+
+export function isTradeOverlayTerminated(
+  setupKey: string,
+  entryEventKey: string,
+  tradeCompleted: boolean,
+  completedSetupKeys: ReadonlySet<string>,
+  completedEntryEventKeys: ReadonlySet<string>,
+): boolean {
+  return tradeCompleted
+    || completedSetupKeys.has(setupKey)
+    || completedEntryEventKeys.has(entryEventKey);
+}

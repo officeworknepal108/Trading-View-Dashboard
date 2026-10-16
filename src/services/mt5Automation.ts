@@ -294,3 +294,12 @@ export function tradeToMt5Signal(options: {
 export function isExecutableTrade(trade: TradeLevels): boolean {
   return trade.status === 'pending' || trade.status === 'active';
 }
+
+export function canQueueSingleSlReentry(
+  priorAttempts: Array<{ status: Mt5SignalStatus; signalAt: number }>,
+  candidateSignalAt: number,
+): boolean {
+  return priorAttempts.length === 1
+    && priorAttempts[0].status === 'SL'
+    && candidateSignalAt > priorAttempts[0].signalAt;
+}

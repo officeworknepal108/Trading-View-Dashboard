@@ -4,7 +4,7 @@ import type {
   StructureCandle,
   StructureZone,
 } from './marketStructure';
-import { isZoneEligibleForEngulfingEntry } from './marketStructure';
+import { detectEngulfingPatternAt, isZoneEligibleForEngulfingEntry } from './marketStructure';
 export type TradeTimeframe = 'M1' | 'M5' | 'M15' | 'M30' | 'H1' | 'H4' | 'D';
 export type TradeStatus = 'pending' | 'active' | 'risk-free' | 'tp-hit' | 'sl-hit';
 export type TradeResult = 'sl' | 'rf' | 'tp';
@@ -82,7 +82,9 @@ export interface TradeableFibZoneMeasurement {
 export function measureTradeableFibZone(
   zone: StructureZone,
 ): TradeableFibZoneMeasurement | undefined {
-  const fibAligned = (zone.fibStatus === 'a-plus' && zone.fibBand !== undefined)
+  const inherentlyTradeableDbDt = zone.name === 'DB' || zone.name === 'DT';
+  const fibAligned = inherentlyTradeableDbDt
+    || (zone.fibStatus === 'a-plus' && zone.fibBand !== undefined)
     || (zone.swingFibStatus === 'a-plus' && zone.swingFibBand !== undefined)
     || (zone.dayFibStatus === 'a-plus' && zone.dayFibBand !== undefined);
   if (!fibAligned || zone.tapTime === undefined || !isZoneEligibleForEngulfingEntry(zone)) {
@@ -288,7 +290,8 @@ export function isZoneEngulfingFibQualified(
   }
   const designatedMajorLiquidity = zone.majorLiquidity === true
     && (zone.name === 'TJL2' || zone.name === 'DBD' || zone.name === 'DTD');
-  if (designatedMajorLiquidity) return true;
+  const inherentDbDtDeepDiscount = zone.name === 'DB' || zone.name === 'DT';
+  if (designatedMajorLiquidity || inherentDbDtDeepDiscount) return true;
   return zone.fibStatus === 'a-plus'
     && (zone.fibBand === '0.5-0.618'
       || zone.fibBand === '0.71-0.79'
@@ -346,6 +349,43 @@ export function resolveZoneEngulfingSignal(
   return undefined;
 }
 
+/**
+ * A valid zone gets one controlled retry when its first entry was a full loss
+ * before 1R. The retry must be a wholly new, completed engulfing sequence: no
+ * candle from the first trade or its SL candle can be reused.
+ */
+export function findDirectZoneReentrySignal(options: {
+  zone: StructureZone;
+  candles: StructureCandle[];
+  timeframe: TradeTimeframe;
+  afterTime: number;
+  type4MaxCandles?: number;
+}): EngulfingTradeSignal | undefined {
+  const { zone, candles, timeframe, afterTime, type4MaxCandles = 10 } = options;
+  if (!isZoneEligibleForEngulfingEntry(zone)) return undefined;
+  const requiredDirection: EngulfingDirection = zone.isBuy ? 'bullish' : 'bearish';
+  for (let endIndex = 1; endIndex < candles.length; endIndex += 1) {
+    const finalCandle = candles[endIndex];
+    if (finalCandle.complete === false || finalCandle.time <= afterTime) continue;
+    const pattern = detectEngulfingPatternAt(candles, endIndex, type4MaxCandles);
+    if (!pattern || pattern.direction !== requiredDirection) continue;
+    const patternCandles = candles.slice(pattern.startIndex, pattern.endIndex + 1);
+    if (patternCandles[0]?.time <= afterTime) continue;
+    const touchesZone = patternCandles.some((candle) => (
+      candle.high >= zone.bottom && candle.low <= zone.top
+    ));
+    if (!touchesZone) continue;
+    return {
+      type: pattern.type,
+      direction: pattern.direction,
+      time: finalCandle.time,
+      candleCount: pattern.candleCount,
+      timeframe,
+    };
+  }
+  return undefined;
+}
+
 function isDeepFibBand(band: StructureZone['fibBand'] | StructureZone['swingFibBand']
   | StructureZone['dayFibBand']): boolean {
   return band === '0.71-0.79' || band === 'deep';
@@ -355,6 +395,7 @@ export function isDeepDiscountTradeSignal(
   zone: StructureZone,
   signal: EngulfingTradeSignal,
 ): boolean {
+  if (zone.name === 'DB' || zone.name === 'DT') return true;
   if (signal.time === zone.engulfingTime && signal.type === zone.engulfingType) {
     return isDeepFibBand(zone.fibBand);
   }

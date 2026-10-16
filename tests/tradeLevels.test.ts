@@ -5,6 +5,7 @@ import {
   applyOppositePositionRewardRisk,
   calculateHalfAtOneRResult,
   calculateTradeLevels,
+  findDirectZoneReentrySignal,
   getDirectTradeRule,
   getEngulfingVolumeStatus,
   getMtfTradeRule,
@@ -28,6 +29,34 @@ const bullishSignal: EngulfingTradeSignal = {
 
 test('an open higher-timeframe bar exposes its full window to completed lower-timeframe candles', () => {
   assert.equal(timeframeWindowCutoff(10_800, 3_600), 14_400);
+});
+
+test('a valid zone accepts one fresh engulfing sequence after a full SL', () => {
+  const zone: StructureZone = {
+    id: 'retry-db', name: 'DB', category: 'mg', isBuy: true,
+    startTime: 0, endTime: 600, bottom: 99, top: 101,
+    active: true, status: 'valid', tradeable: true,
+  };
+  const candles: StructureCandle[] = [
+    { time: 60, open: 104, high: 105, low: 102, close: 103, complete: true },
+    { time: 120, open: 104, high: 106, low: 99, close: 100, complete: true },
+    { time: 180, open: 100, high: 108, low: 100, close: 107, complete: true },
+  ];
+
+  assert.deepEqual(findDirectZoneReentrySignal({
+    zone, candles, timeframe: 'M1', afterTime: 60,
+  }), {
+    type: 'T1', direction: 'bullish', time: 180, candleCount: 2, timeframe: 'M1',
+  });
+  assert.equal(findDirectZoneReentrySignal({
+    zone, candles, timeframe: 'M1', afterTime: 120,
+  }), undefined, 'the retry cannot reuse the SL candle as part of its pattern');
+  assert.equal(findDirectZoneReentrySignal({
+    zone: { ...zone, active: false, status: 'invalidated' },
+    candles,
+    timeframe: 'M1',
+    afterTime: 60,
+  }), undefined, 'an invalidated zone cannot re-enter');
 });
 
 test('engulfing signals cannot resolve without their matching A+ FIB qualification', () => {
@@ -66,6 +95,14 @@ test('engulfing signals cannot resolve without their matching A+ FIB qualificati
     majorLiquidity: true,
   };
   assert.equal(resolveZoneEngulfingSignal(majorLiquidity, 'M15')?.type, 'T3');
+
+  const inherentDt: StructureZone = {
+    ...outsideFibSbr,
+    name: 'DT',
+  };
+  assert.equal(isZoneEngulfingFibQualified(inherentDt, 'structure'), true);
+  assert.equal(resolveZoneEngulfingSignal(inherentDt, 'M15')?.type, 'T3');
+  assert.equal(isDeepDiscountTradeSignal(inherentDt, resolveZoneEngulfingSignal(inherentDt, 'M15')!), true);
 });
 
 test('tradeable FIB-aligned zones expose their full pip width and exact midline', () => {
@@ -96,6 +133,17 @@ test('tradeable FIB-aligned zones expose their full pip width and exact midline'
     fibStatus: undefined,
     fibBand: undefined,
   }), undefined);
+
+  assert.deepEqual(measureTradeableFibZone({
+    ...alignedZone,
+    id: 'measured-db',
+    name: 'DB',
+    fibStatus: undefined,
+    fibBand: undefined,
+  }), {
+    pips: 30,
+    midline: 4149,
+  });
 });
 
 test('half-at-1R management reports the correct net R outcome', () => {
