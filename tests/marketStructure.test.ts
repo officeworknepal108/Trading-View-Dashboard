@@ -30,6 +30,7 @@ import {
   DISABLED_HIGHER_TIMEFRAME_CONFIRMATION,
   selectFreshVipSupportTap,
   selectTwoCandleRetracementPivot,
+  supersedePendingTjl1,
   wasTjl1ConfirmedBy,
   type StructureCandle,
   type StructureZone,
@@ -383,7 +384,7 @@ test('deep FIB invalidation requires a completed close beyond 0.79, not a wick o
   ], 1, 100, true), 3);
 });
 
-test('Type 1 requires the second candle to sweep the first wick before closing beyond it', () => {
+test('Type 1 requires a close beyond the first candle while the wick sweep remains optional', () => {
   const bullish: StructureCandle[] = [
     { time: 1, open: 12, high: 13, low: 9, close: 10, complete: true },
     { time: 2, open: 10, high: 14, low: 8.5, close: 13.5, complete: true },
@@ -399,11 +400,19 @@ test('Type 1 requires the second candle to sweep the first wick before closing b
   assert.equal(detectEngulfingPatternAt([
     bullish[0],
     { ...bullish[1], low: 9.5 },
-  ], 1), undefined, 'a bullish T1 without a lower-wick sweep must fail');
+  ], 1)?.type, 'T1', 'a bullish T1 does not require a lower-wick sweep');
   assert.equal(detectEngulfingPatternAt([
     bearish[0],
     { ...bearish[1], high: 12.5 },
-  ], 1), undefined, 'a bearish T1 without an upper-wick sweep must fail');
+  ], 1)?.type, 'T1', 'a bearish T1 does not require an upper-wick sweep');
+  assert.equal(detectEngulfingPatternAt([
+    bullish[0],
+    { ...bullish[1], close: 12.5 },
+  ], 1), undefined, 'a bullish T1 must close above the first candle high');
+  assert.equal(detectEngulfingPatternAt([
+    bearish[0],
+    { ...bearish[1], close: 9.5 },
+  ], 1), undefined, 'a bearish T1 must close below the first candle low');
   bullish[1].complete = false;
   assert.equal(detectEngulfingPatternAt(bullish, 1), undefined);
 });
@@ -930,15 +939,50 @@ test('Double CHoCH accepts every structural CHoCH origin and waits for its own m
   assert.equal(classifyDoubleChoch(undefined, true), undefined);
 });
 
-test('a Double CHoCH from Pending permits trades only from QML A++ and its new DTD or DBD', () => {
+test('a Double CHoCH from Pending permits QML A+, QML A++, and its new DTD or DBD', () => {
   assert.equal(isDoubleChochZoneTradeable('pending', 'pending', 'DTD'), false);
   assert.equal(isDoubleChochZoneTradeable('pending', 'valid', 'DTD'), true);
   assert.equal(isDoubleChochZoneTradeable('pending', 'valid', 'DBD'), true);
-  assert.equal(isDoubleChochZoneTradeable('pending', 'valid', 'QML A+'), false);
+  assert.equal(isDoubleChochZoneTradeable('pending', 'valid', 'QML A+'), true);
   assert.equal(isDoubleChochZoneTradeable('pending', 'valid', 'QML A++'), true);
   assert.equal(isDoubleChochZoneTradeable('pending', 'valid', 'SBR'), false);
   assert.equal(isDoubleChochZoneTradeable('pending', 'valid', 'RBS'), false);
   assert.equal(isDoubleChochZoneTradeable('valid', 'valid', 'QML A+'), true);
+});
+
+test('a QML A+ from Pending becomes an engulfing entry only after the Double CHoCH is valid', () => {
+  const candles: StructureCandle[] = [
+    { time: 200, open: 108, high: 109, low: 102, close: 103, complete: true },
+    { time: 300, open: 103, high: 112, low: 102.5, close: 111, complete: true },
+  ];
+  const qmlAPlus = zone({
+    name: 'QML A+',
+    isBuy: true,
+    startTime: 100,
+    activeFromTime: 200,
+    bottom: 100,
+    top: 110,
+    tapTime: 200,
+    doubleChochOriginClass: 'pending',
+    doubleChochStatus: 'valid',
+    tradeable: isDoubleChochZoneTradeable('pending', 'valid', 'QML A+'),
+    fibStatus: 'a-plus',
+    fibBand: '0.5-0.618',
+    fibLevel50: 105,
+  });
+
+  assert.equal(findTradeableZoneEngulfingPattern(candles, qmlAPlus)?.type, 'T1');
+  assert.equal(findTradeableZoneEngulfingPattern(candles, {
+    ...qmlAPlus,
+    doubleChochStatus: 'pending',
+    tradeable: isDoubleChochZoneTradeable('pending', 'pending', 'QML A+'),
+  }), undefined, 'an unconfirmed Double CHoCH cannot trade');
+  assert.equal(findTradeableZoneEngulfingPattern(candles, {
+    ...qmlAPlus,
+    fibStatus: 'not-valid',
+    fibBand: undefined,
+    fibLevel50: undefined,
+  }), undefined, 'QML A+ still requires numerical A+ FIB alignment');
 });
 
 test('VIP support requires a mapped HTF zone tap before CHoCH while that zone is valid', () => {
@@ -1055,6 +1099,34 @@ test('TJL1 stays pending when completed mapped candles have not closed through i
   assert.equal(result.status, 'pending');
   assert.equal(result.tjl1ConfirmationAttempts, 1);
   assert.equal(result.confirmationWindowCloseTime, 3600);
+});
+
+test('a newer same-direction TJL1 structurally supersedes only zones still pending at replacement time', () => {
+  const pending = zone({
+    status: 'pending',
+    tapTime: 300,
+    tapBarsAgo: 2,
+  });
+  assert.equal(supersedePendingTjl1(pending, 400), true);
+  assert.equal(pending.status, 'superseded');
+  assert.equal(pending.active, false);
+  assert.equal(pending.supersededAt, 400);
+  assert.equal(pending.tapTime, undefined);
+
+  const confirmsLater = zone({ status: 'valid', confirmationTime: 500 });
+  assert.equal(supersedePendingTjl1(confirmsLater, 400), true);
+  assert.equal(confirmsLater.status, 'superseded', 'a future confirmation cannot revive an older zone');
+
+  const alreadyConfirmed = zone({ status: 'valid', confirmationTime: 300 });
+  assert.equal(supersedePendingTjl1(alreadyConfirmed, 400), false);
+  assert.equal(alreadyConfirmed.status, 'valid', 'confirmed zones retain their normal lifecycle');
+
+  const internalPending = zone({ name: 'Internal TJL1', category: 'internal', status: 'pending' });
+  assert.equal(supersedePendingTjl1(internalPending, 400), true);
+  assert.equal(internalPending.status, 'superseded');
+
+  const tjl2 = zone({ name: 'TJL2', status: 'pending' });
+  assert.equal(supersedePendingTjl1(tjl2, 400), false);
 });
 
 test('a removed higher-timeframe confirmation route can never validate structure', () => {

@@ -52,7 +52,7 @@ export interface StructureZone {
   top: number;
   bottom: number;
   active: boolean;
-  status: 'pending' | 'valid' | 'rejected' | 'invalidated';
+  status: 'pending' | 'valid' | 'rejected' | 'invalidated' | 'superseded';
   // TJL1 confirmation is evaluated on the mapped higher timeframe. Before its
   // first higher-timeframe candle closes, normal invalidation is paused.
   tjl1ConfirmationAttempts?: number;
@@ -72,6 +72,9 @@ export interface StructureZone {
   majorLiquiditySweepTime?: number;
   majorLiquidityBosTime?: number;
   invalidatedAt?: number;
+  // A newer same-direction TJL1 replaces a still-pending TJL1. Supersession is
+  // structural (not merely visual), so the old zone can never confirm or trade.
+  supersededAt?: number;
   tapTime?: number;
   tapBarsAgo?: number;
   // Zones converted/created by one CHoCH share this classification. It affects
@@ -420,6 +423,24 @@ export function doesInvalidateZone(zone: StructureZone, candle: StructureCandle)
     : bodyLow > zone.top;
 }
 
+export function supersedePendingTjl1(zone: StructureZone, supersededAt: number): boolean {
+  const isTjl1 = zone.name === 'TJL1' || zone.name === 'Internal TJL1';
+  if (!isTjl1 || !zone.active
+    || zone.status === 'rejected' || zone.status === 'invalidated' || zone.status === 'superseded') {
+    return false;
+  }
+  // Structure is reconstructed with all loaded candles, so a zone may already
+  // carry a future confirmation. It was still pending at replacement time and
+  // must not be allowed to revive after the newer TJL1 has superseded it.
+  if (zone.confirmationTime !== undefined && zone.confirmationTime <= supersededAt) return false;
+  zone.active = false;
+  zone.status = 'superseded';
+  zone.supersededAt = supersededAt;
+  zone.tapTime = undefined;
+  zone.tapBarsAgo = undefined;
+  return true;
+}
+
 export function markMajorLiquidityZone(zone: StructureZone, bosTime: number): boolean {
   if (zone.name !== 'DBD' && zone.name !== 'DTD') return false;
   zone.majorLiquidity = true;
@@ -642,15 +663,16 @@ export function detectEngulfingPatternAt(
 
   if (!hasDirectionalBodyStrength) return undefined;
   if (!second || second.complete === false) return undefined;
-  // Type 1 BUY: the green confirmation candle must first sweep below the red
-  // candle's low with its lower wick, then close above that red candle's high.
-  // SELL is the exact inverse: sweep above the green high, then close below it.
+  // Type 1 BUY: a green confirmation candle closes above the preceding red
+  // candle's high. A lower-wick liquidity sweep improves the setup but is not
+  // required. SELL is the exact inverse: a red candle closes below the
+  // preceding green candle's low, with an upper-wick sweep remaining optional.
   if (candleIsBearish(second) && candleIsBullish(current)
-    && current.low < second.low && current.close > second.high) {
+    && current.close > second.high) {
     return { type: 'T1', direction: 'bullish', candleCount: 2, startIndex: endIndex - 1, endIndex };
   }
   if (candleIsBullish(second) && candleIsBearish(current)
-    && current.high > second.high && current.close < second.low) {
+    && current.close < second.low) {
     return { type: 'T1', direction: 'bearish', candleCount: 2, startIndex: endIndex - 1, endIndex };
   }
   return undefined;
@@ -1138,10 +1160,11 @@ export function isDoubleChochZoneTradeable(
 ): boolean {
   if (status !== 'valid') return false;
   // When the first CHoCH never received its mapped confirmation, the reversal
-  // is still a structural Double CHoCH but only QML A++ and its new Major
-  // Liquidity origin (DTD/DBD) may produce a trade. QML A+ and converted
-  // SBR/RBS zones remain context.
+  // is still a structural Double CHoCH. Once the Double CHoCH receives its own
+  // mapped confirmation, QML A+, QML A++, and its new Major Liquidity origin
+  // (DTD/DBD) may produce a trade. Converted SBR/RBS zones remain context.
   return originClass !== 'pending'
+    || zoneName === 'QML A+'
     || zoneName === 'QML A++'
     || zoneName === 'DTD'
     || zoneName === 'DBD';
@@ -1433,6 +1456,14 @@ export function analyzeMarketStructure(candles: StructureCandle[], options: {
     pivotSide: 'high' | 'low',
     formationTime: number,
   ) => {
+    if (name === 'TJL1') {
+      for (const candidate of zones) {
+        if (candidate.category === 'mg' && candidate.name === 'TJL1'
+          && candidate.isBuy === isBuy) {
+          supersedePendingTjl1(candidate, formationTime);
+        }
+      }
+    }
     const source = candles[point.index];
     const buffer = Math.abs(source.close - source.open) * 0.01;
     const lowerBody = Math.min(source.open, source.close);
@@ -1660,6 +1691,11 @@ export function analyzeMarketStructure(candles: StructureCandle[], options: {
         // SBR, and the newly identified PH becomes the DT zone.
         const lastTjl1 = currentTrendTjl1;
         const lastTjl2 = currentTrendTjl2;
+        for (const candidate of zones) {
+          if (candidate !== lastTjl1 && candidate.category === 'mg' && candidate.name === 'TJL1') {
+            supersedePendingTjl1(candidate, candle.time);
+          }
+        }
         const chochContext = buildChochContext('bearish', lastTjl1, lastTjl2, candle.time);
         const qml = lastTjl1 ? convertZone(lastTjl1, 'QML', false, candle.time) : null;
         const sbr = lastTjl2 ? convertZone(lastTjl2, 'SBR', false, candle.time) : null;
@@ -1783,6 +1819,11 @@ export function analyzeMarketStructure(candles: StructureCandle[], options: {
         // RBS, and the newly identified PL becomes the DB zone.
         const lastTjl1 = currentTrendTjl1;
         const lastTjl2 = currentTrendTjl2;
+        for (const candidate of zones) {
+          if (candidate !== lastTjl1 && candidate.category === 'mg' && candidate.name === 'TJL1') {
+            supersedePendingTjl1(candidate, candle.time);
+          }
+        }
         const chochContext = buildChochContext('bullish', lastTjl1, lastTjl2, candle.time);
         const qml = lastTjl1 ? convertZone(lastTjl1, 'QML', true, candle.time) : null;
         const rbs = lastTjl2 ? convertZone(lastTjl2, 'RBS', true, candle.time) : null;
@@ -2125,6 +2166,14 @@ export function findIssFiveWaves(
     pivotSide: 'high' | 'low',
     formationTime: number,
   ) => {
+    if (name === 'Internal TJL1') {
+      for (const candidate of zones) {
+        if (candidate.category === 'internal' && candidate.name === 'Internal TJL1'
+          && candidate.isBuy === isBuy) {
+          supersedePendingTjl1(candidate, formationTime);
+        }
+      }
+    }
     const source = candles[point.index];
     const buffer = Math.abs(source.close - source.open) * 0.01;
     const lowerBody = Math.min(source.open, source.close);
@@ -2300,7 +2349,10 @@ export function findIssFiveWaves(
     for (let index = point5.index + 1; index < candles.length; index += 1) {
       const candle = candles[index];
       const previous = candles[index - 1];
-      if (candle.time >= stopTime) break;
+      if (candle.time >= stopTime) {
+        if (currentTjl1) supersedePendingTjl1(currentTjl1, stopTime);
+        break;
+      }
       const twoRed = candle.close < candle.open
         && previous.close < previous.open
         && candle.close < previous.low;

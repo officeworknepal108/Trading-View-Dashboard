@@ -73,6 +73,17 @@ import {
 } from '../services/tradeRecordFilters';
 import { deduplicateTradeRecords } from '../services/tradeRecordDeduplication';
 import {
+  isDirectTradeOverlay,
+  isTradeOverlayVisibleOnTimeframe,
+  resolveTradeOverlaySetupKey,
+  tradeOverlayEntryEventKey,
+} from '../services/tradeOverlayIdentity';
+import {
+  consolidateZonesForDisplay,
+  displayZoneMembers,
+  type DisplayStructureZone,
+} from '../services/zoneConfluence';
+import {
   TradeJournal,
   renderHistoricalTradeSnapshot,
   type JournalTradeRecord,
@@ -253,8 +264,15 @@ interface TrackedDirectTradeSetup {
   rule: TradeRule;
 }
 
+interface DirectZoneEntryDecision {
+  policy: DirectEntryPolicyDecision;
+  trade?: TradeLevels;
+  oppositePositionOpen: boolean;
+}
+
 interface TradeOverlay {
   id: string;
+  setupId?: string;
   trade: TradeLevels;
   label?: string;
   chartTimeframe?: OandaGranularity;
@@ -276,7 +294,12 @@ function loadStoredRetainedChartTrades(): Map<string, TradeOverlay> {
       && Number.isFinite(overlay.trade.calculatedAt) && overlay.trade.result === undefined
       && overlay.trade.signal
       && (overlay.trade.signal.direction === 'bullish' || overlay.trade.signal.direction === 'bearish')
-    )).map((overlay) => [overlay.id, overlay] as const);
+    )).map((overlay) => [overlay.id, {
+      ...overlay,
+      // Migrate older saved drawings that used the source-zone chart instead
+      // of the timeframe where the engulfing entry actually formed.
+      chartTimeframe: overlay.trade.signal.timeframe,
+    }] as const);
     return new Map(entries);
   } catch {
     return new Map();
@@ -284,8 +307,7 @@ function loadStoredRetainedChartTrades(): Map<string, TradeOverlay> {
 }
 
 function tradeOverlaySetupKey(overlay: TradeOverlay): string {
-  const parts = overlay.id.split(':');
-  return parts.length > 3 ? parts.slice(0, -2).join(':') : overlay.id;
+  return resolveTradeOverlaySetupKey(overlay.id, overlay.setupId);
 }
 
 function directTradeOverlayZoneId(overlay: TradeOverlay): string | undefined {
@@ -549,6 +571,74 @@ function displayZoneName(
 ): string {
   if (oneMinuteGenesisQml) return '1MG QML';
   return name.startsWith('Internal ') ? `Int ${name.slice('Internal '.length)}` : name;
+}
+
+function displayConfluenceZoneName(
+  zone: DisplayStructureZone,
+  uppercaseSecondary = false,
+): string {
+  const primary = displayZoneName(zone.name, zone.oneMinuteGenesisQml);
+  const secondary = displayZoneMembers(zone)
+    .filter((member) => member.id !== zone.id)
+    .map((member) => displayZoneName(member.name, member.oneMinuteGenesisQml))
+    .map((name) => uppercaseSecondary ? name.toUpperCase() : name);
+  return Array.from(new Set([primary, ...secondary])).join(' + ');
+}
+
+function confluenceBadgeLabels(zone: DisplayStructureZone): string[] {
+  const labels: string[] = [];
+  for (const member of displayZoneMembers(zone).filter((candidate) => candidate.id !== zone.id)) {
+    if (member.chochClass === 'vip') {
+      labels.push(member.category === 'internal' ? 'INT VIP' : 'VIP');
+    }
+    if (member.vipSupportTimeframe && member.vipSupportZone) {
+      labels.push(
+        `${formatTradeTimeframe(member.vipSupportTimeframe)} ${displayZoneName(member.vipSupportZone)}`,
+      );
+    }
+    if (member.majorLiquidity) labels.push('MAJOR LIQUIDITY');
+  }
+  return Array.from(new Set(labels));
+}
+
+function confluenceMapValue<T>(
+  zone: DisplayStructureZone,
+  values: ReadonlyMap<string, T>,
+): T | undefined {
+  for (const member of displayZoneMembers(zone)) {
+    const value = values.get(member.id);
+    if (value !== undefined) return value;
+  }
+  return undefined;
+}
+
+function confluenceFirstValue<T>(
+  zone: DisplayStructureZone,
+  resolve: (member: StructureZone) => T | undefined,
+): T | undefined {
+  for (const member of displayZoneMembers(zone)) {
+    const value = resolve(member);
+    if (value !== undefined) return value;
+  }
+  return undefined;
+}
+
+function confluenceTapBarsAgo(zone: DisplayStructureZone): number | undefined {
+  const values = displayZoneMembers(zone)
+    .map((member) => member.tapBarsAgo)
+    .filter((value): value is number => value !== undefined);
+  return values.length > 0 ? Math.min(...values) : undefined;
+}
+
+function confluenceEngulfingLabel(zone: DisplayStructureZone): string | undefined {
+  const labels = displayZoneMembers(zone)
+    .map(displayEngulfingLabel)
+    .filter((label): label is string => Boolean(label));
+  return Array.from(new Set(labels)).join(' / ') || undefined;
+}
+
+function confluenceIsTradeable(zone: DisplayStructureZone): boolean {
+  return displayZoneMembers(zone).some((member) => member.tradeable !== false);
 }
 
 function directEntryPolicyLabel(policy: DirectEntryPolicyDecision): string {
@@ -1184,6 +1274,7 @@ export const OandaProChart: React.FC = () => {
   const mt5JournalImageSignatureRef = useRef('');
   const capturedTradeSetupsRef = useRef(new Set<string>());
   const zonesRef = useRef<StructureZone[]>([]);
+  const visualZonesRef = useRef<DisplayStructureZone[]>([]);
   const swingFibMovesRef = useRef<SwingFibMove[]>([]);
   const dayFibMovesRef = useRef<DayFibMove[]>([]);
   const structureLinesRef = useRef<StructureLine[]>([]);
@@ -1642,6 +1733,10 @@ export const OandaProChart: React.FC = () => {
     }
     return zones;
   }, [dayFibConfluence.zones, displayCandles, granularity, vipCandles]);
+  const consolidatedDisplayZones = useMemo(
+    () => consolidateZonesForDisplay(displayZones),
+    [displayZones],
+  );
 
   const tradeTrackingScope = `${liveChartDataSource}:${granularity}:${replayIndex === null ? 'live' : 'replay'}`;
   const currentDirectTradeSetups = useMemo(() => {
@@ -1681,11 +1776,7 @@ export const OandaProChart: React.FC = () => {
   }, [currentDirectTradeSetups]);
 
   const directZoneEntryDecisions = useMemo(() => {
-    const decisions = new Map<string, {
-      policy: DirectEntryPolicyDecision;
-      trade?: TradeLevels;
-      oppositePositionOpen: boolean;
-    }>();
+    const decisions = new Map<string, DirectZoneEntryDecision>();
     const latestChartCandle = displayCandles[displayCandles.length - 1];
     if (!latestChartCandle) return decisions;
     const cutoff = timeframeWindowCutoff(
@@ -2126,7 +2217,12 @@ export const OandaProChart: React.FC = () => {
 
   const tradeOverlays = useMemo<TradeOverlay[]>(() => {
     const overlays = new Map<string, TradeOverlay>();
-    const addTrade = (id: string, trade: TradeLevels, label?: string) => {
+    const addTrade = (
+      id: string,
+      trade: TradeLevels,
+      label?: string,
+      drawingTimeframe: OandaGranularity = trade.signal.timeframe,
+    ) => {
       if (isCompletedTrade(trade)) return;
       const signature = [
         trade.calculatedAt,
@@ -2138,7 +2234,7 @@ export const OandaProChart: React.FC = () => {
         id,
         trade,
         label,
-        chartTimeframe: granularity,
+        chartTimeframe: drawingTimeframe,
       });
     };
     for (const [zoneId, trade] of directZoneTrades) {
@@ -2208,6 +2304,7 @@ export const OandaProChart: React.FC = () => {
           `MTF:${row.id}:${row.engulfingTime}:${row.trade.entry}`,
           row.trade,
           `${row.tappedZone ?? row.higherTimeframeZone} · MTF · 1:${row.trade.rewardRisk}`,
+          row.lowerTimeframe,
         );
       }
     }
@@ -2228,12 +2325,23 @@ export const OandaProChart: React.FC = () => {
   useEffect(() => {
     setRetainedChartTradeOverlays((existing) => {
       const next = new Map<string, TradeOverlay>(existing);
+      const liveBrokerSetupKeys = new Set(
+        (mt5Status?.positions ?? []).flatMap((position) => (
+          position.setupId
+            ? [resolveTradeOverlaySetupKey(`MT5:${position.ticket}`, position.setupId)]
+            : []
+        )),
+      );
       for (const overlay of tradeOverlays) {
         if (overlay.trade.filledAt !== undefined && !isCompletedTrade(overlay.trade)) {
           next.set(overlay.id, overlay);
         }
       }
       for (const [id, overlay] of next) {
+        if (liveBrokerSetupKeys.has(tradeOverlaySetupKey(overlay))) {
+          next.delete(id);
+          continue;
+        }
         const directZoneId = directTradeOverlayZoneId(overlay);
         if (overlay.chartTimeframe === 'M5' && directZoneId
           && displayZones.some((zone) => (
@@ -2264,7 +2372,7 @@ export const OandaProChart: React.FC = () => {
         .join('|');
       return signature(next) === signature(existing) ? existing : next;
     });
-  }, [displayCandles, displayZones, granularity, tradeOverlays]);
+  }, [displayCandles, displayZones, granularity, mt5Status?.positions, tradeOverlays]);
 
   const retainedChartTradesForTimeframe = useMemo(() => {
     const firstTradeBySetup = new Map<string, TradeOverlay>();
@@ -2278,6 +2386,14 @@ export const OandaProChart: React.FC = () => {
     return [...firstTradeBySetup.values()]
       .sort((first, second) => second.trade.calculatedAt - first.trade.calculatedAt);
   }, [granularity, retainedChartTradeOverlays]);
+
+  // The Zone Table owns only direct chart-zone trades. MTF trades remain
+  // drawable on the chart, but all their row/details UI belongs to MTF Table.
+  const retainedDirectChartTradesForTimeframe = useMemo(() => (
+    retainedChartTradesForTimeframe.filter((overlay) => (
+      isDirectTradeOverlay(overlay.id, overlay.setupId)
+    ))
+  ), [retainedChartTradesForTimeframe]);
 
   const liveMt5TradeOverlays = useMemo<TradeOverlay[]>(() => (
     (mt5Status?.positions ?? []).flatMap((position) => {
@@ -2315,8 +2431,10 @@ export const OandaProChart: React.FC = () => {
       };
       return [{
         id: `MT5:${position.ticket}`,
+        setupId: position.setupId,
         trade,
         label: `${position.zoneTimeframe ?? '?'}→${position.signalTimeframe ?? '?'} · 1:${position.rewardRisk ?? rewardRisk}`,
+        chartTimeframe: signalTimeframe,
       }];
     })
   ), [granularity, mt5Status?.positions]);
@@ -2338,10 +2456,16 @@ export const OandaProChart: React.FC = () => {
   const visibleTradeOverlays = useMemo(() => {
     const overlays = new Map<string, TradeOverlay>();
     const chartSetupKeys = new Set<string>();
+    const entryEventKeys = new Set<string>();
     const addOverlay = (overlay: TradeOverlay) => {
+      if (!isTradeOverlayVisibleOnTimeframe(overlay.chartTimeframe, granularity)) return;
       const setupKey = tradeOverlaySetupKey(overlay);
+      const entryEventKey = tradeOverlayEntryEventKey(overlay.trade.signal);
       if ((setupKey.startsWith('DIRECT:') || setupKey.startsWith('MTF:'))
         && chartSetupKeys.has(setupKey)) return;
+      // OANDA/chart recalculation can revise a zone ID or its SL/TP after MT5
+      // has filled it. The entry candle still identifies the same execution.
+      if (entryEventKeys.has(entryEventKey)) return;
       const signature = [
         overlay.trade.entry,
         overlay.trade.stopLoss,
@@ -2353,6 +2477,7 @@ export const OandaProChart: React.FC = () => {
         if (setupKey.startsWith('DIRECT:') || setupKey.startsWith('MTF:')) {
           chartSetupKeys.add(setupKey);
         }
+        entryEventKeys.add(entryEventKey);
       }
     };
     // Broker positions take priority when a chart setup represents the same
@@ -2368,9 +2493,10 @@ export const OandaProChart: React.FC = () => {
     const markerKeys = new Set<string>();
     return activeMtfRows.flatMap((row) => {
     if (!row.engulfingType || row.engulfingTime === undefined) return [];
-    const onHigherTimeframe = row.higherTimeframe === granularity;
     const onLowerTimeframe = row.lowerTimeframe === granularity;
-    if (!onHigherTimeframe && !onLowerTimeframe) return [];
+    // The HTF supplies structure only. The MTF entry belongs exclusively to
+    // the LTF where its RBS/engulfing confirmation actually formed.
+    if (!onLowerTimeframe) return [];
     const containingCandle = displayCandles.find((candle) => (
       row.engulfingTime! >= candle.time
       && row.engulfingTime! < marketCandleCloseTime(candle.time, granularity)
@@ -2385,9 +2511,7 @@ export const OandaProChart: React.FC = () => {
       position: bullish ? 'belowBar' as const : 'aboveBar' as const,
       color: bullish ? '#059669' : '#e11d48',
       shape: bullish ? 'arrowUp' as const : 'arrowDown' as const,
-      text: onLowerTimeframe
-        ? `MTF ${row.engulfingType}`
-        : `${MTF_TABLE_LABELS[row.lowerTimeframe]} MTF ${row.engulfingType}`,
+      text: `MTF ${row.engulfingType}`,
       size: 1,
     }];
     });
@@ -2403,17 +2527,20 @@ export const OandaProChart: React.FC = () => {
       .map(directTradeOverlayZoneId)
       .filter((zoneId): zoneId is string => Boolean(zoneId)),
   ), [retainedChartTradesForTimeframe]);
-  const zoneTableRows = useMemo(() => displayZones
+  const zoneTableRows = useMemo(() => consolidatedDisplayZones
     .filter((zone) => zone.active && zone.status === 'valid'
-      && !retainedDirectTradeZoneIds.has(zone.id)
+      && !displayZoneMembers(zone).some((member) => retainedDirectTradeZoneIds.has(member.id))
       && (showInternal || zone.category !== 'internal')
       && zone.doubleChochStatus === undefined
-      && zone.tapTime !== undefined && (zone.tapBarsAgo ?? Infinity) <= 50)
-    .sort((a, b) => (b.tapTime ?? b.startTime) - (a.tapTime ?? a.startTime))
-    .slice(0, 8), [displayZones, retainedDirectTradeZoneIds, showInternal]);
+      && (confluenceTapBarsAgo(zone) ?? Infinity) <= 50)
+    .sort((a, b) => (
+      Math.max(...displayZoneMembers(b).map((member) => member.tapTime ?? member.startTime))
+      - Math.max(...displayZoneMembers(a).map((member) => member.tapTime ?? member.startTime))
+    ))
+    .slice(0, 8), [consolidatedDisplayZones, retainedDirectTradeZoneIds, showInternal]);
   const retainedTradeZoneRows = useMemo(() => {
     const activeZoneIds = new Set([
-      ...zoneTableRows.map((zone) => zone.id),
+      ...zoneTableRows.flatMap((zone) => displayZoneMembers(zone).map((member) => member.id)),
       ...displayZones
         .filter((zone) => zone.active && zone.status === 'valid'
           && zone.doubleChochStatus !== undefined)
@@ -2448,7 +2575,7 @@ export const OandaProChart: React.FC = () => {
     zoneTableRows,
   ]);
   const latestDisplayCandleTime = displayCandles[displayCandles.length - 1]?.time;
-  const doubleChochRows = useMemo(() => displayZones
+  const doubleChochRows = useMemo(() => consolidatedDisplayZones
     .filter((zone) => zone.active && zone.status === 'valid'
       && zone.doubleChochStatus !== undefined
       && (zone.tapTime !== undefined
@@ -2463,13 +2590,13 @@ export const OandaProChart: React.FC = () => {
     .sort((a, b) => (b.tapTime ?? b.doubleChochTime ?? b.startTime)
       - (a.tapTime ?? a.doubleChochTime ?? a.startTime)
       || b.startTime - a.startTime)
-    .slice(0, 8), [displayZones, granularity, latestDisplayCandleTime]);
-  const pendingConfirmationRows = useMemo(() => displayZones
+    .slice(0, 8), [consolidatedDisplayZones, granularity, latestDisplayCandleTime]);
+  const pendingConfirmationRows = useMemo(() => consolidatedDisplayZones
     .filter((zone) => (zone.name === 'TJL1' || zone.name === 'ISS L3' || zone.name === 'Internal TJL1')
       && zone.active && zone.status === 'pending'
       && (showInternal || zone.category !== 'internal'))
     .sort((a, b) => b.startTime - a.startTime)
-    .slice(0, 4), [displayZones, showInternal]);
+    .slice(0, 4), [consolidatedDisplayZones, showInternal]);
   const engulfingMarkers = useMemo(() => {
     const combined = [...structure.engulfingMarkers];
     for (const marker of [
@@ -2557,14 +2684,16 @@ export const OandaProChart: React.FC = () => {
       mtfBadgesByZone.set(row.higherTimeframeZoneId, badges);
     }
     const rightEdge = Math.max(0, host.clientWidth - 72);
-    for (const zone of zonesRef.current) {
-      const visible = zone.category === 'mg'
-        ? showMgZonesRef.current
-        : zone.category === 'iss'
-          ? showIssRef.current
-          : zone.category === 'internal'
-            ? showInternalRef.current
-            : showSupplyDemandRef.current;
+    for (const zone of visualZonesRef.current) {
+      const visible = displayZoneMembers(zone).some((member) => (
+        member.category === 'mg'
+          ? showMgZonesRef.current
+          : member.category === 'iss'
+            ? showIssRef.current
+            : member.category === 'internal'
+              ? showInternalRef.current
+              : showSupplyDemandRef.current
+      ));
       if (!visible) continue;
       if (!zone.active && !showInvalidZonesRef.current) continue;
       const rawLeft = chart.timeScale().timeToCoordinate(zone.startTime as UTCTimestamp);
@@ -2630,7 +2759,7 @@ export const OandaProChart: React.FC = () => {
 
       const label = document.createElement('span');
       const name = isMg || isIss || isInternal
-        ? displayZoneName(zone.name, zone.oneMinuteGenesisQml)
+        ? displayConfluenceZoneName(zone, true)
         : demand ? 'DEMAND' : 'SUPPLY';
       const labelDetails: string[] = [];
       if (zone.majorLiquidity) labelDetails.push('MAJOR LIQUIDITY');
@@ -2639,6 +2768,7 @@ export const OandaProChart: React.FC = () => {
       }
       if (inactive) {
         if (rejected) labelDetails.push('REJECTED');
+        else if (zone.status === 'superseded') labelDetails.push('SUPERSEDED');
       } else if (showsDoubleChochStatus) {
         if (zone.doubleChochStatus === 'pending') {
           labelDetails.push(
@@ -2670,6 +2800,10 @@ export const OandaProChart: React.FC = () => {
       }
       if (!inactive && showFibRef.current && zone.dayFibStatus === 'a-plus' && zone.dayFibBand) {
         labelDetails.push(`DAY FIB A+ ${zone.dayFibBand}`);
+      }
+      const confluenceLabels = confluenceBadgeLabels(zone);
+      if (confluenceLabels.length > 0) {
+        labelDetails.push(confluenceLabels.join(' / '));
       }
       const mtfBadges = Array.from(mtfBadgesByZone.get(zone.id) ?? []);
       if (mtfBadges.length > 0) {
@@ -3140,6 +3274,7 @@ export const OandaProChart: React.FC = () => {
 
   useEffect(() => {
     zonesRef.current = displayZones;
+    visualZonesRef.current = consolidatedDisplayZones;
     swingFibMovesRef.current = swingFibMoves;
     dayFibMovesRef.current = dayFibMoves;
     structureLinesRef.current = structure.lines;
@@ -3159,7 +3294,7 @@ export const OandaProChart: React.FC = () => {
     showTradeLevelsRef.current = showTradeLevels;
     tradeOverlaysRef.current = visibleTradeOverlays;
     scheduleOverlayRedraw();
-  }, [chochFibVisibility, dayFibMoves, displayZones, fibPreviousVisibility, fibVisibility, redrawZones, scheduleOverlayRedraw, showFib, showInternal, showInvalidZones, showIss, showMgZones, showStructure, showSupplyDemand, showTradeLevels, structure.internalMarkers, structure.issMarkers, structure.lines, structure.markers, swingFibMoves, visibleTradeOverlays]);
+  }, [chochFibVisibility, consolidatedDisplayZones, dayFibMoves, displayZones, fibPreviousVisibility, fibVisibility, redrawZones, scheduleOverlayRedraw, showFib, showInternal, showInvalidZones, showIss, showMgZones, showStructure, showSupplyDemand, showTradeLevels, structure.internalMarkers, structure.issMarkers, structure.lines, structure.markers, swingFibMoves, visibleTradeOverlays]);
 
   useEffect(() => {
     const overlay = tradeOverlays[0];
@@ -5607,7 +5742,7 @@ export const OandaProChart: React.FC = () => {
                 </tr>
               </thead>
               <tbody>
-                {retainedChartTradesForTimeframe.map((overlay) => {
+                {retainedDirectChartTradesForTimeframe.map((overlay) => {
                   const bullish = overlay.trade.signal.direction === 'bullish';
                   return (
                     <React.Fragment key={`open-chart-trade-${overlay.id}`}>
@@ -5649,9 +5784,9 @@ export const OandaProChart: React.FC = () => {
                   const pending = zone.doubleChochStatus === 'pending';
                   const confirmationLabel = TJL1_CONFIRMATION_LABELS[granularity].toUpperCase();
                   const confirmationSide = zone.doubleChochConfirmationDirection === 'up' ? 'ABOVE' : 'BELOW';
-                  const trade = directZoneTrades.get(zone.id);
-                  const mt5Signal = directZoneMt5Signals.get(zone.id);
-                  const measurement = measureTradeableFibZone(zone);
+                  const trade = confluenceMapValue<TradeLevels>(zone, directZoneTrades);
+                  const mt5Signal = confluenceMapValue<Mt5StoredSignal>(zone, directZoneMt5Signals);
+                  const measurement = confluenceFirstValue(zone, measureTradeableFibZone);
                   return (
                     <React.Fragment key={`double-${zone.id}`}>
                     <tr className={`border-t text-slate-700 ${
@@ -5723,10 +5858,12 @@ export const OandaProChart: React.FC = () => {
                   );
                 })}
                 {zoneTableRows.map((zone) => {
-                  const trade = directZoneTrades.get(zone.id);
-                  const entryDecision = directZoneEntryDecisions.get(zone.id);
-                  const mt5Signal = directZoneMt5Signals.get(zone.id);
-                  const measurement = measureTradeableFibZone(zone);
+                  const trade = confluenceMapValue<TradeLevels>(zone, directZoneTrades);
+                  const entryDecision = confluenceMapValue<DirectZoneEntryDecision>(zone, directZoneEntryDecisions);
+                  const mt5Signal = confluenceMapValue<Mt5StoredSignal>(zone, directZoneMt5Signals);
+                  const measurement = confluenceFirstValue(zone, measureTradeableFibZone);
+                  const tapBarsAgo = confluenceTapBarsAgo(zone);
+                  const confluenceLabels = confluenceBadgeLabels(zone);
                   const pendingChoch = zone.chochClass === 'pending';
                   const chochConfirmationLabel = TJL1_CONFIRMATION_LABELS[granularity].toUpperCase();
                   const chochConfirmationSide = zone.isBuy ? 'ABOVE' : 'BELOW';
@@ -5736,9 +5873,14 @@ export const OandaProChart: React.FC = () => {
                     <td className="px-2 py-1 font-black text-slate-800">
                       <span>
                         {showFib && zone.fibBand === 'DB/DT'
-                          ? `FIB A+ ${displayZoneName(zone.name, zone.oneMinuteGenesisQml)}`
-                          : displayZoneName(zone.name, zone.oneMinuteGenesisQml)}
+                          ? `FIB A+ ${displayConfluenceZoneName(zone)}`
+                          : displayConfluenceZoneName(zone)}
                       </span>
+                      {confluenceLabels.map((label) => (
+                        <span key={`${zone.id}-confluence-${label}`} className="ml-1 rounded bg-slate-100 px-1 py-0.5 text-[8px] font-black text-slate-700">
+                          {label}
+                        </span>
+                      ))}
                       {zone.majorLiquidity && (
                         <span className="ml-1 rounded bg-cyan-100 px-1 py-0.5 text-[8px] font-black text-cyan-800">
                           MAJOR LIQUIDITY
@@ -5796,7 +5938,7 @@ export const OandaProChart: React.FC = () => {
                     <td className={`px-2 py-1 text-center font-black whitespace-nowrap ${
                       zone.isBuy ? 'text-emerald-700' : 'text-rose-700'
                     }`}>
-                      {showEngulfing ? displayEngulfingLabel(zone) ?? '—' : '—'}
+                      {showEngulfing ? confluenceEngulfingLabel(zone) ?? '—' : '—'}
                     </td>
                     <td className={`px-2 py-1 text-right font-bold whitespace-nowrap ${
                       trade?.status === 'sl-hit' ? 'text-rose-700' : ''
@@ -5807,7 +5949,7 @@ export const OandaProChart: React.FC = () => {
                         </span>
                       ) : isCompletedTrade(trade) ? (
                         <span className={trade?.status === 'sl-hit' ? 'text-rose-700' : 'text-emerald-700'}>
-                          {zone.tapBarsAgo} bars · <TradeStatusText trade={trade!} />
+                          {tapBarsAgo} bars · <TradeStatusText trade={trade!} />
                         </span>
                       ) : entryDecision && !entryDecision.policy.allowed ? (
                         <span className="text-rose-700">
@@ -5816,11 +5958,11 @@ export const OandaProChart: React.FC = () => {
                       ) : entryDecision?.policy.allowed && !trade ? (
                         <span className="text-rose-700">ENTRY INVALID · NO TRADE</span>
                       ) : <>
-                        <span className="text-slate-500">{zone.tapBarsAgo} bars</span>
-                        <span className={zone.tradeable === false ? 'ml-1 text-rose-700' : 'ml-1 text-emerald-700'}>
+                        <span className="text-slate-500">{tapBarsAgo} bars</span>
+                        <span className={!confluenceIsTradeable(zone) ? 'ml-1 text-rose-700' : 'ml-1 text-emerald-700'}>
                            - {pendingChoch
                              ? `WAIT ${chochConfirmationLabel} CLOSE ${chochConfirmationSide} Â· NO TRADE`
-                             : zone.tradeable === false
+                             : !confluenceIsTradeable(zone)
                              ? 'NO TRADE'
                             : entryDecision?.oppositePositionOpen
                               ? 'OPPOSITE OPEN · TRADE 1:1'
@@ -5874,7 +6016,7 @@ export const OandaProChart: React.FC = () => {
                 })}
                 {pendingConfirmationRows.length === 0 && doubleChochRows.length === 0
                   && zoneTableRows.length === 0 && retainedTradeZoneRows.length === 0
-                  && retainedChartTradesForTimeframe.length === 0 && (
+                  && retainedDirectChartTradesForTimeframe.length === 0 && (
                   <tr>
                     <td colSpan={5} className="px-2 py-2 text-center text-slate-400">No active zone rows</td>
                   </tr>
