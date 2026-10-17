@@ -75,6 +75,12 @@ import {
 } from '../services/tradeRecordFilters';
 import { deduplicateTradeRecords } from '../services/tradeRecordDeduplication';
 import {
+  OANDA_MARKET_SYMBOLS,
+  normalizeOandaMarketSymbol,
+  oandaMarketSymbolConfig,
+  type OandaMarketSymbol,
+} from '../services/marketSymbols';
+import {
   hasIdentifiedDirectZoneLabel,
   isDirectTradeOverlay,
   isTradeOverlayTerminated,
@@ -158,6 +164,7 @@ interface ChartDrawingTextEditor {
 }
 
 const CHART_DRAWINGS_STORAGE_KEY = 'oanda-dashboard-chart-drawings-v1';
+const MARKET_SYMBOL_STORAGE_KEY = 'oanda-dashboard-market-symbol-v1';
 const CHART_DRAWING_COLORS = ['#2563eb', '#dc2626', '#16a34a', '#d97706', '#7c3aed', '#0f172a'] as const;
 
 const CHART_DRAWING_TOOLS: Array<{
@@ -185,13 +192,14 @@ function loadStoredChartDrawings(): ChartDrawing[] {
         Number.isFinite(point?.time) && Number.isFinite(point?.price)
       ))
     )).map((drawing) => {
-      const [sourceScope, legacyTimeframe] = drawing.scope.split(':');
+      const [sourceScope, storedSymbolOrTimeframe, legacyTimeframe] = drawing.scope.split(':');
+      const storedSymbol = normalizeOandaMarketSymbol(storedSymbolOrTimeframe);
       return {
         ...drawing,
-        scope: sourceScope,
+        scope: `${sourceScope}:${storedSymbol ?? 'XAUUSD'}`,
         visibilityTimeframe: drawing.visibilityTimeframe
-          ?? (DRAWING_TIMEFRAME_ORDER.includes(legacyTimeframe as OandaGranularity)
-            ? legacyTimeframe as OandaGranularity
+          ?? (DRAWING_TIMEFRAME_ORDER.includes((legacyTimeframe ?? storedSymbolOrTimeframe) as OandaGranularity)
+            ? (legacyTimeframe ?? storedSymbolOrTimeframe) as OandaGranularity
             : 'M15'),
         visibility: drawing.visibility ?? 'all',
         hidden: drawing.hidden ?? false,
@@ -199,6 +207,14 @@ function loadStoredChartDrawings(): ChartDrawing[] {
     });
   } catch {
     return [];
+  }
+}
+
+function loadStoredMarketSymbol(): OandaMarketSymbol {
+  try {
+    return normalizeOandaMarketSymbol(window.localStorage.getItem(MARKET_SYMBOL_STORAGE_KEY)) ?? 'XAUUSD';
+  } catch {
+    return 'XAUUSD';
   }
 }
 
@@ -256,6 +272,7 @@ interface OandaCandle {
 interface MarketDataResponse {
   ok: boolean;
   source?: string;
+  symbol?: OandaMarketSymbol;
   granularity?: MarketGranularity;
   fetchedAt?: string;
   candles?: OandaCandle[];
@@ -278,6 +295,7 @@ interface DirectZoneEntryDecision {
 
 interface TradeOverlay {
   id: string;
+  symbol?: OandaMarketSymbol;
   setupId?: string;
   trade: TradeLevels;
   label?: string;
@@ -424,9 +442,10 @@ const TJL1_CONFIRMATION_LABELS: Record<OandaGranularity, string> = {
 };
 
 function formatPrice(value: number | undefined): string {
+  const precision = Number.isFinite(value) && Math.abs(Number(value)) < 10 ? 5 : 3;
   return Number.isFinite(value) ? Number(value).toLocaleString(undefined, {
-    minimumFractionDigits: 3,
-    maximumFractionDigits: 3,
+    minimumFractionDigits: precision,
+    maximumFractionDigits: precision,
   }) : '—';
 }
 
@@ -1318,11 +1337,13 @@ export const OandaProChart: React.FC = () => {
   const loadRequestIdRef = useRef(0);
   const loadedGranularityRef = useRef<OandaGranularity>('M15');
   const loadedDataSourceRef = useRef<LiveChartDataSource>('OANDA');
+  const loadedMarketSymbolRef = useRef<OandaMarketSymbol>('XAUUSD');
   const candlesRef = useRef<OandaCandle[]>([]);
   const replaySelectingRef = useRef(false);
   const replaySelectionIndexRef = useRef<number | null>(null);
   const syncReplaySelectionLineRef = useRef<() => void>(() => undefined);
   const [granularity, setGranularity] = useState<OandaGranularity>('M15');
+  const [marketSymbol, setMarketSymbol] = useState<OandaMarketSymbol>(loadStoredMarketSymbol);
   const [liveChartDataSource, setLiveChartDataSource] = useState<LiveChartDataSource>('OANDA');
   const [candles, setCandles] = useState<OandaCandle[]>([]);
   const [vipCandles, setVipCandles] = useState<Partial<Record<MarketGranularity, OandaCandle[]>>>({});
@@ -1394,12 +1415,17 @@ export const OandaProChart: React.FC = () => {
   replaySelectingRef.current = replaySelecting;
   replaySelectionIndexRef.current = replaySelectionIndex;
 
-  const drawingScope = liveChartDataSource;
+  const marketConfig = oandaMarketSymbolConfig(marketSymbol);
+  const drawingScope = `${liveChartDataSource}:${marketSymbol}`;
   hasChartDrawingLayerRef.current = chartDrawings.length > 0 || drawingDraft !== null;
 
   useEffect(() => {
     window.localStorage.setItem(CHART_DRAWINGS_STORAGE_KEY, JSON.stringify(chartDrawings));
   }, [chartDrawings]);
+
+  useEffect(() => {
+    window.localStorage.setItem(MARKET_SYMBOL_STORAGE_KEY, marketSymbol);
+  }, [marketSymbol]);
 
   useEffect(() => {
     window.localStorage.setItem(
@@ -1747,11 +1773,11 @@ export const OandaProChart: React.FC = () => {
     return zones;
   }, [dayFibConfluence.zones, displayCandles, granularity, vipCandles]);
   const consolidatedDisplayZones = useMemo(
-    () => consolidateZonesForDisplay(displayZones),
-    [displayZones],
+    () => consolidateZonesForDisplay(displayZones, marketConfig.pipSize),
+    [displayZones, marketConfig.pipSize],
   );
 
-  const tradeTrackingScope = `${liveChartDataSource}:${granularity}:${replayIndex === null ? 'live' : 'replay'}`;
+  const tradeTrackingScope = `${marketSymbol}:${liveChartDataSource}:${granularity}:${replayIndex === null ? 'live' : 'replay'}`;
   const currentDirectTradeSetups = useMemo(() => {
     const setups = new Map<string, TrackedDirectTradeSetup>();
     const zoneTimeframe = granularity as TradeTimeframe;
@@ -1790,6 +1816,7 @@ export const OandaProChart: React.FC = () => {
 
   const directZoneEntryDecisions = useMemo(() => {
     const decisions = new Map<string, DirectZoneEntryDecision>();
+    if (!marketConfig.mt5AutomationEnabled) return decisions;
     const latestChartCandle = displayCandles[displayCandles.length - 1];
     if (!latestChartCandle) return decisions;
     const cutoff = timeframeWindowCutoff(
@@ -1893,6 +1920,7 @@ export const OandaProChart: React.FC = () => {
     displayCandles,
     displayZones,
     granularity,
+    marketConfig.mt5AutomationEnabled,
     mt5Status?.positions,
     replayIndex,
     trackedDirectTradeSetups,
@@ -2019,7 +2047,8 @@ export const OandaProChart: React.FC = () => {
       }
       let trade: TradeLevels | undefined;
       const lowerTimeframeData = tableTimeframeData[row.lowerTimeframe];
-      if (row.engulfingType && row.engulfingTime !== undefined && lowerTimeframeData) {
+      if (marketConfig.mt5AutomationEnabled
+        && row.engulfingType && row.engulfingTime !== undefined && lowerTimeframeData) {
         const signal: EngulfingTradeSignal = {
           type: row.engulfingType,
           direction: row.direction,
@@ -2047,7 +2076,7 @@ export const OandaProChart: React.FC = () => {
       return { ...row, setupId, trade, tradeBarsAgo };
     });
   },
-    [activeMtfRows, tableTimeframeData],
+    [activeMtfRows, marketConfig.mt5AutomationEnabled, tableTimeframeData],
   );
 
   const mtfRows = useMemo<DisplayMtfRow[]>(() => (
@@ -2294,6 +2323,7 @@ export const OandaProChart: React.FC = () => {
       ].join(':');
       if (!overlays.has(signature)) overlays.set(signature, {
         id,
+        symbol: marketSymbol,
         trade,
         label,
         chartTimeframe: drawingTimeframe,
@@ -2379,6 +2409,7 @@ export const OandaProChart: React.FC = () => {
     displayZones,
     directZoneTrades,
     granularity,
+    marketSymbol,
     mtfRows,
     trackedDirectTradeSetups,
     tradeTrackingScope,
@@ -2389,6 +2420,7 @@ export const OandaProChart: React.FC = () => {
     setRetainedChartTradeOverlays((existing) => {
       const next = new Map<string, TradeOverlay>(existing);
       for (const [id, overlay] of next) {
+        if ((overlay.symbol ?? 'XAUUSD') !== marketSymbol) continue;
         if (!hasIdentifiedDirectZoneLabel(overlay.id, overlay.setupId, overlay.label)) next.delete(id);
       }
       const liveBrokerSetupKeys = new Set(
@@ -2404,6 +2436,7 @@ export const OandaProChart: React.FC = () => {
         }
       }
       for (const [id, overlay] of next) {
+        if ((overlay.symbol ?? 'XAUUSD') !== marketSymbol) continue;
         if (liveBrokerSetupKeys.has(tradeOverlaySetupKey(overlay))) {
           next.delete(id);
           continue;
@@ -2423,7 +2456,7 @@ export const OandaProChart: React.FC = () => {
       }
       const firstTradeBySetup = new Map<string, { id: string; signalAt: number }>();
       for (const [id, overlay] of next) {
-        const setupKey = tradeOverlaySetupKey(overlay);
+        const setupKey = `${overlay.symbol ?? 'XAUUSD'}:${tradeOverlaySetupKey(overlay)}`;
         const previous = firstTradeBySetup.get(setupKey);
         if (!previous || overlay.trade.signal.time < previous.signalAt) {
           if (previous) next.delete(previous.id);
@@ -2433,17 +2466,18 @@ export const OandaProChart: React.FC = () => {
         }
       }
       const signature = (entries: Map<string, TradeOverlay>) => Array.from(entries)
-        .map(([id, overlay]) => `${id}:${overlay.trade.status}:${overlay.trade.resolvedAt ?? ''}`)
+        .map(([id, overlay]) => `${overlay.symbol ?? 'XAUUSD'}:${id}:${overlay.trade.status}:${overlay.trade.resolvedAt ?? ''}`)
         .sort()
         .join('|');
       return signature(next) === signature(existing) ? existing : next;
     });
-  }, [displayCandles, displayZones, granularity, mt5Status?.positions, tradeOverlays]);
+  }, [displayCandles, displayZones, granularity, marketSymbol, mt5Status?.positions, tradeOverlays]);
 
   const retainedChartTradesForTimeframe = useMemo(() => {
     const firstTradeBySetup = new Map<string, TradeOverlay>();
     const candidates = [...retainedChartTradeOverlays.values()]
-      .filter((overlay) => overlay.chartTimeframe === granularity)
+      .filter((overlay) => (overlay.symbol ?? 'XAUUSD') === marketSymbol
+        && overlay.chartTimeframe === granularity)
       .sort((first, second) => first.trade.signal.time - second.trade.signal.time);
     for (const overlay of candidates) {
       const setupKey = tradeOverlaySetupKey(overlay);
@@ -2451,7 +2485,7 @@ export const OandaProChart: React.FC = () => {
     }
     return [...firstTradeBySetup.values()]
       .sort((first, second) => second.trade.calculatedAt - first.trade.calculatedAt);
-  }, [granularity, retainedChartTradeOverlays]);
+  }, [granularity, marketSymbol, retainedChartTradeOverlays]);
 
   // The Zone Table owns only direct chart-zone trades. MTF trades remain
   // drawable on the chart, but all their row/details UI belongs to MTF Table.
@@ -2498,6 +2532,7 @@ export const OandaProChart: React.FC = () => {
       };
       return [{
         id: `MT5:${position.ticket}`,
+        symbol: 'XAUUSD' as const,
         setupId: position.setupId,
         trade,
         label: `${position.zoneTimeframe ?? '?'}→${position.signalTimeframe ?? '?'} · 1:${position.rewardRisk ?? rewardRisk}`,
@@ -2545,6 +2580,7 @@ export const OandaProChart: React.FC = () => {
     const chartSetupKeys = new Set<string>();
     const entryEventKeys = new Set<string>();
     const addOverlay = (overlay: TradeOverlay) => {
+      if ((overlay.symbol ?? 'XAUUSD') !== marketSymbol) return;
       // A terminal chart result owns the visual lifecycle. This also suppresses
       // a stale retained or MT5-active copy of the same execution immediately.
       const setupKey = tradeOverlaySetupKey(overlay);
@@ -2583,7 +2619,7 @@ export const OandaProChart: React.FC = () => {
     tradeOverlays.forEach(addOverlay);
     return Array.from(overlays.values())
       .sort((first, second) => second.trade.calculatedAt - first.trade.calculatedAt);
-  }, [completedChartTradeKeys, liveMt5TradeOverlays, replayIndex, retainedChartTradesForTimeframe, tradeOverlays]);
+  }, [completedChartTradeKeys, liveMt5TradeOverlays, marketSymbol, replayIndex, retainedChartTradesForTimeframe, tradeOverlays]);
 
   const mtfEntryMarkers = useMemo(() => {
     const markerKeys = new Set<string>();
@@ -2802,7 +2838,7 @@ export const OandaProChart: React.FC = () => {
     let latestMeasuredZoneId: string | undefined;
     let latestMeasuredTapTime = -Infinity;
     for (const zone of visualZonesRef.current) {
-      if (!isVisualZoneVisible(zone) || !measureTradeableFibZone(zone)) continue;
+      if (!isVisualZoneVisible(zone) || !measureTradeableFibZone(zone, marketConfig.pipSize)) continue;
       const tapTime = Math.max(...displayZoneMembers(zone)
         .map((member) => member.tapTime ?? -Infinity));
       if (tapTime > latestMeasuredTapTime) {
@@ -2868,7 +2904,7 @@ export const OandaProChart: React.FC = () => {
       const retainMeasurementForEntry = displayZoneMembers(zone)
         .some((member) => unfinishedEntryZoneIds.has(member.id));
       const measurement = zone.id === latestMeasuredZoneId || retainMeasurementForEntry
-        ? measureTradeableFibZone(zone)
+        ? measureTradeableFibZone(zone, marketConfig.pipSize)
         : undefined;
       if (measurement) {
         const midlineCoordinate = series.priceToCoordinate(measurement.midline);
@@ -3424,7 +3460,7 @@ export const OandaProChart: React.FC = () => {
     // Swap the complete overlay in one operation so the browser does not
     // perform layout work for every individual zone, line, and label.
     layer.replaceChildren(fragment);
-  }, [directZoneTrades, displayCandles.length, granularity, latestCandle?.time, mtfRows]);
+  }, [directZoneTrades, displayCandles.length, granularity, latestCandle?.time, marketConfig.pipSize, mtfRows]);
 
   redrawZonesRef.current = redrawZones;
 
@@ -3576,16 +3612,19 @@ export const OandaProChart: React.FC = () => {
       const replayTime = replayTimeRef.current;
       const shouldShowLoading = candlesRef.current.length === 0
         || loadedGranularityRef.current !== granularity
-        || loadedDataSourceRef.current !== liveChartDataSource;
+        || loadedDataSourceRef.current !== liveChartDataSource
+        || loadedMarketSymbolRef.current !== marketSymbol;
       if (shouldShowLoading) setIsLoading(true);
       try {
         const requestCandles = async (requestedGranularity: MarketGranularity) => {
         const query = new URLSearchParams({
+          symbol: marketSymbol,
           granularity: requestedGranularity,
           count: '1500',
         });
         if (replayTime !== null) query.set('endTime', String(replayTime));
         const useMt5BrokerFeed = replayTime === null && liveChartDataSource === 'MT5'
+          && marketConfig.mt5AutomationEnabled
           && MT5_CHART_GRANULARITIES.includes(requestedGranularity as OandaGranularity);
         let lastError = `Market feed returned no ${GRANULARITY_LABELS[requestedGranularity]} candles.`;
         for (let attempt = 0; attempt < 2; attempt += 1) {
@@ -3610,7 +3649,7 @@ export const OandaProChart: React.FC = () => {
       // requests even though those are only needed for VIP/trend context.
       const payload = await requestCandles(granularity);
       if (requestId !== loadRequestIdRef.current) return;
-      if (payload.candles.length === 0) throw new Error('The market feed returned no XAUUSD candles.');
+      if (payload.candles.length === 0) throw new Error(`The market feed returned no ${marketSymbol} candles.`);
       const nextReplayIndex = replayTime === null
         ? null
         : findReplayIndexAtOrBefore(payload.candles, replayTime);
@@ -3619,11 +3658,12 @@ export const OandaProChart: React.FC = () => {
       }
       loadedGranularityRef.current = granularity;
       loadedDataSourceRef.current = liveChartDataSource;
+      loadedMarketSymbolRef.current = marketSymbol;
       setCandles((current) => candleSnapshotsMatch(current, payload.candles)
         ? current
         : payload.candles);
       if (nextReplayIndex !== null) setReplayIndex(nextReplayIndex);
-      setSource(payload.source || 'MetaTrader 5 · broker XAUUSD');
+      setSource(payload.source || `MetaTrader 5 · broker ${marketSymbol}`);
       setLastUpdated(payload.fetchedAt || new Date().toISOString());
       setError(null);
       setIsLoading(false);
@@ -3678,7 +3718,7 @@ export const OandaProChart: React.FC = () => {
         setIsLoading(false);
       }
     }
-  }, [auxiliaryGranularities, granularity, liveChartDataSource, mtfLowerGranularities]);
+  }, [auxiliaryGranularities, granularity, liveChartDataSource, marketConfig.mt5AutomationEnabled, marketSymbol, mtfLowerGranularities]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -3814,6 +3854,16 @@ export const OandaProChart: React.FC = () => {
       markersRef.current = null;
     };
   }, [scheduleDrawingRedraw, scheduleOverlayRedraw]);
+
+  useEffect(() => {
+    candleSeriesRef.current?.applyOptions({
+      priceFormat: {
+        type: 'price',
+        precision: marketConfig.pricePrecision,
+        minMove: marketConfig.minMove,
+      },
+    });
+  }, [marketConfig.minMove, marketConfig.pricePrecision]);
 
   useEffect(() => {
     const chart = chartRef.current;
@@ -3972,7 +4022,8 @@ export const OandaProChart: React.FC = () => {
   };
 
   const changeLiveChartDataSource = (nextSource: LiveChartDataSource) => {
-    if (replayIndex !== null || nextSource === liveChartDataSource) return;
+    if (replayIndex !== null || nextSource === liveChartDataSource
+      || (nextSource === 'MT5' && !marketConfig.mt5AutomationEnabled)) return;
     setLiveChartDataSource(nextSource);
     setCandles([]);
     setVipCandles({});
@@ -3980,6 +4031,26 @@ export const OandaProChart: React.FC = () => {
     setSource(nextSource === 'MT5'
       ? 'Waiting for MT5 broker candles'
       : 'Loading TradingView OANDA candles');
+    setLastUpdated(null);
+    setError(null);
+    setIsLoading(true);
+    hasFittedRef.current = false;
+  };
+
+  const changeMarketSymbol = (nextSymbol: OandaMarketSymbol) => {
+    if (nextSymbol === marketSymbol) return;
+    replayTimeRef.current = null;
+    pendingReplayViewportRef.current = null;
+    setReplayIndex(null);
+    setReplayPlaying(false);
+    setReplaySelecting(false);
+    setReplaySelectionIndex(null);
+    setMarketSymbol(nextSymbol);
+    setLiveChartDataSource('OANDA');
+    setCandles([]);
+    setVipCandles({});
+    setTrackedDirectTradeSetups(new Map<string, TrackedDirectTradeSetup>());
+    setSource(`Loading TradingView OANDA:${nextSymbol} candles`);
     setLastUpdated(null);
     setError(null);
     setIsLoading(true);
@@ -4541,7 +4612,7 @@ export const OandaProChart: React.FC = () => {
         : Math.max(4, top - cardHeight - 12);
       const signedPrice = `${priceChange >= 0 ? '+' : ''}${formatPrice(priceChange)}`;
       const signedPercent = `${percentChange >= 0 ? '+' : ''}${percentChange.toFixed(2)}%`;
-      const pips = priceChange * 100;
+      const pips = priceChange / marketConfig.pipSize;
       const signedPips = `${pips >= 0 ? '+' : ''}${pips.toFixed(1)}`;
       return wrapDrawing(
         <>
@@ -4740,11 +4811,22 @@ export const OandaProChart: React.FC = () => {
       <div className="h-full w-full overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm flex flex-col">
         <div className="flex flex-wrap items-center gap-1.5 border-b border-slate-200 bg-white px-2.5 py-1 xl:flex-nowrap">
           <div className="flex items-center gap-1 pr-1.5 border-r border-slate-200">
-            <div className="grid h-5 w-5 place-items-center rounded-full bg-amber-100 text-[7px] font-black text-amber-700">Au</div>
+            <div className="grid h-5 w-5 place-items-center rounded-full bg-amber-100 text-[6px] font-black text-amber-700">
+              {marketSymbol === 'XAUUSD' ? 'Au' : 'FX'}
+            </div>
             <div>
-              <div className="text-[9px] font-black leading-none text-slate-900">Gold Spot / U.S. Dollar</div>
+              <select
+                value={marketSymbol}
+                onChange={(event) => changeMarketSymbol(event.target.value as OandaMarketSymbol)}
+                className="max-w-40 cursor-pointer border-0 bg-transparent p-0 text-[9px] font-black leading-none text-slate-900 outline-none"
+                aria-label="OANDA market symbol"
+              >
+                {OANDA_MARKET_SYMBOLS.map((symbol) => (
+                  <option key={symbol} value={symbol}>{oandaMarketSymbolConfig(symbol).displayName}</option>
+                ))}
+              </select>
               <div className="mt-0.5 text-[6px] font-bold leading-none tracking-wider text-slate-500">
-                XAUUSD · {replayIndex !== null ? 'OANDA REPLAY' : liveChartDataSource}
+                {marketConfig.shortName} · {replayIndex !== null ? 'OANDA REPLAY' : liveChartDataSource}
               </div>
             </div>
           </div>
@@ -4777,7 +4859,7 @@ export const OandaProChart: React.FC = () => {
                 key={dataSource}
                 type="button"
                 onClick={() => changeLiveChartDataSource(dataSource)}
-                disabled={replayIndex !== null}
+                disabled={replayIndex !== null || (dataSource === 'MT5' && !marketConfig.mt5AutomationEnabled)}
                 className={`rounded-full border px-2 py-0.5 text-[9px] font-black transition disabled:cursor-not-allowed disabled:opacity-45 ${
                   replayIndex === null && liveChartDataSource === dataSource
                     ? dataSource === 'MT5'
@@ -5982,7 +6064,9 @@ export const OandaProChart: React.FC = () => {
                   const confirmationSide = zone.doubleChochConfirmationDirection === 'up' ? 'ABOVE' : 'BELOW';
                   const trade = confluenceMapValue<TradeLevels>(zone, directZoneTrades);
                   const mt5Signal = confluenceMapValue<Mt5StoredSignal>(zone, directZoneMt5Signals);
-                  const measurement = confluenceFirstValue(zone, measureTradeableFibZone);
+                  const measurement = confluenceFirstValue(zone, (member) => (
+                    measureTradeableFibZone(member, marketConfig.pipSize)
+                  ));
                   return (
                     <React.Fragment key={`double-${zone.id}`}>
                     <tr className={`border-t text-slate-700 ${
@@ -6061,7 +6145,9 @@ export const OandaProChart: React.FC = () => {
                   const trade = confluenceMapValue<TradeLevels>(zone, directZoneTrades);
                   const entryDecision = confluenceMapValue<DirectZoneEntryDecision>(zone, directZoneEntryDecisions);
                   const mt5Signal = confluenceMapValue<Mt5StoredSignal>(zone, directZoneMt5Signals);
-                  const measurement = confluenceFirstValue(zone, measureTradeableFibZone);
+                  const measurement = confluenceFirstValue(zone, (member) => (
+                    measureTradeableFibZone(member, marketConfig.pipSize)
+                  ));
                   const tapBarsAgo = confluenceTapBarsAgo(zone);
                   const confluenceLabels = confluenceBadgeLabels(zone);
                   const pendingChoch = zone.chochClass === 'pending';
@@ -6256,7 +6342,7 @@ export const OandaProChart: React.FC = () => {
             <div className="absolute inset-0 z-20 grid place-items-center bg-white/85">
               <div className="flex items-center gap-2 text-sm font-bold text-slate-600">
                 <RefreshCw className="h-4 w-4 animate-spin text-indigo-600" />
-                Loading XAUUSD market candles…
+                Loading {marketSymbol} market candles…
               </div>
             </div>
           )}
@@ -6265,7 +6351,7 @@ export const OandaProChart: React.FC = () => {
             <div className="absolute inset-0 z-20 grid place-items-center bg-white/95 p-6">
               <div className="max-w-xl rounded-xl border border-rose-200 bg-rose-50 p-5 text-center shadow-sm">
                 <AlertTriangle className="mx-auto mb-2 h-7 w-7 text-rose-600" />
-                <h2 className="font-black text-rose-900">XAUUSD candle feed is unavailable</h2>
+                <h2 className="font-black text-rose-900">{marketSymbol} candle feed is unavailable</h2>
                 <p className="mt-2 text-sm text-rose-800">{error}</p>
                 <p className="mt-3 text-xs leading-relaxed text-slate-600">
                   The selected chart feed is unavailable. Automatic execution remains independent and always uses candles from the connected MT5 broker.
@@ -6283,7 +6369,7 @@ export const OandaProChart: React.FC = () => {
               ? 'MT5 broker chart data'
               : replayIndex !== null ? 'TradingView replay data' : 'OANDA live chart data'}
           </span>
-          <span className="flex items-center gap-1 text-emerald-700"><CheckCircle2 className="h-3 w-3" /> Symbol: {mt5Status?.config.brokerSymbol || 'XAUUSD'}</span>
+          <span className="flex items-center gap-1 text-emerald-700"><CheckCircle2 className="h-3 w-3" /> Symbol: {marketConfig.shortName}</span>
           <span>OHLC source: {source}</span>
           <span>Structure: HH · HL · LH · LL · BOS · CHoCH</span>
           <span>Genesis Low: {formatPrice(structure.genesis?.price)}</span>

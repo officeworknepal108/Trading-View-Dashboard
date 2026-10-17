@@ -57,3 +57,29 @@ test('opposite, materially different, and non-overlapping zones stay separate', 
   assert.equal(consolidateZonesForDisplay([base, differentRange]).length, 2);
   assert.equal(consolidateZonesForDisplay([base, later]).length, 2);
 });
+
+test('forex display consolidation uses the pair pip size instead of the Gold tolerance', () => {
+  const base = zone({
+    id: 'forex-tjl2',
+    bottom: 1.08500,
+    top: 1.08600,
+  });
+  const separateForexZone = zone({
+    id: 'forex-internal-db',
+    name: 'Internal DB',
+    category: 'internal',
+    bottom: 1.08550,
+    top: 1.08650,
+  });
+  const matchingForexZone = zone({
+    id: 'forex-matching-db',
+    name: 'Internal DB',
+    category: 'internal',
+    bottom: 1.08505,
+    top: 1.08605,
+  });
+
+  assert.equal(consolidateZonesForDisplay([base, separateForexZone], 0.0001).length, 2);
+  assert.equal(consolidateZonesForDisplay([base, matchingForexZone], 0.0001).length, 1);
+  assert.equal(consolidateZonesForDisplay([base, separateForexZone]).length, 1);
+});

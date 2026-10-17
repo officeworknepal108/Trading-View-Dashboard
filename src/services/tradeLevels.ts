@@ -81,6 +81,7 @@ export interface TradeableFibZoneMeasurement {
 
 export function measureTradeableFibZone(
   zone: StructureZone,
+  pipSize = TRADE_PIP_SIZE,
 ): TradeableFibZoneMeasurement | undefined {
   const inherentlyTradeableDbDt = zone.name === 'DB' || zone.name === 'DT';
   const fibAligned = inherentlyTradeableDbDt
@@ -93,9 +94,10 @@ export function measureTradeableFibZone(
 
   const top = Math.max(zone.top, zone.bottom);
   const bottom = Math.min(zone.top, zone.bottom);
-  if (!Number.isFinite(top) || !Number.isFinite(bottom) || top <= bottom) return undefined;
+  if (!Number.isFinite(top) || !Number.isFinite(bottom) || top <= bottom
+    || !Number.isFinite(pipSize) || pipSize <= 0) return undefined;
   return {
-    pips: roundPips((top - bottom) / TRADE_PIP_SIZE),
+    pips: roundPips((top - bottom) / pipSize),
     midline: (top + bottom) / 2,
   };
 }

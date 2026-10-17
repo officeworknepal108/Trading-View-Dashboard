@@ -57,6 +57,7 @@ import {
   summarizeTradeMemory,
 } from './src/services/agentKnowledge';
 import { deduplicateTradeRecords } from './src/services/tradeRecordDeduplication';
+import { normalizeOandaMarketSymbol } from './src/services/marketSymbols';
 
 const GRANULARITIES = new Set(['M1', 'M5', 'M15', 'M30', 'H1', 'H4', 'D', 'W', 'MO']);
 const JOURNAL_FILE = path.resolve(process.cwd(), 'data', 'trade-journal.json');
@@ -1328,6 +1329,7 @@ async function startServer() {
   app.get('/api/tradingview/market-data', async (req, res) => {
     try {
       const granularity = String(req.query.granularity || 'H1').toUpperCase();
+      const symbol = normalizeOandaMarketSymbol(req.query.symbol || 'XAUUSD');
       const count = Math.max(10, Math.min(Number(req.query.count || 1500), 5000));
       const requestedEndTime = Number(req.query.endTime);
       const endTime = Number.isFinite(requestedEndTime) && requestedEndTime > 0
@@ -1336,18 +1338,21 @@ async function startServer() {
       if (!GRANULARITIES.has(granularity)) {
         return res.status(400).json({ ok: false, error: 'Unsupported candle granularity.' });
       }
+      if (!symbol) {
+        return res.status(400).json({ ok: false, error: 'Unsupported OANDA market symbol.' });
+      }
 
       const candles = await fetchTradingViewCandles({
-        exchange: 'OANDA', symbol: 'XAUUSD', granularity, count, endTime,
+        exchange: 'OANDA', symbol, granularity, count, endTime,
       });
       res.setHeader('Cache-Control', 'no-store');
       return res.json({
         ok: true,
         provider: 'TradingView WebSocket',
-        source: 'TradingView WebSocket · OANDA:XAUUSD · unofficial',
+        source: `TradingView WebSocket · OANDA:${symbol} · unofficial`,
         unofficial: true,
         exchange: 'OANDA',
-        symbol: 'XAUUSD',
+        symbol,
         granularity,
         fetchedAt: new Date().toISOString(),
         count: candles.length,
