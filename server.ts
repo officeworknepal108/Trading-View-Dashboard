@@ -8,11 +8,13 @@ import { fetchTradingViewCandles } from './src/services/tradingViewDatafeed';
 import {
   MT5_DEFAULT_ENABLED_TIMEFRAMES,
   applySignalOppositePositionTarget,
+  canMt5SignalExpireBeforeExecution,
   isMt5SignalAllowedByTimeframes,
   normalizeMt5EnabledTimeframes,
   normalizeMt5RiskPercent,
   isExecutableTrade,
   canQueueSingleSlReentry,
+  shouldRemoveOpenMt5JournalRecord,
   tradeToMt5Signal,
   Mt5AutomationConfig,
   type Mt5SignalInput,
@@ -795,13 +797,27 @@ async function readJournalTrades(): Promise<StoredJournalTrade[]> {
   try {
     const content = await readFile(JOURNAL_FILE, 'utf8');
     const parsed = JSON.parse(content);
-    return Array.isArray(parsed?.trades)
+    const trades = Array.isArray(parsed?.trades)
       ? parsed.trades.filter((trade: unknown): trade is StoredJournalTrade => (
         typeof trade === 'object' && trade !== null
         && typeof (trade as StoredJournalTrade).id === 'string'
         && Number.isFinite((trade as StoredJournalTrade).completedAt)
       ))
       : [];
+    const openMt5Trades = trades.filter((trade) => (
+      trade.mt5Managed === true
+      && (trade.result === 'open' || trade.result === 'risk-free')
+      && typeof trade.mt5SignalId === 'string'
+    ));
+    if (openMt5Trades.length === 0) return trades;
+    const signalStatusById = new Map(
+      (await readMt5Signals()).map((signal) => [signal.id, signal.status]),
+    );
+    return trades.filter((trade) => {
+      if (!openMt5Trades.includes(trade)) return true;
+      const status = signalStatusById.get(String(trade.mt5SignalId));
+      return status === undefined || !shouldRemoveOpenMt5JournalRecord(status);
+    });
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === 'ENOENT') return [];
     throw error;
@@ -828,6 +844,13 @@ async function updateMt5JournalRecord(
     const trades = await readJournalTrades();
     const existingIndex = trades.findIndex((trade) => trade.id === journalId);
     const existing = existingIndex >= 0 ? trades[existingIndex] : undefined;
+    if (shouldRemoveOpenMt5JournalRecord(status)) {
+      if (existingIndex >= 0) {
+        trades.splice(existingIndex, 1);
+        await writeJournalTrades(trades);
+      }
+      return;
+    }
     if (status !== 'ACTIVE' && status !== 'RISK_FREE'
       && !['TP', 'SL', 'RF'].includes(status) && !existing) return;
     if (!existing && status !== 'ACTIVE') return;
@@ -1178,7 +1201,7 @@ async function startServer() {
             item.status = 'QUEUED';
             item.bridgeId = undefined;
           }
-          if (!MT5_TERMINAL_STATUSES.has(item.status) && item.expiresAt <= now) {
+          if (canMt5SignalExpireBeforeExecution(item.status) && item.expiresAt <= now) {
             item.status = 'EXPIRED';
             item.updatedAt = now;
             item.message = 'Signal expired before execution.';

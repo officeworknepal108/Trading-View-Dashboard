@@ -6,6 +6,7 @@ import {
   MT5_RISK_PERCENT_OPTIONS,
   applySignalOppositePositionTarget,
   buildMt5SignalId,
+  canMt5SignalExpireBeforeExecution,
   canQueueSingleSlReentry,
   calculateXauUsdLotSize,
   isExecutableTrade,
@@ -13,6 +14,7 @@ import {
   isMt5SignalAllowedByTimeframes,
   normalizeMt5EnabledTimeframes,
   normalizeMt5RiskPercent,
+  shouldRemoveOpenMt5JournalRecord,
   tradeToMt5Signal,
 } from '../src/services/mt5Automation';
 import type { TradeLevels } from '../src/services/tradeLevels';
@@ -37,6 +39,20 @@ test('MT5 permits exactly one later retry only after a full SL', () => {
     { status: 'SL', signalAt: 100 },
     { status: 'SL', signalAt: 200 },
   ], 300), false, 'a second SL cannot create a third attempt');
+});
+
+test('MT5 expiry applies only before execution and stale terminal journal cards are removed', () => {
+  assert.equal(canMt5SignalExpireBeforeExecution('QUEUED'), true);
+  assert.equal(canMt5SignalExpireBeforeExecution('CLAIMED'), true);
+  assert.equal(canMt5SignalExpireBeforeExecution('PLACED'), true);
+  assert.equal(canMt5SignalExpireBeforeExecution('ACTIVE'), false);
+  assert.equal(canMt5SignalExpireBeforeExecution('RISK_FREE'), false);
+
+  assert.equal(shouldRemoveOpenMt5JournalRecord('EXPIRED'), true);
+  assert.equal(shouldRemoveOpenMt5JournalRecord('CANCELLED'), true);
+  assert.equal(shouldRemoveOpenMt5JournalRecord('REJECTED'), true);
+  assert.equal(shouldRemoveOpenMt5JournalRecord('ACTIVE'), false);
+  assert.equal(shouldRemoveOpenMt5JournalRecord('RISK_FREE'), false);
 });
 
 test('MT5 entry timeframe selector accepts supported choices and can disable M1', () => {

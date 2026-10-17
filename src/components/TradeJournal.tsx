@@ -1,5 +1,16 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { BookOpen, Download, ImagePlus, Save, X } from 'lucide-react';
+import {
+  BookOpen,
+  CalendarDays,
+  ChevronLeft,
+  ChevronRight,
+  Download,
+  History,
+  ImagePlus,
+  LayoutDashboard,
+  Save,
+  X,
+} from 'lucide-react';
 import type { ChartTimeZone } from '../services/chartTime';
 import {
   filterTradeRecords,
@@ -170,6 +181,85 @@ function calculateTotalR(trades: JournalTradeRecord[]): number {
   ), 0);
 }
 
+type JournalView = 'overview' | 'calendar' | 'history';
+
+interface JournalPerformance {
+  completed: number;
+  winRate: number;
+  profitFactor: number | undefined;
+  averageWinLoss: number | undefined;
+  totalR: number;
+  realizedProfit: number;
+  realizedTradeCount: number;
+}
+
+export interface JournalCashSummary {
+  tradeCount: number;
+  realizedProfit: number;
+}
+
+export function calculateJournalCashSummary(trades: JournalTradeRecord[]): JournalCashSummary {
+  const realizedTrades = trades.filter((trade) => (
+    ['tp', 'sl', 'rf'].includes(trade.result)
+    && Number.isFinite(trade.realizedProfit)
+  ));
+  return {
+    tradeCount: realizedTrades.length,
+    realizedProfit: realizedTrades.reduce((total, trade) => total + (trade.realizedProfit ?? 0), 0),
+  };
+}
+
+function tradeResultR(trade: JournalTradeRecord): number | undefined {
+  return ['tp', 'sl', 'rf'].includes(trade.result)
+    ? calculateHalfAtOneRResult(trade.result as TradeResult, trade.rewardRisk)
+    : undefined;
+}
+
+export function calculateJournalPerformance(trades: JournalTradeRecord[]): JournalPerformance {
+  const completed = trades.filter((trade) => tradeResultR(trade) !== undefined);
+  const values = completed.map((trade) => tradeResultR(trade) ?? 0);
+  const wins = values.filter((value) => value > 0);
+  const losses = values.filter((value) => value < 0);
+  const grossWin = wins.reduce((total, value) => total + value, 0);
+  const grossLoss = Math.abs(losses.reduce((total, value) => total + value, 0));
+  const realized = completed.filter((trade) => Number.isFinite(trade.realizedProfit));
+  return {
+    completed: completed.length,
+    winRate: completed.length > 0 ? (wins.length / completed.length) * 100 : 0,
+    profitFactor: grossLoss > 0 ? grossWin / grossLoss : grossWin > 0 ? Infinity : undefined,
+    averageWinLoss: wins.length > 0 && losses.length > 0
+      ? (grossWin / wins.length) / (grossLoss / losses.length)
+      : undefined,
+    totalR: values.reduce((total, value) => total + value, 0),
+    realizedProfit: realized.reduce((total, trade) => total + (trade.realizedProfit ?? 0), 0),
+    realizedTradeCount: realized.length,
+  };
+}
+
+export function journalDateKey(time: number, timeZone: ChartTimeZone): string {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(new Date(time * 1000));
+  const value = (type: Intl.DateTimeFormatPartTypes) => parts.find((part) => part.type === type)?.value ?? '';
+  return `${value('year')}-${value('month')}-${value('day')}`;
+}
+
+function formatMoney(value: number): string {
+  return `${value >= 0 ? '+' : '-'}$${Math.abs(value).toLocaleString('en-US', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  })}`;
+}
+
+function formatMetric(value: number | undefined): string {
+  if (value === undefined) return '—';
+  if (value === Infinity) return '∞';
+  return value.toFixed(2);
+}
+
 function downloadBlob(blob: Blob, filename: string): void {
   const url = URL.createObjectURL(blob);
   const link = document.createElement('a');
@@ -320,7 +410,13 @@ export function renderHistoricalTradeSnapshot(
 export const TradeJournal: React.FC<TradeJournalProps> = ({ records, timeZone, onClose }) => {
   const screenshotBackfillAttemptedRef = React.useRef(new Set<string>());
   const screenshotBackfillRunningRef = React.useRef(false);
+  const calendarInitializedRef = React.useRef(false);
   const [trades, setTrades] = useState<JournalTradeRecord[]>(records);
+  const [activeView, setActiveView] = useState<JournalView>('overview');
+  const [calendarMonth, setCalendarMonth] = useState(() => {
+    const now = new Date();
+    return { year: now.getUTCFullYear(), month: now.getUTCMonth() + 1 };
+  });
   const [selectedId, setSelectedId] = useState<string | null>(records[0]?.id ?? null);
   const [resultFilter, setResultFilter] = useState<'ALL' | JournalTradeRecord['result']>('ALL');
   const [timeframeFilter, setTimeframeFilter] = useState<TradeRecordFilters['timeframes']>('ALL');
@@ -563,6 +659,51 @@ export const TradeJournal: React.FC<TradeJournalProps> = ({ records, timeZone, o
   }), [filteredTrades]);
   const accuracy = completedTrades.length > 0 ? Math.round((counts.tp * 10_000) / completedTrades.length) / 100 : 0;
   const totalR = calculateTotalR(completedTrades);
+  const performance = useMemo(() => calculateJournalPerformance(filteredTrades), [filteredTrades]);
+  const runningTrades = useMemo(
+    () => filteredTrades.filter((trade) => trade.result === 'open' || trade.result === 'risk-free'),
+    [filteredTrades],
+  );
+  const tradesByDate = useMemo(() => {
+    const grouped = new Map<string, JournalTradeRecord[]>();
+    for (const trade of filteredTrades) {
+      const key = journalDateKey(trade.completedAt, timeZone);
+      const group = grouped.get(key) ?? [];
+      group.push(trade);
+      grouped.set(key, group);
+    }
+    return grouped;
+  }, [filteredTrades, timeZone]);
+  const calendarCashTradesByDate = useMemo(() => {
+    const grouped = new Map<string, JournalTradeRecord[]>();
+    for (const trade of filteredTrades) {
+      if (!['tp', 'sl', 'rf'].includes(trade.result) || !Number.isFinite(trade.realizedProfit)) continue;
+      const key = journalDateKey(trade.completedAt, timeZone);
+      const group = grouped.get(key) ?? [];
+      group.push(trade);
+      grouped.set(key, group);
+    }
+    return grouped;
+  }, [filteredTrades, timeZone]);
+  const calendarCells = useMemo(() => {
+    const firstWeekday = (new Date(Date.UTC(calendarMonth.year, calendarMonth.month - 1, 1)).getUTCDay() + 6) % 7;
+    const dayCount = new Date(Date.UTC(calendarMonth.year, calendarMonth.month, 0)).getUTCDate();
+    return [
+      ...Array.from({ length: firstWeekday }, () => undefined),
+      ...Array.from({ length: dayCount }, (_, index) => index + 1),
+    ];
+  }, [calendarMonth]);
+  const calendarMonthLabel = useMemo(() => new Intl.DateTimeFormat('en-US', {
+    month: 'long', year: 'numeric', timeZone: 'UTC',
+  }).format(new Date(Date.UTC(calendarMonth.year, calendarMonth.month - 1, 1))), [calendarMonth]);
+
+  useEffect(() => {
+    if (calendarInitializedRef.current || trades.length === 0) return;
+    const latestKey = journalDateKey(trades[0].completedAt, timeZone);
+    const [year, month] = latestKey.split('-').map(Number);
+    if (Number.isFinite(year) && Number.isFinite(month)) setCalendarMonth({ year, month });
+    calendarInitializedRef.current = true;
+  }, [timeZone, trades]);
 
   const saveTrade = async () => {
     if (!selectedTrade) return;
@@ -747,19 +888,20 @@ export const TradeJournal: React.FC<TradeJournalProps> = ({ records, timeZone, o
         </div>
       </div>
 
-      <div className="grid shrink-0 grid-cols-6 gap-2 border-b border-slate-200 bg-white p-2">
-        {[
-          ['TOTAL', filteredTrades.length, 'text-slate-800'],
-          ['TP', counts.tp, 'text-emerald-700'],
-          ['SL', counts.sl, 'text-rose-700'],
-          ['RISK FREE', counts.rf, 'text-amber-600'],
-          ['ACCURACY', `${accuracy}%`, 'text-indigo-700'],
-          ['TOTAL R', `${totalR >= 0 ? '+' : ''}${totalR}R`, totalR >= 0 ? 'text-emerald-700' : 'text-rose-700'],
-        ].map(([label, value, color]) => (
-          <div key={String(label)} className="rounded border border-slate-200 bg-slate-50 px-2 py-1.5 text-center">
-            <div className="text-[8px] font-black uppercase text-slate-500">{label}</div>
-            <div className={`text-sm font-black ${color}`}>{value}</div>
-          </div>
+      <div className="flex shrink-0 items-center gap-1 border-b border-slate-200 bg-white px-3 pt-1.5">
+        {([
+          ['overview', 'OVERVIEW', LayoutDashboard],
+          ['calendar', 'CALENDAR', CalendarDays],
+          ['history', 'HISTORY', History],
+        ] as const).map(([view, label, Icon]) => (
+          <button key={view} type="button" onClick={() => setActiveView(view)}
+            className={`flex items-center gap-1 border-b-2 px-3 py-1.5 text-[9px] font-black transition ${
+              activeView === view
+                ? 'border-indigo-600 text-indigo-700'
+                : 'border-transparent text-slate-500 hover:text-slate-800'
+            }`}>
+            <Icon className="h-3 w-3" /> {label}
+          </button>
         ))}
       </div>
 
@@ -812,14 +954,166 @@ export const TradeJournal: React.FC<TradeJournalProps> = ({ records, timeZone, o
         }} className="rounded border border-slate-200 bg-slate-50 px-2 py-1 text-[9px] font-black text-slate-600 hover:bg-slate-100">RESET</button>
       </div>
 
-      <div className="flex min-h-0 flex-1">
+      {activeView === 'overview' && (
+        <div className="min-h-0 flex-1 overflow-auto bg-slate-100 p-3">
+          <section className="mb-3">
+            <div className="mb-1.5 flex items-center justify-between">
+              <h3 className="text-[11px] font-black uppercase text-slate-800">Running trades</h3>
+              <button type="button" onClick={() => setActiveView('history')}
+                className="rounded border border-indigo-200 bg-indigo-50 px-2 py-1 text-[8px] font-black text-indigo-700">
+                VIEW ALL
+              </button>
+            </div>
+            {runningTrades.length > 0 ? (
+              <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+                {runningTrades.map((trade) => (
+                  <button key={trade.id} type="button" onClick={() => { setSelectedId(trade.id); setActiveView('history'); }}
+                    className="rounded-lg border border-slate-200 bg-slate-900 p-3 text-left text-white shadow-sm">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className={`rounded px-1.5 py-0.5 text-[8px] font-black ${
+                        trade.direction === 'bullish' ? 'bg-emerald-600' : 'bg-rose-600'
+                      }`}>{trade.direction === 'bullish' ? 'BUY' : 'SELL'}</span>
+                      <span className="text-[8px] font-bold text-slate-400">{trade.result === 'risk-free' ? 'RF ACTIVE' : 'OPEN'}</span>
+                    </div>
+                    <div className="mt-2 text-xs font-black">XAUUSD · {trade.zoneName}</div>
+                    <div className="mt-1 text-[8px] text-slate-400">
+                      Entry {formatPrice(trade.entry)}{trade.volume ? ` · ${trade.volume} lot` : ''}
+                    </div>
+                  </button>
+                ))}
+              </div>
+            ) : (
+              <div className="rounded-lg border border-dashed border-slate-300 bg-white p-4 text-center text-[9px] font-semibold text-slate-400">
+                No running trades match the current filters.
+              </div>
+            )}
+          </section>
+
+          <section className="mb-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-5">
+            {[
+              ['REALIZED P/L', performance.realizedTradeCount > 0 ? formatMoney(performance.realizedProfit) : '—', performance.realizedProfit >= 0 ? 'text-emerald-700' : 'text-rose-700', performance.realizedTradeCount > 0 ? `${performance.realizedTradeCount} MT5 trades` : 'Broker cash data unavailable'],
+              ['PROFIT FACTOR', formatMetric(performance.profitFactor), 'text-slate-900', 'Calculated from normalized R'],
+              ['WIN RATE', `${performance.winRate.toFixed(2)}%`, 'text-indigo-700', `${performance.completed} completed trades`],
+              ['AVG WIN / AVG LOSS', formatMetric(performance.averageWinLoss), 'text-slate-900', 'Calculated from normalized R'],
+              ['TOTAL TRADES', String(filteredTrades.length), 'text-slate-900', `${runningTrades.length} currently running`],
+            ].map(([label, value, color, hint]) => (
+              <div key={label} className="rounded-lg border border-slate-200 bg-white p-3 shadow-sm">
+                <div className="text-[8px] font-black uppercase tracking-wide text-slate-500">{label}</div>
+                <div className={`mt-2 text-xl font-black ${color}`}>{value}</div>
+                <div className="mt-1 text-[7px] font-semibold text-slate-400">{hint}</div>
+              </div>
+            ))}
+          </section>
+
+          <section className="mb-3 grid grid-cols-2 gap-2 md:grid-cols-5">
+            {[
+              ['TP', counts.tp, 'text-emerald-700', 'bg-emerald-50 border-emerald-200'],
+              ['SL', counts.sl, 'text-rose-700', 'bg-rose-50 border-rose-200'],
+              ['RISK FREE', counts.rf, 'text-amber-700', 'bg-amber-50 border-amber-200'],
+              ['TOTAL R', `${performance.totalR >= 0 ? '+' : ''}${performance.totalR.toFixed(2)}R`, performance.totalR >= 0 ? 'text-emerald-700' : 'text-rose-700', 'bg-white border-slate-200'],
+              ['ACCURACY', `${accuracy}%`, 'text-indigo-700', 'bg-indigo-50 border-indigo-200'],
+            ].map(([label, value, color, background]) => (
+              <div key={label} className={`rounded-lg border p-2 text-center ${background}`}>
+                <div className="text-[7px] font-black uppercase text-slate-500">{label}</div>
+                <div className={`mt-1 text-base font-black ${color}`}>{value}</div>
+              </div>
+            ))}
+          </section>
+
+          <section className="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
+            <div className="border-b border-slate-200 px-3 py-2 text-[9px] font-black uppercase text-slate-700">Recent trades</div>
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[760px] text-left text-[9px]">
+                <thead className="bg-slate-50 uppercase text-slate-500"><tr>
+                  {['Date', 'Setup', 'Side', 'Lots', 'Entry', 'Exit', 'Net result'].map((heading) => <th key={heading} className="px-3 py-2">{heading}</th>)}
+                </tr></thead>
+                <tbody>{filteredTrades.slice(0, 8).map((trade) => {
+                  const resultR = tradeResultR(trade);
+                  return <tr key={trade.id} onClick={() => { setSelectedId(trade.id); setActiveView('history'); }} className="cursor-pointer border-t border-slate-100 hover:bg-indigo-50">
+                    <td className="whitespace-nowrap px-3 py-2">{formatJournalDate(trade.completedAt, timeZone)}</td>
+                    <td className="px-3 py-2 font-black">{displayTimeframe(trade.zoneTimeframe)} {trade.zoneName}</td>
+                    <td className={`px-3 py-2 font-black ${trade.direction === 'bullish' ? 'text-emerald-700' : 'text-rose-700'}`}>{trade.direction === 'bullish' ? 'BUY' : 'SELL'}</td>
+                    <td className="px-3 py-2">{trade.volume ?? '—'}</td>
+                    <td className="px-3 py-2">{formatPrice(trade.entry)}</td>
+                    <td className="px-3 py-2">{trade.closePrice === undefined ? '—' : formatPrice(trade.closePrice)}</td>
+                    <td className={`px-3 py-2 font-black ${(trade.realizedProfit ?? resultR ?? 0) >= 0 ? 'text-emerald-700' : 'text-rose-700'}`}>
+                      {Number.isFinite(trade.realizedProfit) ? formatMoney(trade.realizedProfit ?? 0) : resultR === undefined ? RESULT_LABELS[trade.result] : `${resultR >= 0 ? '+' : ''}${resultR}R`}
+                    </td>
+                  </tr>;
+                })}</tbody>
+              </table>
+            </div>
+          </section>
+        </div>
+      )}
+
+      {activeView === 'calendar' && (
+        <div className="min-h-0 flex-1 overflow-auto bg-slate-100 p-3">
+          <div className="mb-2 flex items-center justify-between">
+            <div>
+              <h3 className="text-[11px] font-black uppercase text-slate-800">Trading calendar</h3>
+              <div className="text-[8px] font-semibold text-slate-500">Closed MT5 trades · actual broker P/L in USD</div>
+            </div>
+            <div className="flex items-center rounded border border-slate-200 bg-white">
+              <button type="button" onClick={() => setCalendarMonth((current) => current.month === 1
+                ? { year: current.year - 1, month: 12 } : { ...current, month: current.month - 1 })}
+                className="p-1.5 text-slate-500 hover:text-indigo-700"><ChevronLeft className="h-3.5 w-3.5" /></button>
+              <span className="min-w-28 px-2 text-center text-[9px] font-black text-slate-700">{calendarMonthLabel}</span>
+              <button type="button" onClick={() => setCalendarMonth((current) => current.month === 12
+                ? { year: current.year + 1, month: 1 } : { ...current, month: current.month + 1 })}
+                className="p-1.5 text-slate-500 hover:text-indigo-700"><ChevronRight className="h-3.5 w-3.5" /></button>
+            </div>
+          </div>
+          <div className="min-w-[720px] overflow-hidden rounded-lg border border-slate-300 bg-white shadow-sm">
+            <div className="grid grid-cols-7 border-b border-slate-200 bg-slate-50">
+              {['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'].map((day) => (
+                <div key={day} className="px-2 py-2 text-center text-[8px] font-black uppercase text-slate-600">{day}</div>
+              ))}
+            </div>
+            <div className="grid grid-cols-7">
+              {calendarCells.map((day, index) => {
+                if (day === undefined) return <div key={`empty-${index}`} className="min-h-24 border-b border-r border-slate-100 bg-slate-50/70" />;
+                const key = `${calendarMonth.year}-${String(calendarMonth.month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+                const cashTrades = calendarCashTradesByDate.get(key) ?? [];
+                const cashSummary = calculateJournalCashSummary(cashTrades);
+                const positive = cashSummary.realizedProfit > 0;
+                const negative = cashSummary.realizedProfit < 0;
+                return <button key={key} type="button" disabled={cashSummary.tradeCount === 0}
+                  onClick={() => { setDatePeriod('DAY'); setDateFilter(key); setActiveView('history'); }}
+                  className={`min-h-24 border-b border-r p-2 text-left transition ${
+                    positive ? 'border-emerald-200 bg-emerald-50 hover:bg-emerald-100'
+                      : negative ? 'border-rose-200 bg-rose-50 hover:bg-rose-100'
+                        : 'border-slate-100 bg-white disabled:bg-slate-50/40'
+                  }`}>
+                  <div className="text-[10px] font-black text-slate-700">{String(day).padStart(2, '0')}</div>
+                  {cashSummary.tradeCount > 0 && <div className="mt-8">
+                    <div className={`text-[10px] font-black ${positive ? 'text-emerald-700' : negative ? 'text-rose-700' : 'text-slate-600'}`}>
+                      {formatMoney(cashSummary.realizedProfit)}
+                    </div>
+                    <div className="mt-1 text-[8px] font-semibold text-slate-500">{cashSummary.tradeCount} MT5 trade{cashSummary.tradeCount === 1 ? '' : 's'}</div>
+                  </div>}
+                </button>;
+              })}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {activeView === 'history' && <div className="flex min-h-0 flex-1">
         <div className="min-w-0 flex-1 overflow-auto border-r border-slate-300 bg-white">
-          <table className="min-w-[1220px] w-full border-collapse text-center text-[9px]">
+          <table className="min-w-[1540px] w-full border-collapse text-center text-[9px]">
             <thead className="sticky top-0 z-10 bg-slate-600 uppercase text-white">
-              <tr>{['#', 'Date', 'Time', 'Session', 'Zone TF', 'Zone', 'Side', 'Engulfing', 'Volume', 'Entry', 'SL', 'TP', 'R:R', 'Result'].map((heading) => <th key={heading} className="whitespace-nowrap px-2 py-1.5">{heading}</th>)}</tr>
+              <tr>{['#', 'Date', 'Time', 'Session', 'Zone TF', 'Zone', 'Side', 'Engulfing', 'Volume logic', 'Lots', 'Entry', 'Exit', 'SL', 'TP', 'R:R', 'Net P/L', 'Result'].map((heading) => <th key={heading} className="whitespace-nowrap px-2 py-1.5">{heading}</th>)}</tr>
             </thead>
             <tbody>
-              {filteredTrades.map((trade, index) => (
+              {filteredTrades.map((trade, index) => <React.Fragment key={trade.id}>
+                {(index === 0 || journalDateKey(filteredTrades[index - 1].completedAt, timeZone) !== journalDateKey(trade.completedAt, timeZone)) && (
+                  <tr className="border-t-2 border-slate-300 bg-slate-100 text-left text-slate-700">
+                    <td colSpan={17} className="px-3 py-1.5 font-black">
+                      {formatJournalDate(trade.completedAt, timeZone)} · {tradesByDate.get(journalDateKey(trade.completedAt, timeZone))?.length ?? 0} trade{(tradesByDate.get(journalDateKey(trade.completedAt, timeZone))?.length ?? 0) === 1 ? '' : 's'}
+                    </td>
+                  </tr>
+                )}
                 <tr key={trade.id} onClick={() => setSelectedId(trade.id)} className={`cursor-pointer border-t border-slate-200 ${selectedId === trade.id ? 'bg-indigo-100' : 'odd:bg-white even:bg-slate-50 hover:bg-indigo-50'}`}>
                   <td className="px-2 py-1.5 text-slate-500">{index + 1}</td>
                   <td className="whitespace-nowrap px-2 py-1.5">{formatJournalDate(trade.completedAt, timeZone)}</td>
@@ -830,12 +1124,18 @@ export const TradeJournal: React.FC<TradeJournalProps> = ({ records, timeZone, o
                   <td className={`px-2 py-1.5 font-black ${trade.direction === 'bullish' ? 'text-emerald-700' : 'text-rose-700'}`}>{trade.direction === 'bullish' ? 'BUY' : 'SELL'}</td>
                   <td className="whitespace-nowrap px-2 py-1.5">{displayTimeframe(trade.signalTimeframe)} {trade.engulfingType}</td>
                   <td title={volumeValues(trade)} className={`whitespace-nowrap px-2 py-1.5 font-black ${volumeStatus(trade) === 'best' ? 'text-emerald-700' : volumeStatus(trade) === 'valid' ? 'text-blue-700' : volumeStatus(trade) === 'failed' ? 'text-rose-700' : 'text-slate-500'}`}>{VOLUME_STATUS_LABELS[volumeStatus(trade)]}</td>
-                  <td className="px-2 py-1.5">{formatPrice(trade.entry)}</td><td className="px-2 py-1.5">{formatPrice(trade.stopLoss)}</td><td className="px-2 py-1.5">{formatPrice(trade.takeProfit)}</td>
+                  <td className="px-2 py-1.5">{trade.volume ?? '—'}</td>
+                  <td className="px-2 py-1.5">{formatPrice(trade.entry)}</td>
+                  <td className="px-2 py-1.5">{trade.closePrice === undefined ? '—' : formatPrice(trade.closePrice)}</td>
+                  <td className="px-2 py-1.5">{formatPrice(trade.stopLoss)}</td><td className="px-2 py-1.5">{formatPrice(trade.takeProfit)}</td>
                   <td className="px-2 py-1.5 font-bold">1:{trade.rewardRisk}</td>
+                  <td className={`px-2 py-1.5 font-black ${(trade.realizedProfit ?? tradeResultR(trade) ?? 0) >= 0 ? 'text-emerald-700' : 'text-rose-700'}`}>
+                    {Number.isFinite(trade.realizedProfit) ? formatMoney(trade.realizedProfit ?? 0) : tradeResultR(trade) === undefined ? '—' : `${(tradeResultR(trade) ?? 0) >= 0 ? '+' : ''}${tradeResultR(trade)}R`}
+                  </td>
                   <td className={`px-2 py-1.5 font-black ${trade.result === 'tp' ? 'text-emerald-700' : trade.result === 'sl' ? 'text-rose-700' : trade.result === 'open' ? 'text-blue-700' : 'text-amber-600'}`}>{RESULT_LABELS[trade.result]}</td>
                 </tr>
-              ))}
-              {filteredTrades.length === 0 && <tr><td colSpan={14} className="p-6 text-slate-400">No journal trades match these filters.</td></tr>}
+              </React.Fragment>)}
+              {filteredTrades.length === 0 && <tr><td colSpan={17} className="p-6 text-slate-400">No journal trades match these filters.</td></tr>}
             </tbody>
           </table>
         </div>
@@ -898,7 +1198,7 @@ export const TradeJournal: React.FC<TradeJournalProps> = ({ records, timeZone, o
             </button>
           </> : <div className="grid h-full place-items-center text-center text-xs text-slate-400">Select a trade to add your review.</div>}
         </aside>
-      </div>
+      </div>}
     </div>
   );
 };

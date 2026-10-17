@@ -61,6 +61,19 @@ export function calculateXauUsdLotSize(cashRisk: number, stopLossPips: number): 
 export type Mt5SignalStatus = 'QUEUED' | 'CLAIMED' | 'PLACED' | 'ACTIVE'
   | 'RISK_FREE' | 'TP' | 'SL' | 'RF' | 'CANCELLED' | 'REJECTED' | 'EXPIRED' | 'SIMULATED';
 
+const MT5_PRE_EXECUTION_STATUSES = new Set<Mt5SignalStatus>(['QUEUED', 'CLAIMED', 'PLACED']);
+const MT5_TERMINAL_WITHOUT_RESULT_STATUSES = new Set<Mt5SignalStatus>([
+  'CANCELLED', 'REJECTED', 'EXPIRED', 'SIMULATED',
+]);
+
+export function canMt5SignalExpireBeforeExecution(status: Mt5SignalStatus): boolean {
+  return MT5_PRE_EXECUTION_STATUSES.has(status);
+}
+
+export function shouldRemoveOpenMt5JournalRecord(status: Mt5SignalStatus): boolean {
+  return MT5_TERMINAL_WITHOUT_RESULT_STATUSES.has(status);
+}
+
 export interface Mt5AutomationConfig {
   enabled: boolean;
   dryRun: boolean;
