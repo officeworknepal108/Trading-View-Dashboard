@@ -2492,6 +2492,7 @@ export function findIssFiveWaves(
           addInternalLine('internal-choch', 'bearish', protectedPoint, {
             index, time: candle.time, price: protectedPoint.price,
           }, internalChochLabel(chochContext));
+          supersedePendingMappedConfirmationZone(pattern.wave3, candle.time + sourceBarSeconds);
           if (lastTjl1) activateInternalZone(lastTjl1, 'Internal QML', false, candle.time);
           if (lastTjl2) activateInternalZone(lastTjl2, 'Internal SBR', false, candle.time);
           internalMarkers.push(makeMarker(candles[newProtectedHigh.index], 'I PH', 'aboveBar', '#be123c'));
@@ -2551,6 +2552,7 @@ export function findIssFiveWaves(
           addInternalLine('internal-choch', 'bullish', protectedPoint, {
             index, time: candle.time, price: protectedPoint.price,
           }, internalChochLabel(chochContext));
+          supersedePendingMappedConfirmationZone(pattern.wave3, candle.time + sourceBarSeconds);
           if (lastTjl1) activateInternalZone(lastTjl1, 'Internal QML', true, candle.time);
           if (lastTjl2) activateInternalZone(lastTjl2, 'Internal RBS', true, candle.time);
           internalMarkers.push(makeMarker(candles[newProtectedLow.index], 'I PL', 'belowBar', '#047857'));

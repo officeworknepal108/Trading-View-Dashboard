@@ -2763,9 +2763,17 @@ export const OandaProChart: React.FC = () => {
       badges.add(row.setupId);
       mtfBadgesByZone.set(row.higherTimeframeZoneId, badges);
     }
-    const rightEdge = Math.max(0, host.clientWidth - 72);
-    for (const zone of visualZonesRef.current) {
-      const visible = displayZoneMembers(zone).some((member) => (
+    const unfinishedEntryZoneIds = new Set<string>();
+    for (const [zoneId, trade] of directZoneTrades) {
+      if (!isCompletedTrade(trade)) unfinishedEntryZoneIds.add(zoneId);
+    }
+    for (const row of mtfRows) {
+      if (row.higherTimeframeZoneId && row.trade && !isCompletedTrade(row.trade)) {
+        unfinishedEntryZoneIds.add(row.higherTimeframeZoneId);
+      }
+    }
+    const isVisualZoneVisible = (zone: DisplayStructureZone) => (
+      displayZoneMembers(zone).some((member) => (
         member.category === 'mg'
           ? showMgZonesRef.current
           : member.category === 'iss'
@@ -2773,9 +2781,28 @@ export const OandaProChart: React.FC = () => {
             : member.category === 'internal'
               ? showInternalRef.current
               : showSupplyDemandRef.current
-      ));
-      if (!visible) continue;
-      if (!zone.active && !showInvalidZonesRef.current) continue;
+      )) && (zone.active || showInvalidZonesRef.current)
+    );
+    let latestMeasuredZoneId: string | undefined;
+    let latestMeasuredTapTime = -Infinity;
+    for (const zone of visualZonesRef.current) {
+      if (!isVisualZoneVisible(zone) || !measureTradeableFibZone(zone)) continue;
+      const tapTime = Math.max(...displayZoneMembers(zone)
+        .map((member) => member.tapTime ?? -Infinity));
+      if (tapTime > latestMeasuredTapTime) {
+        latestMeasuredTapTime = tapTime;
+        latestMeasuredZoneId = zone.id;
+      }
+    }
+    const rightEdge = Math.max(0, host.clientWidth - 72);
+    const occupiedZoneLabelRects: Array<{
+      left: number;
+      right: number;
+      top: number;
+      bottom: number;
+    }> = [];
+    for (const zone of visualZonesRef.current) {
+      if (!isVisualZoneVisible(zone)) continue;
       const rawLeft = chart.timeScale().timeToCoordinate(zone.startTime as UTCTimestamp);
       const rawRight = chart.timeScale().timeToCoordinate(zone.endTime as UTCTimestamp);
       const top = series.priceToCoordinate(zone.top);
@@ -2822,7 +2849,11 @@ export const OandaProChart: React.FC = () => {
       box.style.borderTop = `1px solid ${border}`;
       box.style.borderBottom = `1px solid ${border}`;
 
-      const measurement = measureTradeableFibZone(zone);
+      const retainMeasurementForEntry = displayZoneMembers(zone)
+        .some((member) => unfinishedEntryZoneIds.has(member.id));
+      const measurement = zone.id === latestMeasuredZoneId || retainMeasurementForEntry
+        ? measureTradeableFibZone(zone)
+        : undefined;
       if (measurement) {
         const midlineCoordinate = series.priceToCoordinate(measurement.midline);
         if (midlineCoordinate !== null) {
@@ -2864,10 +2895,9 @@ export const OandaProChart: React.FC = () => {
           ? `PENDING ${confirmationLabel} ${zone.isBuy ? 'ABOVE' : 'BELOW'}`
           : 'VALID');
       } else if (zone.chochClass) {
-        const chochClass = zone.chochClass === 'pending'
-          ? `WAIT ${confirmationLabel} CLOSE ${zone.isBuy ? 'ABOVE' : 'BELOW'}`
-          : zone.chochClass.toUpperCase();
-        labelDetails.push(isInternal ? 'INT CHoCH' : 'CHoCH', chochClass);
+        if (zone.chochClass !== 'pending') {
+          labelDetails.push(zone.chochClass.toUpperCase());
+        }
       } else if (pending) {
         labelDetails.push('PENDING');
       }
@@ -2889,10 +2919,41 @@ export const OandaProChart: React.FC = () => {
       if (mtfBadges.length > 0) {
         labelDetails.push(mtfBadges.join(' / '));
       }
+      const completeLabelText = [name, ...labelDetails].join(' · ');
+      const estimatedLabelWidth = Math.max(36, completeLabelText.length * 4.6);
+      const labelRight = right - 4;
+      const labelLeft = Math.max(0, labelRight - estimatedLabelWidth);
+      const preferredLabelTop = zoneTopCoordinate + 2;
+      let labelTop = preferredLabelTop;
+      for (let step = 0; step <= 8; step += 1) {
+        const offsets = step === 0 ? [0] : [step * 12, step * -12];
+        const availableOffset = offsets.find((offset) => {
+          const candidateTop = preferredLabelTop + offset;
+          const candidateBottom = candidateTop + 12;
+          if (candidateTop < 0 || candidateBottom > host.clientHeight) return false;
+          return !occupiedZoneLabelRects.some((occupied) => (
+            labelLeft < occupied.right + 4
+            && labelRight > occupied.left - 4
+            && candidateTop < occupied.bottom + 2
+            && candidateBottom > occupied.top - 2
+          ));
+        });
+        if (availableOffset !== undefined) {
+          labelTop = preferredLabelTop + availableOffset;
+          break;
+        }
+      }
+      occupiedZoneLabelRects.push({
+        left: labelLeft,
+        right: labelRight,
+        top: labelTop,
+        bottom: labelTop + 12,
+      });
       label.style.position = 'absolute';
       label.style.right = '4px';
-      label.style.top = '2px';
+      label.style.top = `${labelTop - zoneTopCoordinate}px`;
       label.style.lineHeight = '12px';
+      label.style.whiteSpace = 'nowrap';
       label.style.color = inactive ? '#475569' : pending ? demand ? '#047857' : '#be123c' : isIss ? '#b45309' : isInternal ? '#6d28d9' : demand ? '#047857' : '#be123c';
       label.style.textAlign = 'right';
 
@@ -3315,7 +3376,7 @@ export const OandaProChart: React.FC = () => {
     // Swap the complete overlay in one operation so the browser does not
     // perform layout work for every individual zone, line, and label.
     layer.replaceChildren(fragment);
-  }, [displayCandles.length, granularity, latestCandle?.time, mtfRows]);
+  }, [directZoneTrades, displayCandles.length, granularity, latestCandle?.time, mtfRows]);
 
   redrawZonesRef.current = redrawZones;
 

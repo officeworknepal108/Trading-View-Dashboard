@@ -1426,6 +1426,10 @@ test('completed ISS delays internal TJLs until continuation and accepts both dir
   assert.equal(firstSbr?.chochClass, 'pending');
   assert.equal(firstDt?.chochClass, 'pending');
   assert.equal(firstQml?.tradeable, false);
+  const replacedIssLevel3 = firstLegChoch.zones.find((item) => item.name === 'ISS L3');
+  assert.equal(replacedIssLevel3?.status, 'superseded',
+    'an internal CHoCH must replace its still-pending ISS Level 3 with Internal QML');
+  assert.equal(replacedIssLevel3?.active, false);
   assert.ok(firstLegChoch.lines.some((line) => line.label === 'INT CHoCH · WAIT'));
   assert.ok(firstLegChoch.lines.some((line) => (
     line.type === 'internal-choch' && line.fromTime === 1400 && line.toTime === 1700
