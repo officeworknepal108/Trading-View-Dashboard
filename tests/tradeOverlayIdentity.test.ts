@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
+  hasIdentifiedDirectZoneLabel,
   isDirectTradeOverlay,
   isTradeOverlayTerminated,
   isTradeOverlayVisibleOnTimeframe,
@@ -43,6 +44,14 @@ test('classifies only direct overlays for the Zone Table', () => {
   assert.equal(isDirectTradeOverlay('MTF:setup-42:100:10'), false);
   assert.equal(isDirectTradeOverlay('MT5:1', 'MTF:setup-42'), false);
   assert.equal(isDirectTradeOverlay('MT5:2', 'DIRECT:M15:zone-a'), true);
+});
+
+test('rejects retained direct trades whose originating zone label was lost', () => {
+  const id = 'DIRECT:zone-a:100:10';
+  assert.equal(hasIdentifiedDirectZoneLabel(id, undefined, 'SBR · CHART · 1:2'), true);
+  assert.equal(hasIdentifiedDirectZoneLabel(id, undefined, 'CHART · CHART · 1:2'), false);
+  assert.equal(hasIdentifiedDirectZoneLabel(id, undefined, undefined), false);
+  assert.equal(hasIdentifiedDirectZoneLabel('MTF:setup-42:100:10', undefined, undefined), true);
 });
 
 test('shows a trade drawing only on its engulfing entry timeframe', () => {

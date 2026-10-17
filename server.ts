@@ -40,6 +40,7 @@ import {
   getMtfTradeRule,
   isDeepDiscountTradeSignal,
   findDirectZoneReentrySignal,
+  isDaySwingFibEntryTimeframe,
   resolveDirectEntryPolicy,
   resolveZoneEngulfingSignal,
   timeframeWindowCutoff,
@@ -587,9 +588,10 @@ async function scanMt5AutomationSignals(): Promise<number> {
     let zones = applySwingFibConfluence(
       sourceCandles,
       structures[zoneTimeframe]?.zones ?? [],
-      swingFibMoves,
+      isDaySwingFibEntryTimeframe(zoneTimeframe) ? swingFibMoves : undefined,
     ).zones;
-    if (['M1', 'M5', 'M15', 'M30'].includes(zoneTimeframe)) {
+    if (isDaySwingFibEntryTimeframe(zoneTimeframe)
+      && ['M15', 'M30'].includes(zoneTimeframe)) {
       const dayFibMoves = buildDayFibs(sourceCandles);
       zones = applyDayFibConfluence(
         sourceCandles,
@@ -642,6 +644,7 @@ async function scanMt5AutomationSignals(): Promise<number> {
           candles: candles[signal.timeframe],
           timeframe: signal.timeframe,
           afterTime: trade.resolvedAt,
+          originalRiskFree: trade.riskFree,
         });
         if (reentrySignal) {
           const reentryPolicy = resolveDirectEntryPolicy({

@@ -24,6 +24,16 @@ export function isDirectTradeOverlay(id: string, setupId?: string): boolean {
   return resolveTradeOverlaySetupKey(id, setupId).startsWith('DIRECT:');
 }
 
+export function hasIdentifiedDirectZoneLabel(
+  id: string,
+  setupId: string | undefined,
+  label: string | undefined,
+): boolean {
+  if (!isDirectTradeOverlay(id, setupId)) return true;
+  const zoneLabel = label?.split(' · ')[0]?.trim();
+  return Boolean(zoneLabel && zoneLabel !== 'CHART' && zoneLabel !== 'OPEN CHART TRADE');
+}
+
 export function isTradeOverlayVisibleOnTimeframe(
   entryTimeframe: string | undefined,
   chartTimeframe: string,

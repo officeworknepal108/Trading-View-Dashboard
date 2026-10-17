@@ -10,6 +10,7 @@ import {
   getEngulfingVolumeStatus,
   getMtfTradeRule,
   isDeepDiscountTradeSignal,
+  isDaySwingFibEntryTimeframe,
   isZoneEngulfingFibQualified,
   measureTradeableFibZone,
   resolveZoneEngulfingSignal,
@@ -44,19 +45,42 @@ test('a valid zone accepts one fresh engulfing sequence after a full SL', () => 
   ];
 
   assert.deepEqual(findDirectZoneReentrySignal({
-    zone, candles, timeframe: 'M1', afterTime: 60,
+    zone, candles, timeframe: 'M1', afterTime: 60, originalRiskFree: 110,
   }), {
     type: 'T1', direction: 'bullish', time: 180, candleCount: 2, timeframe: 'M1',
   });
   assert.equal(findDirectZoneReentrySignal({
-    zone, candles, timeframe: 'M1', afterTime: 120,
+    zone, candles, timeframe: 'M1', afterTime: 120, originalRiskFree: 110,
   }), undefined, 'the retry cannot reuse the SL candle as part of its pattern');
   assert.equal(findDirectZoneReentrySignal({
     zone: { ...zone, active: false, status: 'invalidated' },
     candles,
     timeframe: 'M1',
     afterTime: 60,
+    originalRiskFree: 110,
   }), undefined, 'an invalidated zone cannot re-enter');
+});
+
+test('a direct-zone re-entry is cancelled after price touches the original 1R level', () => {
+  const zone: StructureZone = {
+    id: 'retry-cutoff-db', name: 'DB', category: 'mg', isBuy: true,
+    startTime: 0, endTime: 600, bottom: 99, top: 101,
+    active: true, status: 'valid', tradeable: true,
+  };
+  const candles: StructureCandle[] = [
+    { time: 60, open: 101, high: 102, low: 98, close: 99, complete: true },
+    { time: 120, open: 108, high: 110, low: 107, close: 109, complete: true },
+    { time: 180, open: 104, high: 105, low: 99, close: 100, complete: true },
+    { time: 240, open: 100, high: 108, low: 100, close: 107, complete: true },
+  ];
+
+  assert.equal(findDirectZoneReentrySignal({
+    zone,
+    candles,
+    timeframe: 'M1',
+    afterTime: 60,
+    originalRiskFree: 110,
+  }), undefined);
 });
 
 test('engulfing signals cannot resolve without their matching A+ FIB qualification', () => {
@@ -103,6 +127,45 @@ test('engulfing signals cannot resolve without their matching A+ FIB qualificati
   assert.equal(isZoneEngulfingFibQualified(inherentDt, 'structure'), true);
   assert.equal(resolveZoneEngulfingSignal(inherentDt, 'M15')?.type, 'T3');
   assert.equal(isDeepDiscountTradeSignal(inherentDt, resolveZoneEngulfingSignal(inherentDt, 'M15')!), true);
+});
+
+test('Day FIB and Swing FIB entries are restricted to 15m and higher timeframes', () => {
+  assert.equal(isDaySwingFibEntryTimeframe('M1'), false);
+  assert.equal(isDaySwingFibEntryTimeframe('M5'), false);
+  assert.equal(isDaySwingFibEntryTimeframe('M15'), true);
+  assert.equal(isDaySwingFibEntryTimeframe('H4'), true);
+
+  const swingZone: StructureZone = {
+    id: 'swing-timeframe-gate', name: 'SBR', category: 'mg', isBuy: false,
+    startTime: 0, endTime: 1800, bottom: 100, top: 110,
+    active: true, status: 'valid', tradeable: true,
+    swingFibStatus: 'a-plus', swingFibBand: '0.5-0.618',
+    swingEngulfingType: 'T1', swingEngulfingDirection: 'bearish',
+    swingEngulfingTime: 900, swingEngulfingCandleCount: 2,
+  };
+  assert.equal(resolveZoneEngulfingSignal(swingZone, 'M1'), undefined);
+  assert.equal(resolveZoneEngulfingSignal(swingZone, 'M5'), undefined);
+  assert.equal(resolveZoneEngulfingSignal(swingZone, 'M15')?.type, 'T1');
+
+  const dayZone: StructureZone = {
+    ...swingZone,
+    id: 'day-timeframe-gate',
+    swingFibStatus: undefined,
+    swingFibBand: undefined,
+    swingEngulfingType: undefined,
+    swingEngulfingDirection: undefined,
+    swingEngulfingTime: undefined,
+    swingEngulfingCandleCount: undefined,
+    dayFibStatus: 'a-plus',
+    dayFibBand: '0.71-0.79',
+    dayEngulfingType: 'T3',
+    dayEngulfingDirection: 'bearish',
+    dayEngulfingTime: 900,
+    dayEngulfingCandleCount: 3,
+  };
+  assert.equal(resolveZoneEngulfingSignal(dayZone, 'M1'), undefined);
+  assert.equal(resolveZoneEngulfingSignal(dayZone, 'M5'), undefined);
+  assert.equal(resolveZoneEngulfingSignal(dayZone, 'M15')?.type, 'T3');
 });
 
 test('tradeable FIB-aligned zones expose their full pip width and exact midline', () => {

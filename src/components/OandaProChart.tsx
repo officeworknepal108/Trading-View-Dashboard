@@ -51,6 +51,7 @@ import {
   getMtfTradeRule,
   getEngulfingVolumeStatus,
   findDirectZoneReentrySignal,
+  isDaySwingFibEntryTimeframe,
   isZoneEngulfingFibQualified,
   isDeepDiscountTradeSignal,
   measureTradeableFibZone,
@@ -74,6 +75,7 @@ import {
 } from '../services/tradeRecordFilters';
 import { deduplicateTradeRecords } from '../services/tradeRecordDeduplication';
 import {
+  hasIdentifiedDirectZoneLabel,
   isDirectTradeOverlay,
   isTradeOverlayTerminated,
   isTradeOverlayVisibleOnTimeframe,
@@ -297,6 +299,7 @@ function loadStoredRetainedChartTrades(): Map<string, TradeOverlay> {
       && Number.isFinite(overlay.trade.calculatedAt) && overlay.trade.result === undefined
       && overlay.trade.signal
       && (overlay.trade.signal.direction === 'bullish' || overlay.trade.signal.direction === 'bearish')
+      && hasIdentifiedDirectZoneLabel(overlay.id, overlay.setupId, overlay.label)
     )).map((overlay) => [overlay.id, {
       ...overlay,
       // Migrate older saved drawings that used the source-zone chart instead
@@ -1700,14 +1703,16 @@ export const OandaProChart: React.FC = () => {
   const swingFibConfluence = useMemo(() => applySwingFibConfluence(
     displayCandles,
     structure.zones,
-    ['M1', 'M5', 'M15', 'M30', 'H1'].includes(granularity)
+    isDaySwingFibEntryTimeframe(granularity)
+      && ['M15', 'M30', 'H1'].includes(granularity)
       ? swingFibMoves
       : undefined,
   ), [displayCandles, granularity, structure.zones, swingFibMoves]);
   const dayFibConfluence = useMemo(() => applyDayFibConfluence(
     displayCandles,
     swingFibConfluence.zones,
-    ['M1', 'M5', 'M15', 'M30'].includes(granularity)
+    isDaySwingFibEntryTimeframe(granularity)
+      && ['M15', 'M30'].includes(granularity)
       ? dayFibMoves[dayFibMoves.length - 1]
       : undefined,
   ), [dayFibMoves, displayCandles, granularity, swingFibConfluence.zones]);
@@ -1835,6 +1840,7 @@ export const OandaProChart: React.FC = () => {
           candles: sourceCandles,
           timeframe: setup.signal.timeframe,
           afterTime: trade.resolvedAt,
+          originalRiskFree: trade.riskFree,
         });
         if (reentrySignal) {
           const reentryPolicy = resolveDirectEntryPolicy({
@@ -2305,10 +2311,11 @@ export const OandaProChart: React.FC = () => {
           }
         }
       }
+      if (!setup) continue;
       addTrade(
         `DIRECT:${zoneId}:${trade.signal.time}:${trade.entry}`,
         trade,
-        `${setup ? executionZoneName(setup.zone) : 'CHART'} · CHART · 1:${trade.rewardRisk}`,
+        `${executionZoneName(setup.zone)} · CHART · 1:${trade.rewardRisk}`,
       );
     }
     // Reconstruct filled, unresolved direct trades from historical zones too.
@@ -2376,6 +2383,9 @@ export const OandaProChart: React.FC = () => {
   useEffect(() => {
     setRetainedChartTradeOverlays((existing) => {
       const next = new Map<string, TradeOverlay>(existing);
+      for (const [id, overlay] of next) {
+        if (!hasIdentifiedDirectZoneLabel(overlay.id, overlay.setupId, overlay.label)) next.delete(id);
+      }
       const liveBrokerSetupKeys = new Set(
         (mt5Status?.positions ?? []).flatMap((position) => (
           position.setupId
@@ -2443,6 +2453,7 @@ export const OandaProChart: React.FC = () => {
   const retainedDirectChartTradesForTimeframe = useMemo(() => (
     retainedChartTradesForTimeframe.filter((overlay) => (
       isDirectTradeOverlay(overlay.id, overlay.setupId)
+      && hasIdentifiedDirectZoneLabel(overlay.id, overlay.setupId, overlay.label)
     ))
   ), [retainedChartTradesForTimeframe]);
 
@@ -5988,10 +5999,7 @@ export const OandaProChart: React.FC = () => {
                         {mt5Signal
                           ? <span className={mt5SignalStatusClassName(mt5Signal)}>{mt5SignalStatusLabel(mt5Signal)}</span>
                           : isCompletedTrade(trade)
-                          ? <>{zone.tapBarsAgo} bars · <TradeStatusText trade={trade!} />
-                            {trade?.result === 'sl' && zone.active && zone.status === 'valid'
-                              ? ' · WAIT RE-ENTRY'
-                              : ''}</>
+                          ? <>{zone.tapBarsAgo} bars · <TradeStatusText trade={trade!} /></>
                            : pending
                            ? `WAIT ${confirmationLabel} ${confirmationSide} · NO TRADE`
                            : zone.tradeable === false
@@ -6103,9 +6111,6 @@ export const OandaProChart: React.FC = () => {
                       ) : isCompletedTrade(trade) ? (
                         <span className={trade?.status === 'sl-hit' ? 'text-rose-700' : 'text-emerald-700'}>
                           {tapBarsAgo} bars · <TradeStatusText trade={trade!} />
-                          {trade?.result === 'sl' && zone.active && zone.status === 'valid'
-                            ? ' · WAIT RE-ENTRY'
-                            : ''}
                         </span>
                       ) : entryDecision && !entryDecision.policy.allowed ? (
                         <span className="text-rose-700">
