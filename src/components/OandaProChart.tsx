@@ -92,6 +92,7 @@ import {
 import {
   consolidateZonesForDisplay,
   displayZoneMembers,
+  redundantStandaloneLiquidityZoneIds,
   type DisplayStructureZone,
 } from '../services/zoneConfluence';
 import {
@@ -338,6 +339,30 @@ function tradeOverlaySetupKey(overlay: TradeOverlay): string {
 function directTradeOverlayZoneId(overlay: TradeOverlay): string | undefined {
   const setupKey = tradeOverlaySetupKey(overlay);
   return setupKey.startsWith('DIRECT:') ? setupKey.slice('DIRECT:'.length) : undefined;
+}
+
+function retainedLiquidityTradeDuplicatesConfluence(
+  overlay: TradeOverlay,
+  zones: readonly DisplayStructureZone[],
+  candles: readonly OandaCandle[],
+): boolean {
+  const zoneLabel = tradeOverlayZoneLabel(overlay.label);
+  if (zoneLabel !== 'DB' && zoneLabel !== 'DT') return false;
+  const expectedInternal = zoneLabel === 'DB' ? 'Internal DB' : 'Internal DT';
+  const bullish = overlay.trade.signal.direction === 'bullish';
+  const finalIndex = candles.findIndex((candle) => candle.time === overlay.trade.signal.time);
+  if (finalIndex < 0) return false;
+  const firstIndex = Math.max(0, finalIndex - overlay.trade.signal.candleCount + 1);
+  const signalCandles = candles.slice(firstIndex, finalIndex + 1);
+
+  return zones.some((zone) => {
+    const members = displayZoneMembers(zone);
+    const tjl2 = members.find((member) => member.name === 'TJL2');
+    const internal = members.find((member) => member.name === expectedInternal);
+    if (!tjl2 || !internal || zone.isBuy !== bullish
+      || overlay.trade.signal.time < Math.max(tjl2.startTime, internal.startTime)) return false;
+    return signalCandles.some((candle) => candle.high >= zone.bottom && candle.low <= zone.top);
+  });
 }
 
 type AccuracyTradeRecord = JournalTradeRecord;
@@ -1332,6 +1357,7 @@ export const OandaProChart: React.FC = () => {
   const lastDrawingRedrawAtRef = useRef(0);
   const hasChartDrawingLayerRef = useRef(false);
   const hasFittedRef = useRef(false);
+  const pendingMarketSymbolFitRef = useRef(false);
   const replayTimeRef = useRef<number | null>(null);
   const pendingReplayViewportRef = useRef<{ fromOffset: number; toOffset: number } | null>(null);
   const loadRequestIdRef = useRef(0);
@@ -1776,12 +1802,32 @@ export const OandaProChart: React.FC = () => {
     () => consolidateZonesForDisplay(displayZones, marketConfig.pipSize),
     [displayZones, marketConfig.pipSize],
   );
+  const redundantStandaloneZoneIds = useMemo(
+    () => redundantStandaloneLiquidityZoneIds(displayZones, marketConfig.pipSize),
+    [displayZones, marketConfig.pipSize],
+  );
+  const redundantRetainedOverlayIds = useMemo(() => new Set(
+    [...retainedChartTradeOverlays.values()]
+      .filter((overlay) => (overlay.symbol ?? 'XAUUSD') === marketSymbol
+        && overlay.chartTimeframe === granularity
+        && retainedLiquidityTradeDuplicatesConfluence(
+          overlay,
+          consolidatedDisplayZones,
+          displayCandles,
+        ))
+      .map((overlay) => overlay.id),
+  ), [consolidatedDisplayZones, displayCandles, granularity, marketSymbol, retainedChartTradeOverlays]);
 
-  const tradeTrackingScope = `${marketSymbol}:${liveChartDataSource}:${granularity}:${replayIndex === null ? 'live' : 'replay'}`;
+  // Preserve Gold's original tracking identity exactly. Currency pairs receive
+  // their own symbol-prefixed scopes without changing Gold's entry lifecycle.
+  const tradeTrackingScope = marketSymbol === 'XAUUSD'
+    ? `${liveChartDataSource}:${granularity}:${replayIndex === null ? 'live' : 'replay'}`
+    : `${marketSymbol}:${liveChartDataSource}:${granularity}:${replayIndex === null ? 'live' : 'replay'}`;
   const currentDirectTradeSetups = useMemo(() => {
     const setups = new Map<string, TrackedDirectTradeSetup>();
     const zoneTimeframe = granularity as TradeTimeframe;
     for (const zone of displayZones) {
+      if (redundantStandaloneZoneIds.has(zone.id)) continue;
       if (!isZoneEligibleForEngulfingEntry(zone)) continue;
       const signal = resolveZoneEngulfingSignal(zone, zoneTimeframe);
       if (!signal) continue;
@@ -1795,7 +1841,7 @@ export const OandaProChart: React.FC = () => {
       });
     }
     return setups;
-  }, [displayZones, granularity, tradeTrackingScope]);
+  }, [displayZones, granularity, redundantStandaloneZoneIds, tradeTrackingScope]);
 
   useEffect(() => {
     if (currentDirectTradeSetups.size === 0) return;
@@ -1825,7 +1871,8 @@ export const OandaProChart: React.FC = () => {
     );
     const setups = new Map<string, TrackedDirectTradeSetup>();
     for (const setup of trackedDirectTradeSetups.values()) {
-      if (setup.scope === tradeTrackingScope) setups.set(setup.zone.id, setup);
+      if (setup.scope === tradeTrackingScope
+        && !redundantStandaloneZoneIds.has(setup.zone.id)) setups.set(setup.zone.id, setup);
     }
     for (const setup of currentDirectTradeSetups.values()) {
       if (!setups.has(setup.zone.id)) setups.set(setup.zone.id, setup);
@@ -1923,6 +1970,7 @@ export const OandaProChart: React.FC = () => {
     marketConfig.mt5AutomationEnabled,
     mt5Status?.positions,
     replayIndex,
+    redundantStandaloneZoneIds,
     trackedDirectTradeSetups,
     tradeTrackingScope,
     vipCandles,
@@ -2127,6 +2175,7 @@ export const OandaProChart: React.FC = () => {
     // Reconstruct direct engulfing outcomes from every historical zone that
     // retained a qualified signal, including zones invalidated after entry.
     for (const zone of displayZones) {
+      if (redundantStandaloneZoneIds.has(zone.id)) continue;
       if (zone.status === 'rejected'
         || (!isZoneEligibleForEngulfingEntry(zone) && zone.tradeable === false)) continue;
       const signal = resolveZoneEngulfingSignal(zone, granularity);
@@ -2241,6 +2290,7 @@ export const OandaProChart: React.FC = () => {
     directZoneTrades,
     granularity,
     mtfRows,
+    redundantStandaloneZoneIds,
     tableTimeframeData,
     trackedDirectTradeSetups,
     tradeTrackingScope,
@@ -2421,6 +2471,15 @@ export const OandaProChart: React.FC = () => {
       const next = new Map<string, TradeOverlay>(existing);
       for (const [id, overlay] of next) {
         if ((overlay.symbol ?? 'XAUUSD') !== marketSymbol) continue;
+        if (redundantRetainedOverlayIds.has(id)) {
+          next.delete(id);
+          continue;
+        }
+        const directZoneId = directTradeOverlayZoneId(overlay);
+        if (directZoneId && redundantStandaloneZoneIds.has(directZoneId)) {
+          next.delete(id);
+          continue;
+        }
         if (!hasIdentifiedDirectZoneLabel(overlay.id, overlay.setupId, overlay.label)) next.delete(id);
       }
       const liveBrokerSetupKeys = new Set(
@@ -2471,7 +2530,7 @@ export const OandaProChart: React.FC = () => {
         .join('|');
       return signature(next) === signature(existing) ? existing : next;
     });
-  }, [displayCandles, displayZones, granularity, marketSymbol, mt5Status?.positions, tradeOverlays]);
+  }, [displayCandles, displayZones, granularity, marketSymbol, mt5Status?.positions, redundantRetainedOverlayIds, redundantStandaloneZoneIds, tradeOverlays]);
 
   const retainedChartTradesForTimeframe = useMemo(() => {
     const firstTradeBySetup = new Map<string, TradeOverlay>();
@@ -2493,8 +2552,10 @@ export const OandaProChart: React.FC = () => {
     retainedChartTradesForTimeframe.filter((overlay) => (
       isDirectTradeOverlay(overlay.id, overlay.setupId)
       && hasIdentifiedDirectZoneLabel(overlay.id, overlay.setupId, overlay.label)
+      && !redundantRetainedOverlayIds.has(overlay.id)
+      && !redundantStandaloneZoneIds.has(directTradeOverlayZoneId(overlay) ?? '')
     ))
-  ), [retainedChartTradesForTimeframe]);
+  ), [redundantRetainedOverlayIds, redundantStandaloneZoneIds, retainedChartTradesForTimeframe]);
 
   const liveMt5TradeOverlays = useMemo<TradeOverlay[]>(() => (
     (mt5Status?.positions ?? []).flatMap((position) => {
@@ -2661,6 +2722,7 @@ export const OandaProChart: React.FC = () => {
   ), [retainedChartTradesForTimeframe]);
   const zoneTableRows = useMemo(() => consolidatedDisplayZones
     .filter((zone) => zone.active && zone.status === 'valid'
+      && !redundantStandaloneZoneIds.has(zone.id)
       && !displayZoneMembers(zone).some((member) => retainedDirectTradeZoneIds.has(member.id))
       && (showInternal || zone.category !== 'internal')
       && zone.doubleChochStatus === undefined
@@ -2669,7 +2731,7 @@ export const OandaProChart: React.FC = () => {
       Math.max(...displayZoneMembers(b).map((member) => member.tapTime ?? member.startTime))
       - Math.max(...displayZoneMembers(a).map((member) => member.tapTime ?? member.startTime))
     ))
-    .slice(0, 8), [consolidatedDisplayZones, retainedDirectTradeZoneIds, showInternal]);
+    .slice(0, 8), [consolidatedDisplayZones, redundantStandaloneZoneIds, retainedDirectTradeZoneIds, showInternal]);
   const retainedTradeZoneRows = useMemo(() => {
     const activeZoneIds = new Set([
       ...zoneTableRows.flatMap((zone) => displayZoneMembers(zone).map((member) => member.id)),
@@ -2681,7 +2743,8 @@ export const OandaProChart: React.FC = () => {
     const rows = new Map<string, StructureZone>();
     for (const setup of trackedDirectTradeSetups.values()) {
       if (setup.scope !== tradeTrackingScope || activeZoneIds.has(setup.zone.id)
-        || retainedDirectTradeZoneIds.has(setup.zone.id)) continue;
+        || retainedDirectTradeZoneIds.has(setup.zone.id)
+        || redundantStandaloneZoneIds.has(setup.zone.id)) continue;
       const trade = directZoneTrades.get(setup.zone.id);
       if (!trade) continue;
       const row = displayZones.find((zone) => zone.id === setup.zone.id) ?? setup.zone;
@@ -2702,6 +2765,7 @@ export const OandaProChart: React.FC = () => {
     displayZones,
     showInternal,
     retainedDirectTradeZoneIds,
+    redundantStandaloneZoneIds,
     trackedDirectTradeSetups,
     tradeTrackingScope,
     zoneTableRows,
@@ -3916,6 +3980,12 @@ export const OandaProChart: React.FC = () => {
       scheduleDrawingRedraw();
       return;
     }
+    if (pendingMarketSymbolFitRef.current) {
+      // A price scale can remain fixed to the previous instrument (for example,
+      // USDJPY near 158 while XAUUSD is near 4,165). Re-enable autoscaling only
+      // for the first populated render after a symbol switch.
+      chart.priceScale('right').applyOptions({ autoScale: true });
+    }
     const pendingViewport = pendingReplayViewportRef.current;
     if (replayIndex !== null && pendingViewport && loadedGranularityRef.current === granularity) {
       const replayLogicalIndex = displayCandles.length - 1;
@@ -3929,6 +3999,7 @@ export const OandaProChart: React.FC = () => {
       restorePresentChartView();
       hasFittedRef.current = true;
     }
+    pendingMarketSymbolFitRef.current = false;
     scheduleOverlayRedraw();
     scheduleDrawingRedraw();
   }, [displayCandles, engulfingMarkers, granularity, mtfEntryMarkers, replayIndex, restorePresentChartView, scheduleDrawingRedraw, scheduleOverlayRedraw, showEngulfing, showInternal, showIss, showStructure, structure.internalMarkers, structure.issMarkers, structure.markers]);
@@ -4051,6 +4122,7 @@ export const OandaProChart: React.FC = () => {
     // Waiting for the next render left a short window where an older forex
     // response could repopulate the chart after Gold had been selected.
     loadRequestIdRef.current += 1;
+    pendingMarketSymbolFitRef.current = true;
     replayTimeRef.current = null;
     pendingReplayViewportRef.current = null;
     setReplayIndex(null);
@@ -4061,7 +4133,9 @@ export const OandaProChart: React.FC = () => {
     setLiveChartDataSource('OANDA');
     setCandles([]);
     setVipCandles({});
-    setTrackedDirectTradeSetups(new Map<string, TrackedDirectTradeSetup>());
+    // Entries are already isolated by tradeTrackingScope. Keep Gold's tracked
+    // first-entry history intact so visiting a currency pair cannot cause Gold
+    // to recalculate a later Internal DB (or any other zone) entry on return.
     setSource(`Loading TradingView OANDA:${nextSymbol} candles`);
     setLastUpdated(null);
     setError(null);

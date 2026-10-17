@@ -68,3 +68,41 @@ export function consolidateZonesForDisplay(
 export function displayZoneMembers(zone: DisplayStructureZone): StructureZone[] {
   return zone.confluenceMembers ?? [zone];
 }
+
+function priceRangesOverlap(first: StructureZone, second: StructureZone): boolean {
+  return first.bottom <= second.top && second.bottom <= first.top;
+}
+
+/**
+ * A CHoCH can expose a standalone DB/DT at the exact pivot that is already
+ * represented by a TJL2 + Internal DB/DT confluence. That is one physical
+ * setup, not a second independent entry zone.
+ */
+export function redundantStandaloneLiquidityZoneIds(
+  zones: readonly StructureZone[],
+  tolerance = ZONE_CONFLUENCE_PRICE_TOLERANCE,
+): Set<string> {
+  const consolidated = consolidateZonesForDisplay(zones, tolerance);
+  const confluenceAnchors = consolidated.flatMap((zone) => {
+    const members = displayZoneMembers(zone);
+    const tjl2 = members.find((member) => member.name === 'TJL2');
+    const internal = members.find((member) => (
+      member.name === 'Internal DB' || member.name === 'Internal DT'
+    ));
+    return tjl2 && internal ? [{ tjl2, internal }] : [];
+  });
+
+  return new Set(zones.flatMap((zone) => {
+    if (zone.name !== 'DB' && zone.name !== 'DT') return [];
+    const expectedInternalName = zone.name === 'DB' ? 'Internal DB' : 'Internal DT';
+    const duplicate = confluenceAnchors.some(({ tjl2, internal }) => (
+      internal.name === expectedInternalName
+      && zone.isBuy === internal.isBuy
+      && zone.isBuy === tjl2.isBuy
+      && zone.startTime === internal.startTime
+      && priceRangesOverlap(zone, internal)
+      && priceRangesOverlap(zone, tjl2)
+    ));
+    return duplicate ? [zone.id] : [];
+  }));
+}

@@ -4,6 +4,7 @@ import type { StructureZone } from '../src/services/marketStructure';
 import {
   consolidateZonesForDisplay,
   displayZoneMembers,
+  redundantStandaloneLiquidityZoneIds,
 } from '../src/services/zoneConfluence';
 
 function zone(overrides: Partial<StructureZone>): StructureZone {
@@ -82,4 +83,35 @@ test('forex display consolidation uses the pair pip size instead of the Gold tol
   assert.equal(consolidateZonesForDisplay([base, separateForexZone], 0.0001).length, 2);
   assert.equal(consolidateZonesForDisplay([base, matchingForexZone], 0.0001).length, 1);
   assert.equal(consolidateZonesForDisplay([base, separateForexZone]).length, 1);
+});
+
+test('standalone DB at a TJL2 and Internal DB pivot is one zone, not a second entry', () => {
+  const tjl2 = zone({ id: 'tjl2', startTime: 100, bottom: 4154.82, top: 4160.491 });
+  const internalDb = zone({
+    id: 'internal-db',
+    name: 'Internal DB',
+    category: 'internal',
+    startTime: 100,
+    bottom: 4154.87,
+    top: 4160.44,
+  });
+  const duplicateDb = zone({
+    id: 'standalone-db',
+    name: 'DB',
+    startTime: 100,
+    bottom: 4155.95,
+    top: 4156.25,
+  });
+  const independentDb = zone({
+    id: 'independent-db',
+    name: 'DB',
+    startTime: 200,
+    bottom: 4155.95,
+    top: 4156.25,
+  });
+
+  const redundant = redundantStandaloneLiquidityZoneIds([
+    tjl2, internalDb, duplicateDb, independentDb,
+  ]);
+  assert.deepEqual([...redundant], ['standalone-db']);
 });
