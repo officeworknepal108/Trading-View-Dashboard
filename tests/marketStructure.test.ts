@@ -1480,6 +1480,52 @@ test('completed ISS delays internal TJLs until continuation and accepts both dir
   assert.ok(continued.zones.some((item) => item.name === 'Internal TJL1'));
   assert.ok(continued.zones.some((item) => item.name === 'Internal TJL2' && item.status === 'valid'));
 
+  const matchingExternalBos = {
+    id: 'same-break', type: 'bos' as const, direction: 'bullish' as const,
+    fromTime: 1100, fromPrice: 125, toTime: 1600, toPrice: 125,
+  };
+  const externalWins = findIssFiveWaves(candles.slice(0, 17), [anchor], 100, 30, 400,
+    [], undefined, [matchingExternalBos]);
+  assert.equal(externalWins.lines.some((line) => line.type === 'internal-bos'), false);
+  assert.equal(externalWins.internalMarkers.some((marker) => marker.text === 'I HH'), false);
+  assert.equal(externalWins.zones.some((item) => item.name === 'Internal TJL2'), false);
+  assert.ok(externalWins.zones.some((item) => item.name === 'ISS L3'),
+    'the external BOS must not reset the separate ISS L3 lifecycle');
+
+  const differentPivotWinsInternally = findIssFiveWaves(candles.slice(0, 17), [anchor],
+    100, 30, 400, [], undefined, [{ ...matchingExternalBos, fromTime: 1200 }]);
+  assert.ok(differentPivotWinsInternally.lines.some((line) => line.type === 'internal-bos'),
+    'an external BOS on the same candle but a different swing cannot hide this internal break');
+
+  const bearishCandles = candles.slice(0, 17).map((item) => ({
+    ...item, open: 250 - item.open, high: 250 - item.low,
+    low: 250 - item.high, close: 250 - item.close,
+  }));
+  const bearishAnchor = {
+    direction: 'bearish' as const,
+    start: { index: 0, time: 0, price: 150 },
+    boundary: { index: 0, time: 0, price: 50 },
+  };
+  const matchingBearishBos = {
+    ...matchingExternalBos, direction: 'bearish' as const,
+    fromPrice: 125, toPrice: 125,
+  };
+  const bearishWithoutExternalBos = findIssFiveWaves(bearishCandles, [bearishAnchor],
+    100, 30, 400);
+  assert.ok(bearishWithoutExternalBos.lines.some((line) => line.type === 'internal-bos'
+    && line.toTime === 1600), 'the mirrored bearish break must exist before precedence applies');
+  const bearishExternalWins = findIssFiveWaves(bearishCandles, [bearishAnchor],
+    100, 30, 400, [], undefined, [matchingBearishBos]);
+  assert.equal(bearishExternalWins.lines.some((line) => line.type === 'internal-bos'), false);
+  assert.equal(bearishExternalWins.internalMarkers.some((marker) => marker.text === 'I LL'), false);
+  assert.equal(bearishExternalWins.zones.some((item) => item.name === 'Internal TJL2'), false);
+
+  const formingBreak = findIssFiveWaves([
+    ...candles.slice(0, 16), { ...candles[16], complete: false },
+  ], [anchor], 100, 30, 400);
+  assert.equal(formingBreak.lines.some((line) => line.type === 'internal-bos'), false,
+    'an unfinished candle cannot confirm internal BOS');
+
   const running = findIssFiveWaves(candles, [anchor], 100, 30, 400);
   assert.ok(running.lines.some((line) => line.type === 'internal-choch'));
   assert.ok(running.zones.some((item) => item.name === 'Internal QML'));

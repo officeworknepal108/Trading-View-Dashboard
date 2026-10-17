@@ -1722,7 +1722,7 @@ export function analyzeMarketStructure(candles: StructureCandle[], options: {
         issAnchors.push({ direction: 'bearish', start: activeHigh, boundary: protectedPoint });
       }
 
-      if (activeHigh && candle.close > activeHigh.price) {
+      if (activeHigh && candle.complete !== false && candle.close > activeHigh.price) {
         const confirmedHigh = activeHigh;
         const confirmedLow = extreme(
           candles, confirmedHigh.index, index, 'low', lastHLConfirmIndex,
@@ -1851,7 +1851,7 @@ export function analyzeMarketStructure(candles: StructureCandle[], options: {
         issAnchors.push({ direction: 'bullish', start: activeLow, boundary: protectedPoint });
       }
 
-      if (activeLow && candle.close < activeLow.price) {
+      if (activeLow && candle.complete !== false && candle.close < activeLow.price) {
         const confirmedLow = activeLow;
         const confirmedHigh = extreme(
           candles, confirmedLow.index, index, 'high', lastLHConfirmIndex,
@@ -1941,10 +1941,11 @@ export function analyzeMarketStructure(candles: StructureCandle[], options: {
     sourceBarSeconds,
     zoneVisualBars,
     options.confirmationBarSeconds,
-    // An external BOS continues the current structure. Only an external CHoCH
-    // starts a new external structure and terminates the post-ISS internal run.
+    // CHoCH ends the post-ISS run. A BOS ends it only when the same completed
+    // break would otherwise also be reported as an internal BOS below.
     lines.filter((line) => line.type === 'choch').map((line) => line.toTime),
     options.vipSupport,
+    lines.filter((line) => line.type === 'bos'),
   );
   issMarkers.push(...iss.markers);
   internalMarkers.push(...iss.internalMarkers);
@@ -2008,6 +2009,7 @@ export function findIssFiveWaves(
   confirmationBarSeconds?: number,
   externalStructureTimes: number[] = [],
   vipSupport?: VipSupportContext | VipSupportContext[],
+  externalBosLines: readonly StructureLine[] = [],
 ): {
   markers: IssMarker[];
   internalMarkers: SeriesMarker<UTCTimestamp>[];
@@ -2454,8 +2456,17 @@ export function findIssFiveWaves(
           const from = lastBullishConfirmIndex ?? protectedPoint.index;
           activeHigh = selectTwoCandleRetracementPivot(candles, from, index, 'high');
         }
-        if (activeHigh && candle.close > activeHigh.price) {
+        if (activeHigh && candle.complete !== false && candle.close > activeHigh.price) {
           const confirmedHigh = activeHigh;
+          // The same completed break cannot confirm both external and internal
+          // structure. Stop this ISS run before it creates duplicate markers or TJLs.
+          if (externalBosLines.some((line) => line.direction === 'bullish'
+            && line.toTime === candle.time
+            && line.fromTime === confirmedHigh.time
+            && line.fromPrice === confirmedHigh.price)) {
+            if (currentTjl1) supersedePendingTjl1(currentTjl1, candle.time);
+            break;
+          }
           const confirmedLow = extreme(candles, confirmedHigh.index, index, 'low', lastBullishConfirmIndex);
           internalMarkers.push(
             makeMarker(candles[confirmedHigh.index], 'I HH', 'aboveBar', '#0d9488'),
@@ -2516,8 +2527,15 @@ export function findIssFiveWaves(
           const from = lastBearishConfirmIndex ?? protectedPoint.index;
           activeLow = selectTwoCandleRetracementPivot(candles, from, index, 'low');
         }
-        if (activeLow && candle.close < activeLow.price) {
+        if (activeLow && candle.complete !== false && candle.close < activeLow.price) {
           const confirmedLow = activeLow;
+          if (externalBosLines.some((line) => line.direction === 'bearish'
+            && line.toTime === candle.time
+            && line.fromTime === confirmedLow.time
+            && line.fromPrice === confirmedLow.price)) {
+            if (currentTjl1) supersedePendingTjl1(currentTjl1, candle.time);
+            break;
+          }
           const confirmedHigh = extreme(candles, confirmedLow.index, index, 'high', lastBearishConfirmIndex);
           internalMarkers.push(
             makeMarker(candles[confirmedLow.index], 'I LL', 'belowBar', '#e11d48'),
