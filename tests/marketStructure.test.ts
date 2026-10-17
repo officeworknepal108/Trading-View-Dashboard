@@ -1096,10 +1096,10 @@ test('VIP support ignores an opposite-direction zone even when its tap is freshe
 
 test('TJL1 confirms on the first completed mapped higher-timeframe close', () => {
   const result = resolveTjl1Confirmation([
-    candle(0, 105),
+    { time: 0, open: 105, high: 106, low: 104, close: 105 },
     candle(900, 106),
     candle(1800, 108),
-    candle(2700, 111),
+    { time: 2700, open: 109, high: 112, low: 108, close: 111 },
     candle(3600, 109), // keeps the preceding 1h aggregate in the completed set
   ], {
     confirmationDirection: 'up',
@@ -1113,6 +1113,34 @@ test('TJL1 confirms on the first completed mapped higher-timeframe close', () =>
   assert.equal(result.status, 'valid');
   assert.equal(result.confirmationTime, 3600);
   assert.equal(result.confirmationWindowCloseTime, 3600);
+});
+
+test('mapped confirmation requires the completed candle color, not a wick-only break', () => {
+  const bullishWickOnly = resolveTjl1Confirmation([
+    { time: 0, open: 105, high: 112, low: 104, close: 109 },
+    candle(3600, 109),
+  ], {
+    confirmationDirection: 'up',
+    bottom: 100,
+    top: 110,
+    formationTime: 0,
+    sourceBarSeconds: 900,
+    confirmationBarSeconds: 3600,
+  });
+  assert.equal(bullishWickOnly.status, 'pending');
+
+  const oppositeColorClose = resolveTjl1Confirmation([
+    { time: 0, open: 112, high: 113, low: 110, close: 111 },
+    candle(3600, 109),
+  ], {
+    confirmationDirection: 'up',
+    bottom: 100,
+    top: 110,
+    formationTime: 0,
+    sourceBarSeconds: 900,
+    confirmationBarSeconds: 3600,
+  });
+  assert.equal(oppositeColorClose.status, 'pending');
 });
 
 test('TJL1 stays pending when completed mapped candles have not closed through it', () => {

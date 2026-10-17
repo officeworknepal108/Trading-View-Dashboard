@@ -403,8 +403,8 @@ export function resolveTjl1Confirmation(candles: StructureCandle[], options: {
   const firstCompletedBar = confirmationBars[0];
   const confirmationIndex = confirmationBars.findIndex((bar) => (
     options.confirmationDirection === 'up'
-      ? bar.close > options.top
-      : bar.close < options.bottom
+      ? bar.close > bar.open && bar.close > options.top
+      : bar.close < bar.open && bar.close < options.bottom
   ));
   if (confirmationIndex >= 0) {
     const completedBar = confirmationBars[confirmationIndex];
