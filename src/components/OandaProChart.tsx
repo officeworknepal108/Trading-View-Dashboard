@@ -3635,11 +3635,14 @@ export const OandaProChart: React.FC = () => {
             signal,
             cache: 'no-store',
           });
-          const payload = await response.json() as MarketDataResponse;
-          if (!response.ok || !payload.ok || !Array.isArray(payload.candles)) {
-            throw new Error(payload.error || `Market data request failed with HTTP ${response.status}`);
+           const payload = await response.json() as MarketDataResponse;
+           if (!response.ok || !payload.ok || !Array.isArray(payload.candles)) {
+             throw new Error(payload.error || `Market data request failed with HTTP ${response.status}`);
+           }
+          if (!useMt5BrokerFeed && payload.symbol !== marketSymbol) {
+            throw new Error(`Market feed returned ${payload.symbol ?? 'unknown'} data while loading ${marketSymbol}.`);
           }
-          if (payload.candles.length > 0) return payload;
+           if (payload.candles.length > 0) return payload;
           lastError = `Market feed returned no ${GRANULARITY_LABELS[requestedGranularity]} candles.`;
         }
         throw new Error(lastError);
@@ -3889,7 +3892,7 @@ export const OandaProChart: React.FC = () => {
     const chart = chartRef.current;
     const candleSeries = candleSeriesRef.current;
     const volumeSeries = volumeSeriesRef.current;
-    if (!chart || !candleSeries || !volumeSeries || displayCandles.length === 0) return;
+    if (!chart || !candleSeries || !volumeSeries) return;
     candleSeries.setData(displayCandles.map((candle) => ({
       time: candle.time as UTCTimestamp,
       open: candle.open,
@@ -3908,6 +3911,11 @@ export const OandaProChart: React.FC = () => {
       ...(showEngulfing ? engulfingMarkers : []),
       ...(showEngulfing ? mtfEntryMarkers : []),
     ].sort((a: any, b: any) => Number(a.time) - Number(b.time)));
+    if (displayCandles.length === 0) {
+      scheduleOverlayRedraw();
+      scheduleDrawingRedraw();
+      return;
+    }
     const pendingViewport = pendingReplayViewportRef.current;
     if (replayIndex !== null && pendingViewport && loadedGranularityRef.current === granularity) {
       const replayLogicalIndex = displayCandles.length - 1;
@@ -4039,6 +4047,10 @@ export const OandaProChart: React.FC = () => {
 
   const changeMarketSymbol = (nextSymbol: OandaMarketSymbol) => {
     if (nextSymbol === marketSymbol) return;
+    // Invalidate every request started for the previous symbol immediately.
+    // Waiting for the next render left a short window where an older forex
+    // response could repopulate the chart after Gold had been selected.
+    loadRequestIdRef.current += 1;
     replayTimeRef.current = null;
     pendingReplayViewportRef.current = null;
     setReplayIndex(null);
