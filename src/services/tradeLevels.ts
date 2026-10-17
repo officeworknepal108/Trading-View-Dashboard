@@ -47,7 +47,7 @@ export type EngulfingVolumeStatus = 'not-applicable' | 'unavailable' | 'failed' 
 export interface DirectEntryPolicyDecision {
   allowed: boolean;
   reason: 'unchanged' | 'volume-confirmed' | 'volume-failed'
-    | 'volume-unavailable' | 'volume-not-applicable';
+    | 'volume-unavailable' | 'volume-not-applicable' | 'outside-trading-time';
   rule?: TradeRule;
   volume: EngulfingVolumeAssessment;
 }

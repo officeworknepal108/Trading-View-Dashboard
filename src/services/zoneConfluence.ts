@@ -6,6 +6,11 @@ export interface DisplayStructureZone extends StructureZone {
   confluenceMembers?: StructureZone[];
 }
 
+export interface ExtremeAPlusTjl2Selection {
+  extremeZoneIds: Set<string>;
+  blockedZoneIds: Set<string>;
+}
+
 function displayPriority(zone: StructureZone): number {
   if (zone.category === 'mg' && zone.name === 'TJL2') return 0;
   if (zone.category === 'mg') return 10;
@@ -71,6 +76,71 @@ export function displayZoneMembers(zone: DisplayStructureZone): StructureZone[] 
 
 function priceRangesOverlap(first: StructureZone, second: StructureZone): boolean {
   return first.bottom <= second.top && second.bottom <= first.top;
+}
+
+function priceRangeGap(first: StructureZone, second: StructureZone): number {
+  if (priceRangesOverlap(first, second)) return 0;
+  return first.top < second.bottom
+    ? second.bottom - first.top
+    : first.bottom - second.top;
+}
+
+/**
+ * Extreme A+ is the taught bullish two-TJL2 rule. When two active structural
+ * BUY TJL2 areas are no more than 50 pips apart, only the lower area may
+ * produce an entry. The higher area remains visible, including its consolidated
+ * Internal DB members, but every member of that area is execution-blocked.
+ *
+ * No bearish mirror is inferred here: the learned rule explicitly selects the
+ * lower TJL2 and is therefore intentionally limited to BUY structure.
+ */
+export function selectExtremeAPlusTjl2Zones(
+  zones: readonly StructureZone[],
+  pipSize: number,
+  maximumGapPips = 50,
+): ExtremeAPlusTjl2Selection {
+  const extremeZoneIds = new Set<string>();
+  const blockedZoneIds = new Set<string>();
+  if (!(pipSize > 0) || !(maximumGapPips >= 0)) return { extremeZoneIds, blockedZoneIds };
+
+  const candidates = consolidateZonesForDisplay(zones, pipSize).flatMap((displayZone) => {
+    const members = displayZoneMembers(displayZone);
+    const tjl2 = members.find((member) => (
+      member.category === 'mg'
+      && member.name === 'TJL2'
+      && member.isBuy
+      && member.active
+      && member.status === 'valid'
+    ));
+    return tjl2 ? [{ tjl2, members }] : [];
+  });
+
+  const extremeGroups = new Set<number>();
+  const blockedGroups = new Set<number>();
+  for (let firstIndex = 0; firstIndex < candidates.length; firstIndex += 1) {
+    for (let secondIndex = firstIndex + 1; secondIndex < candidates.length; secondIndex += 1) {
+      const first = candidates[firstIndex].tjl2;
+      const second = candidates[secondIndex].tjl2;
+      const gapPips = priceRangeGap(first, second) / pipSize;
+      if (gapPips > maximumGapPips) continue;
+
+      const firstMidpoint = (first.bottom + first.top) / 2;
+      const secondMidpoint = (second.bottom + second.top) / 2;
+      const lowerIndex = firstMidpoint <= secondMidpoint ? firstIndex : secondIndex;
+      const higherIndex = lowerIndex === firstIndex ? secondIndex : firstIndex;
+      extremeGroups.add(lowerIndex);
+      blockedGroups.add(higherIndex);
+    }
+  }
+
+  for (const groupIndex of blockedGroups) {
+    candidates[groupIndex].members.forEach((member) => blockedZoneIds.add(member.id));
+  }
+  for (const groupIndex of extremeGroups) {
+    if (blockedGroups.has(groupIndex)) continue;
+    candidates[groupIndex].members.forEach((member) => extremeZoneIds.add(member.id));
+  }
+  return { extremeZoneIds, blockedZoneIds };
 }
 
 /**

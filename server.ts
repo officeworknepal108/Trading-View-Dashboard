@@ -58,6 +58,7 @@ import {
 } from './src/services/agentKnowledge';
 import { deduplicateTradeRecords } from './src/services/tradeRecordDeduplication';
 import { normalizeOandaMarketSymbol } from './src/services/marketSymbols';
+import { isNepalTradingTime } from './src/services/tradingTime';
 
 const GRANULARITIES = new Set(['M1', 'M5', 'M15', 'M30', 'H1', 'H4', 'D', 'W', 'MO']);
 const JOURNAL_FILE = path.resolve(process.cwd(), 'data', 'trade-journal.json');
@@ -69,6 +70,7 @@ const MT5_TERMINAL_STATUSES = new Set<Mt5SignalStatus>([
 
 const DEFAULT_MT5_CONFIG: Mt5AutomationConfig = {
   enabled: false,
+  tradingTimeEnabled: true,
   dryRun: true,
   symbol: 'XAUUSD',
   brokerSymbol: 'XAUUSDm',
@@ -349,6 +351,7 @@ function sanitizeMt5Config(candidate: any, current: Mt5AutomationConfig): Mt5Aut
   return {
     ...current,
     enabled: candidate?.enabled === true,
+    tradingTimeEnabled: candidate?.tradingTimeEnabled !== false,
     dryRun: candidate?.dryRun !== false,
     brokerSymbol: typeof candidate?.brokerSymbol === 'string'
       ? candidate.brokerSymbol.trim().slice(0, 30) || current.brokerSymbol
@@ -377,6 +380,9 @@ async function enqueueMt5Signal(
     throw new Error(`${candidate.zoneTimeframe} setup / ${candidate.signalTimeframe} entry automatic trading is disabled.`);
   }
   const now = Math.floor(Date.now() / 1000);
+  if (config.tradingTimeEnabled && !isNepalTradingTime(now)) {
+    throw new Error('Outside Nepal trading time; automatic entry is blocked.');
+  }
   if (candidate.calculatedAt < now - config.signalMaxAgeSeconds) {
     throw new Error('Signal is too old for automatic execution.');
   }
@@ -438,6 +444,24 @@ async function rejectDisabledQueuedSignals(config: Mt5AutomationConfig): Promise
       signal.status = 'REJECTED';
       signal.updatedAt = now;
       signal.message = `${signal.zoneTimeframe} setup / ${signal.signalTimeframe} entry was switched off before execution.`;
+      rejected += 1;
+    }
+    if (rejected > 0) await writeMt5Signals(signals);
+    return rejected;
+  });
+}
+
+async function rejectOutsideTradingTimeSignals(config: Mt5AutomationConfig): Promise<number> {
+  if (!config.tradingTimeEnabled || isNepalTradingTime(Math.floor(Date.now() / 1000))) return 0;
+  const now = Math.floor(Date.now() / 1000);
+  return serializeMt5Mutation(async () => {
+    const signals = await readMt5Signals();
+    let rejected = 0;
+    for (const signal of signals) {
+      if (!['QUEUED', 'CLAIMED', 'PLACED'].includes(signal.status)) continue;
+      signal.status = signal.status === 'PLACED' ? 'CANCELLED' : 'REJECTED';
+      signal.updatedAt = now;
+      signal.message = 'Outside Nepal trading time; entry was blocked before execution.';
       rejected += 1;
     }
     if (rejected > 0) await writeMt5Signals(signals);
@@ -549,6 +573,10 @@ function buildJournalAutoReason(options: {
 async function scanMt5AutomationSignals(): Promise<number> {
   const config = await readMt5Config();
   if (!config.enabled) return 0;
+  if (config.tradingTimeEnabled && !isNepalTradingTime(Math.floor(Date.now() / 1000))) {
+    await rejectOutsideTradingTimeSignals(config);
+    return 0;
+  }
   if (!mt5ExecutionFeedIsFresh()) return 0;
   if (AUTOMATION_TIMEFRAMES.some((timeframe) => !automationCandleCache[timeframe]?.length)) return 0;
   const scanVersion = mt5MarketDataVersion;
@@ -623,6 +651,7 @@ async function scanMt5AutomationSignals(): Promise<number> {
       const baseRule = getDirectTradeRule(zoneTimeframe, signal.timeframe);
       if (!baseRule) continue;
       const signalClose = signal.time + AUTOMATION_SECONDS[signal.timeframe];
+      if (config.tradingTimeEnabled && !isNepalTradingTime(signalClose)) continue;
       const policy = resolveDirectEntryPolicy({
         zoneTimeframe,
         signal,
@@ -640,6 +669,8 @@ async function scanMt5AutomationSignals(): Promise<number> {
         rule: policy.rule,
         omitStopBuffer: isDeepDiscountTradeSignal(zone, signal),
       });
+      if (config.tradingTimeEnabled && trade?.filledAt !== undefined
+        && !isNepalTradingTime(trade.filledAt)) continue;
       if (trade?.result === 'sl' && trade.resolvedAt !== undefined
         && zone.active && zone.status === 'valid') {
         const reentrySignal = findDirectZoneReentrySignal({
@@ -650,6 +681,8 @@ async function scanMt5AutomationSignals(): Promise<number> {
           originalRiskFree: trade.riskFree,
         });
         if (reentrySignal) {
+          const reentryClose = reentrySignal.time + AUTOMATION_SECONDS[reentrySignal.timeframe];
+          if (config.tradingTimeEnabled && !isNepalTradingTime(reentryClose)) continue;
           const reentryPolicy = resolveDirectEntryPolicy({
             zoneTimeframe,
             signal: reentrySignal,
@@ -668,7 +701,11 @@ async function scanMt5AutomationSignals(): Promise<number> {
               rule: reentryPolicy.rule,
               omitStopBuffer: isDeepDiscountTradeSignal(zone, reentrySignal),
             });
-            if (reentryTrade) trade = reentryTrade;
+            if (reentryTrade && (!config.tradingTimeEnabled
+              || reentryTrade.filledAt === undefined
+              || isNepalTradingTime(reentryTrade.filledAt))) {
+              trade = reentryTrade;
+            }
           }
         }
       }
@@ -729,6 +766,7 @@ async function scanMt5AutomationSignals(): Promise<number> {
       timeframe: row.lowerTimeframe,
     };
     const signalClose = signal.time + AUTOMATION_SECONDS[signal.timeframe];
+    if (config.tradingTimeEnabled && !isNepalTradingTime(signalClose)) continue;
     const trade = calculateTradeLevels({
       sourceCandles: candles[row.lowerTimeframe],
       executionCandles: candles[row.lowerTimeframe],
@@ -736,6 +774,8 @@ async function scanMt5AutomationSignals(): Promise<number> {
       rule,
       omitStopBuffer: row.engulfingDeepDiscount === true,
     });
+    if (config.tradingTimeEnabled && trade?.filledAt !== undefined
+      && !isNepalTradingTime(trade.filledAt)) continue;
     if (!trade || !isExecutableTrade(trade)) continue;
     const volumeContext = journalVolumeContext(candles[row.lowerTimeframe], signal);
     const baseSignal = tradeToMt5Signal({
@@ -1077,6 +1117,7 @@ async function startServer() {
       const config = sanitizeMt5Config(req.body, current);
       await writeMt5Config(config);
       await rejectDisabledQueuedSignals(config);
+      await rejectOutsideTradingTimeSignals(config);
       const heartbeatConnected = mt5BridgeHeartbeat !== undefined
         && Date.now() - mt5BridgeHeartbeat.lastHeartbeatAt < 15_000;
       const externalHeartbeatConnected = heartbeatConnected
@@ -1193,6 +1234,10 @@ async function startServer() {
       if (!bridgeId) return res.status(400).json({ ok: false, error: 'Bridge ID is required.' });
       const config = await readMt5Config();
       if (!config.enabled) return res.json({ ok: true, signal: null, config });
+      if (config.tradingTimeEnabled && !isNepalTradingTime(Math.floor(Date.now() / 1000))) {
+        await rejectOutsideTradingTimeSignals(config);
+        return res.json({ ok: true, signal: null, config });
+      }
       if (!mt5ExecutionFeedIsFresh()) return res.json({ ok: true, signal: null, config });
       const now = Math.floor(Date.now() / 1000);
       const signal = await serializeMt5Mutation(async () => {

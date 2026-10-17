@@ -1,0 +1,2 @@
+#!/bin/sh
+node scripts/code-lock.mjs lock all --quiet

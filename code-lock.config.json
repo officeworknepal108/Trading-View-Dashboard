@@ -1,0 +1,97 @@
+{
+  "version": 1,
+  "unlockMinutes": 60,
+  "scopes": {
+    "gold": "Gold trading and MT5 behavior",
+    "forex": "Currency-pair trading behavior",
+    "shared": "Shared chart, dashboard, journal, and server behavior"
+  },
+  "rules": [
+    {
+      "paths": [
+        "src/components/OandaProChart.tsx",
+        "server.ts"
+      ],
+      "owners": ["gold", "forex", "shared"]
+    },
+    {
+      "paths": [
+        "src/services/chartTime.ts",
+        "src/services/dayFib.ts",
+        "src/services/dayFibConfluence.ts",
+        "src/services/indicatorFib.ts",
+        "src/services/marketStructure.ts",
+        "src/services/marketSymbols.ts",
+        "src/services/mtf.ts",
+        "src/services/oneMinuteGenesis.ts",
+        "src/services/replay.ts",
+        "src/services/swingFib.ts",
+        "src/services/swingFibConfluence.ts",
+        "src/services/tradeLevels.ts",
+        "src/services/tradingViewDatafeed.ts",
+        "src/services/tradingTime.ts",
+        "src/services/zoneConfluence.ts",
+        "tests/chartTime.test.ts",
+        "tests/dayFib.test.ts",
+        "tests/dayFibConfluence.test.ts",
+        "tests/indicatorFib.test.ts",
+        "tests/marketStructure.test.ts",
+        "tests/marketSymbols.test.ts",
+        "tests/mtf.test.ts",
+        "tests/oneMinuteGenesis.test.ts",
+        "tests/replay.test.ts",
+        "tests/swingFib.test.ts",
+        "tests/swingFibConfluence.test.ts",
+        "tests/tradeLevels.test.ts",
+        "tests/tradingTime.test.ts",
+        "tests/zoneConfluence.test.ts"
+      ],
+      "owners": ["gold", "forex"]
+    },
+    {
+      "paths": [
+        "mt5_bridge.py",
+        "src/services/mt5Automation.ts",
+        "tests/mt5Automation.test.ts",
+        "tests/test_mt5_bridge.py"
+      ],
+      "owners": ["gold"]
+    },
+    {
+      "paths": [
+        "src/App.tsx",
+        "src/index.css",
+        "src/main.tsx",
+        "src/components/AiTradeAssistant.tsx",
+        "src/components/TradeJournal.tsx",
+        "src/components/TradeMultiSelect.tsx",
+        "src/services/agentKnowledge.ts",
+        "src/services/tradeOverlayIdentity.ts",
+        "src/services/tradeRecordDeduplication.ts",
+        "src/services/tradeRecordFilters.ts",
+        "tests/agentKnowledge.test.ts",
+        "tests/tradeJournal.test.ts",
+        "tests/tradeOverlayIdentity.test.ts",
+        "tests/tradeRecordDeduplication.test.ts",
+        "tests/tradeRecordFilters.test.ts",
+        "index.html",
+        "vite.config.ts"
+      ],
+      "owners": ["shared"]
+    },
+    {
+      "paths": [
+        "scripts/code-lock.mjs",
+        "code-lock.config.json",
+        ".githooks/pre-commit",
+        ".githooks/post-commit",
+        "AGENTS.md",
+        "CODE_LOCKS.md",
+        "package.json",
+        "package-lock.json",
+        ".gitignore"
+      ],
+      "owners": ["gold", "forex", "shared"]
+    }
+  ]
+}

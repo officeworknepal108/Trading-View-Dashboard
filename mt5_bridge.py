@@ -14,7 +14,7 @@ import os
 import sys
 import time
 import uuid
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 from urllib.parse import quote
@@ -50,10 +50,18 @@ MT5_MARKET_TIMEFRAMES = {
     "D": mt5.TIMEFRAME_D1,
 }
 LAST_MARKET_BAR_TIME: dict[str, int] = {}
+NEPAL_TIMEZONE = timezone(timedelta(hours=5, minutes=45))
+NEPAL_TRADING_SESSIONS = ((345, 495), (705, 885), (1065, 1245))
 
 SESSION = requests.Session()
 if BRIDGE_TOKEN:
     SESSION.headers.update({"Authorization": f"Bearer {BRIDGE_TOKEN}"})
+
+
+def is_nepal_trading_time(timestamp: float | None = None) -> bool:
+    instant = datetime.fromtimestamp(timestamp if timestamp is not None else time.time(), tz=NEPAL_TIMEZONE)
+    minute = instant.hour * 60 + instant.minute
+    return any(start <= minute <= end for start, end in NEPAL_TRADING_SESSIONS)
 
 
 def api(method: str, path: str, **kwargs: Any) -> dict[str, Any]:
@@ -366,6 +374,9 @@ def send_with_filling_fallback(request: dict[str, Any]) -> Any:
 
 
 def place_signal(signal: dict[str, Any], config: dict[str, Any]) -> dict[str, Any]:
+    if config.get("tradingTimeEnabled", True) and not is_nepal_trading_time():
+        update_status(signal["id"], "REJECTED", message="Outside Nepal trading time; automatic entry is blocked.")
+        return {"status": "REJECTED"}
     if config.get("dryRun", True) or not ALLOW_LIVE_EXECUTION:
         reason = "Send Trades to MT5 is NO" if config.get("dryRun", True) else "MT5_ALLOW_LIVE_EXECUTION is not YES"
         update_status(signal["id"], "SIMULATED", message=f"Validated without an order: {reason}.")
@@ -519,6 +530,21 @@ def manage_open_signals(
     for signal_id, record in list(state.items()):
         server_signal = server_by_id.get(signal_id, {})
         status = server_signal.get("status", record.get("status"))
+        if status == "PLACED" and config.get("tradingTimeEnabled", True) and not is_nepal_trading_time():
+            ticket = int(record.get("brokerTicket") or 0)
+            if ticket and (mt5.orders_get(ticket=ticket) or []):
+                removal = mt5.order_send({
+                    "action": mt5.TRADE_ACTION_REMOVE,
+                    "order": ticket,
+                    "magic": MAGIC_NUMBER,
+                    "comment": "Outside trading time",
+                })
+                if not removal or removal.retcode != mt5.TRADE_RETCODE_DONE:
+                    print(f"Could not remove out-of-session pending order {ticket}: {mt5.last_error()}", file=sys.stderr)
+                    continue
+            update_status(signal_id, "CANCELLED", message="Pending order cancelled outside Nepal trading time.")
+            state.pop(signal_id, None)
+            continue
         if status in {"CANCELLED", "EXPIRED"} and record.get("status") == "PLACED":
             ticket = int(record.get("brokerTicket") or 0)
             if ticket and (mt5.orders_get(ticket=ticket) or []):

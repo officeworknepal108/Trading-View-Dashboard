@@ -19,3 +19,6 @@ data/mt5-automation.json
 .env.mt5
 .mt5_bridge_state.json
 __pycache__/
+
+# Local code-lock passwords and temporary unlock sessions (never commit)
+.code-lock/

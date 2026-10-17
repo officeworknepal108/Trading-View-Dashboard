@@ -76,6 +76,7 @@ export function shouldRemoveOpenMt5JournalRecord(status: Mt5SignalStatus): boole
 
 export interface Mt5AutomationConfig {
   enabled: boolean;
+  tradingTimeEnabled: boolean;
   dryRun: boolean;
   symbol: string;
   brokerSymbol: string;

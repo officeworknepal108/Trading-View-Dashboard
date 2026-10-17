@@ -5,6 +5,7 @@ import {
   consolidateZonesForDisplay,
   displayZoneMembers,
   redundantStandaloneLiquidityZoneIds,
+  selectExtremeAPlusTjl2Zones,
 } from '../src/services/zoneConfluence';
 
 function zone(overrides: Partial<StructureZone>): StructureZone {
@@ -114,4 +115,38 @@ test('standalone DB at a TJL2 and Internal DB pivot is one zone, not a second en
     tjl2, internalDb, duplicateDb, independentDb,
   ]);
   assert.deepEqual([...redundant], ['standalone-db']);
+});
+
+test('Extreme A+ permits only the lower of two structural BUY TJL2 zones within 50 pips', () => {
+  const lower = zone({ id: 'lower-tjl2', bottom: 4150, top: 4152 });
+  const higher = zone({ id: 'higher-tjl2', bottom: 4156.9, top: 4160 });
+  const higherInternalDb = zone({
+    id: 'higher-internal-db',
+    name: 'Internal DB',
+    category: 'internal',
+    bottom: 4156.95,
+    top: 4160.05,
+  });
+
+  const selection = selectExtremeAPlusTjl2Zones([higherInternalDb, higher, lower], 0.1);
+  assert.deepEqual([...selection.extremeZoneIds], ['lower-tjl2']);
+  assert.deepEqual([...selection.blockedZoneIds].sort(), ['higher-internal-db', 'higher-tjl2']);
+});
+
+test('Extreme A+ does not pair TJL2 zones separated by more than 50 pips', () => {
+  const lower = zone({ id: 'lower-tjl2', bottom: 4150, top: 4152 });
+  const higher = zone({ id: 'higher-tjl2', bottom: 4157.1, top: 4160 });
+
+  const selection = selectExtremeAPlusTjl2Zones([lower, higher], 0.1);
+  assert.equal(selection.extremeZoneIds.size, 0);
+  assert.equal(selection.blockedZoneIds.size, 0);
+});
+
+test('Extreme A+ does not infer an untaught bearish mirror rule', () => {
+  const lowerSell = zone({ id: 'lower-sell', isBuy: false, bottom: 4150, top: 4152 });
+  const higherSell = zone({ id: 'higher-sell', isBuy: false, bottom: 4156, top: 4160 });
+
+  const selection = selectExtremeAPlusTjl2Zones([lowerSell, higherSell], 0.1);
+  assert.equal(selection.extremeZoneIds.size, 0);
+  assert.equal(selection.blockedZoneIds.size, 0);
 });

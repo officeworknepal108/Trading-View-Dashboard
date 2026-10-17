@@ -10,7 +10,14 @@
     "preview": "vite preview",
     "clean": "rm -rf dist server.js",
     "lint": "tsc --noEmit",
-    "test": "tsx --test tests/**/*.test.ts"
+    "test": "tsx --test tests/**/*.test.ts",
+    "lock:setup": "node scripts/code-lock.mjs setup",
+    "lock:status": "node scripts/code-lock.mjs status",
+    "lock:check": "node scripts/code-lock.mjs check",
+    "lock:all": "node scripts/code-lock.mjs lock all",
+    "unlock:gold": "node scripts/code-lock.mjs unlock gold",
+    "unlock:forex": "node scripts/code-lock.mjs unlock forex",
+    "unlock:shared": "node scripts/code-lock.mjs unlock shared"
   },
   "dependencies": {
     "@tailwindcss/vite": "^4.1.14",
