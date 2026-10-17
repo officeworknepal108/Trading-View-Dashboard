@@ -8,6 +8,7 @@ import {
   normalizeTradeSetupId,
   resolveTradeOverlaySetupKey,
   tradeOverlayEntryEventKey,
+  tradeOverlayZoneLabel,
 } from '../src/services/tradeOverlayIdentity';
 
 test('matches a slipped MT5 direct fill to its chart setup', () => {
@@ -52,6 +53,12 @@ test('rejects retained direct trades whose originating zone label was lost', () 
   assert.equal(hasIdentifiedDirectZoneLabel(id, undefined, 'CHART · CHART · 1:2'), false);
   assert.equal(hasIdentifiedDirectZoneLabel(id, undefined, undefined), false);
   assert.equal(hasIdentifiedDirectZoneLabel('MTF:setup-42:100:10', undefined, undefined), true);
+});
+
+test('shows only the learned zone name in a retained direct-trade table row', () => {
+  assert.equal(tradeOverlayZoneLabel('DT · CHART · 1:2'), 'DT');
+  assert.equal(tradeOverlayZoneLabel('Internal RBS · CHART · 1:3'), 'Internal RBS');
+  assert.equal(tradeOverlayZoneLabel(undefined), undefined);
 });
 
 test('shows a trade drawing only on its engulfing entry timeframe', () => {

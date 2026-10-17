@@ -24,13 +24,18 @@ export function isDirectTradeOverlay(id: string, setupId?: string): boolean {
   return resolveTradeOverlaySetupKey(id, setupId).startsWith('DIRECT:');
 }
 
+export function tradeOverlayZoneLabel(label: string | undefined): string | undefined {
+  const zoneLabel = label?.split(' · ')[0]?.trim();
+  return zoneLabel || undefined;
+}
+
 export function hasIdentifiedDirectZoneLabel(
   id: string,
   setupId: string | undefined,
   label: string | undefined,
 ): boolean {
   if (!isDirectTradeOverlay(id, setupId)) return true;
-  const zoneLabel = label?.split(' · ')[0]?.trim();
+  const zoneLabel = tradeOverlayZoneLabel(label);
   return Boolean(zoneLabel && zoneLabel !== 'CHART' && zoneLabel !== 'OPEN CHART TRADE');
 }
 

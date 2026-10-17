@@ -81,6 +81,7 @@ import {
   isTradeOverlayVisibleOnTimeframe,
   resolveTradeOverlaySetupKey,
   tradeOverlayEntryEventKey,
+  tradeOverlayZoneLabel,
 } from '../services/tradeOverlayIdentity';
 import {
   consolidateZonesForDisplay,
@@ -577,6 +578,10 @@ function displayZoneName(
 ): string {
   if (oneMinuteGenesisQml) return '1MG QML';
   return name.startsWith('Internal ') ? `Int ${name.slice('Internal '.length)}` : name;
+}
+
+function isDefaultDeepDiscountZoneName(name: string | undefined): boolean {
+  return name === 'DB' || name === 'DT';
 }
 
 function displayConfluenceZoneName(
@@ -5897,11 +5902,17 @@ export const OandaProChart: React.FC = () => {
               <tbody>
                 {retainedDirectChartTradesForTimeframe.map((overlay) => {
                   const bullish = overlay.trade.signal.direction === 'bullish';
+                  const zoneLabel = tradeOverlayZoneLabel(overlay.label);
                   return (
                     <React.Fragment key={`open-chart-trade-${overlay.id}`}>
                       <tr className={`border-t ${bullish ? 'border-emerald-200 bg-emerald-50' : 'border-rose-200 bg-rose-50'}`}>
                         <td className="px-2 py-1 font-black text-slate-800">
-                          {overlay.label ?? 'OPEN CHART TRADE'}
+                          <span>{zoneLabel ?? 'OPEN CHART TRADE'}</span>
+                          {isDefaultDeepDiscountZoneName(zoneLabel) && (
+                            <span className="ml-1 rounded bg-fuchsia-100 px-1 py-0.5 text-[8px] font-black text-fuchsia-800">
+                              DEEP DISCOUNT
+                            </span>
+                          )}
                         </td>
                         <td className={`px-2 py-1 font-bold ${bullish ? 'text-emerald-700' : 'text-rose-700'}`}>
                           {bullish ? 'BUY' : 'SELL'}
@@ -6028,11 +6039,12 @@ export const OandaProChart: React.FC = () => {
                   <React.Fragment key={zone.id}>
                   <tr className="border-t border-slate-100 text-slate-700">
                     <td className="px-2 py-1 font-black text-slate-800">
-                      <span>
-                        {showFib && zone.fibBand === 'DB/DT'
-                          ? `FIB A+ ${displayConfluenceZoneName(zone)}`
-                          : displayConfluenceZoneName(zone)}
-                      </span>
+                      <span>{displayConfluenceZoneName(zone)}</span>
+                      {zone.fibBand === 'DB/DT' && (
+                        <span className="ml-1 rounded bg-fuchsia-100 px-1 py-0.5 text-[8px] font-black text-fuchsia-800">
+                          DEEP DISCOUNT
+                        </span>
+                      )}
                       {confluenceLabels.map((label) => (
                         <span key={`${zone.id}-confluence-${label}`} className="ml-1 rounded bg-slate-100 px-1 py-0.5 text-[8px] font-black text-slate-700">
                           {label}
