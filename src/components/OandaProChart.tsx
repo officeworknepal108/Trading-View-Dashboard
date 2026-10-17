@@ -3197,6 +3197,12 @@ export const OandaProChart: React.FC = () => {
         }
       }
 
+      const occupiedStructureLabels: Array<{
+        left: number;
+        right: number;
+        top: number;
+        bottom: number;
+      }> = [];
       for (const structureLine of structureLinesRef.current) {
         const isInternalLine = structureLine.type.startsWith('internal-');
         if (structureLine.type === 'iss' && !showIssRef.current) continue;
@@ -3226,9 +3232,35 @@ export const OandaProChart: React.FC = () => {
         svg.appendChild(line);
 
         if (structureLine.label) {
+          const labelX = (x1 + x2) / 2;
+          const preferredLabelY = y1 - 5;
+          const labelWidth = Math.max(28, structureLine.label.length * 5);
+          const labelHeight = 10;
+          let labelY = preferredLabelY;
+          for (let attempt = 0; attempt < 20; attempt += 1) {
+            const row = Math.ceil(attempt / 2);
+            const offset = attempt === 0 ? 0 : row * 11 * (attempt % 2 === 1 ? -1 : 1);
+            const candidateY = Math.max(labelHeight, Math.min(host.clientHeight - 2, preferredLabelY + offset));
+            const candidateBounds = {
+              left: labelX - labelWidth / 2,
+              right: labelX + labelWidth / 2,
+              top: candidateY - labelHeight,
+              bottom: candidateY + 2,
+            };
+            const overlapsLabel = occupiedStructureLabels.some((bounds) => (
+              candidateBounds.left < bounds.right + 3
+              && candidateBounds.right > bounds.left - 3
+              && candidateBounds.top < bounds.bottom + 2
+              && candidateBounds.bottom > bounds.top - 2
+            ));
+            if (overlapsLabel) continue;
+            labelY = candidateY;
+            occupiedStructureLabels.push(candidateBounds);
+            break;
+          }
           const text = document.createElementNS(namespace, 'text');
-          text.setAttribute('x', String((x1 + x2) / 2));
-          text.setAttribute('y', String(y1 - 5));
+          text.setAttribute('x', String(labelX));
+          text.setAttribute('y', String(labelY));
           text.setAttribute('text-anchor', 'middle');
           text.setAttribute('fill', color);
           text.setAttribute('fill-opacity', '0.55');
