@@ -1020,6 +1020,20 @@ function accuracyCounts(records: AccuracyTradeRecord[]) {
   }), { sl: 0, rf: 0, tp: 0 });
 }
 
+type AccuracyTradingTimeFilter = 'ALL' | 'TRADING' | 'NON_TRADING';
+
+function matchesAccuracyTradingTime(
+  record: AccuracyTradeRecord,
+  filter: AccuracyTradingTimeFilter,
+): boolean {
+  if (filter === 'ALL') return true;
+  const entryTime = record.openedAt
+    ?? (record.signalAt !== undefined
+      ? record.signalAt + TIMEFRAME_SECONDS[record.signalTimeframe]
+      : record.completedAt);
+  return isNepalTradingTime(entryTime) === (filter === 'TRADING');
+}
+
 function formatAccuracyTradeTime(time: number, timeZone: ChartTimeZone): string {
   return new Intl.DateTimeFormat('en-GB', {
     timeZone,
@@ -1104,11 +1118,15 @@ const EngulfingAccuracyTable: React.FC<{
   onClose: () => void;
 }> = ({ records, allRecords, timeframe, showAllTrades, timeZone, onClose }) => {
   const [filters, setFilters] = useState<TradeRecordFilters>(DEFAULT_TRADE_RECORD_FILTERS);
+  const [tradingTimeFilter, setTradingTimeFilter] = useState<AccuracyTradingTimeFilter>('ALL');
   const filteredAllRecords = useMemo(
-    () => filterTradeRecords(allRecords, filters, timeZone),
-    [allRecords, filters, timeZone],
+    () => filterTradeRecords<AccuracyTradeRecord>(allRecords, filters, timeZone)
+      .filter((record) => matchesAccuracyTradingTime(record, tradingTimeFilter)),
+    [allRecords, filters, timeZone, tradingTimeFilter],
   );
-  const summaryRecords = showAllTrades ? filteredAllRecords : records;
+  const summaryRecords = showAllTrades
+    ? filteredAllRecords
+    : records.filter((record) => matchesAccuracyTradingTime(record, tradingTimeFilter));
   const timeframeCounts = accuracyCounts(summaryRecords);
   const availableTimeframes = useMemo(() => Array.from(new Set<TradeTimeframe>(
     allRecords.map((record) => record.signalTimeframe),
@@ -1156,6 +1174,17 @@ const EngulfingAccuracyTable: React.FC<{
         <span>
           Engulfing accuracy · {summaryRecords.length} completed trade{summaryRecords.length === 1 ? '' : 's'}
         </span>
+        <select
+          value={tradingTimeFilter}
+          onChange={(event) => setTradingTimeFilter(event.target.value as AccuracyTradingTimeFilter)}
+          className="rounded border border-indigo-200 bg-white px-1.5 py-0.5 text-[9px] font-bold text-indigo-700"
+          aria-label="Filter accuracy by trading time"
+          title="Classify by Nepal trading sessions at entry time"
+        >
+          <option value="ALL">ALL TIMES</option>
+          <option value="TRADING">TRADING TIME</option>
+          <option value="NON_TRADING">NON-TRADING TIME</option>
+        </select>
         <button
           type="button"
           onClick={onClose}
@@ -1239,7 +1268,10 @@ const EngulfingAccuracyTable: React.FC<{
                   options={availableZones.map((value) => ({ value, label: value }))}
                   onChange={(zones) => setFilters((current) => ({ ...current, zones }))}
                 />
-                <button type="button" onClick={() => setFilters(DEFAULT_TRADE_RECORD_FILTERS)} className="rounded border border-slate-200 bg-white px-1.5 py-1 text-[8px] font-black text-slate-600 hover:bg-slate-100">RESET</button>
+                <button type="button" onClick={() => {
+                  setFilters(DEFAULT_TRADE_RECORD_FILTERS);
+                  setTradingTimeFilter('ALL');
+                }} className="rounded border border-slate-200 bg-white px-1.5 py-1 text-[8px] font-black text-slate-600 hover:bg-slate-100">RESET</button>
               </div>
             </div>
             <table className="min-w-[740px] border-collapse text-center text-[9px]">
@@ -2259,6 +2291,7 @@ export const OandaProChart: React.FC = () => {
         rewardRisk: trade.rewardRisk,
         riskPips: trade.riskPips,
         signalAt: trade.signal.time,
+        openedAt: trade.filledAt,
         ...(volumeCandles ? journalVolumeMetadata(volumeCandles, trade.signal) : {}),
         ...journalDetails,
         ...(screenshotDataUrl ? { screenshotDataUrl } : {}),
@@ -3038,6 +3071,7 @@ export const OandaProChart: React.FC = () => {
       const left = Math.max(0, rawLeft === null ? 0 : rawLeft);
       const right = Math.min(rightEdge, rawRight === null ? rightEdge : rawRight);
       if (left >= right || right <= 0) continue;
+      const zoneWidth = right - left;
 
       const box = document.createElement('div');
       const demand = zone.isBuy;
@@ -3075,6 +3109,7 @@ export const OandaProChart: React.FC = () => {
       box.style.background = fill;
       box.style.borderTop = `1px solid ${border}`;
       box.style.borderBottom = `1px solid ${border}`;
+      box.style.overflow = 'hidden';
 
       const retainMeasurementForEntry = displayZoneMembers(zone)
         .some((member) => unfinishedEntryZoneIds.has(member.id));
@@ -3155,18 +3190,28 @@ export const OandaProChart: React.FC = () => {
       if (mtfBadges.length > 0) {
         labelDetails.push(mtfBadges.join(' / '));
       }
-      const completeLabelText = [name, ...labelDetails].join(' · ');
-      const estimatedLabelWidth = Math.max(36, completeLabelText.length * 4.6);
+      const visibleZoneTop = Math.max(0, zoneTopCoordinate);
+      const visibleZoneBottom = Math.min(host.clientHeight, zoneTopCoordinate + zoneHeight);
+      const visibleZoneHeight = visibleZoneBottom - visibleZoneTop;
+      if (zoneWidth < 20 || visibleZoneHeight < 16) {
+        fragment.appendChild(box);
+        continue;
+      }
+      const detailLines = zoneWidth >= 160
+        ? Math.min(3, Math.max(0, Math.floor((visibleZoneHeight - 16) / 11)))
+        : 0;
+      const labelHeight = 12 + (labelDetails.length > 0 ? detailLines * 11 : 0);
+      const labelLeft = left + 4;
       const labelRight = right - 4;
-      const labelLeft = Math.max(0, labelRight - estimatedLabelWidth);
-      const preferredLabelTop = zoneTopCoordinate + 2;
+      const preferredLabelTop = visibleZoneTop + 2;
       let labelTop = preferredLabelTop;
       for (let step = 0; step <= 8; step += 1) {
         const offsets = step === 0 ? [0] : [step * 12, step * -12];
         const availableOffset = offsets.find((offset) => {
           const candidateTop = preferredLabelTop + offset;
-          const candidateBottom = candidateTop + 12;
-          if (candidateTop < 0 || candidateBottom > host.clientHeight) return false;
+          const candidateBottom = candidateTop + labelHeight;
+          if (candidateTop < visibleZoneTop + 2
+            || candidateBottom > visibleZoneBottom - 2) return false;
           return !occupiedZoneLabelRects.some((occupied) => (
             labelLeft < occupied.right + 4
             && labelRight > occupied.left - 4
@@ -3183,28 +3228,39 @@ export const OandaProChart: React.FC = () => {
         left: labelLeft,
         right: labelRight,
         top: labelTop,
-        bottom: labelTop + 12,
+        bottom: labelTop + labelHeight,
       });
       label.style.position = 'absolute';
+      label.style.left = '4px';
       label.style.right = '4px';
       label.style.top = `${labelTop - zoneTopCoordinate}px`;
       label.style.lineHeight = '12px';
-      label.style.whiteSpace = 'nowrap';
+      label.style.maxHeight = `${labelHeight}px`;
+      label.style.overflow = 'hidden';
       label.style.color = inactive ? '#475569' : pending ? demand ? '#047857' : '#be123c' : isIss ? '#b45309' : isInternal ? '#6d28d9' : demand ? '#047857' : '#be123c';
-      label.style.textAlign = 'right';
+      label.style.textAlign = 'left';
 
       const nameText = document.createElement('span');
       nameText.textContent = name;
       nameText.style.fontSize = '9px';
       nameText.style.fontWeight = '800';
+      nameText.style.display = 'block';
+      nameText.style.overflow = 'hidden';
+      nameText.style.textOverflow = 'ellipsis';
+      nameText.style.whiteSpace = 'nowrap';
       label.appendChild(nameText);
 
-      if (labelDetails.length > 0) {
+      if (labelDetails.length > 0 && detailLines > 0) {
         const detailText = document.createElement('span');
-        detailText.textContent = ` · ${labelDetails.join(' · ')}`;
+        detailText.textContent = labelDetails.join(' · ');
         detailText.style.fontSize = '8px';
         detailText.style.fontWeight = '400';
         detailText.style.opacity = '0.82';
+        detailText.style.display = 'block';
+        detailText.style.lineHeight = '11px';
+        detailText.style.maxHeight = `${detailLines * 11}px`;
+        detailText.style.overflow = 'hidden';
+        detailText.style.overflowWrap = 'anywhere';
         label.appendChild(detailText);
       }
       box.appendChild(label);
