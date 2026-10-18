@@ -740,11 +740,11 @@ export function detectEngulfingPatternAt(
     // its body; the sweep and close geometry define this pattern. Type 2 is
     // checked first so a strong close through the first candle is not mislabeled.
     if (candleIsBearish(first) && candleIsBullish(second)
-      && second.low <= first.low && candleIsBullish(current) && current.close > second.high) {
+      && second.low < first.low && candleIsBullish(current) && current.close > second.high) {
       return { type: 'T3', direction: 'bullish', candleCount: 3, startIndex: endIndex - 2, endIndex };
     }
     if (candleIsBullish(first) && candleIsBearish(second)
-      && second.high >= first.high && candleIsBearish(current) && current.close < second.low) {
+      && second.high > first.high && candleIsBearish(current) && current.close < second.low) {
       return { type: 'T3', direction: 'bearish', candleCount: 3, startIndex: endIndex - 2, endIndex };
     }
   }

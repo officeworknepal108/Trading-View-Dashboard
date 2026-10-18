@@ -12,6 +12,7 @@ import {
   X,
 } from 'lucide-react';
 import type { ChartTimeZone } from '../services/chartTime';
+import type { OandaMarketSymbol } from '../services/marketSymbols';
 import {
   filterTradeRecords,
   tradeRecordDatePeriodKey,
@@ -29,6 +30,7 @@ import { TradeMultiSelect } from './TradeMultiSelect';
 
 export interface JournalTradeRecord {
   id: string;
+  symbol?: OandaMarketSymbol;
   zoneName: string;
   zoneTimeframe: TradeTimeframe;
   result: TradeResult | 'open' | 'risk-free';
@@ -44,6 +46,7 @@ export interface JournalTradeRecord {
   rewardRisk: number;
   riskPips: number;
   signalAt?: number;
+  outsideTradingTime?: boolean;
   volumeLogicStatus?: EngulfingVolumeStatus;
   volume1?: number;
   volume2?: number;

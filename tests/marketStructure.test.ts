@@ -561,6 +561,16 @@ test('Type 3 uses a mixed middle candle that sweeps the first candle', () => {
   assert.equal(detectEngulfingPatternAt(bearish, 2)?.type, 'T3');
   assert.equal(detectEngulfingPatternAt(bearish, 2)?.direction, 'bearish');
 
+  assert.notEqual(detectEngulfingPatternAt([
+    bullish[0], { ...bullish[1], low: bullish[0].low }, bullish[2],
+  ], 2)?.type, 'T3', 'an equal second low is not a bullish sweep');
+  assert.notEqual(detectEngulfingPatternAt([
+    bearish[0], { ...bearish[1], high: bearish[0].high }, bearish[2],
+  ], 2)?.type, 'T3', 'an equal second high is not a bearish sweep');
+  assert.notEqual(detectEngulfingPatternAt([
+    bearish[0], { ...bearish[1], high: bearish[0].high - 0.1 }, bearish[2],
+  ], 2)?.type, 'T3', 'a lower second high is not a bearish sweep');
+
   bullish[2] = { ...bullish[2], high: 14, close: 13.5 };
   assert.equal(
     detectEngulfingPatternAt(bullish, 2)?.type,

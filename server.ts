@@ -1001,6 +1001,7 @@ async function updateMt5JournalRecord(
     const record: StoredJournalTrade = {
       ...existing,
       id: journalId,
+      symbol: 'XAUUSD',
       mt5SignalId: signal.id,
       mt5Managed: true,
       lifecycleStatus: final ? 'closed' : status === 'RISK_FREE' ? 'risk-free' : 'open',
