@@ -50,6 +50,8 @@
     },
     {
       "paths": [
+        "src/services/goldScalping.ts",
+        "tests/goldScalping.test.ts",
         "mt5_bridge.py",
         "src/services/mt5Automation.ts",
         "tests/mt5Automation.test.ts",

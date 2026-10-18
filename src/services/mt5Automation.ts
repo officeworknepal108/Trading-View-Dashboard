@@ -42,6 +42,30 @@ export function isMt5SignalAllowedByTimeframes(
     && (!controlled.has(signal.signalTimeframe) || enabled.includes(signal.signalTimeframe as Mt5EntryTimeframe));
 }
 
+export function mt5SignalDisabledReason(
+  config: {
+    enabledTimeframes: readonly Mt5EntryTimeframe[];
+    scalpingEnabled: boolean;
+    intradayEnabled: boolean;
+  },
+  signal: Pick<Mt5SignalInput, 'zoneTimeframe' | 'signalTimeframe' | 'tradeStyle'>,
+): string | undefined {
+  if (!isMt5SignalAllowedByTimeframes(config.enabledTimeframes, signal)) {
+    return `${signal.zoneTimeframe} setup / ${signal.signalTimeframe} entry automatic trading is disabled.`;
+  }
+  if (signal.tradeStyle === 'SCALPING') {
+    return config.scalpingEnabled ? undefined : 'Scalping automatic trading is disabled.';
+  }
+  if (signal.tradeStyle === 'INTRADAY') {
+    return config.intradayEnabled ? undefined : 'Intraday automatic trading is disabled.';
+  }
+  // M5 entries can belong to either route. The setup timeframe identifies it.
+  if (signal.zoneTimeframe === 'M1' || signal.zoneTimeframe === 'M5') {
+    return config.scalpingEnabled ? undefined : 'Scalping automatic trading is disabled.';
+  }
+  return config.intradayEnabled ? undefined : 'Intraday automatic trading is disabled.';
+}
+
 export function normalizeMt5RiskPercent(value: unknown, fallback = 0.25): number {
   const numeric = Number(value);
   if (!Number.isFinite(numeric)) return fallback;
@@ -78,6 +102,8 @@ export interface Mt5AutomationConfig {
   enabled: boolean;
   tradingTimeEnabled: boolean;
   dryRun: boolean;
+  scalpingEnabled: boolean;
+  intradayEnabled: boolean;
   symbol: string;
   brokerSymbol: string;
   enabledTimeframes: Mt5EntryTimeframe[];
@@ -97,6 +123,7 @@ export interface Mt5SignalInput {
   direction: 'BUY' | 'SELL';
   orderType: 'MARKET' | 'LIMIT';
   source: 'ENGULFING' | 'MTF';
+  tradeStyle?: 'SCALPING' | 'INTRADAY';
   zoneName: string;
   zoneTimeframe: TradeTimeframe;
   signalTimeframe: TradeTimeframe;
@@ -245,7 +272,8 @@ export function applySignalOppositePositionTarget(
     ? requestedNormalRewardRisk
     : signal.rewardRisk;
   const signalDirection = signal.direction === 'BUY' ? 'bullish' : 'bearish';
-  const oppositePositionOpen = hasOppositeOpenPosition(positions, signalDirection);
+  const oppositePositionOpen = signal.tradeStyle === undefined
+    && hasOppositeOpenPosition(positions, signalDirection);
   const rewardRisk = oppositePositionOpen ? 1 : normalRewardRisk;
   const riskDistance = Math.abs(signal.entry - signal.stopLoss);
   const takeProfit = signal.direction === 'BUY'

@@ -61,6 +61,7 @@ export interface TradeLevels {
   stopLoss: number;
   takeProfit: number;
   riskFree: number;
+  riskFreeEnabled?: boolean;
   riskPips: number;
   rewardRisk: number;
   status: TradeStatus;
@@ -441,8 +442,10 @@ export function calculateTradeLevels(options: {
   signal: EngulfingTradeSignal;
   rule: TradeRule;
   omitStopBuffer?: boolean;
+  riskFreeEnabled?: boolean;
 }): TradeLevels | undefined {
-  const { sourceCandles, executionCandles, signal, rule, omitStopBuffer = false } = options;
+  const { sourceCandles, executionCandles, signal, rule, omitStopBuffer = false,
+    riskFreeEnabled = true } = options;
   const signalIndex = sourceCandles.findIndex((candle) => candle.time === signal.time);
   if (signalIndex < 0) return undefined;
   const startIndex = signalIndex - signal.candleCount + 1;
@@ -505,7 +508,7 @@ export function calculateTradeLevels(options: {
       resolvedAt = candle.time;
       break;
     }
-    reachedRiskFree = reachedRiskFree || riskFreeHit;
+    reachedRiskFree = riskFreeEnabled && (reachedRiskFree || riskFreeHit);
     if (slHit) {
       status = reachedRiskFree ? 'risk-free' : 'sl-hit';
       result = reachedRiskFree ? 'rf' : 'sl';
@@ -520,6 +523,7 @@ export function calculateTradeLevels(options: {
     stopLoss,
     takeProfit,
     riskFree,
+    riskFreeEnabled,
     riskPips: roundPips(risk / TRADE_PIP_SIZE),
     rewardRisk: rule.rewardRisk,
     status,

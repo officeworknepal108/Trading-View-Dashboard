@@ -9,7 +9,7 @@ import {
   MT5_DEFAULT_ENABLED_TIMEFRAMES,
   applySignalOppositePositionTarget,
   canMt5SignalExpireBeforeExecution,
-  isMt5SignalAllowedByTimeframes,
+  mt5SignalDisabledReason,
   normalizeMt5EnabledTimeframes,
   normalizeMt5RiskPercent,
   isExecutableTrade,
@@ -33,14 +33,21 @@ import { buildDayFibs } from './src/services/dayFib';
 import { applySwingFibConfluence } from './src/services/swingFibConfluence';
 import { applyDayFibConfluence } from './src/services/dayFibConfluence';
 import { applyOneMinuteGenesisQml, executionZoneName } from './src/services/oneMinuteGenesis';
-import { buildMtfRows, type MtfGranularity, type MtfTimeframeData } from './src/services/mtf';
+import { buildGoldIntradayMtfRows, buildGoldScalpingMtfRows, type MtfGranularity, type MtfTimeframeData } from './src/services/mtf';
+import {
+  findGoldScalpingCandleSignal,
+  goldScalpingCandleTimeframe,
+  goldScalpingChochTradeRule,
+  goldScalpingTradeRule,
+  goldScalpingZoneWidthPips,
+  goldIntradayMtfTradeRule,
+  isGoldIntradayCandleRoute,
+} from './src/services/goldScalping';
 import {
   calculateTradeLevels,
   assessEngulfingVolumeLogic,
   getEngulfingVolumeStatus,
   getDirectTradeRule,
-  getMtfTradeRule,
-  isDeepDiscountTradeSignal,
   findDirectZoneReentrySignal,
   isDaySwingFibEntryTimeframe,
   resolveDirectEntryPolicy,
@@ -72,6 +79,8 @@ const DEFAULT_MT5_CONFIG: Mt5AutomationConfig = {
   enabled: false,
   tradingTimeEnabled: true,
   dryRun: true,
+  scalpingEnabled: true,
+  intradayEnabled: true,
   symbol: 'XAUUSD',
   brokerSymbol: 'XAUUSDm',
   enabledTimeframes: [...MT5_DEFAULT_ENABLED_TIMEFRAMES],
@@ -85,7 +94,7 @@ const DEFAULT_MT5_CONFIG: Mt5AutomationConfig = {
 };
 
 const AUTOMATION_TIMEFRAMES: TradeTimeframe[] = ['M1', 'M5', 'M15', 'M30', 'H1', 'H4', 'D'];
-const AUTOMATION_DIRECT_TIMEFRAMES: TradeTimeframe[] = ['M1', 'M5', 'M15', 'H1'];
+const AUTOMATION_DIRECT_TIMEFRAMES: TradeTimeframe[] = ['M15', 'H1'];
 const AUTOMATION_FALLBACKS: Partial<Record<TradeTimeframe, TradeTimeframe[]>> = {
   M1: ['M5'], M15: ['M30'], H1: ['M15', 'M30'],
 };
@@ -239,6 +248,8 @@ async function readMt5Config(): Promise<Mt5AutomationConfig> {
     return {
       ...DEFAULT_MT5_CONFIG,
       ...parsed,
+      scalpingEnabled: parsed?.scalpingEnabled !== false,
+      intradayEnabled: parsed?.intradayEnabled !== false,
       enabledTimeframes: normalizeMt5EnabledTimeframes(
         parsed?.enabledTimeframes,
         DEFAULT_MT5_CONFIG.enabledTimeframes,
@@ -353,6 +364,8 @@ function sanitizeMt5Config(candidate: any, current: Mt5AutomationConfig): Mt5Aut
     enabled: candidate?.enabled === true,
     tradingTimeEnabled: candidate?.tradingTimeEnabled !== false,
     dryRun: candidate?.dryRun !== false,
+    scalpingEnabled: candidate?.scalpingEnabled !== false,
+    intradayEnabled: candidate?.intradayEnabled !== false,
     brokerSymbol: typeof candidate?.brokerSymbol === 'string'
       ? candidate.brokerSymbol.trim().slice(0, 30) || current.brokerSymbol
       : current.brokerSymbol,
@@ -376,9 +389,8 @@ async function enqueueMt5Signal(
 ): Promise<{ signal: Mt5StoredSignal; duplicate: boolean }> {
   const error = validateMt5Signal(candidate);
   if (error) throw new Error(error);
-  if (!isMt5SignalAllowedByTimeframes(config.enabledTimeframes, candidate)) {
-    throw new Error(`${candidate.zoneTimeframe} setup / ${candidate.signalTimeframe} entry automatic trading is disabled.`);
-  }
+  const disabledReason = mt5SignalDisabledReason(config, candidate);
+  if (disabledReason) throw new Error(disabledReason);
   const now = Math.floor(Date.now() / 1000);
   if (config.tradingTimeEnabled && !isNepalTradingTime(now)) {
     throw new Error('Outside Nepal trading time; automatic entry is blocked.');
@@ -439,11 +451,12 @@ async function rejectDisabledQueuedSignals(config: Mt5AutomationConfig): Promise
     const signals = await readMt5Signals();
     let rejected = 0;
     for (const signal of signals) {
-      if (signal.status !== 'QUEUED'
-        || isMt5SignalAllowedByTimeframes(config.enabledTimeframes, signal)) continue;
+      if (signal.status !== 'QUEUED') continue;
+      const disabledReason = mt5SignalDisabledReason(config, signal);
+      if (!disabledReason) continue;
       signal.status = 'REJECTED';
       signal.updatedAt = now;
-      signal.message = `${signal.zoneTimeframe} setup / ${signal.signalTimeframe} entry was switched off before execution.`;
+      signal.message = disabledReason;
       rejected += 1;
     }
     if (rejected > 0) await writeMt5Signals(signals);
@@ -645,9 +658,53 @@ async function scanMt5AutomationSignals(): Promise<number> {
       zones = applyOneMinuteGenesisQml(zones, sourceCandles, candles.D);
     }
     for (const zone of zones) {
+      const scalpTimeframe = goldScalpingCandleTimeframe(
+        zoneTimeframe, goldScalpingZoneWidthPips(zone),
+      );
+      if (scalpTimeframe && config.scalpingEnabled) {
+        const scalpSignal = findGoldScalpingCandleSignal(
+          zone, zoneTimeframe, candles[scalpTimeframe],
+        );
+        const scalpRule = goldScalpingTradeRule(zoneTimeframe, scalpTimeframe);
+        if (scalpSignal && scalpRule) {
+          const scalpClose = scalpSignal.time + AUTOMATION_SECONDS[scalpTimeframe];
+          const scalpTrade = (!config.tradingTimeEnabled || isNepalTradingTime(scalpClose))
+            ? calculateTradeLevels({
+              sourceCandles: candles[scalpTimeframe],
+              executionCandles: candles[scalpTimeframe],
+              signal: scalpSignal,
+              rule: scalpRule,
+            }) : undefined;
+          if (scalpTrade && isExecutableTrade(scalpTrade)
+            && (!config.tradingTimeEnabled || scalpTrade.filledAt === undefined
+              || isNepalTradingTime(scalpTrade.filledAt))) {
+            const scalpCandidate = tradeToMt5Signal({
+              source: 'ENGULFING', setupId: `GOLD_SCALP:${zoneTimeframe}:${zone.id}`,
+              zoneName: executionZoneName(zone), zoneTimeframe, trade: scalpTrade, now,
+              pendingExpiryMinutes: config.pendingExpiryMinutes,
+            });
+            scalpCandidate.tradeStyle = 'SCALPING';
+            const volumeContext = journalVolumeContext(candles[scalpTimeframe], scalpSignal);
+            scalpCandidate.journalContext = {
+              biasAtEntry: journalBiasAt(candles, scalpClose),
+              autoReason: `Gold scalping ${zoneTimeframe} ${scalpCandidate.zoneName}: zone Fib, zone midline, ${scalpTimeframe} ${scalpSignal.type} engulfing.`,
+              fibSource: zone.majorLiquidity ? 'MAJOR LIQUIDITY' : 'ZONE FIB',
+              fibBand: zone.fibBand,
+              fibLevels: journalFibLevels(zone.fibSourcePrice, zone.fibZeroPrice),
+              ...volumeContext,
+              entrySnapshotCandles: journalSnapshotCandles(
+                candles[scalpTimeframe], scalpSignal.time, scalpClose,
+              ),
+            };
+            candidates.push(applySignalOppositePositionTarget(
+              scalpCandidate, mt5BridgeHeartbeat?.positions,
+            ));
+          }
+        }
+      }
       if (!isZoneEligibleForEngulfingEntry(zone)) continue;
       const signal = resolveZoneEngulfingSignal(zone, zoneTimeframe);
-      if (!signal) continue;
+      if (!signal || !isGoldIntradayCandleRoute(zoneTimeframe, signal.timeframe)) continue;
       const baseRule = getDirectTradeRule(zoneTimeframe, signal.timeframe);
       if (!baseRule) continue;
       const signalClose = signal.time + AUTOMATION_SECONDS[signal.timeframe];
@@ -667,7 +724,8 @@ async function scanMt5AutomationSignals(): Promise<number> {
         executionCandles,
         signal,
         rule: policy.rule,
-        omitStopBuffer: isDeepDiscountTradeSignal(zone, signal),
+        omitStopBuffer: false,
+        riskFreeEnabled: false,
       });
       if (config.tradingTimeEnabled && trade?.filledAt !== undefined
         && !isNepalTradingTime(trade.filledAt)) continue;
@@ -699,7 +757,8 @@ async function scanMt5AutomationSignals(): Promise<number> {
               executionCandles: reentryExecutionCandles,
               signal: reentrySignal,
               rule: reentryPolicy.rule,
-              omitStopBuffer: isDeepDiscountTradeSignal(zone, reentrySignal),
+              omitStopBuffer: false,
+              riskFreeEnabled: false,
             });
             if (reentryTrade && (!config.tradingTimeEnabled
               || reentryTrade.filledAt === undefined
@@ -725,6 +784,7 @@ async function scanMt5AutomationSignals(): Promise<number> {
         zoneName: executionZoneName(zone), zoneTimeframe, trade, now,
         pendingExpiryMinutes: config.pendingExpiryMinutes,
       });
+      baseSignal.tradeStyle = 'INTRADAY';
       baseSignal.journalContext = {
         biasAtEntry: journalBiasAt(candles, signalClose),
         autoReason: buildJournalAutoReason({
@@ -754,9 +814,14 @@ async function scanMt5AutomationSignals(): Promise<number> {
     const structure = structures[timeframe];
     if (structure) mtfData[timeframe] = { candles: candles[timeframe], structure };
   }
-  for (const row of buildMtfRows(mtfData)) {
+  const mtfRows = new Map(buildGoldIntradayMtfRows(mtfData)
+    .map((row) => [row.id, row]));
+  for (const row of buildGoldScalpingMtfRows(mtfData)) mtfRows.set(row.id, row);
+  for (const row of mtfRows.values()) {
     if (!row.engulfingType || row.engulfingTime === undefined) continue;
-    const rule = getMtfTradeRule(row.higherTimeframe, row.lowerTimeframe);
+    const rule = row.goldScalping
+      ? goldScalpingChochTradeRule(row.higherTimeframe, row.lowerTimeframe)
+      : goldIntradayMtfTradeRule(row.higherTimeframe, row.lowerTimeframe);
     if (!rule) continue;
     const signal: EngulfingTradeSignal = {
       type: row.engulfingType,
@@ -772,7 +837,8 @@ async function scanMt5AutomationSignals(): Promise<number> {
       executionCandles: candles[row.lowerTimeframe],
       signal,
       rule,
-      omitStopBuffer: row.engulfingDeepDiscount === true,
+      omitStopBuffer: false,
+      riskFreeEnabled: row.goldScalping,
     });
     if (config.tradingTimeEnabled && trade?.filledAt !== undefined
       && !isNepalTradingTime(trade.filledAt)) continue;
@@ -784,6 +850,7 @@ async function scanMt5AutomationSignals(): Promise<number> {
       zoneTimeframe: row.higherTimeframe, trade, now,
       pendingExpiryMinutes: config.pendingExpiryMinutes,
     });
+    baseSignal.tradeStyle = row.goldScalping ? 'SCALPING' : 'INTRADAY';
     const fibBand = row.engulfingDeepDiscount ? '0.71-0.79' : '0.5-0.618';
     baseSignal.journalContext = {
       biasAtEntry: journalBiasAt(candles, signalClose),
@@ -797,7 +864,7 @@ async function scanMt5AutomationSignals(): Promise<number> {
         volumeLogicStatus: volumeContext.volumeLogicStatus,
         source: 'MTF',
       }),
-      fibSource: 'MTF FIB',
+      fibSource: row.goldScalping ? 'MTF CHOCH' : 'MTF FIB',
       fibBand,
       ...volumeContext,
       entrySnapshotCandles: journalSnapshotCandles(
@@ -809,7 +876,7 @@ async function scanMt5AutomationSignals(): Promise<number> {
 
   const grouped = new Map<string, Mt5SignalInput>();
   for (const candidate of candidates) {
-    if (!isMt5SignalAllowedByTimeframes(config.enabledTimeframes, candidate)) continue;
+    if (mt5SignalDisabledReason(config, candidate)) continue;
     if (candidate.calculatedAt < now - config.signalMaxAgeSeconds) continue;
     if (candidate.signalAt > now + 5 || candidate.calculatedAt > now + 5) continue;
     const existing = grouped.get(candidate.id);
@@ -944,6 +1011,7 @@ async function updateMt5JournalRecord(
       zoneName: signal.zoneName,
       zoneTimeframe: signal.zoneTimeframe,
       source: signal.source,
+      tradeStyle: signal.tradeStyle,
       direction: signal.direction === 'BUY' ? 'bullish' : 'bearish',
       signalTimeframe: signal.signalTimeframe,
       engulfingType: signal.engulfingType,
@@ -1144,10 +1212,11 @@ async function startServer() {
       if (!mt5ExecutionFeedIsFresh()) {
         return res.status(409).json({ ok: false, error: 'MT5 broker candle feed is not fresh.' });
       }
-      if (!isMt5SignalAllowedByTimeframes(config.enabledTimeframes, req.body as Mt5SignalInput)) {
+      const disabledReason = mt5SignalDisabledReason(config, req.body as Mt5SignalInput);
+      if (disabledReason) {
         return res.status(409).json({
           ok: false,
-          error: `${String(req.body.zoneTimeframe)} setup / ${String(req.body.signalTimeframe)} entry automatic trading is disabled.`,
+          error: disabledReason,
         });
       }
       if (req.body.calculatedAt < now - config.signalMaxAgeSeconds) {
@@ -1252,11 +1321,12 @@ async function startServer() {
             item.updatedAt = now;
             item.message = 'Signal expired before execution.';
           }
-          if (item.status === 'QUEUED'
-            && !isMt5SignalAllowedByTimeframes(config.enabledTimeframes, item)) {
+          const disabledReason = item.status === 'QUEUED'
+            ? mt5SignalDisabledReason(config, item) : undefined;
+          if (disabledReason) {
             item.status = 'REJECTED';
             item.updatedAt = now;
-            item.message = `${item.zoneTimeframe} setup / ${item.signalTimeframe} entry automatic trading is disabled.`;
+            item.message = disabledReason;
           }
           if (item.status === 'QUEUED') {
             Object.assign(item, applySignalOppositePositionTarget(
@@ -1267,7 +1337,7 @@ async function startServer() {
         }
         const next = signals.find((item) => (
           item.status === 'QUEUED'
-          && isMt5SignalAllowedByTimeframes(config.enabledTimeframes, item)
+          && !mt5SignalDisabledReason(config, item)
         ));
         if (next) {
           next.status = 'CLAIMED';

@@ -136,8 +136,9 @@ continues when the browser is closed without bursting requests at TradingView.
 
 The bridge calculates volume with MT5's broker-reported tick value, respects
 the broker volume step, rejects excessive spread/daily loss/open exposure,
-places LIMIT orders for pending entries, and moves SL to the actual fill price
-when the configured risk-free level is reached. Runtime signals, settings,
+places LIMIT orders for pending entries, and closes about half of Gold scalping
+positions at 1R while the remainder keeps its original SL and TP. Gold intraday
+positions remain whole until SL or TP. Runtime signals, settings,
 credentials and bridge state remain local and are excluded from Git.
 Use **START BRIDGE** and **STOP BRIDGE** in the dashboard to manage the hidden
 local process; only one server-managed bridge is allowed at a time.

@@ -34,6 +34,7 @@ export interface JournalTradeRecord {
   result: TradeResult | 'open' | 'risk-free';
   completedAt: number;
   source: 'ENGULFING' | 'MTF';
+  tradeStyle?: 'SCALPING' | 'INTRADAY';
   direction: 'bullish' | 'bearish';
   signalTimeframe: TradeTimeframe;
   engulfingType: string;
@@ -175,9 +176,7 @@ export function inferTradingSession(time: number): string {
 
 function calculateTotalR(trades: JournalTradeRecord[]): number {
   return trades.reduce((total, trade) => (
-    total + (['tp', 'sl', 'rf'].includes(trade.result)
-      ? calculateHalfAtOneRResult(trade.result as TradeResult, trade.rewardRisk)
-      : 0)
+    total + (tradeResultR(trade) ?? 0)
   ), 0);
 }
 
@@ -210,9 +209,12 @@ export function calculateJournalCashSummary(trades: JournalTradeRecord[]): Journ
 }
 
 function tradeResultR(trade: JournalTradeRecord): number | undefined {
-  return ['tp', 'sl', 'rf'].includes(trade.result)
-    ? calculateHalfAtOneRResult(trade.result as TradeResult, trade.rewardRisk)
-    : undefined;
+  if (!['tp', 'sl', 'rf'].includes(trade.result)) return undefined;
+  if (trade.tradeStyle === 'INTRADAY' && !trade.partialClosedAt) {
+    if (trade.result === 'tp') return trade.rewardRisk;
+    if (trade.result === 'sl') return -1;
+  }
+  return calculateHalfAtOneRResult(trade.result as TradeResult, trade.rewardRisk);
 }
 
 export function calculateJournalPerformance(trades: JournalTradeRecord[]): JournalPerformance {

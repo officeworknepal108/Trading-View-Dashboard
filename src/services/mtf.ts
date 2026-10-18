@@ -6,6 +6,12 @@ import {
   type StructureCandle,
   type StructureZone,
 } from './marketStructure';
+import {
+  goldScalpingConfirmationWickPasses,
+  goldScalpingZoneWidthPips,
+  isGoldScalpingChochZone,
+  isGoldScalpingEngulfingType,
+} from './goldScalping';
 
 export type MtfGranularity = 'M1' | 'M5' | 'M15' | 'H1' | 'H4' | 'D';
 export type MtfConfirmationKind = 'choch' | 'iss';
@@ -38,6 +44,7 @@ export interface MtfRow {
   engulfingCandleCount?: number;
   engulfingBarsAgo?: number;
   engulfingDeepDiscount?: boolean;
+  goldScalping?: boolean;
 }
 
 interface MtfMapping {
@@ -52,6 +59,16 @@ export const MTF_MAPPINGS: MtfMapping[] = [
   { higher: 'H1', lower: 'M5', confirmations: ['choch'] },
   { higher: 'H4', lower: 'M15', confirmations: ['choch'] },
   { higher: 'D', lower: 'H1', confirmations: ['choch'] },
+];
+
+const GOLD_SCALPING_MTF_MAPPINGS: MtfMapping[] = [
+  { higher: 'M15', lower: 'M1', confirmations: ['choch'] },
+  { higher: 'H1', lower: 'M1', confirmations: ['choch'] },
+];
+
+const GOLD_INTRADAY_MTF_MAPPINGS: MtfMapping[] = [
+  { higher: 'H1', lower: 'M5', confirmations: ['choch'] },
+  { higher: 'H4', lower: 'M15', confirmations: ['choch'] },
 ];
 
 const CHOCH_ZONE_NAMES = new Set<StructureZone['name']>(['QML', 'SBR', 'RBS', 'DT', 'DB']);
@@ -240,6 +257,7 @@ function findMtfEngulfing(
   candles: StructureCandle[],
   event: ConfirmationEvent,
   zone: StructureZone,
+  goldScalping = false,
 ): { type: EngulfingType; time: number; candleCount: number; deepDiscount: boolean } | undefined {
   if (zone.tapTime === undefined) return undefined;
   const requiredDirection: EngulfingDirection = event.isBuy ? 'bullish' : 'bearish';
@@ -251,6 +269,9 @@ function findMtfEngulfing(
   if (zone.engulfingType !== undefined
     && zone.engulfingTime !== undefined
     && zone.engulfingDirection === requiredDirection
+    && (!goldScalping || isGoldScalpingEngulfingType(zone.engulfingType))
+    && (!goldScalping || candles.some((candle) => candle.time === zone.engulfingTime
+      && goldScalpingConfirmationWickPasses(candle, requiredDirection)))
     && zone.engulfingTime >= validFrom
     && (zone.invalidatedAt === undefined || zone.engulfingTime < zone.invalidatedAt)) {
     return {
@@ -269,7 +290,9 @@ function findMtfEngulfing(
     if (finalCandle.complete === false || finalCandle.time < validFrom) continue;
     if (zone.invalidatedAt !== undefined && finalCandle.time >= zone.invalidatedAt) break;
     const pattern = detectEngulfingPatternAt(candles, endIndex);
-    if (!pattern || pattern.direction !== requiredDirection) continue;
+    if (!pattern || pattern.direction !== requiredDirection
+      || (goldScalping && (!isGoldScalpingEngulfingType(pattern.type)
+        || !goldScalpingConfirmationWickPasses(finalCandle, requiredDirection)))) continue;
     const patternCandles = candles.slice(pattern.startIndex, pattern.endIndex + 1);
     const touchesTappedZoneInsideFib = patternCandles.some((candle) => (
       candle.time >= validFrom
@@ -294,12 +317,13 @@ function eventToRow(
   lowerCandles: StructureCandle[],
   higherCandles: StructureCandle[],
   higherTimeframeTouch: { zone: StructureZone; time: number },
+  goldScalping = false,
 ): MtfRow {
   const entry = event.zones
     .filter((zone) => zone.status !== 'rejected'
       && zone.tapTime !== undefined && zone.tapTime >= event.time
       && (zone.invalidatedAt === undefined || zone.tapTime < zone.invalidatedAt))
-    .map((zone) => ({ zone, engulfing: findMtfEngulfing(lowerCandles, event, zone) }))
+    .map((zone) => ({ zone, engulfing: findMtfEngulfing(lowerCandles, event, zone, goldScalping) }))
     .filter((candidate): candidate is {
       zone: StructureZone;
       engulfing: {
@@ -350,6 +374,7 @@ function eventToRow(
     engulfingTime: engulfing?.time,
     engulfingCandleCount: engulfing?.candleCount,
     engulfingDeepDiscount: engulfing?.deepDiscount,
+    goldScalping: goldScalping || undefined,
     engulfingBarsAgo: engulfingIndex < 0
       ? undefined
       : lowerCandles.length - 1 - engulfingIndex,
@@ -365,9 +390,13 @@ function buildMtfRowsInternal(
   data: Partial<Record<MtfGranularity, MtfTimeframeData>>,
   maximumEventsToInspect: number,
   maximumRowsPerMapping: number,
+  goldScalping = false,
+  goldIntraday = false,
 ): MtfRow[] {
   const rows: MtfRow[] = [];
-  for (const mapping of MTF_MAPPINGS) {
+  const mappings = goldScalping ? GOLD_SCALPING_MTF_MAPPINGS
+    : goldIntraday ? GOLD_INTRADAY_MTF_MAPPINGS : MTF_MAPPINGS;
+  for (const mapping of mappings) {
     const higher = data[mapping.higher];
     const lower = data[mapping.lower];
     if (!higher || !lower) continue;
@@ -389,7 +418,11 @@ function buildMtfRowsInternal(
         .filter((item): item is {
           event: ConfirmationEvent;
           higherTimeframeTouch: { zone: StructureZone; time: number };
-        } => item.higherTimeframeTouch !== undefined);
+        } => item.higherTimeframeTouch !== undefined
+          && (!goldScalping || isGoldScalpingChochZone(
+            mapping.higher,
+            goldScalpingZoneWidthPips(item.higherTimeframeTouch.zone),
+          )));
       for (const candidate of candidates.slice(0, maximumRowsPerMapping)) {
         rows.push(eventToRow(
           mapping,
@@ -397,6 +430,7 @@ function buildMtfRowsInternal(
           lower.candles,
           higher.candles,
           candidate.higherTimeframeTouch,
+          goldScalping,
         ));
       }
     }
@@ -417,4 +451,28 @@ export function buildMtfHistoryRows(
   // engulfing trades are merged, enough for the combined newest-50 sample
   // while keeping the optional browser-side backfill bounded.
   return buildMtfRowsInternal(data, 12, 12);
+}
+
+export function buildGoldScalpingMtfRows(
+  data: Partial<Record<MtfGranularity, MtfTimeframeData>>,
+): MtfRow[] {
+  return buildMtfRowsInternal(data, Number.POSITIVE_INFINITY, 1, true);
+}
+
+export function buildGoldIntradayMtfRows(
+  data: Partial<Record<MtfGranularity, MtfTimeframeData>>,
+): MtfRow[] {
+  return buildMtfRowsInternal(data, Number.POSITIVE_INFINITY, 1, false, true);
+}
+
+export function buildGoldIntradayMtfHistoryRows(
+  data: Partial<Record<MtfGranularity, MtfTimeframeData>>,
+): MtfRow[] {
+  return buildMtfRowsInternal(data, 12, 12, false, true);
+}
+
+export function buildGoldScalpingMtfHistoryRows(
+  data: Partial<Record<MtfGranularity, MtfTimeframeData>>,
+): MtfRow[] {
+  return buildMtfRowsInternal(data, 12, 12, true);
 }

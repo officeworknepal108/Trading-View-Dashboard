@@ -1,6 +1,12 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { buildMtfHistoryRows, buildMtfRows, type MtfTimeframeData } from '../src/services/mtf';
+import {
+  buildGoldScalpingMtfRows,
+  buildGoldIntradayMtfRows,
+  buildMtfHistoryRows,
+  buildMtfRows,
+  type MtfTimeframeData,
+} from '../src/services/mtf';
 import type { MarketStructureResult, StructureCandle, StructureZone } from '../src/services/marketStructure';
 
 function candle(time: number, open: number, high: number, low: number, close: number): StructureCandle {
@@ -22,6 +28,58 @@ function zone(overrides: Partial<StructureZone> = {}): StructureZone {
     ...overrides,
   };
 }
+
+test('Gold H1/M1 CHOCH route needs lower-timeframe Fib on a 50 pip zone', () => {
+  const lowerCandles = [
+    candle(100, 104, 105, 101, 102),
+    candle(200, 103, 104, 101, 102),
+    candle(300, 102, 108, 101, 107),
+    candle(400, 107, 109, 103, 104),
+    candle(500, 104, 110, 103, 109.5),
+  ];
+  const higherZone = zone({
+    id: 'gold-h1-zone', name: 'DEMAND', category: 'supplyDemand',
+    bottom: 101, top: 106,
+  });
+  const qml = zone({
+    id: 'gold-m1-qml', chochTime: 300, startTime: 100, activeFromTime: 300,
+    tjlPairTime: 50, bottom: 103, top: 105, tapTime: 400,
+    fibSourcePrice: 100, fibZeroPrice: 110,
+  });
+  const rbs = zone({
+    id: 'gold-m1-rbs', name: 'RBS', chochTime: 300, startTime: 150,
+    activeFromTime: 300, tjlPairTime: 50, bottom: 105, top: 106,
+  });
+  const db = zone({
+    id: 'gold-m1-db', name: 'DB', chochTime: 300, startTime: 100,
+    activeFromTime: 300, bottom: 99, top: 100,
+  });
+  const data: Partial<Record<'H1' | 'M1', MtfTimeframeData>> = {
+    H1: { candles: lowerCandles, structure: structure([higherZone]) },
+    M1: { candles: lowerCandles, structure: structure([qml, rbs, db]) },
+  };
+  const row = buildGoldScalpingMtfRows(data)[0];
+  assert.equal(row?.goldScalping, true);
+  assert.equal(row?.higherTimeframe, 'H1');
+  assert.equal(row?.lowerTimeframe, 'M1');
+  assert.equal(row?.engulfingType, 'T1');
+  assert.equal(row?.engulfingDeepDiscount, false);
+  const withoutLowerFib = buildGoldScalpingMtfRows({
+    ...data,
+    M1: { ...data.M1!, structure: structure([
+      { ...qml, fibSourcePrice: undefined, fibZeroPrice: undefined }, rbs, db,
+    ]) },
+  })[0];
+  assert.equal(withoutLowerFib?.engulfingType, undefined);
+  const longUpperWick = buildGoldScalpingMtfRows({
+    ...data,
+    M1: { ...data.M1!, candles: lowerCandles.map((item) => (
+      item.time === 500 ? { ...item, high: 116 } : item
+    )) },
+  })[0];
+  assert.equal(longUpperWick?.engulfingType, undefined);
+  assert.equal(buildMtfRows(data).length, 0);
+});
 
 test('MTF row follows the selected LTF CHOCH and promotes only an A+ engulfing', () => {
   const lowerCandles = [
@@ -67,6 +125,7 @@ test('MTF row follows the selected LTF CHOCH and promotes only an A+ engulfing',
   };
 
   const row = buildMtfRows(data).find((candidate) => candidate.higherTimeframe === 'H1');
+  assert.equal(buildGoldIntradayMtfRows(data)[0]?.id, row?.id);
   assert.equal(row?.lowerTimeframe, 'M5');
   assert.equal(row?.higherTimeframeZoneId, 'h1-demand');
   assert.equal(row?.higherTimeframeZone, 'DEMAND');

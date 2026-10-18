@@ -66,3 +66,19 @@ test('journal overview keeps broker cash and normalized R analytics separate', (
   assert.equal(performance.realizedProfit, 50);
   assert.equal(performance.realizedTradeCount, 2);
 });
+
+test('Gold intraday journal uses full-position R while scalping keeps half-at-1R R', () => {
+  const base: JournalTradeRecord = {
+    id: 'intraday-tp', zoneName: 'TJL2', zoneTimeframe: 'M15', result: 'tp',
+    completedAt: unixTime('2024-07-09T10:00:00Z'), source: 'ENGULFING',
+    direction: 'bullish', signalTimeframe: 'M15', engulfingType: 'T2',
+    entry: 100, stopLoss: 99, takeProfit: 103, rewardRisk: 3, riskPips: 10,
+    tradeStyle: 'INTRADAY',
+  };
+  const performance = calculateJournalPerformance([
+    base,
+    { ...base, id: 'intraday-sl', result: 'sl' },
+    { ...base, id: 'scalp-tp', tradeStyle: 'SCALPING' },
+  ]);
+  assert.equal(performance.totalR, 4);
+});

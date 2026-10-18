@@ -530,6 +530,27 @@ test('1R keeps the trade open through an entry retrace until the displayed SL or
   assert.equal(trade?.resolvedAt, undefined);
 });
 
+test('intraday trade keeps full position open after 1R and records a later SL', () => {
+  const sourceCandles: StructureCandle[] = [
+    { time: 0, open: 12, high: 13, low: 9, close: 10, complete: true },
+    { time: 60, open: 10, high: 14, low: 9.5, close: 13.5, complete: true },
+  ];
+  const trade = calculateTradeLevels({
+    sourceCandles,
+    executionCandles: [
+      ...sourceCandles,
+      { time: 120, open: 11, high: 15, low: 10, close: 14, complete: true },
+      { time: 180, open: 14, high: 14, low: 7, close: 8, complete: true },
+    ],
+    signal: bullishSignal,
+    rule: getDirectTradeRule('M1', 'M1')!,
+    riskFreeEnabled: false,
+  });
+  assert.equal(trade?.riskFreeEnabled, false);
+  assert.equal(trade?.result, 'sl');
+  assert.equal(trade?.status, 'sl-hit');
+});
+
 test('MTF entry uses the actual engulfing timeframe rule when the pair has no direct rule', () => {
   const rule = getMtfTradeRule('H1', 'M5');
   assert.equal(rule?.rewardRisk, 2);

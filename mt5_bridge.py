@@ -50,6 +50,15 @@ MT5_MARKET_TIMEFRAMES = {
     "D": mt5.TIMEFRAME_D1,
 }
 LAST_MARKET_BAR_TIME: dict[str, int] = {}
+LAST_BROKER_TICK: dict[str, int] = {}
+LAST_BROKER_TICK_SEEN_AT: dict[str, float] = {}
+MAX_BROKER_TICK_IDLE_SECONDS = 120
+
+
+class BrokerMarketDataUnavailable(RuntimeError):
+    """The latest quote cannot safely establish a live broker clock."""
+
+
 NEPAL_TIMEZONE = timezone(timedelta(hours=5, minutes=45))
 NEPAL_TRADING_SESSIONS = ((345, 495), (705, 885), (1065, 1245))
 
@@ -174,11 +183,25 @@ def broker_utc_offset_seconds(symbol: str) -> int:
     """Return the server-clock offset encoded in this broker's MT5 epochs."""
     tick = mt5.symbol_info_tick(symbol)
     if tick is None:
-        raise RuntimeError(f"Unable to read {symbol} broker time: {mt5.last_error()}")
-    raw_offset = int(tick.time) - int(time.time())
+        raise BrokerMarketDataUnavailable(
+            f"Unable to read {symbol} broker time: {mt5.last_error()}"
+        )
+    now = time.time()
+    tick_marker = int(getattr(tick, "time_msc", 0) or int(tick.time) * 1000)
+    previous_tick = LAST_BROKER_TICK.get(symbol)
+    if previous_tick is None or tick_marker != previous_tick:
+        LAST_BROKER_TICK[symbol] = tick_marker
+        LAST_BROKER_TICK_SEEN_AT[symbol] = now
+    if previous_tick is None or tick_marker <= 0 or tick_marker < previous_tick:
+        raise BrokerMarketDataUnavailable(f"Waiting for a new {symbol} broker tick.")
+    if now - LAST_BROKER_TICK_SEEN_AT[symbol] > MAX_BROKER_TICK_IDLE_SECONDS:
+        raise BrokerMarketDataUnavailable(f"{symbol} broker tick is stale; waiting for a new quote.")
+    raw_offset = int(tick.time) - int(now)
     rounded_offset = int(round(raw_offset / 900.0) * 900)
     if abs(rounded_offset) > 14 * 60 * 60:
-        raise RuntimeError(f"Broker time offset {rounded_offset}s is outside the safe range.")
+        raise BrokerMarketDataUnavailable(
+            f"Broker time offset {rounded_offset}s is outside the safe range."
+        )
     return rounded_offset
 
 
@@ -299,8 +322,9 @@ def calculate_volume(signal: dict[str, Any], config: dict[str, Any], symbol_info
             f"formula={formula_one_lot_loss:.2f}, MT5={broker_one_lot_loss:.2f}."
         )
     volume = normalize_volume(raw_volume, symbol_info)
-    # Do not open a position that cannot follow the agreed 50%-at-1R exit plan.
-    calculate_partial_close_volume(volume, volume, symbol_info)
+    # Only scalping positions need enough volume for the 50%-at-1R exit.
+    if signal.get("tradeStyle") == "SCALPING":
+        calculate_partial_close_volume(volume, volume, symbol_info)
     return volume
 
 
@@ -634,7 +658,9 @@ def manage_open_signals(
         partial_already_done = bool(record.get("partialClosedAt")) or (
             info is not None and current_volume < initial_volume - float(info.volume_step) / 2
         )
-        if status != "RISK_FREE" and partial_already_done:
+        if status != "RISK_FREE" and partial_already_done and (
+            record.get("tradeStyle") == "SCALPING" or record.get("partialClosedAt")
+        ):
             partial_details = {
                 "initialVolume": initial_volume,
                 "partialClosedVolume": max(0.0, initial_volume - current_volume),
@@ -652,7 +678,7 @@ def manage_open_signals(
                 message="50% was closed at 1R; the remaining position keeps its original SL and TP.",
             )
             continue
-        if status != "RISK_FREE" and reached:
+        if status != "RISK_FREE" and record.get("tradeStyle") == "SCALPING" and reached:
             partial_details = close_half_position(position, record)
             record.update(partial_details)
             record["status"] = "RISK_FREE"
@@ -668,6 +694,50 @@ def manage_open_signals(
             )
 
 
+def process_bridge_cycle(
+    status_payload: dict[str, Any],
+    state: dict[str, dict[str, Any]],
+    last_heartbeat: float,
+) -> float:
+    config = status_payload["config"]
+    try:
+        published_timeframes = publish_mt5_market_data(config)
+        market_data_issue = None
+    except BrokerMarketDataUnavailable as error:
+        published_timeframes = 0
+        market_data_issue = str(error)
+    if published_timeframes:
+        print(f"MT5 DATA: published {published_timeframes} updated timeframe snapshot(s)")
+    if time.time() - last_heartbeat >= 5:
+        message = f"Market data paused: {market_data_issue}" if market_data_issue else "Bridge ready"
+        heartbeat(config, message=message)
+        last_heartbeat = time.time()
+    recent_signals = status_payload.get("recentSignals", [])
+    for server_signal in recent_signals:
+        if (
+            server_signal.get("bridgeId") == BRIDGE_ID
+            and server_signal.get("status") in {"PLACED", "ACTIVE", "RISK_FREE"}
+        ):
+            state.setdefault(server_signal["id"], dict(server_signal))
+    if market_data_issue is None:
+        manage_open_signals(state, recent_signals, config)
+    save_state(state)
+    if market_data_issue is not None:
+        return last_heartbeat
+    claim = api("POST", "/api/mt5/signals/claim", json={"bridgeId": BRIDGE_ID})
+    signal = claim.get("signal")
+    if signal:
+        try:
+            record = {**signal, **place_signal(signal, claim["config"])}
+            if record.get("status") not in {"SIMULATED", "REJECTED"}:
+                state[signal["id"]] = record
+                save_state(state)
+        except Exception as error:  # Keep the bridge alive and make the failure visible.
+            update_status(signal["id"], "REJECTED", message=str(error))
+            print(f"REJECTED {signal['id']}: {error}", file=sys.stderr)
+    return last_heartbeat
+
+
 def run() -> None:
     initialize_mt5()
     state = load_state()
@@ -676,33 +746,7 @@ def run() -> None:
         while True:
             try:
                 status_payload = api("GET", "/api/mt5/status")
-                config = status_payload["config"]
-                published_timeframes = publish_mt5_market_data(config)
-                if published_timeframes:
-                    print(f"MT5 DATA: published {published_timeframes} updated timeframe snapshot(s)")
-                if time.time() - last_heartbeat >= 5:
-                    heartbeat(config)
-                    last_heartbeat = time.time()
-                recent_signals = status_payload.get("recentSignals", [])
-                for server_signal in recent_signals:
-                    if (
-                        server_signal.get("bridgeId") == BRIDGE_ID
-                        and server_signal.get("status") in {"PLACED", "ACTIVE", "RISK_FREE"}
-                    ):
-                        state.setdefault(server_signal["id"], dict(server_signal))
-                manage_open_signals(state, recent_signals, config)
-                save_state(state)
-                claim = api("POST", "/api/mt5/signals/claim", json={"bridgeId": BRIDGE_ID})
-                signal = claim.get("signal")
-                if signal:
-                    try:
-                        record = {**signal, **place_signal(signal, claim["config"])}
-                        if record.get("status") not in {"SIMULATED", "REJECTED"}:
-                            state[signal["id"]] = record
-                            save_state(state)
-                    except Exception as error:  # Keep the bridge alive and make the failure visible.
-                        update_status(signal["id"], "REJECTED", message=str(error))
-                        print(f"REJECTED {signal['id']}: {error}", file=sys.stderr)
+                last_heartbeat = process_bridge_cycle(status_payload, state, last_heartbeat)
             except requests.RequestException as error:
                 print(f"Dashboard connection error: {error}", file=sys.stderr)
             except Exception as error:

@@ -12,6 +12,7 @@ import {
   isExecutableTrade,
   isMt5EntryTimeframeEnabled,
   isMt5SignalAllowedByTimeframes,
+  mt5SignalDisabledReason,
   normalizeMt5EnabledTimeframes,
   normalizeMt5RiskPercent,
   shouldRemoveOpenMt5JournalRecord,
@@ -83,6 +84,33 @@ test('disabled M1 blocks native, direct and MTF signals related to M1', () => {
   assert.equal(isMt5SignalAllowedByTimeframes(enabled, {
     zoneTimeframe: 'H4', signalTimeframe: 'H1',
   }), true);
+});
+
+test('Scalping and Intraday switches independently gate setup routes, including M5 entries', () => {
+  const enabledTimeframes = ['M1', 'M5', 'M15', 'M30', 'H1'] as const;
+  const scalpingOnly = { enabledTimeframes, scalpingEnabled: true, intradayEnabled: false };
+  const intradayOnly = { enabledTimeframes, scalpingEnabled: false, intradayEnabled: true };
+  const bothOff = { enabledTimeframes, scalpingEnabled: false, intradayEnabled: false };
+  const scalpM5Entry = { zoneTimeframe: 'M1', signalTimeframe: 'M5' } as const;
+  const intradayM5Entry = { zoneTimeframe: 'M15', signalTimeframe: 'M5' } as const;
+
+  assert.equal(mt5SignalDisabledReason(scalpingOnly, scalpM5Entry), undefined);
+  assert.match(mt5SignalDisabledReason(scalpingOnly, intradayM5Entry) ?? '', /Intraday/);
+  assert.match(mt5SignalDisabledReason(intradayOnly, scalpM5Entry) ?? '', /Scalping/);
+  assert.equal(mt5SignalDisabledReason(intradayOnly, intradayM5Entry), undefined);
+  assert.match(mt5SignalDisabledReason(bothOff, scalpM5Entry) ?? '', /Scalping/);
+  assert.match(mt5SignalDisabledReason(bothOff, intradayM5Entry) ?? '', /Intraday/);
+  assert.match(mt5SignalDisabledReason({
+    ...scalpingOnly, enabledTimeframes: ['M1'],
+  }, scalpM5Entry) ?? '', /M5 entry/);
+  const goldScalp = {
+    zoneTimeframe: 'M15', signalTimeframe: 'M5', tradeStyle: 'SCALPING',
+  } as const;
+  assert.equal(mt5SignalDisabledReason(scalpingOnly, goldScalp), undefined);
+  assert.match(mt5SignalDisabledReason(intradayOnly, goldScalp) ?? '', /Scalping/);
+  assert.equal(mt5SignalDisabledReason(intradayOnly, {
+    zoneTimeframe: 'H1', signalTimeframe: 'M5', tradeStyle: 'INTRADAY',
+  }), undefined);
 });
 
 test('XAUUSD lot size follows cash risk divided by SL pips times ten', () => {
@@ -157,6 +185,17 @@ test('MT5 signal target is finalized from the positions open at execution time',
   assert.equal(restored.rewardRisk, 3);
   assert.equal(restored.takeProfit, 4180);
   assert.notEqual(hedged.id, restored.id);
+
+  const scalp = applySignalOppositePositionTarget(
+    { ...signal, tradeStyle: 'SCALPING' }, [{ direction: 'SELL' }],
+  );
+  assert.equal(scalp.rewardRisk, 3);
+  assert.equal(scalp.takeProfit, 4180);
+  const intraday = applySignalOppositePositionTarget(
+    { ...signal, tradeStyle: 'INTRADAY' }, [{ direction: 'SELL' }],
+  );
+  assert.equal(intraday.rewardRisk, 3);
+  assert.equal(intraday.takeProfit, 4180);
 });
 
 test('only pending and active dashboard trades are executable', () => {
