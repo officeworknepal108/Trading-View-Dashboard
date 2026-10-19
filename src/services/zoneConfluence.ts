@@ -83,7 +83,7 @@ export interface ComparisonZone {
   overlapsCurrentZone: boolean;
 }
 
-/** Keep the five most recent active, valid zones from one selected timeframe. */
+/** Keep the five most recent active, valid zones on each side of one timeframe. */
 export function selectRecentComparisonZones(
   sourceZones: readonly StructureZone[],
   chartZones: readonly StructureZone[],
@@ -91,13 +91,18 @@ export function selectRecentComparisonZones(
   limit = 5,
 ): ComparisonZone[] {
   const currentChartZones = chartZones.filter((zone) => zone.active && zone.status === 'valid');
-  return [...sourceZones]
+  const eligibleZones = [...sourceZones]
     .filter((zone) => zone.active && zone.status === 'valid'
       && zone.startTime <= currentTime
       && zone.top > zone.bottom && Number.isFinite(zone.top) && Number.isFinite(zone.bottom))
     .sort((first, second) => second.startTime - first.startTime || first.id.localeCompare(second.id))
-    .filter((zone, index, ordered) => ordered.findIndex((candidate) => candidate.id === zone.id) === index)
-    .slice(0, Math.max(0, limit))
+    .filter((zone, index, ordered) => ordered.findIndex((candidate) => candidate.id === zone.id) === index);
+  const perSideLimit = Math.max(0, limit);
+  return [
+    ...eligibleZones.filter((zone) => zone.isBuy).slice(0, perSideLimit),
+    ...eligibleZones.filter((zone) => !zone.isBuy).slice(0, perSideLimit),
+  ]
+    .sort((first, second) => second.startTime - first.startTime || first.id.localeCompare(second.id))
     .map((zone) => ({
       zone,
       overlapsCurrentZone: currentChartZones.some((current) => priceRangesOverlap(zone, current)),

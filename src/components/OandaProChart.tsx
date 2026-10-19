@@ -630,7 +630,8 @@ const TradeDetailsRow: React.FC<{
   oppositePositionOpen?: boolean;
   mt5Signal?: Mt5StoredSignal;
   referenceOnly?: boolean;
-}> = ({ trade, colSpan, mtf = false, oppositePositionOpen = false, mt5Signal, referenceOnly = false }) => (
+  hideReferenceStatus?: boolean;
+}> = ({ trade, colSpan, mtf = false, oppositePositionOpen = false, mt5Signal, referenceOnly = false, hideReferenceStatus = false }) => (
   <tr className="border-t border-indigo-100 bg-indigo-50/70">
     <td colSpan={colSpan} className="px-2 py-1">
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1 whitespace-nowrap text-[9px] font-black text-slate-700">
@@ -643,7 +644,7 @@ const TradeDetailsRow: React.FC<{
         <span className="text-emerald-700">TP <span className="tabular-nums font-semibold text-slate-700">{formatPrice(trade.takeProfit)}</span></span>
         <span>R:R 1:{trade.rewardRisk}</span>
         <span>SL {trade.riskPips} PIPS</span>
-        <span className={referenceOnly ? 'text-rose-700' : mt5Signal
+        {!(referenceOnly && hideReferenceStatus) && <span className={referenceOnly ? 'text-rose-700' : mt5Signal
           ? mt5SignalStatusClassName(mt5Signal)
           : trade.status === 'sl-hit'
             ? 'text-rose-700'
@@ -652,7 +653,7 @@ const TradeDetailsRow: React.FC<{
               : 'text-emerald-700'}>
           {referenceOnly ? 'OUTSIDE TRADING TIME · NO TRADE'
             : mt5Signal ? mt5SignalStatusLabel(mt5Signal) : <TradeStatusText trade={trade} />}
-        </span>
+        </span>}
       </div>
     </td>
   </tr>
@@ -913,8 +914,10 @@ function mtfZoneLabel(name: StructureZone['name'], majorLiquidity = false): stri
 }
 
 function mtfSignalLabel(row: DisplayMtfRow, trade: TradeLevels | undefined): string {
-  if (row.tradingTimeBlocked) return 'OUTSIDE TRADING TIME · NO TRADE';
   if (isCompletedTrade(trade)) return tradeStatusLabel(trade);
+  if (row.tradingTimeBlocked) return trade
+    ? `ENTRY ${formatPrice(trade.entry)} · OUTSIDE TRADING TIME · NO TRADE`
+    : 'OUTSIDE TRADING TIME · NO TRADE';
   if (!row.tappedZone) return 'Waiting for zone tap';
   if (!row.engulfingType) return 'Waiting';
   const type = row.engulfingType.replace('T', 'Type ');
@@ -1030,7 +1033,7 @@ const MultiTimeframeEntryTable: React.FC<{
                       ? 'text-rose-700'
                       : entry ? bullish ? 'text-emerald-700' : 'text-rose-700' : 'text-slate-600'
                   }`}>
-                    {mtfSignalLabel(row, row.trade)}
+                    {mtfSignalLabel(row, row.trade ?? row.previewTrade)}
                   </td>
                   <td className="px-2 py-1 text-right font-bold whitespace-nowrap text-slate-500">
                     {row.tradeBarsAgo === undefined ? '—' : `${row.tradeBarsAgo} bars`}
@@ -2079,15 +2082,8 @@ export const OandaProChart: React.FC = () => {
         omitStopBuffer: marketSymbol !== 'XAUUSD'
           && isDeepDiscountTradeSignal(currentZone, setup.signal),
       });
-      if (tradingTimeEnabled && (!isNepalTradingTime(signalClose)
-        || (trade?.filledAt !== undefined && !isNepalTradingTime(trade.filledAt)))) {
-        decisions.set(setup.zone.id, {
-          policy: { ...policy, allowed: false, rule: undefined, reason: 'outside-trading-time' },
-          previewTrade: trade,
-          oppositePositionOpen: false,
-        });
-        continue;
-      }
+      const firstOutsideTradingTime = tradingTimeEnabled && (!isNepalTradingTime(signalClose)
+        || (trade?.filledAt !== undefined && !isNepalTradingTime(trade.filledAt)));
       const attempts = trade ? [trade] : [];
       if (trade?.result === 'sl' && trade.resolvedAt !== undefined
         && currentZone.active && currentZone.status === 'valid') {
@@ -2106,15 +2102,6 @@ export const OandaProChart: React.FC = () => {
             baseRule: setup.rule,
           });
           const reentryClose = reentrySignal.time + TIMEFRAME_SECONDS[reentrySignal.timeframe];
-          if (tradingTimeEnabled && !isNepalTradingTime(reentryClose)) {
-            decisions.set(setup.zone.id, {
-              policy: { ...reentryPolicy, allowed: false, rule: undefined, reason: 'outside-trading-time' },
-              trade,
-              trades: attempts,
-              oppositePositionOpen: adjusted.oppositePositionOpen,
-            });
-            continue;
-          }
           if (reentryPolicy.allowed && reentryPolicy.rule) {
             const reentryAdjusted = applyOppositePositionRewardRisk(
               reentryPolicy.rule,
@@ -2131,16 +2118,17 @@ export const OandaProChart: React.FC = () => {
                 && isDeepDiscountTradeSignal(currentZone, reentrySignal),
             });
             if (reentryTrade) {
-              if (tradingTimeEnabled && !isNepalTradingTime(reentryTrade.filledAt ?? cutoff)) {
+              attempts.push(reentryTrade);
+              if (tradingTimeEnabled && (!isNepalTradingTime(reentryClose)
+                || !isNepalTradingTime(reentryTrade.filledAt ?? cutoff))) {
                 decisions.set(setup.zone.id, {
                   policy: { ...reentryPolicy, allowed: false, rule: undefined, reason: 'outside-trading-time' },
-                  trade,
+                  previewTrade: reentryTrade,
                   trades: attempts,
-                  oppositePositionOpen: adjusted.oppositePositionOpen,
+                  oppositePositionOpen: false,
                 });
                 continue;
               }
-              attempts.push(reentryTrade);
               decisions.set(setup.zone.id, {
                 policy: reentryPolicy,
                 trade: reentryTrade,
@@ -2151,6 +2139,15 @@ export const OandaProChart: React.FC = () => {
             }
           }
         }
+      }
+      if (firstOutsideTradingTime) {
+        decisions.set(setup.zone.id, {
+          policy: { ...policy, allowed: false, rule: undefined, reason: 'outside-trading-time' },
+          previewTrade: trade,
+          trades: attempts,
+          oppositePositionOpen: false,
+        });
+        continue;
       }
       decisions.set(setup.zone.id, {
         policy,
@@ -2421,8 +2418,9 @@ export const OandaProChart: React.FC = () => {
           }
         }
       }
-      const tradeIndex = trade && lowerTimeframeData
-        ? lowerTimeframeData.candles.findIndex((candle) => candle.time === trade.calculatedAt)
+      const displayedTrade = trade ?? previewTrade;
+      const tradeIndex = displayedTrade && lowerTimeframeData
+        ? lowerTimeframeData.candles.findIndex((candle) => candle.time === displayedTrade.calculatedAt)
         : -1;
       const tradeBarsAgo = tradeIndex >= 0 && lowerTimeframeData
         ? lowerTimeframeData.candles.length - 1 - tradeIndex
@@ -3402,19 +3400,36 @@ export const OandaProChart: React.FC = () => {
       }
     }
     const rightEdge = Math.max(0, host.clientWidth - 72);
-    // Compare zones from 200 chart bars behind the live candle to 50 bars ahead.
-    // Logical coordinates also work when source-timeframe candles fall between chart bars.
+    const visibleTimeRange = chart.timeScale().getVisibleRange();
+    // Start each comparison zone at its own origin and extend it 50 chart bars ahead.
+    // Interpolating logical coordinates also places lower-timeframe origins between chart bars.
     const latestLogicalIndex = displayCandles.length - 1;
-    const comparisonStartX = chart.timeScale().logicalToCoordinate(Math.max(0, latestLogicalIndex - 200));
     const comparisonEndX = chart.timeScale().logicalToCoordinate(latestLogicalIndex + 50);
     for (const { zone, overlapsCurrentZone } of visibleComparisonZones) {
-      if (comparisonStartX === null || comparisonEndX === null) continue;
+      if (comparisonEndX === null) continue;
+      let nextIndex = 0;
+      let high = displayCandles.length;
+      while (nextIndex < high) {
+        const middle = Math.floor((nextIndex + high) / 2);
+        if (displayCandles[middle].time < zone.startTime) nextIndex = middle + 1;
+        else high = middle;
+      }
+      let originLogicalIndex = 0;
+      if (nextIndex > 0 && nextIndex < displayCandles.length) {
+        const previous = displayCandles[nextIndex - 1];
+        const next = displayCandles[nextIndex];
+        originLogicalIndex = nextIndex - 1 + (zone.startTime - previous.time)
+          / Math.max(1, next.time - previous.time);
+      }
+      const comparisonStartX = chart.timeScale().logicalToCoordinate(originLogicalIndex);
+      if (comparisonStartX === null) continue;
       const left = Math.max(0, comparisonStartX);
       const right = Math.min(rightEdge, comparisonEndX);
       if (right <= left) continue;
       const top = series.priceToCoordinate(zone.top);
       const bottom = series.priceToCoordinate(zone.bottom);
       if (top === null || bottom === null) continue;
+      if (Math.min(top, bottom) > host.clientHeight || Math.max(top, bottom) < 0) continue;
       const color = zone.isBuy ? '5, 150, 105' : '225, 29, 72';
       const box = document.createElement('div');
       box.style.position = 'absolute';
@@ -3428,18 +3443,44 @@ export const OandaProChart: React.FC = () => {
       box.style.boxSizing = 'border-box';
       box.style.pointerEvents = 'none';
       const label = document.createElement('span');
-      label.textContent = `${GRANULARITY_LABELS[comparisonTimeframe!]} ${zone.name}${overlapsCurrentZone ? ' · OVERLAP' : ''}`;
+      label.textContent = `${GRANULARITY_LABELS[comparisonTimeframe!]} ${zone.isBuy ? 'BUY' : 'SELL'} ${zone.name}${overlapsCurrentZone ? ' · OVERLAP' : ''}`;
       label.style.position = 'absolute';
-      label.style.right = '4px';
+      label.style.right = '19px';
       label.style.top = Math.abs(bottom - top) >= 14 ? '1px' : '-12px';
       label.style.fontSize = '9px';
       label.style.fontWeight = '800';
       label.style.color = `rgba(${color}, 0.8)`;
       label.style.whiteSpace = 'nowrap';
       box.appendChild(label);
+      const closeButton = document.createElement('button');
+      closeButton.type = 'button';
+      closeButton.textContent = '×';
+      closeButton.title = `Hide ${GRANULARITY_LABELS[comparisonTimeframe!]} ${zone.isBuy ? 'buy' : 'sell'} ${zone.name} zone`;
+      closeButton.setAttribute('aria-label', closeButton.title);
+      closeButton.style.position = 'absolute';
+      closeButton.style.right = '2px';
+      closeButton.style.top = '-6px';
+      closeButton.style.width = '14px';
+      closeButton.style.height = '14px';
+      closeButton.style.border = `1px solid rgba(${color}, 0.4)`;
+      closeButton.style.borderRadius = '50%';
+      closeButton.style.background = 'white';
+      closeButton.style.color = `rgb(${color})`;
+      closeButton.style.fontSize = '11px';
+      closeButton.style.fontWeight = '800';
+      closeButton.style.lineHeight = '12px';
+      closeButton.style.padding = '0';
+      closeButton.style.cursor = 'pointer';
+      closeButton.style.pointerEvents = 'auto';
+      closeButton.addEventListener('pointerdown', (event) => event.stopPropagation());
+      closeButton.addEventListener('click', (event) => {
+        event.stopPropagation();
+        const key = `${marketSymbol}:${comparisonTimeframe}:${zone.id}`;
+        setHiddenComparisonZoneKeys((current) => current.includes(key) ? current : [...current, key]);
+      });
+      box.appendChild(closeButton);
       fragment.appendChild(box);
     }
-    const visibleTimeRange = chart.timeScale().getVisibleRange();
     for (const zone of oneMinuteScalpingZones) {
       if (visibleTimeRange && (zone.endTime < Number(visibleTimeRange.from)
         || zone.startTime > Number(visibleTimeRange.to))) continue;
@@ -3481,11 +3522,14 @@ export const OandaProChart: React.FC = () => {
     }> = [];
     for (const zone of visualZonesRef.current) {
       if (!isVisualZoneVisible(zone)) continue;
+      if (visibleTimeRange && (zone.endTime < Number(visibleTimeRange.from)
+        || zone.startTime > Number(visibleTimeRange.to))) continue;
       const rawLeft = chart.timeScale().timeToCoordinate(zone.startTime as UTCTimestamp);
       const rawRight = chart.timeScale().timeToCoordinate(zone.endTime as UTCTimestamp);
       const top = series.priceToCoordinate(zone.top);
       const bottom = series.priceToCoordinate(zone.bottom);
       if (top === null || bottom === null) continue;
+      if (Math.min(top, bottom) > host.clientHeight || Math.max(top, bottom) < 0) continue;
       const left = Math.max(0, rawLeft === null ? 0 : rawLeft);
       const right = Math.min(rightEdge, rawRight === null ? rightEdge : rawRight);
       if (left >= right || right <= 0) continue;
@@ -3908,6 +3952,9 @@ export const OandaProChart: React.FC = () => {
         if (structureLine.type === 'iss' && !showIssRef.current) continue;
         if (isInternalLine && !showInternalRef.current) continue;
         if (structureLine.type !== 'iss' && !isInternalLine && !showStructureRef.current) continue;
+        if (visibleTimeRange && (Math.max(structureLine.fromTime, structureLine.toTime)
+          < Number(visibleTimeRange.from) || Math.min(structureLine.fromTime, structureLine.toTime)
+          > Number(visibleTimeRange.to))) continue;
         const x1 = chart.timeScale().timeToCoordinate(structureLine.fromTime as UTCTimestamp);
         const x2 = chart.timeScale().timeToCoordinate(structureLine.toTime as UTCTimestamp);
         const y1 = series.priceToCoordinate(structureLine.fromPrice);
@@ -3976,6 +4023,8 @@ export const OandaProChart: React.FC = () => {
       // from the candle and make it look like the point belongs elsewhere.
       if (showIssRef.current) {
         for (const marker of issMarkersRef.current) {
+          if (visibleTimeRange && (Number(marker.time) < Number(visibleTimeRange.from)
+            || Number(marker.time) > Number(visibleTimeRange.to))) continue;
           const candle = candleByTime.get(Number(marker.time));
           if (!candle) continue;
           const x = chart.timeScale().timeToCoordinate(marker.time as UTCTimestamp);
@@ -4126,7 +4175,7 @@ export const OandaProChart: React.FC = () => {
     // Swap the complete overlay in one operation so the browser does not
     // perform layout work for every individual zone, line, and label.
     layer.replaceChildren(fragment);
-  }, [comparisonTimeframe, directZoneTrades, displayCandles.length, extremeAPlusTjl2Selection, granularity, latestCandle?.time, marketConfig.pipSize, mtfRows, oneMinuteScalpingZones, visibleComparisonZones]);
+  }, [comparisonTimeframe, directZoneTrades, displayCandles.length, extremeAPlusTjl2Selection, granularity, latestCandle?.time, marketConfig.pipSize, marketSymbol, mtfRows, oneMinuteScalpingZones, visibleComparisonZones]);
 
   redrawZonesRef.current = redrawZones;
 
@@ -6169,7 +6218,7 @@ export const OandaProChart: React.FC = () => {
                   : 'border-slate-200 bg-white text-slate-500'
               }`}
               aria-expanded={showZoneComparison}
-              title="Compare the five most recent zones from another timeframe"
+              title="Compare recent valid buy and sell zones from another timeframe"
             >
               HTF/LTF ZONES {comparisonTimeframe ? GRANULARITY_LABELS[comparisonTimeframe] : 'OFF'} ▾
             </button>
@@ -6179,7 +6228,8 @@ export const OandaProChart: React.FC = () => {
                   <div className="mb-1 flex items-center justify-between gap-2">
                     <div>
                       <div className="text-[10px] font-black text-slate-700">COMPARE HTF / LTF ZONES</div>
-                      <div className="text-[8px] text-slate-500">Up to five recent active, valid zones from one timeframe</div>
+                      <div className="text-[8px] text-slate-500">Up to five valid buy and five valid sell zones from one timeframe</div>
+                      <div className="text-[8px] text-slate-500">Use × on the chart to hide a zone; SHOW here restores it.</div>
                     </div>
                     <button
                       type="button"
@@ -6237,7 +6287,7 @@ export const OandaProChart: React.FC = () => {
                             title={visible ? 'Hide this comparison zone' : 'Show this comparison zone'}
                           >
                             <span className="min-w-0 truncate font-bold">
-                              {zone.name} · {formatPrice(zone.bottom)}–{formatPrice(zone.top)}
+                              {zone.isBuy ? 'BUY' : 'SELL'} {zone.name} · {formatPrice(zone.bottom)}–{formatPrice(zone.top)}
                               {overlapsCurrentZone ? ' · OVERLAPS CHART ZONE' : ''}
                             </span>
                             <span className="shrink-0 font-black text-sky-700">{visible ? 'HIDE ×' : 'SHOW'}</span>
@@ -6934,6 +6984,9 @@ export const OandaProChart: React.FC = () => {
                   const confirmationLabel = TJL1_CONFIRMATION_LABELS[granularity].toUpperCase();
                   const confirmationSide = zone.doubleChochConfirmationDirection === 'up' ? 'ABOVE' : 'BELOW';
                   const trade = confluenceMapValue<TradeLevels>(zone, directZoneTrades);
+                  const entryDecision = confluenceMapValue<DirectZoneEntryDecision>(zone, directZoneEntryDecisions);
+                  const outsideTimePreview = !trade ? entryDecision?.previewTrade : undefined;
+                  const displayedTrade = trade ?? outsideTimePreview;
                   const mt5Signal = confluenceMapValue<Mt5StoredSignal>(zone, directZoneMt5Signals);
                   const measurement = confluenceFirstValue(zone, (member) => (
                     measureTradeableFibZone(member, marketConfig.pipSize)
@@ -6984,17 +7037,22 @@ export const OandaProChart: React.FC = () => {
                         zone.isBuy ? 'text-emerald-700' : 'text-rose-700'
                       }`}>
                         {showEngulfing
-                          ? trade
-                            ? `${trade.signal.type} ${trade.signal.direction === 'bullish' ? 'BULL' : 'BEAR'}`
+                          ? displayedTrade
+                            ? `${displayedTrade.signal.type} ${displayedTrade.signal.direction === 'bullish' ? 'BULL' : 'BEAR'}`
                             : displayEngulfingLabel(zone) ?? '—'
                           : '—'}
                       </td>
                       <td className={`px-2 py-1 text-right font-black whitespace-nowrap ${
                         trade?.status === 'sl-hit'
                           ? 'text-rose-700'
-                          : pending ? 'text-amber-700' : 'text-emerald-700'
+                          : outsideTimePreview ? 'text-rose-700'
+                            : pending ? 'text-amber-700' : 'text-emerald-700'
                       }`}>
-                        {mt5Signal
+                        {isCompletedTrade(outsideTimePreview)
+                          ? <TradeStatusText trade={outsideTimePreview!} />
+                          : outsideTimePreview || entryDecision?.policy.reason === 'outside-trading-time'
+                          ? 'OUTSIDE TRADING TIME'
+                          : mt5Signal
                           ? <span className={mt5SignalStatusClassName(mt5Signal)}>{mt5SignalStatusLabel(mt5Signal)}</span>
                           : isCompletedTrade(trade)
                           ? <>{zone.tapBarsAgo} bars · <TradeStatusText trade={trade!} /></>
@@ -7007,8 +7065,10 @@ export const OandaProChart: React.FC = () => {
                              : `${zone.tapBarsAgo} bars · ${confirmationLabel} CONFIRMED · TRADE`}
                       </td>
                     </tr>
-                    {trade && !isCompletedTrade(trade)
-                      && <TradeDetailsRow trade={trade} colSpan={5} mt5Signal={mt5Signal} />}
+                    {displayedTrade && !isCompletedTrade(displayedTrade)
+                      && <TradeDetailsRow trade={displayedTrade} colSpan={5}
+                        mt5Signal={mt5Signal} referenceOnly={outsideTimePreview !== undefined}
+                        hideReferenceStatus={outsideTimePreview !== undefined} />}
                     </React.Fragment>
                   );
                 })}
@@ -7031,6 +7091,8 @@ export const OandaProChart: React.FC = () => {
                   const engulfingTrade = trade ?? scalpPreview;
                   const scalpEngulfingTrade = scalpTrade ?? (!trade ? scalpPreview : undefined);
                   const entryDecision = confluenceMapValue<DirectZoneEntryDecision>(zone, directZoneEntryDecisions);
+                  const outsideTimePreview = !trade
+                    ? entryDecision?.previewTrade ?? scalpPreview : undefined;
                   const mt5Signal = confluenceMapValue<Mt5StoredSignal>(zone, directZoneMt5Signals);
                   const measurement = confluenceFirstValue(zone, (member) => (
                     measureTradeableFibZone(member, marketConfig.pipSize)
@@ -7143,8 +7205,14 @@ export const OandaProChart: React.FC = () => {
                     }`}>
                       {extremeAPlusBlocked ? (
                         <span className="text-rose-700">EXTREME A+ HIGHER · NO TRADE</span>
-                      ) : scalpPreview && !trade ? (
-                        <span className="text-rose-700">OUTSIDE TRADING TIME · NO TRADE</span>
+                      ) : isCompletedTrade(outsideTimePreview) ? (
+                        <span className={outsideTimePreview?.status === 'sl-hit' ? 'text-rose-700' : 'text-emerald-700'}>
+                          <TradeStatusText trade={outsideTimePreview!} />
+                        </span>
+                      ) : outsideTimePreview ? (
+                        <span className="text-rose-700">
+                          ENTRY {formatPrice(outsideTimePreview.entry)} · OUTSIDE TRADING TIME · NO TRADE
+                        </span>
                       ) : mt5Signal ? (
                         <span className={mt5SignalStatusClassName(mt5Signal)}>
                           {mt5SignalStatusLabel(mt5Signal)}
@@ -7177,14 +7245,14 @@ export const OandaProChart: React.FC = () => {
                       </>}
                     </td>
                   </tr>
-                  {(trade ?? entryDecision?.previewTrade ?? scalpPreview)
-                    && !isCompletedTrade(trade ?? entryDecision?.previewTrade ?? scalpPreview)
+                  {(trade ?? outsideTimePreview)
+                    && !isCompletedTrade(trade ?? outsideTimePreview)
                     && <TradeDetailsRow
-                      trade={(trade ?? entryDecision?.previewTrade ?? scalpPreview)!}
+                      trade={(trade ?? outsideTimePreview)!}
                       colSpan={5}
                       oppositePositionOpen={entryDecision?.oppositePositionOpen}
                       mt5Signal={mt5Signal}
-                      referenceOnly={!trade && (entryDecision?.previewTrade !== undefined || scalpPreview !== undefined)}
+                      referenceOnly={outsideTimePreview !== undefined}
                     />}
                   </React.Fragment>
                   );

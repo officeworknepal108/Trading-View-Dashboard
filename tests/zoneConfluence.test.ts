@@ -53,6 +53,21 @@ test('comparison shows five recent valid source zones and identifies price overl
   assert.equal(selected.some((entry) => ['invalid', 'pending', 'inactive-valid'].includes(entry.zone.id)), false);
 });
 
+test('comparison keeps the most recent buy and sell zones independently', () => {
+  const sourceZones = [
+    ...Array.from({ length: 6 }, (_, index) => zone({
+      id: `buy-${index}`, startTime: 100 + index * 10, isBuy: true,
+    })),
+    ...Array.from({ length: 6 }, (_, index) => zone({
+      id: `sell-${index}`, startTime: 200 + index * 10, isBuy: false,
+    })),
+  ];
+  const selected = selectRecentComparisonZones(sourceZones, [], 300);
+  assert.equal(selected.filter(({ zone: item }) => item.isBuy).length, 5);
+  assert.equal(selected.filter(({ zone: item }) => !item.isBuy).length, 5);
+  assert.equal(selected.some(({ zone: item }) => item.id === 'buy-0' || item.id === 'sell-0'), false);
+});
+
 test('same-direction TJL2 and Internal DB display as one TJL2 confluence zone', () => {
   const tjl2 = zone({ id: 'external-tjl2' });
   const internalDb = zone({
