@@ -78,6 +78,32 @@ function priceRangesOverlap(first: StructureZone, second: StructureZone): boolea
   return first.bottom <= second.top && second.bottom <= first.top;
 }
 
+export interface ComparisonZone {
+  zone: StructureZone;
+  overlapsCurrentZone: boolean;
+}
+
+/** Keep the five most recent active, valid zones from one selected timeframe. */
+export function selectRecentComparisonZones(
+  sourceZones: readonly StructureZone[],
+  chartZones: readonly StructureZone[],
+  currentTime: number,
+  limit = 5,
+): ComparisonZone[] {
+  const currentChartZones = chartZones.filter((zone) => zone.active && zone.status === 'valid');
+  return [...sourceZones]
+    .filter((zone) => zone.active && zone.status === 'valid'
+      && zone.startTime <= currentTime
+      && zone.top > zone.bottom && Number.isFinite(zone.top) && Number.isFinite(zone.bottom))
+    .sort((first, second) => second.startTime - first.startTime || first.id.localeCompare(second.id))
+    .filter((zone, index, ordered) => ordered.findIndex((candidate) => candidate.id === zone.id) === index)
+    .slice(0, Math.max(0, limit))
+    .map((zone) => ({
+      zone,
+      overlapsCurrentZone: currentChartZones.some((current) => priceRangesOverlap(zone, current)),
+    }));
+}
+
 function priceRangeGap(first: StructureZone, second: StructureZone): number {
   if (priceRangesOverlap(first, second)) return 0;
   return first.top < second.bottom

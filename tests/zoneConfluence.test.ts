@@ -5,6 +5,7 @@ import {
   consolidateZonesForDisplay,
   displayZoneMembers,
   redundantStandaloneLiquidityZoneIds,
+  selectRecentComparisonZones,
   selectExtremeAPlusTjl2Zones,
 } from '../src/services/zoneConfluence';
 
@@ -23,6 +24,34 @@ function zone(overrides: Partial<StructureZone>): StructureZone {
     ...overrides,
   };
 }
+
+test('comparison shows five recent valid source zones and identifies price overlap', () => {
+  const chartZone = zone({ id: 'm15-tjl2', bottom: 4150, top: 4155 });
+  const h1IssL4 = zone({
+    id: 'h1-iss-l4', name: 'ISS L4', category: 'iss',
+    startTime: 600, endTime: 1200, bottom: 4153, top: 4158,
+  });
+  const recent = [
+    zone({ id: 'z1', startTime: 100, tapTime: 800, bottom: 4200, top: 4202 }),
+    zone({ id: 'z2', startTime: 200, bottom: 4200, top: 4202 }),
+    zone({ id: 'z3', startTime: 300, bottom: 4200, top: 4202 }),
+    zone({ id: 'z4', startTime: 400, bottom: 4200, top: 4202 }),
+    zone({ id: 'z5', startTime: 500, bottom: 4200, top: 4202 }),
+    h1IssL4,
+    zone({ id: 'invalid', startTime: 700, active: false, status: 'invalidated' }),
+    zone({ id: 'pending', startTime: 750, active: false, status: 'pending' }),
+    zone({ id: 'inactive-valid', startTime: 800, active: false, status: 'valid' }),
+    zone({ id: 'future', startTime: 2000 }),
+  ];
+  const selected = selectRecentComparisonZones(recent, [chartZone], 900);
+  assert.equal(selected.length, 5);
+  assert.equal(selected[0].zone.id, 'h1-iss-l4');
+  assert.equal(selected.some((entry) => entry.zone.id === 'z1'), false);
+  assert.equal(selected[0].overlapsCurrentZone, true);
+  assert.equal(selected[1].overlapsCurrentZone, false);
+  assert.equal(selected.some((entry) => entry.zone.id === 'future'), false);
+  assert.equal(selected.some((entry) => ['invalid', 'pending', 'inactive-valid'].includes(entry.zone.id)), false);
+});
 
 test('same-direction TJL2 and Internal DB display as one TJL2 confluence zone', () => {
   const tjl2 = zone({ id: 'external-tjl2' });

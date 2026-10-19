@@ -113,6 +113,7 @@ import {
   consolidateZonesForDisplay,
   displayZoneMembers,
   redundantStandaloneLiquidityZoneIds,
+  selectRecentComparisonZones,
   selectExtremeAPlusTjl2Zones,
   type DisplayStructureZone,
 } from '../services/zoneConfluence';
@@ -1548,6 +1549,9 @@ export const OandaProChart: React.FC = () => {
   const [mt5SettingsOpen, setMt5SettingsOpen] = useState(false);
   const [mt5BridgeControlError, setMt5BridgeControlError] = useState<string | null>(null);
   const [showIndicatorControls, setShowIndicatorControls] = useState(false);
+  const [showZoneComparison, setShowZoneComparison] = useState(false);
+  const [comparisonTimeframe, setComparisonTimeframe] = useState<OandaGranularity | null>(null);
+  const [hiddenComparisonZoneKeys, setHiddenComparisonZoneKeys] = useState<string[]>([]);
   const [showDrawingTools, setShowDrawingTools] = useState(false);
   const [activeDrawingTool, setActiveDrawingTool] = useState<ChartDrawingTool | null>(null);
   const [chartDrawings, setChartDrawings] = useState<ChartDrawing[]>(loadStoredChartDrawings);
@@ -2259,6 +2263,17 @@ export const OandaProChart: React.FC = () => {
     }
     return data;
   }, [displayCandles, granularity, replayIndex, structure, vipCandles]);
+  const comparisonZones = useMemo(() => {
+    if (!comparisonTimeframe || comparisonTimeframe === granularity) return [];
+    const sourceZones = tableTimeframeData[comparisonTimeframe]?.structure.zones ?? [];
+    const currentTime = displayCandles[displayCandles.length - 1]?.time;
+    return currentTime === undefined ? [] : selectRecentComparisonZones(
+      sourceZones, displayZones, currentTime,
+    );
+  }, [comparisonTimeframe, displayCandles, displayZones, granularity, tableTimeframeData]);
+  const visibleComparisonZones = useMemo(() => comparisonZones.filter(({ zone }) => (
+    !hiddenComparisonZoneKeys.includes(`${marketSymbol}:${comparisonTimeframe}:${zone.id}`)
+  )), [comparisonTimeframe, comparisonZones, hiddenComparisonZoneKeys, marketSymbol]);
   const oneMinuteScalpingZones = useMemo(() => (
     marketSymbol === 'XAUUSD' && granularity === 'M1'
       ? (tableTimeframeData.M15?.structure.zones ?? []).filter((zone) => (
@@ -3387,6 +3402,43 @@ export const OandaProChart: React.FC = () => {
       }
     }
     const rightEdge = Math.max(0, host.clientWidth - 72);
+    // Compare zones from 200 chart bars behind the live candle to 50 bars ahead.
+    // Logical coordinates also work when source-timeframe candles fall between chart bars.
+    const latestLogicalIndex = displayCandles.length - 1;
+    const comparisonStartX = chart.timeScale().logicalToCoordinate(Math.max(0, latestLogicalIndex - 200));
+    const comparisonEndX = chart.timeScale().logicalToCoordinate(latestLogicalIndex + 50);
+    for (const { zone, overlapsCurrentZone } of visibleComparisonZones) {
+      if (comparisonStartX === null || comparisonEndX === null) continue;
+      const left = Math.max(0, comparisonStartX);
+      const right = Math.min(rightEdge, comparisonEndX);
+      if (right <= left) continue;
+      const top = series.priceToCoordinate(zone.top);
+      const bottom = series.priceToCoordinate(zone.bottom);
+      if (top === null || bottom === null) continue;
+      const color = zone.isBuy ? '5, 150, 105' : '225, 29, 72';
+      const box = document.createElement('div');
+      box.style.position = 'absolute';
+      box.style.left = `${left}px`;
+      box.style.width = `${right - left}px`;
+      box.style.top = `${Math.min(top, bottom)}px`;
+      box.style.height = `${Math.max(2, Math.abs(bottom - top))}px`;
+      box.style.background = `rgba(${color}, 0.045)`;
+      box.style.borderTop = `1px dashed rgba(${color}, 0.32)`;
+      box.style.borderBottom = `1px dashed rgba(${color}, 0.32)`;
+      box.style.boxSizing = 'border-box';
+      box.style.pointerEvents = 'none';
+      const label = document.createElement('span');
+      label.textContent = `${GRANULARITY_LABELS[comparisonTimeframe!]} ${zone.name}${overlapsCurrentZone ? ' · OVERLAP' : ''}`;
+      label.style.position = 'absolute';
+      label.style.right = '4px';
+      label.style.top = Math.abs(bottom - top) >= 14 ? '1px' : '-12px';
+      label.style.fontSize = '9px';
+      label.style.fontWeight = '800';
+      label.style.color = `rgba(${color}, 0.8)`;
+      label.style.whiteSpace = 'nowrap';
+      box.appendChild(label);
+      fragment.appendChild(box);
+    }
     const visibleTimeRange = chart.timeScale().getVisibleRange();
     for (const zone of oneMinuteScalpingZones) {
       if (visibleTimeRange && (zone.endTime < Number(visibleTimeRange.from)
@@ -4074,7 +4126,7 @@ export const OandaProChart: React.FC = () => {
     // Swap the complete overlay in one operation so the browser does not
     // perform layout work for every individual zone, line, and label.
     layer.replaceChildren(fragment);
-  }, [directZoneTrades, displayCandles.length, extremeAPlusTjl2Selection, granularity, latestCandle?.time, marketConfig.pipSize, mtfRows, oneMinuteScalpingZones]);
+  }, [comparisonTimeframe, directZoneTrades, displayCandles.length, extremeAPlusTjl2Selection, granularity, latestCandle?.time, marketConfig.pipSize, mtfRows, oneMinuteScalpingZones, visibleComparisonZones]);
 
   redrawZonesRef.current = redrawZones;
 
@@ -4665,6 +4717,7 @@ export const OandaProChart: React.FC = () => {
       setReplaySelectionIndex(null);
     }
     setGranularity(nextGranularity);
+    if (comparisonTimeframe === nextGranularity) setComparisonTimeframe(null);
   };
 
   const changeLiveChartDataSource = (nextSource: LiveChartDataSource) => {
@@ -6107,7 +6160,94 @@ export const OandaProChart: React.FC = () => {
             >
               INVALID ZONES {showInvalidZones ? 'ON' : 'OFF'}
             </button>
+            <button
+              type="button"
+              onClick={() => setShowZoneComparison((value) => !value)}
+              className={`whitespace-nowrap rounded-full border px-1.5 py-0.5 text-[8px] font-black transition ${
+                comparisonTimeframe
+                  ? 'border-sky-300 bg-sky-100 text-sky-800'
+                  : 'border-slate-200 bg-white text-slate-500'
+              }`}
+              aria-expanded={showZoneComparison}
+              title="Compare the five most recent zones from another timeframe"
+            >
+              HTF/LTF ZONES {comparisonTimeframe ? GRANULARITY_LABELS[comparisonTimeframe] : 'OFF'} ▾
+            </button>
               </div>
+              {showZoneComparison && (
+                <div className="mt-2 max-h-[55vh] overflow-y-auto rounded-lg border border-sky-100 bg-sky-50/40 p-2">
+                  <div className="mb-1 flex items-center justify-between gap-2">
+                    <div>
+                      <div className="text-[10px] font-black text-slate-700">COMPARE HTF / LTF ZONES</div>
+                      <div className="text-[8px] text-slate-500">Up to five recent active, valid zones from one timeframe</div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setComparisonTimeframe(null)}
+                      className="rounded border border-slate-200 bg-white px-2 py-1 text-[8px] font-black text-slate-600 hover:bg-slate-100"
+                    >
+                      REMOVE ALL
+                    </button>
+                  </div>
+                  <div className="mb-2 flex flex-wrap gap-1">
+                    {DRAWING_TIMEFRAME_ORDER.filter((value) => value !== granularity).map((value) => {
+                      const higher = DRAWING_TIMEFRAME_ORDER.indexOf(value)
+                        > DRAWING_TIMEFRAME_ORDER.indexOf(granularity);
+                      return (
+                        <button
+                          key={value}
+                          type="button"
+                          onClick={() => setComparisonTimeframe(value)}
+                          aria-pressed={comparisonTimeframe === value}
+                          className={`rounded border px-2 py-1 text-[8px] font-black ${
+                            comparisonTimeframe === value
+                              ? 'border-sky-400 bg-sky-100 text-sky-900'
+                              : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-100'
+                          }`}
+                        >
+                          {GRANULARITY_LABELS[value]} {higher ? 'HTF' : 'LTF'}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  {!comparisonTimeframe ? (
+                    <div className="text-[9px] text-slate-500">Choose a timeframe to show its recent zones.</div>
+                  ) : !tableTimeframeData[comparisonTimeframe] ? (
+                    <div className="text-[9px] text-slate-500">Loading {GRANULARITY_LABELS[comparisonTimeframe]} zones...</div>
+                  ) : comparisonZones.length === 0 ? (
+                    <div className="text-[9px] text-slate-500">No active, valid zones on this timeframe.</div>
+                  ) : (
+                    <div className="space-y-1">
+                      {comparisonZones.map(({ zone, overlapsCurrentZone }) => {
+                        const key = `${marketSymbol}:${comparisonTimeframe}:${zone.id}`;
+                        const visible = !hiddenComparisonZoneKeys.includes(key);
+                        return (
+                          <button
+                            key={key}
+                            type="button"
+                            aria-pressed={visible}
+                            onClick={() => setHiddenComparisonZoneKeys((current) => (
+                              current.includes(key) ? current.filter((item) => item !== key)
+                                : [...current, key]
+                            ))}
+                            className={`flex w-full items-center justify-between gap-2 rounded border px-2 py-1 text-left text-[9px] ${
+                              visible ? 'border-sky-200 bg-white text-slate-700'
+                                : 'border-slate-200 bg-slate-50 text-slate-400'
+                            }`}
+                            title={visible ? 'Hide this comparison zone' : 'Show this comparison zone'}
+                          >
+                            <span className="min-w-0 truncate font-bold">
+                              {zone.name} · {formatPrice(zone.bottom)}–{formatPrice(zone.top)}
+                              {overlapsCurrentZone ? ' · OVERLAPS CHART ZONE' : ''}
+                            </span>
+                            <span className="shrink-0 font-black text-sky-700">{visible ? 'HIDE ×' : 'SHOW'}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
             )}
           </div>
