@@ -117,6 +117,37 @@ export function selectAccuracyChartEntries<T extends FilterableTradeRecord & { i
   ));
 }
 
+/** Project a later intraday entry onto M1 when that same M15 Gold zone had a scalp. */
+export function selectGoldIntradayAfterScalp<T extends FilterableTradeRecord & {
+  id: string;
+  zoneTimeframe: TradeTimeframe;
+  tradeStyle?: string;
+  signalAt?: number;
+}>(records: readonly T[]): T[] {
+  const zoneId = (record: T, prefix: string): string | undefined => {
+    if (!record.id.startsWith(prefix) || record.signalAt === undefined) return undefined;
+    const signalPosition = record.id.lastIndexOf(`:${record.signalAt}:`);
+    return signalPosition > prefix.length ? record.id.slice(prefix.length, signalPosition) : undefined;
+  };
+  const scalpTimes = new Map<string, number>();
+  for (const record of records) {
+    if (record.tradeStyle !== 'SCALPING' || record.zoneTimeframe !== 'M15'
+      || record.source !== 'ENGULFING') continue;
+    const id = zoneId(record, 'GOLD_SCALP:M15:');
+    if (id && record.signalAt !== undefined) {
+      scalpTimes.set(id, Math.min(scalpTimes.get(id) ?? Infinity, record.signalAt));
+    }
+  }
+  return records.filter((record) => {
+    if (record.tradeStyle !== 'INTRADAY' || record.zoneTimeframe !== 'M15'
+      || (record.signalTimeframe !== 'M15' && record.signalTimeframe !== 'M30')
+      || record.source !== 'ENGULFING'
+      || record.signalAt === undefined) return false;
+    const id = zoneId(record, 'DIRECT:');
+    return id !== undefined && (scalpTimes.get(id) ?? Infinity) < record.signalAt;
+  });
+}
+
 export interface AccuracyVerificationCandle {
   time: number;
   high: number;

@@ -48,12 +48,14 @@ import {
 } from '../services/mtf';
 import {
   findGoldScalpingCandleSignal,
+  savedGoldScalpMatchesReversal,
   goldScalpingCandleTimeframe,
   goldScalpingChochTradeRule,
   goldScalpingTradeRule,
   goldScalpingZoneWidthPips,
   goldIntradayMtfTradeRule,
   isGoldIntradayCandleRoute,
+  isGoldScalpingZone,
 } from '../services/goldScalping';
 import {
   assessEngulfingVolumeLogic,
@@ -85,6 +87,7 @@ import {
   filterTradeRecords,
   savedDirectZoneMatchesStructure,
   selectAccuracyChartEntries,
+  selectGoldIntradayAfterScalp,
   tradeRecordDatePeriodKey,
   tradeRecordPeriodLabel,
   type TradeRecordFilters,
@@ -2256,6 +2259,14 @@ export const OandaProChart: React.FC = () => {
     }
     return data;
   }, [displayCandles, granularity, replayIndex, structure, vipCandles]);
+  const oneMinuteScalpingZones = useMemo(() => (
+    marketSymbol === 'XAUUSD' && granularity === 'M1'
+      ? (tableTimeframeData.M15?.structure.zones ?? []).filter((zone) => (
+        zone.active && zone.status === 'valid'
+        && isGoldScalpingZone('M15', goldScalpingZoneWidthPips(zone))
+      ))
+      : []
+  ), [granularity, marketSymbol, tableTimeframeData]);
 
   const trendTableRows = useMemo<TrendTableRow[]>(() => (
     TREND_TABLE_GRANULARITIES.map((tableGranularity) => {
@@ -2681,6 +2692,10 @@ export const OandaProChart: React.FC = () => {
       record,
       tableTimeframeData[record.signalTimeframe]?.candles,
       tableTimeframeData[record.zoneTimeframe]?.structure.zones,
+    ) && savedGoldScalpMatchesReversal(
+      record,
+      tableTimeframeData[record.zoneTimeframe]?.structure.zones,
+      tableTimeframeData[record.signalTimeframe]?.candles,
     ));
     const belongsToSelectedMarket = (record: AccuracyTradeRecord): boolean => {
       if (record.symbol) return record.symbol === marketSymbol;
@@ -3146,9 +3161,10 @@ export const OandaProChart: React.FC = () => {
 
   const entryHovers = useMemo<EntryHover[]>(() => {
     const entries = new Map<string, EntryHover>();
-    const add = (id: string, trade: TradeLevels, source: string, zone: string, fib: string, style: string, tradingTimeBlocked: boolean) => {
+    const add = (id: string, trade: TradeLevels, source: string, zone: string, fib: string, style: string, tradingTimeBlocked: boolean, chartEntryTime = trade.signal.time) => {
       const candle = displayCandles.find((candidate) => (
-        trade.signal.time === candidate.time
+        chartEntryTime >= candidate.time
+        && chartEntryTime < candidate.time + TIMEFRAME_SECONDS[granularity]
       ));
       if (!candle) return;
       if (!entries.has(id)) entries.set(id, {
@@ -3158,9 +3174,12 @@ export const OandaProChart: React.FC = () => {
     };
     const visibleIds = visibleAccuracyRecordIds === null
       ? null : new Set<string>(visibleAccuracyRecordIds);
-    for (const record of timeframeAccuracyRecords) {
+    const projectedIntraday = marketSymbol === 'XAUUSD' && granularity === 'M1'
+      ? selectGoldIntradayAfterScalp(allSavedAccuracyRecords) : [];
+    for (const record of [...timeframeAccuracyRecords, ...projectedIntraday]) {
       if (visibleIds !== null && !visibleIds.has(record.id)) continue;
       const signalAt = record.signalAt!;
+      const projected = record.signalTimeframe !== granularity;
       const risk = Math.abs(record.entry - record.stopLoss);
       const bullish = record.direction === 'bullish';
       const trade: TradeLevels = {
@@ -3186,15 +3205,18 @@ export const OandaProChart: React.FC = () => {
         },
       };
       add(record.id, trade,
-        record.source === 'MTF'
+        projected ? `${record.signalTimeframe} INTRADAY ENTRY`
+          : record.source === 'MTF'
           ? `${record.zoneTimeframe} → ${record.signalTimeframe} MTF` : 'CANDLE CONFIRMATION',
         record.zoneName,
         [record.fibSource, record.fibBand].filter(Boolean).join(' · ') || 'Not recorded',
         record.tradeStyle ?? 'INTRADAY',
-        tradingTimeEnabled && accuracyRecordOutsideTradingTime(record));
+        tradingTimeEnabled && accuracyRecordOutsideTradingTime(record),
+        projected ? record.openedAt ?? signalAt + TIMEFRAME_SECONDS[record.signalTimeframe]
+          : signalAt);
     }
     return Array.from(entries.values());
-  }, [displayCandles, granularity, marketSymbol, timeframeAccuracyRecords, tradingTimeEnabled, visibleAccuracyRecordIds]);
+  }, [allSavedAccuracyRecords, displayCandles, granularity, marketSymbol, timeframeAccuracyRecords, tradingTimeEnabled, visibleAccuracyRecordIds]);
   entryHoversRef.current = entryHovers;
 
   const entryMarkers = useMemo(() => entryHovers.map(({ candleTime, trade }) => {
@@ -3365,6 +3387,40 @@ export const OandaProChart: React.FC = () => {
       }
     }
     const rightEdge = Math.max(0, host.clientWidth - 72);
+    const visibleTimeRange = chart.timeScale().getVisibleRange();
+    for (const zone of oneMinuteScalpingZones) {
+      if (visibleTimeRange && (zone.endTime < Number(visibleTimeRange.from)
+        || zone.startTime > Number(visibleTimeRange.to))) continue;
+      if (!(zone.category === 'mg' ? showMgZonesRef.current
+        : zone.category === 'iss' ? showIssRef.current
+          : zone.category === 'internal' ? showInternalRef.current
+            : showSupplyDemandRef.current)) continue;
+      const rawLeft = chart.timeScale().timeToCoordinate(zone.startTime as UTCTimestamp);
+      const rawRight = chart.timeScale().timeToCoordinate(zone.endTime as UTCTimestamp);
+      const top = series.priceToCoordinate(zone.top);
+      const bottom = series.priceToCoordinate(zone.bottom);
+      if (top === null || bottom === null) continue;
+      const left = Math.max(0, rawLeft ?? 0);
+      const right = Math.min(rightEdge, rawRight ?? rightEdge);
+      if (left >= right) continue;
+      const box = document.createElement('div');
+      box.style.position = 'absolute';
+      box.style.left = `${left}px`;
+      box.style.width = `${right - left}px`;
+      box.style.top = `${Math.min(top, bottom)}px`;
+      box.style.height = `${Math.max(2, Math.abs(bottom - top))}px`;
+      box.style.background = zone.isBuy ? 'rgba(16, 185, 129, 0.08)' : 'rgba(244, 63, 94, 0.08)';
+      box.style.border = `1px dashed ${zone.isBuy ? '#059669' : '#e11d48'}`;
+      box.style.boxSizing = 'border-box';
+      box.style.overflow = 'hidden';
+      const label = document.createElement('span');
+      label.textContent = `15M SCALP · ${zone.name}`;
+      label.style.fontSize = '9px';
+      label.style.fontWeight = '800';
+      label.style.color = zone.isBuy ? '#047857' : '#be123c';
+      box.appendChild(label);
+      fragment.appendChild(box);
+    }
     const occupiedZoneLabelRects: Array<{
       left: number;
       right: number;
@@ -4018,7 +4074,7 @@ export const OandaProChart: React.FC = () => {
     // Swap the complete overlay in one operation so the browser does not
     // perform layout work for every individual zone, line, and label.
     layer.replaceChildren(fragment);
-  }, [directZoneTrades, displayCandles.length, extremeAPlusTjl2Selection, granularity, latestCandle?.time, marketConfig.pipSize, mtfRows]);
+  }, [directZoneTrades, displayCandles.length, extremeAPlusTjl2Selection, granularity, latestCandle?.time, marketConfig.pipSize, mtfRows, oneMinuteScalpingZones]);
 
   redrawZonesRef.current = redrawZones;
 

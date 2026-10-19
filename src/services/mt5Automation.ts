@@ -119,6 +119,7 @@ export interface Mt5AutomationConfig {
 export interface Mt5SignalInput {
   id: string;
   setupId?: string;
+  zoneId?: string;
   symbol: string;
   direction: 'BUY' | 'SELL';
   orderType: 'MARKET' | 'LIMIT';
@@ -151,6 +152,30 @@ export interface Mt5SignalInput {
     volume3?: number;
     entrySnapshotCandles: StructureCandle[];
   };
+}
+
+/** The same Gold HTF zone may create separate scalp and intraday chart entries. */
+export function goldMt5ZoneExecutionKey(signal: Pick<Mt5SignalInput,
+  'symbol' | 'zoneTimeframe' | 'zoneId' | 'setupId'>): string | undefined {
+  if (signal.symbol !== 'XAUUSD') return undefined;
+  const legacyDirectZone = signal.setupId?.match(/^(?:GOLD_SCALP|DIRECT):(M15|H1):(.+)$/);
+  const zoneId = signal.zoneId ?? legacyDirectZone?.[2];
+  const zoneTimeframe = legacyDirectZone?.[1] ?? signal.zoneTimeframe;
+  return zoneId ? `${signal.symbol}:${zoneTimeframe}:${zoneId}` : undefined;
+}
+
+export function priorGoldMt5ZoneExecution<T extends Pick<Mt5SignalInput,
+  'symbol' | 'zoneTimeframe' | 'zoneId' | 'setupId'> & { status: Mt5SignalStatus }>(
+  candidate: Pick<Mt5SignalInput, 'symbol' | 'zoneTimeframe' | 'zoneId' | 'setupId'>,
+  signals: readonly T[],
+  consumedStatuses: ReadonlySet<Mt5SignalStatus>,
+): T | undefined {
+  const zoneKey = goldMt5ZoneExecutionKey(candidate);
+  return zoneKey === undefined ? undefined : signals.find((signal) => (
+    signal.setupId !== candidate.setupId
+    && consumedStatuses.has(signal.status)
+    && goldMt5ZoneExecutionKey(signal) === zoneKey
+  ));
 }
 
 export interface Mt5StoredSignal extends Mt5SignalInput {

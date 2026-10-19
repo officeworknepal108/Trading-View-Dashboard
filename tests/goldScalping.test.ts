@@ -12,6 +12,7 @@ import {
   isGoldScalpingChochZone,
   isGoldScalpingEngulfingType,
   isGoldScalpingZone,
+  savedGoldScalpMatchesReversal,
 } from '../src/services/goldScalping';
 import type { StructureCandle, StructureZone } from '../src/services/marketStructure';
 import { calculateTradeLevels } from '../src/services/tradeLevels';
@@ -104,6 +105,82 @@ test('Gold candle confirmation waits for zone midline and a qualified Fib zone',
   assert.equal(findGoldScalpingCandleSignal(zone, 'M15', withMidline)?.type, 'T1');
   assert.equal(findGoldScalpingCandleSignal({ ...zone, fibStatus: undefined },
     'M15', withMidline), undefined);
+});
+
+test('Gold M15 sell scalp accepts engulfing at the M1 wick high beyond the zone', () => {
+  const zone: StructureZone = {
+    id: 'sell-wick', name: 'TJL2', category: 'mg', isBuy: false,
+    startTime: 0, endTime: 1000, activeFromTime: 0,
+    top: 103, bottom: 100, active: true, status: 'valid',
+    fibStatus: 'a-plus', fibBand: '0.5-0.618',
+  };
+  const candles: StructureCandle[] = [
+    { time: 60, open: 101, close: 102, high: 102.2, low: 100.8, complete: true },
+    { time: 120, open: 104, close: 105, high: 105.2, low: 103.8, complete: true },
+    { time: 180, open: 105.1, close: 103.7, high: 105.3, low: 103.5, complete: true },
+  ];
+  const signal = findGoldScalpingCandleSignal(zone, 'M15', candles);
+  assert.equal(signal?.time, 180);
+  assert.equal(signal?.direction, 'bearish');
+  assert.equal(signal?.timeframe, 'M1');
+});
+
+test('Gold M15 scalp rejects a later zone engulfing below the sell reversal high', () => {
+  const zone: StructureZone = {
+    id: 'late-sell', name: 'TJL2', category: 'mg', isBuy: false,
+    startTime: 0, endTime: 1000, activeFromTime: 0,
+    top: 103, bottom: 100, active: true, status: 'valid',
+    fibStatus: 'a-plus', fibBand: '0.5-0.618',
+  };
+  const candles: StructureCandle[] = [
+    { time: 60, open: 101, close: 102, high: 102.2, low: 100.8, complete: true },
+    { time: 120, open: 104, close: 105, high: 105.2, low: 103.8, complete: true },
+    { time: 180, open: 105.1, close: 105.05, high: 105.3, low: 104.8, complete: true },
+    { time: 240, open: 103.2, close: 102.8, high: 103.3, low: 100.5, complete: true },
+    { time: 300, open: 102.5, close: 102.9, high: 103, low: 102.4, complete: true },
+    { time: 360, open: 103, close: 102.2, high: 103.1, low: 102.1, complete: true },
+  ];
+  assert.equal(findGoldScalpingCandleSignal(zone, 'M15', candles), undefined);
+});
+
+test('Gold M15 buy scalp accepts engulfing at the M1 wick low beyond the zone', () => {
+  const zone: StructureZone = {
+    id: 'buy-wick', name: 'TJL2', category: 'mg', isBuy: true,
+    startTime: 0, endTime: 1000, activeFromTime: 0,
+    top: 103, bottom: 100, active: true, status: 'valid',
+    fibStatus: 'a-plus', fibBand: '0.5-0.618',
+  };
+  const candles: StructureCandle[] = [
+    { time: 60, open: 102, close: 101, high: 102.2, low: 100.8, complete: true },
+    { time: 120, open: 99, close: 98, high: 99.2, low: 97.8, complete: true },
+    { time: 180, open: 97.9, close: 99.3, high: 99.5, low: 97.7, complete: true },
+  ];
+  const signal = findGoldScalpingCandleSignal(zone, 'M15', candles);
+  assert.equal(signal?.time, 180);
+  assert.equal(signal?.direction, 'bullish');
+  assert.equal(signal?.timeframe, 'M1');
+});
+
+test('saved Gold scalp arrows exclude a later zone engulfing but retain a wick reversal', () => {
+  const zone: StructureZone = {
+    id: 'source-zone', name: 'TJL2', category: 'mg', isBuy: false,
+    startTime: 0, endTime: 1000, activeFromTime: 0,
+    top: 103, bottom: 100, active: false, status: 'superseded',
+  };
+  const candles: StructureCandle[] = [
+    { time: 60, open: 101, close: 102, high: 102.2, low: 100.8, complete: true },
+    { time: 120, open: 104, close: 105, high: 105.2, low: 103.8, complete: true },
+    { time: 180, open: 105.1, close: 103.7, high: 105.3, low: 103.5, complete: true },
+    { time: 240, open: 102.5, close: 102.9, high: 103, low: 102.4, complete: true },
+    { time: 300, open: 103, close: 102.2, high: 103.1, low: 102.1, complete: true },
+  ];
+  const saved = (signalAt: number) => ({
+    id: `GOLD_SCALP:M15:source-zone:${signalAt}:102.2`,
+    source: 'ENGULFING', tradeStyle: 'SCALPING', zoneTimeframe: 'M15' as const,
+    signalAt, engulfingType: 'T1',
+  });
+  assert.equal(savedGoldScalpMatchesReversal(saved(180), [zone], candles), true);
+  assert.equal(savedGoldScalpMatchesReversal(saved(300), [zone], candles), false);
 });
 
 test('57.75-pip M15 TJL2 accepts its M5 Type 3 after a midline touch', () => {

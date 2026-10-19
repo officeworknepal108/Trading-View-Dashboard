@@ -9,6 +9,7 @@ import {
   MT5_DEFAULT_ENABLED_TIMEFRAMES,
   applySignalOppositePositionTarget,
   canMt5SignalExpireBeforeExecution,
+  priorGoldMt5ZoneExecution,
   mt5SignalDisabledReason,
   normalizeMt5EnabledTimeframes,
   normalizeMt5RiskPercent,
@@ -417,9 +418,11 @@ async function enqueueMt5Signal(
     const priorSetupAttempts = candidate.setupId === undefined ? [] : signals.filter((signal) => (
       signal.setupId === candidate.setupId && consumedSetupStatuses.has(signal.status)
     ));
+    const priorZoneAttempt = priorGoldMt5ZoneExecution(candidate, signals, consumedSetupStatuses);
     const setupAllowsReentry = candidate.source === 'ENGULFING'
       && canQueueSingleSlReentry(priorSetupAttempts, candidate.signalAt);
-    const existing = exactExisting ?? (!setupAllowsReentry ? priorSetupAttempts[0] : undefined);
+    const existing = exactExisting ?? priorZoneAttempt
+      ?? (!setupAllowsReentry ? priorSetupAttempts[0] : undefined);
     if (existing) {
       const zones = new Set([existing.zoneName, ...(existing.confluenceZones ?? []), candidate.zoneName,
         ...(candidate.confluenceZones ?? [])]);
@@ -684,6 +687,7 @@ async function scanMt5AutomationSignals(): Promise<number> {
               pendingExpiryMinutes: config.pendingExpiryMinutes,
             });
             scalpCandidate.tradeStyle = 'SCALPING';
+            scalpCandidate.zoneId = zone.id;
             const volumeContext = journalVolumeContext(candles[scalpTimeframe], scalpSignal);
             scalpCandidate.journalContext = {
               biasAtEntry: journalBiasAt(candles, scalpClose),
@@ -785,6 +789,7 @@ async function scanMt5AutomationSignals(): Promise<number> {
         pendingExpiryMinutes: config.pendingExpiryMinutes,
       });
       baseSignal.tradeStyle = 'INTRADAY';
+      baseSignal.zoneId = zone.id;
       baseSignal.journalContext = {
         biasAtEntry: journalBiasAt(candles, signalClose),
         autoReason: buildJournalAutoReason({
@@ -851,6 +856,7 @@ async function scanMt5AutomationSignals(): Promise<number> {
       pendingExpiryMinutes: config.pendingExpiryMinutes,
     });
     baseSignal.tradeStyle = row.goldScalping ? 'SCALPING' : 'INTRADAY';
+    baseSignal.zoneId = row.higherTimeframeZoneId;
     const fibBand = row.engulfingDeepDiscount ? '0.71-0.79' : '0.5-0.618';
     baseSignal.journalContext = {
       biasAtEntry: journalBiasAt(candles, signalClose),

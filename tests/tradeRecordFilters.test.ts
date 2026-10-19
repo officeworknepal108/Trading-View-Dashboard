@@ -6,11 +6,32 @@ import {
   filterTradeRecords,
   savedDirectZoneMatchesStructure,
   selectAccuracyChartEntries,
+  selectGoldIntradayAfterScalp,
   tradeRecordDateKey,
   tradeRecordDatePeriodKey,
   tradeRecordPeriodKey,
   type FilterableTradeRecord,
 } from '../src/services/tradeRecordFilters';
+
+test('a later intraday entry from the same M15 Gold zone can also appear on M1', () => {
+  const base = {
+    completedAt: 1000, zoneTimeframe: 'M15' as const,
+    direction: 'bearish' as const, result: 'tp' as const, zoneName: 'TJL2',
+    source: 'ENGULFING' as const,
+  };
+  const scalp = {
+    ...base, id: 'GOLD_SCALP:M15:TJL2-123:100:4154',
+    tradeStyle: 'SCALPING', signalTimeframe: 'M1' as const, signalAt: 100,
+  };
+  const intraday = {
+    ...base, id: 'DIRECT:TJL2-123:200:4150',
+    tradeStyle: 'INTRADAY', signalTimeframe: 'M15' as const, signalAt: 200,
+  };
+  const otherZone = { ...intraday, id: 'DIRECT:TJL2-456:300:4150', signalAt: 300 };
+  const earlier = { ...intraday, id: 'DIRECT:TJL2-123:50:4150', signalAt: 50 };
+  assert.deepEqual(selectGoldIntradayAfterScalp([scalp, intraday, otherZone, earlier]),
+    [intraday]);
+});
 
 test('saved TP needs an entry fill and a target touch on the current candle history', () => {
   const candles = [

@@ -9,6 +9,8 @@ import {
   canMt5SignalExpireBeforeExecution,
   canQueueSingleSlReentry,
   calculateXauUsdLotSize,
+  goldMt5ZoneExecutionKey,
+  priorGoldMt5ZoneExecution,
   isExecutableTrade,
   isMt5EntryTimeframeEnabled,
   isMt5SignalAllowedByTimeframes,
@@ -19,6 +21,30 @@ import {
   tradeToMt5Signal,
 } from '../src/services/mt5Automation';
 import type { TradeLevels } from '../src/services/tradeLevels';
+
+test('Gold scalp and later intraday entries share one MT5 zone execution key', () => {
+  const scalp = {
+    symbol: 'XAUUSD', zoneTimeframe: 'M15' as const,
+    setupId: 'GOLD_SCALP:M15:TJL2-123',
+  };
+  const intraday = {
+    symbol: 'XAUUSD', zoneTimeframe: 'M15' as const,
+    setupId: 'DIRECT:M15:TJL2-123', zoneId: 'TJL2-123',
+  };
+  assert.equal(goldMt5ZoneExecutionKey(scalp), goldMt5ZoneExecutionKey(intraday));
+  assert.notEqual(goldMt5ZoneExecutionKey({ ...intraday, zoneId: 'TJL2-456' }),
+    goldMt5ZoneExecutionKey(scalp));
+  assert.equal(goldMt5ZoneExecutionKey({ ...intraday, symbol: 'EURUSD' }), undefined);
+  const consumed = new Set(['QUEUED', 'ACTIVE', 'TP', 'SL'] as const);
+  const earlierScalp = { ...scalp, status: 'TP' as const };
+  assert.equal(priorGoldMt5ZoneExecution(intraday, [earlierScalp], consumed), earlierScalp);
+  assert.equal(priorGoldMt5ZoneExecution(intraday, [
+    { ...earlierScalp, status: 'REJECTED' as const },
+  ], consumed), undefined);
+  assert.equal(priorGoldMt5ZoneExecution(intraday, [
+    { ...earlierScalp, setupId: intraday.setupId },
+  ], consumed), undefined);
+});
 
 test('MT5 risk selector exposes only the agreed percentages and normalizes legacy values', () => {
   assert.deepEqual(MT5_RISK_PERCENT_OPTIONS, [

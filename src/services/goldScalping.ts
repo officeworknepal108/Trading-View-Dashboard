@@ -126,15 +126,23 @@ export function findGoldScalpingCandleSignal(
   candles: StructureCandle[],
 ): EngulfingTradeSignal | undefined {
   if (!isZoneEligibleForEngulfingEntry(zone)) return undefined;
+  if (!(['structure', 'swing', 'day'] as const).some((source) => (
+    isZoneEngulfingFibQualified(zone, source)
+  ))) return undefined;
+  return findGoldScalpingReversalSignal(zone, zoneTimeframe, candles);
+}
+
+/** Recheck a historical scalp without requiring its source zone to remain active now. */
+export function findGoldScalpingReversalSignal(
+  zone: StructureZone,
+  zoneTimeframe: TradeTimeframe,
+  candles: StructureCandle[],
+): EngulfingTradeSignal | undefined {
   const signalTimeframe = goldScalpingCandleTimeframe(
     zoneTimeframe,
     goldScalpingZoneWidthPips(zone),
   );
   if (!signalTimeframe) return undefined;
-  if (!(['structure', 'swing', 'day'] as const).some((source) => (
-    isZoneEngulfingFibQualified(zone, source)
-  ))) return undefined;
-
   const validFrom = Math.max(
     zone.startTime,
     zone.activeFromTime ?? zone.startTime,
@@ -143,21 +151,26 @@ export function findGoldScalpingCandleSignal(
   const midline = (zone.top + zone.bottom) / 2;
   const requiredDirection = zone.isBuy ? 'bullish' : 'bearish';
   let midlineTouched = false;
-  for (let endIndex = 1; endIndex < candles.length; endIndex += 1) {
+  let reversalExtreme = zone.isBuy ? Number.POSITIVE_INFINITY : Number.NEGATIVE_INFINITY;
+  for (let endIndex = 0; endIndex < candles.length; endIndex += 1) {
     const candle = candles[endIndex];
     if (candle.complete === false || candle.time < validFrom) continue;
     if (candle.low <= midline && candle.high >= midline) midlineTouched = true;
     if (!midlineTouched) continue;
+    reversalExtreme = zone.isBuy
+      ? Math.min(reversalExtreme, candle.low)
+      : Math.max(reversalExtreme, candle.high);
     const pattern = detectEngulfingPatternAt(candles, endIndex);
     if (!pattern || pattern.direction !== requiredDirection
       || !isGoldScalpingEngulfingType(pattern.type)
       || !goldScalpingConfirmationWickPasses(candle, pattern.direction)) continue;
-    const patternTouchesZone = candles.slice(pattern.startIndex, pattern.endIndex + 1)
-      .some((item) => item.time >= validFrom
-        && item.high >= zone.bottom && item.low <= zone.top);
-    if (!patternTouchesZone) continue;
-    // The M15/H1 zone must be A+ Fib-qualified above. Its lower-timeframe
-    // scalp confirmation is gated by the zone midline, not an extra Fib touch.
+    // The HTF midline starts the search. Its wick can extend beyond the zone
+    // on the lower timeframe, so only the pattern at the reversal extreme
+    // qualifies; a later engulfing back inside the zone does not.
+    const patternAtReversal = candles.slice(pattern.startIndex, pattern.endIndex + 1)
+      .some((item) => item.time >= validFrom && (zone.isBuy
+        ? item.low <= reversalExtreme : item.high >= reversalExtreme));
+    if (!patternAtReversal) continue;
     return {
       type: pattern.type,
       direction: pattern.direction,
@@ -167,4 +180,33 @@ export function findGoldScalpingCandleSignal(
     };
   }
   return undefined;
+}
+
+/** Keep saved scalp arrows only when the loaded candles still confirm that reversal. */
+export function savedGoldScalpMatchesReversal(
+  record: {
+    id: string;
+    source: string;
+    tradeStyle?: string;
+    zoneTimeframe: TradeTimeframe;
+    signalAt?: number;
+    engulfingType: string;
+  },
+  sourceZones: readonly StructureZone[] | undefined,
+  signalCandles: readonly StructureCandle[] | undefined,
+): boolean {
+  const prefix = `GOLD_SCALP:${record.zoneTimeframe}:`;
+  if (record.tradeStyle !== 'SCALPING' || record.source !== 'ENGULFING'
+    || !record.id.startsWith(prefix) || record.signalAt === undefined) return true;
+  if (!sourceZones || !signalCandles?.some((candle) => candle.time === record.signalAt)) return true;
+  const signalPosition = record.id.lastIndexOf(`:${record.signalAt}:`);
+  if (signalPosition <= prefix.length) return false;
+  const zoneId = record.id.slice(prefix.length, signalPosition);
+  const zone = sourceZones.find((candidate) => candidate.id === zoneId);
+  if (!zone) return false;
+  const signal = findGoldScalpingReversalSignal(
+    zone, record.zoneTimeframe,
+    signalCandles.filter((candle) => candle.time <= record.signalAt!),
+  );
+  return signal?.time === record.signalAt && signal.type === record.engulfingType;
 }
