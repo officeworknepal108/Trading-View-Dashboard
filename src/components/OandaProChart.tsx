@@ -105,6 +105,7 @@ import {
   isDirectTradeOverlay,
   isTradeOverlayTerminated,
   isTradeOverlayVisibleOnTimeframe,
+  retainedDirectTradeHasSource,
   resolveTradeOverlaySetupKey,
   tradeOverlayEntryEventKey,
   tradeOverlayZoneLabel,
@@ -2260,6 +2261,23 @@ export const OandaProChart: React.FC = () => {
     }
     return data;
   }, [displayCandles, granularity, replayIndex, structure, vipCandles]);
+  const hasRetainedDirectTradeSource = useCallback((overlay: TradeOverlay) => {
+    const signalTimeframe = overlay.trade.signal.timeframe;
+    const sourceTimeframes = AUTOMATION_GRANULARITIES.filter((timeframe) => (
+      getDirectTradeRule(timeframe, signalTimeframe) !== undefined
+    ));
+    return retainedDirectTradeHasSource({
+      id: overlay.id,
+      setupId: overlay.setupId,
+      label: overlay.label,
+      signalTime: overlay.trade.signal.time,
+      direction: overlay.trade.signal.direction,
+    }, tableTimeframeData[signalTimeframe]?.candles, sourceTimeframes.map((timeframe) => (
+      timeframe === granularity
+        ? displayZones
+        : tableTimeframeData[timeframe]?.structure.zones
+    )));
+  }, [displayZones, granularity, tableTimeframeData]);
   const comparisonZones = useMemo(() => {
     if (!comparisonTimeframe || comparisonTimeframe === granularity) return [];
     const sourceZones = tableTimeframeData[comparisonTimeframe]?.structure.zones ?? [];
@@ -2934,6 +2952,10 @@ export const OandaProChart: React.FC = () => {
       }
       for (const [id, overlay] of next) {
         if ((overlay.symbol ?? 'XAUUSD') !== marketSymbol) continue;
+        if (!hasRetainedDirectTradeSource(overlay)) {
+          next.delete(id);
+          continue;
+        }
         if (liveBrokerSetupKeys.has(tradeOverlaySetupKey(overlay))) {
           next.delete(id);
           continue;
@@ -2968,13 +2990,14 @@ export const OandaProChart: React.FC = () => {
         .join('|');
       return signature(next) === signature(existing) ? existing : next;
     });
-  }, [displayCandles, displayZones, extremeAPlusTjl2Selection.blockedZoneIds, granularity, marketSymbol, mt5Status?.positions, redundantRetainedOverlayIds, redundantStandaloneZoneIds, tradeOverlays]);
+  }, [displayCandles, displayZones, extremeAPlusTjl2Selection.blockedZoneIds, granularity, hasRetainedDirectTradeSource, marketSymbol, mt5Status?.positions, redundantRetainedOverlayIds, redundantStandaloneZoneIds, tradeOverlays]);
 
   const retainedChartTradesForTimeframe = useMemo(() => {
     const firstTradeBySetup = new Map<string, TradeOverlay>();
     const candidates = [...retainedChartTradeOverlays.values()]
       .filter((overlay) => (overlay.symbol ?? 'XAUUSD') === marketSymbol
         && overlay.chartTimeframe === granularity
+        && hasRetainedDirectTradeSource(overlay)
         && (!tradingTimeEnabled
           || (isNepalTradingTime(overlay.trade.signal.time + TIMEFRAME_SECONDS[overlay.trade.signal.timeframe])
             && (overlay.trade.filledAt === undefined || isNepalTradingTime(overlay.trade.filledAt)))))
@@ -2985,7 +3008,7 @@ export const OandaProChart: React.FC = () => {
     }
     return [...firstTradeBySetup.values()]
       .sort((first, second) => second.trade.calculatedAt - first.trade.calculatedAt);
-  }, [granularity, marketSymbol, retainedChartTradeOverlays, tradingTimeEnabled]);
+  }, [granularity, hasRetainedDirectTradeSource, marketSymbol, retainedChartTradeOverlays, tradingTimeEnabled]);
 
   // The Zone Table owns only direct chart-zone trades. MTF trades remain
   // drawable on the chart, but all their row/details UI belongs to MTF Table.
@@ -3097,6 +3120,7 @@ export const OandaProChart: React.FC = () => {
     const entryEventKeys = new Set<string>();
     const addOverlay = (overlay: TradeOverlay) => {
       if ((overlay.symbol ?? 'XAUUSD') !== marketSymbol) return;
+      if (!overlay.referenceOnly && !hasRetainedDirectTradeSource(overlay)) return;
       // A terminal chart result owns the visual lifecycle. This also suppresses
       // a stale retained or MT5-active copy of the same execution immediately.
       const setupKey = tradeOverlaySetupKey(overlay);
@@ -3170,7 +3194,7 @@ export const OandaProChart: React.FC = () => {
     }
     return Array.from(overlays.values())
       .sort((first, second) => second.trade.calculatedAt - first.trade.calculatedAt);
-  }, [completedChartTradeKeys, directZoneEntryDecisions, goldScalpingAccuracyTrades, liveMt5TradeOverlays, marketSymbol, mtfRows, replayIndex, retainedChartTradesForTimeframe, tradeOverlays, tradingTimeEnabled]);
+  }, [completedChartTradeKeys, directZoneEntryDecisions, goldScalpingAccuracyTrades, hasRetainedDirectTradeSource, liveMt5TradeOverlays, marketSymbol, mtfRows, replayIndex, retainedChartTradesForTimeframe, tradeOverlays, tradingTimeEnabled]);
 
   const entryHovers = useMemo<EntryHover[]>(() => {
     const entries = new Map<string, EntryHover>();

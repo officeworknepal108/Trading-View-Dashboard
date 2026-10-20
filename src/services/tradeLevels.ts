@@ -85,11 +85,15 @@ export function measureTradeableFibZone(
   pipSize = TRADE_PIP_SIZE,
 ): TradeableFibZoneMeasurement | undefined {
   const inherentlyTradeableDbDt = zone.name === 'DB' || zone.name === 'DT';
+  const measurableMajorLiquidity = zone.majorLiquidity === true
+    && (zone.name === 'TJL2' || zone.name === 'DBD' || zone.name === 'DTD')
+    && zone.active && zone.status === 'valid' && !zone.confirmationRouteDisabled;
   const fibAligned = inherentlyTradeableDbDt
     || (zone.fibStatus === 'a-plus' && zone.fibBand !== undefined)
     || (zone.swingFibStatus === 'a-plus' && zone.swingFibBand !== undefined)
     || (zone.dayFibStatus === 'a-plus' && zone.dayFibBand !== undefined);
-  if (!fibAligned || zone.tapTime === undefined || !isZoneEligibleForEngulfingEntry(zone)) {
+  if ((!fibAligned && !measurableMajorLiquidity) || zone.tapTime === undefined
+    || (!measurableMajorLiquidity && !isZoneEligibleForEngulfingEntry(zone))) {
     return undefined;
   }
 

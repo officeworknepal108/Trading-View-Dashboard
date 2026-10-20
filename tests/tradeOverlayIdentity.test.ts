@@ -6,6 +6,7 @@ import {
   isTradeOverlayTerminated,
   isTradeOverlayVisibleOnTimeframe,
   normalizeTradeSetupId,
+  retainedDirectTradeHasSource,
   resolveTradeOverlaySetupKey,
   tradeOverlayEntryEventKey,
   tradeOverlayZoneLabel,
@@ -53,6 +54,35 @@ test('rejects retained direct trades whose originating zone label was lost', () 
   assert.equal(hasIdentifiedDirectZoneLabel(id, undefined, 'CHART · CHART · 1:2'), false);
   assert.equal(hasIdentifiedDirectZoneLabel(id, undefined, undefined), false);
   assert.equal(hasIdentifiedDirectZoneLabel('MTF:setup-42:100:10', undefined, undefined), true);
+});
+
+test('a retained direct BUY needs its own tapped source zone when the signal is loaded', () => {
+  const overlay = {
+    id: 'DIRECT:TJL2-100-4115:300:4133.575',
+    label: 'TJL2 · CHART · 1:2',
+    signalTime: 300,
+    direction: 'bullish' as const,
+  };
+  const signalCandles = [{ time: 300 }];
+  const tappedBuy = { id: 'TJL2-100-4115', name: 'TJL2', isBuy: true, tapTime: 200 };
+  assert.equal(retainedDirectTradeHasSource(overlay, signalCandles, [[
+    { id: 'TJL2-200-4149', name: 'TJL2', isBuy: false, tapTime: 250 },
+  ]]), false, 'a tapped SELL TJL2 cannot support the saved BUY');
+  assert.equal(retainedDirectTradeHasSource(overlay, signalCandles, [[
+    { id: tappedBuy.id, name: 'TJL2', isBuy: true },
+  ]]), false, 'the matching BUY zone must actually be tapped');
+  assert.equal(retainedDirectTradeHasSource(overlay, signalCandles, [[
+    { ...tappedBuy, name: 'RBS' },
+  ]]), false, 'a renamed source cannot keep its old TJL2 trade label');
+  assert.equal(retainedDirectTradeHasSource(overlay, signalCandles, [[
+    { ...tappedBuy, tapTime: 400 },
+  ]]), false, 'a later tap cannot justify an earlier signal');
+  assert.equal(retainedDirectTradeHasSource(overlay, signalCandles, [[], [tappedBuy]]), true,
+    'a tapped source on another eligible zone timeframe can support the trade');
+  assert.equal(retainedDirectTradeHasSource(overlay, signalCandles, [[], undefined]), true,
+    'wait for all eligible source feeds before rejecting a saved trade');
+  assert.equal(retainedDirectTradeHasSource(overlay, [], [[]]), true,
+    'preserve a trade whose historical signal is outside loaded candles');
 });
 
 test('shows only the learned zone name in a retained direct-trade table row', () => {

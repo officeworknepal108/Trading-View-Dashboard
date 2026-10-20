@@ -24,6 +24,38 @@ export function isDirectTradeOverlay(id: string, setupId?: string): boolean {
   return resolveTradeOverlaySetupKey(id, setupId).startsWith('DIRECT:');
 }
 
+/** Keep a saved chart trade only when its loaded source zone was tapped before the signal. */
+export function retainedDirectTradeHasSource(
+  overlay: {
+    id: string;
+    setupId?: string;
+    label?: string;
+    signalTime: number;
+    direction: 'bullish' | 'bearish';
+  },
+  signalCandles: readonly { time: number }[] | undefined,
+  sourceZoneSets: readonly (readonly {
+    id: string;
+    name: string;
+    isBuy: boolean;
+    tapTime?: number;
+  }[] | undefined)[],
+): boolean {
+  if (!overlay.id.startsWith('DIRECT:')
+    || !signalCandles?.some((candle) => candle.time === overlay.signalTime)
+    || sourceZoneSets.length === 0 || sourceZoneSets.some((zones) => zones === undefined)) return true;
+  const setupKey = resolveTradeOverlaySetupKey(overlay.id, overlay.setupId);
+  const zoneId = setupKey.startsWith('DIRECT:') ? setupKey.slice('DIRECT:'.length) : '';
+  const zoneLabel = tradeOverlayZoneLabel(overlay.label);
+  return sourceZoneSets.some((zones) => zones?.some((zone) => (
+    zone.id === zoneId
+    && (zoneLabel === undefined || zone.name === zoneLabel
+      || (zoneLabel === '1MG QML' && zone.name === 'QML'))
+    && zone.isBuy === (overlay.direction === 'bullish')
+    && zone.tapTime !== undefined && zone.tapTime <= overlay.signalTime
+  )));
+}
+
 export function tradeOverlayZoneLabel(label: string | undefined): string | undefined {
   const zoneLabel = label?.split(' · ')[0]?.trim();
   return zoneLabel || undefined;

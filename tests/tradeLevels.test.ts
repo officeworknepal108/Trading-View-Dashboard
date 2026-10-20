@@ -199,6 +199,17 @@ test('tradeable FIB-aligned zones expose their full pip width and exact midline'
 
   assert.deepEqual(measureTradeableFibZone({
     ...alignedZone,
+    majorLiquidity: true,
+    tradeable: false,
+    fibStatus: undefined,
+    fibBand: undefined,
+  }), {
+    pips: 30,
+    midline: 4149,
+  }, 'a tapped Major Liquidity zone shows its width and midline before engulfing entry');
+
+  assert.deepEqual(measureTradeableFibZone({
+    ...alignedZone,
     id: 'measured-db',
     name: 'DB',
     fibStatus: undefined,

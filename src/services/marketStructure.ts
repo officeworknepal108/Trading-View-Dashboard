@@ -65,11 +65,12 @@ export interface StructureZone {
   // TJL1 FIB anchor to its current paired TJL2 even when that pivot is newer.
   tjlPairTime?: number;
   // Major Liquidity includes DBD/DTD and the second structure's TJL2 when the
-  // first structure's TJL2 was swept before the second BOS. Its trade
+  // first structure's TJL2 was swept or covered by at least 70% before the second BOS. Its trade
   // eligibility is independent from every FIB confluence layer.
   majorLiquidity?: boolean;
   majorLiquiditySourceZoneId?: string;
   majorLiquiditySweepTime?: number;
+  majorLiquidityCoverageTime?: number;
   majorLiquidityBosTime?: number;
   invalidatedAt?: number;
   structureResetAt?: number;
@@ -545,20 +546,37 @@ export function isTjl2LiquiditySweep(zone: StructureZone, candle: StructureCandl
   return zone.isBuy ? candle.low <= zone.bottom : candle.high >= zone.top;
 }
 
+export const TJL2_MAJOR_LIQUIDITY_COVERAGE = 0.7;
+
+export function isTjl2LiquidityCoverage(zone: StructureZone, candle: StructureCandle): boolean {
+  if (zone.name !== 'TJL2' || zone.category !== 'mg' || !zone.active
+    || zone.status !== 'valid' || candle.complete === false
+    || candle.time < (zone.activeFromTime ?? zone.startTime)
+    || doesInvalidateZone(zone, candle)
+    || !Number.isFinite(zone.top) || !Number.isFinite(zone.bottom)
+    || zone.top <= zone.bottom) return false;
+  const coveredPrice = zone.isBuy
+    ? zone.top - (zone.top - zone.bottom) * TJL2_MAJOR_LIQUIDITY_COVERAGE
+    : zone.bottom + (zone.top - zone.bottom) * TJL2_MAJOR_LIQUIDITY_COVERAGE;
+  return zone.isBuy ? candle.low <= coveredPrice : candle.high >= coveredPrice;
+}
+
 export function promoteTjl2ToMajorLiquidity(
   zone: StructureZone,
   sweptZone: StructureZone,
-  sweepTime: number,
+  qualificationTime: number,
   bosTime: number,
+  qualification: 'sweep' | 'coverage' = 'sweep',
 ): boolean {
-  const sweepStartedAfterSourceFormation = sweepTime >= (sweptZone.activeFromTime ?? sweptZone.startTime);
+  const qualificationStartedAfterSourceFormation = qualificationTime >= (sweptZone.activeFromTime ?? sweptZone.startTime);
   if (zone.name !== 'TJL2' || sweptZone.name !== 'TJL2'
     || zone.category !== 'mg' || sweptZone.category !== 'mg'
-    || zone.isBuy !== sweptZone.isBuy || !sweepStartedAfterSourceFormation
-    || sweepTime >= bosTime) return false;
+    || zone.isBuy !== sweptZone.isBuy || !qualificationStartedAfterSourceFormation
+    || qualificationTime >= bosTime) return false;
   zone.majorLiquidity = true;
   zone.majorLiquiditySourceZoneId = sweptZone.id;
-  zone.majorLiquiditySweepTime = sweepTime;
+  if (qualification === 'sweep') zone.majorLiquiditySweepTime = qualificationTime;
+  else zone.majorLiquidityCoverageTime = qualificationTime;
   zone.majorLiquidityBosTime = bosTime;
   return true;
 }
@@ -1374,6 +1392,7 @@ export function analyzeMarketStructure(candles: StructureCandle[], options: {
   let currentTrendTjl1: StructureZone | null = null;
   let currentTrendTjl2: StructureZone | null = null;
   let currentTrendTjl2SweepTime: number | undefined;
+  let currentTrendTjl2CoverageTime: number | undefined;
   let lastVipSupportTapTimeUsed: number | undefined;
   let pendingDouble: {
     direction: 'bullish' | 'bearish';
@@ -1530,6 +1549,7 @@ export function analyzeMarketStructure(candles: StructureCandle[], options: {
     source.majorLiquidity = undefined;
     source.majorLiquiditySourceZoneId = undefined;
     source.majorLiquiditySweepTime = undefined;
+    source.majorLiquidityCoverageTime = undefined;
     source.majorLiquidityBosTime = undefined;
     return source;
   };
@@ -1646,6 +1666,10 @@ export function analyzeMarketStructure(candles: StructureCandle[], options: {
       && isTjl2LiquiditySweep(currentTrendTjl2, candle)) {
       currentTrendTjl2SweepTime = candle.time;
     }
+    if (currentTrendTjl2CoverageTime === undefined && currentTrendTjl2
+      && isTjl2LiquidityCoverage(currentTrendTjl2, candle)) {
+      currentTrendTjl2CoverageTime = candle.time;
+    }
 
     for (const zone of zones) {
       if (!zone.active) continue;
@@ -1700,6 +1724,7 @@ export function analyzeMarketStructure(candles: StructureCandle[], options: {
         currentTrendTjl1 = null;
         currentTrendTjl2 = null;
         currentTrendTjl2SweepTime = undefined;
+        currentTrendTjl2CoverageTime = undefined;
         pathStart = doubleHigh;
         activeHigh = null;
         activeLow = null;
@@ -1741,13 +1766,16 @@ export function analyzeMarketStructure(candles: StructureCandle[], options: {
 
         const sweptTjl2 = currentTrendTjl2;
         const sweepTime = currentTrendTjl2SweepTime;
+        const coverageTime = currentTrendTjl2CoverageTime;
         currentTrendTjl1 = addTjlZone(confirmedHigh, 'TJL1', true, 'high', candle.time + sourceBarSeconds);
         currentTrendTjl2 = addTjlZone(confirmedLow, 'TJL2', true, 'low', candle.time + sourceBarSeconds);
         linkTjlPair(currentTrendTjl1, currentTrendTjl2);
-        if (sweptTjl2 && sweepTime !== undefined) {
-          promoteTjl2ToMajorLiquidity(currentTrendTjl2, sweptTjl2, sweepTime, candle.time);
+        if (sweptTjl2 && (sweepTime !== undefined || coverageTime !== undefined)) {
+          promoteTjl2ToMajorLiquidity(currentTrendTjl2, sweptTjl2,
+            sweepTime ?? coverageTime!, candle.time, sweepTime === undefined ? 'coverage' : 'sweep');
         }
         currentTrendTjl2SweepTime = undefined;
+        currentTrendTjl2CoverageTime = undefined;
         lastBullishHigh = confirmedHigh;
         if (options.allowSupplyDemand) {
           const originIndex = findOrderBlock(candles, confirmedHigh.index, index, true);
@@ -1794,6 +1822,7 @@ export function analyzeMarketStructure(candles: StructureCandle[], options: {
         currentTrendTjl1 = null;
         currentTrendTjl2 = null;
         currentTrendTjl2SweepTime = undefined;
+        currentTrendTjl2CoverageTime = undefined;
         pathStart = newProtectedHigh;
         activeHigh = null;
         activeLow = null;
@@ -1829,6 +1858,7 @@ export function analyzeMarketStructure(candles: StructureCandle[], options: {
         currentTrendTjl1 = null;
         currentTrendTjl2 = null;
         currentTrendTjl2SweepTime = undefined;
+        currentTrendTjl2CoverageTime = undefined;
         pathStart = doubleLow;
         activeHigh = null;
         activeLow = null;
@@ -1869,13 +1899,16 @@ export function analyzeMarketStructure(candles: StructureCandle[], options: {
 
         const sweptTjl2 = currentTrendTjl2;
         const sweepTime = currentTrendTjl2SweepTime;
+        const coverageTime = currentTrendTjl2CoverageTime;
         currentTrendTjl1 = addTjlZone(confirmedLow, 'TJL1', false, 'low', candle.time + sourceBarSeconds);
         currentTrendTjl2 = addTjlZone(confirmedHigh, 'TJL2', false, 'high', candle.time + sourceBarSeconds);
         linkTjlPair(currentTrendTjl1, currentTrendTjl2);
-        if (sweptTjl2 && sweepTime !== undefined) {
-          promoteTjl2ToMajorLiquidity(currentTrendTjl2, sweptTjl2, sweepTime, candle.time);
+        if (sweptTjl2 && (sweepTime !== undefined || coverageTime !== undefined)) {
+          promoteTjl2ToMajorLiquidity(currentTrendTjl2, sweptTjl2,
+            sweepTime ?? coverageTime!, candle.time, sweepTime === undefined ? 'coverage' : 'sweep');
         }
         currentTrendTjl2SweepTime = undefined;
+        currentTrendTjl2CoverageTime = undefined;
         lastBearishLow = confirmedLow;
         if (options.allowSupplyDemand) {
           const originIndex = findOrderBlock(candles, confirmedLow.index, index, false);
@@ -1922,6 +1955,7 @@ export function analyzeMarketStructure(candles: StructureCandle[], options: {
         currentTrendTjl1 = null;
         currentTrendTjl2 = null;
         currentTrendTjl2SweepTime = undefined;
+        currentTrendTjl2CoverageTime = undefined;
         pathStart = newProtectedLow;
         activeHigh = null;
         activeLow = null;
