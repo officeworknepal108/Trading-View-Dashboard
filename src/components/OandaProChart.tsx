@@ -43,6 +43,7 @@ import {
   buildGoldScalpingMtfRows,
   buildMtfHistoryRows,
   buildMtfRows,
+  getSavedMtfEntryQualification,
   type MtfGranularity,
   type MtfRow,
 } from '../services/mtf';
@@ -324,6 +325,7 @@ interface TradeOverlay {
   setupId?: string;
   trade: TradeLevels;
   label?: string;
+  fibLabels?: string[];
   chartTimeframe?: OandaGranularity;
   referenceOnly?: boolean;
 }
@@ -754,6 +756,20 @@ function displayFibLabel(zone: StructureZone): string {
     return 'FIB DEEP DISCOUNT';
   }
   return `A+ FIB ${zone.fibBand}`;
+}
+
+function tradeZoneFibLabels(zone: StructureZone): string[] {
+  const labels: string[] = [];
+  if (zone.fibStatus === 'a-plus' && zone.fibBand && zone.fibBand !== 'DB/DT') {
+    labels.push(displayFibLabel(zone));
+  }
+  if (zone.swingFibStatus === 'a-plus' && zone.swingFibBand) {
+    labels.push(`SWING A+ FIB ${zone.swingFibBand}`);
+  }
+  if (zone.dayFibStatus === 'a-plus' && zone.dayFibBand) {
+    labels.push(`DAY FIB A+ ${zone.dayFibBand}`);
+  }
+  return labels;
 }
 
 function formatZonePips(pips: number): string {
@@ -1600,6 +1616,7 @@ export const OandaProChart: React.FC = () => {
   replaySelectionIndexRef.current = replaySelectionIndex;
 
   const marketConfig = oandaMarketSymbolConfig(marketSymbol);
+  const mtfLtfFibRequired = mt5Status?.config.mtfLtfFibRequired === true;
   const drawingScope = `${liveChartDataSource}:${marketSymbol}`;
   hasChartDrawingLayerRef.current = chartDrawings.length > 0 || drawingDraft !== null;
 
@@ -2390,10 +2407,10 @@ export const OandaProChart: React.FC = () => {
   )), [goldScalpingAccuracyTrades, tradingTimeEnabled]);
   const activeMtfRows = useMemo(() => {
     const rows = new Map((marketSymbol === 'XAUUSD'
-      ? buildGoldIntradayMtfRows(tableTimeframeData)
-      : buildMtfRows(tableTimeframeData)).map((row) => [row.id, row]));
+      ? buildGoldIntradayMtfRows(tableTimeframeData, mtfLtfFibRequired)
+      : buildMtfRows(tableTimeframeData, mtfLtfFibRequired)).map((row) => [row.id, row]));
     if (marketSymbol === 'XAUUSD') {
-      for (const row of buildGoldScalpingMtfRows(tableTimeframeData)) rows.set(row.id, row);
+      for (const row of buildGoldScalpingMtfRows(tableTimeframeData, mtfLtfFibRequired)) rows.set(row.id, row);
     }
     return Array.from(rows.values())
     .filter((row) => !extremeAPlusMtfBlockedZoneIds
@@ -2401,7 +2418,7 @@ export const OandaProChart: React.FC = () => {
     .filter((row) => row.engulfingBarsAgo !== undefined
       ? row.engulfingBarsAgo <= 100
       : (row.tapBarsAgo ?? row.confirmationBarsAgo) <= 50);
-  }, [extremeAPlusMtfBlockedZoneIds, marketSymbol, tableTimeframeData]);
+  }, [extremeAPlusMtfBlockedZoneIds, marketSymbol, mtfLtfFibRequired, tableTimeframeData]);
 
   const allMtfTradeRows = useMemo<DisplayMtfRow[]>(() => {
     const setupIds = new Map<string, string>();
@@ -2470,6 +2487,20 @@ export const OandaProChart: React.FC = () => {
       row.higherTimeframe === granularity || row.lowerTimeframe === granularity
     ))
   ), [allMtfTradeRows, granularity]);
+
+  const savedChartMtfEntryQualification = useCallback((entry: {
+    id: string;
+    signalTime: number;
+    direction: EngulfingTradeSignal['direction'];
+    engulfingType: EngulfingTradeSignal['type'];
+    zoneName: string;
+    goldScalping?: boolean;
+  }) => getSavedMtfEntryQualification(tableTimeframeData, {
+    ...entry,
+    zoneName: entry.zoneName as StructureZone['name'],
+    goldIntraday: marketSymbol === 'XAUUSD' && !entry.goldScalping,
+    requireLtfFib: mtfLtfFibRequired,
+  }), [marketSymbol, mtfLtfFibRequired, tableTimeframeData]);
 
   const accuracyTradeRecords = useMemo<AccuracyTradeRecord[]>(() => {
     const records = new Map<string, AccuracyTradeRecord>();
@@ -2571,10 +2602,10 @@ export const OandaProChart: React.FC = () => {
     // Unlike the compact live MTF table, history evaluates every eligible
     // mapped CHOCH event in the loaded candle window.
     const historicalMtfRows = new Map((marketSymbol === 'XAUUSD'
-      ? buildGoldIntradayMtfHistoryRows(tableTimeframeData)
-      : buildMtfHistoryRows(tableTimeframeData)).map((row) => [row.id, row]));
+      ? buildGoldIntradayMtfHistoryRows(tableTimeframeData, mtfLtfFibRequired)
+      : buildMtfHistoryRows(tableTimeframeData, mtfLtfFibRequired)).map((row) => [row.id, row]));
     if (marketSymbol === 'XAUUSD') {
-      for (const row of buildGoldScalpingMtfHistoryRows(tableTimeframeData)) {
+      for (const row of buildGoldScalpingMtfHistoryRows(tableTimeframeData, mtfLtfFibRequired)) {
         historicalMtfRows.set(row.id, row);
       }
     }
@@ -2613,8 +2644,8 @@ export const OandaProChart: React.FC = () => {
         trade,
         lowerTimeframeData.candles,
         {
-          fibSource: 'MTF FIB',
-          fibBand: row.engulfingDeepDiscount ? '0.71-0.79' : '0.5-0.618',
+          fibSource: row.engulfingFibBand ? 'MTF FIB' : undefined,
+          fibBand: row.engulfingFibBand,
           tradeStyle: marketSymbol === 'XAUUSD'
             ? row.goldScalping ? 'SCALPING' : 'INTRADAY' : undefined,
         },
@@ -2673,6 +2704,7 @@ export const OandaProChart: React.FC = () => {
     granularity,
     goldScalpingAccuracyTrades,
     marketSymbol,
+    mtfLtfFibRequired,
     mtfRows,
     redundantStandaloneZoneIds,
     tableTimeframeData,
@@ -2727,7 +2759,26 @@ export const OandaProChart: React.FC = () => {
   const allSavedAccuracyRecords = useMemo<AccuracyTradeRecord[]>(() => {
     const completedSavedJournalTrades = savedJournalTrades.filter((record) => (
       record.result === 'tp' || record.result === 'sl' || record.result === 'rf'
-    )).filter((record) => accuracyResultMatchesCandles(
+    )).flatMap((record): AccuracyTradeRecord[] => {
+      if (record.source !== 'MTF' || record.brokerTicket !== undefined
+        || record.mt5Managed === true) return [record];
+      if (record.signalAt === undefined || !['T1', 'T2', 'T3', 'T4'].includes(record.engulfingType)) {
+        return [];
+      }
+      const qualification = savedChartMtfEntryQualification({
+          id: record.id,
+          signalTime: record.signalAt,
+          direction: record.direction,
+          engulfingType: record.engulfingType as EngulfingTradeSignal['type'],
+          zoneName: record.zoneName,
+          goldScalping: record.tradeStyle === 'SCALPING',
+      });
+      return qualification ? [{
+        ...record,
+        fibSource: qualification.fibBand ? 'MTF FIB' : undefined,
+        fibBand: qualification.fibBand,
+      }] : [];
+    }).filter((record) => accuracyResultMatchesCandles(
       record,
       tableTimeframeData[record.signalTimeframe]?.candles,
       TIMEFRAME_SECONDS[record.signalTimeframe],
@@ -2788,7 +2839,7 @@ export const OandaProChart: React.FC = () => {
       .filter(taughtGoldRoute)
       .map((record) => ({ ...record, tradeStyle: record.tradeStyle ?? 'INTRADAY' })))
       .filter(belongsToSelectedMarket);
-  }, [accuracyTradeRecords, marketConfig.pipSize, marketSymbol, savedJournalTrades, tableTimeframeData]);
+  }, [accuracyTradeRecords, marketConfig.pipSize, marketSymbol, savedChartMtfEntryQualification, savedJournalTrades, tableTimeframeData]);
   const replayResultCutoff = replayIndex === null ? undefined
     : displayCandles.length === 0 ? Number.NEGATIVE_INFINITY
       : marketCandleCloseTime(displayCandles[displayCandles.length - 1].time, granularity);
@@ -2813,6 +2864,7 @@ export const OandaProChart: React.FC = () => {
       trade: TradeLevels,
       label?: string,
       drawingTimeframe: OandaGranularity = trade.signal.timeframe,
+      zone?: StructureZone,
     ) => {
       if (isCompletedTrade(trade)) return;
       const signature = [
@@ -2826,6 +2878,7 @@ export const OandaProChart: React.FC = () => {
         symbol: marketSymbol,
         trade,
         label,
+        fibLabels: zone ? tradeZoneFibLabels(zone) : undefined,
         chartTimeframe: drawingTimeframe,
       });
     };
@@ -2851,6 +2904,8 @@ export const OandaProChart: React.FC = () => {
         `DIRECT:${zoneId}:${trade.signal.time}:${trade.entry}`,
         trade,
         `${executionZoneName(setup.zone)} · CHART · 1:${trade.rewardRisk}`,
+        trade.signal.timeframe,
+        setup.zone,
       );
     }
     // Reconstruct filled, unresolved direct trades from historical zones too.
@@ -2896,6 +2951,8 @@ export const OandaProChart: React.FC = () => {
         `DIRECT:${zone.id}:${signal.time}:${trade.entry}`,
         trade,
         `${executionZoneName(zone)} · CHART · 1:${trade.rewardRisk}`,
+        trade.signal.timeframe,
+        zone,
       );
     }
     for (const row of mtfRows) {
@@ -2998,7 +3055,7 @@ export const OandaProChart: React.FC = () => {
         }
       }
       const signature = (entries: Map<string, TradeOverlay>) => Array.from(entries)
-        .map(([id, overlay]) => `${overlay.symbol ?? 'XAUUSD'}:${id}:${overlay.trade.status}:${overlay.trade.resolvedAt ?? ''}`)
+        .map(([id, overlay]) => `${overlay.symbol ?? 'XAUUSD'}:${id}:${overlay.trade.status}:${overlay.trade.resolvedAt ?? ''}:${overlay.fibLabels?.join(',') ?? ''}`)
         .sort()
         .join('|');
       return signature(next) === signature(existing) ? existing : next;
@@ -3011,6 +3068,14 @@ export const OandaProChart: React.FC = () => {
       .filter((overlay) => (overlay.symbol ?? 'XAUUSD') === marketSymbol
         && overlay.chartTimeframe === granularity
         && hasRetainedDirectTradeSource(overlay)
+        && (!overlay.id.startsWith('MTF:') || savedChartMtfEntryQualification({
+          id: overlay.id,
+          signalTime: overlay.trade.signal.time,
+          direction: overlay.trade.signal.direction,
+          engulfingType: overlay.trade.signal.type,
+          zoneName: tradeOverlayZoneLabel(overlay.label) ?? '',
+          goldScalping: overlay.label?.includes('SCALP MTF') === true,
+        }) !== undefined)
         && (!tradingTimeEnabled
           || (isNepalTradingTime(overlay.trade.signal.time + TIMEFRAME_SECONDS[overlay.trade.signal.timeframe])
             && (overlay.trade.filledAt === undefined || isNepalTradingTime(overlay.trade.filledAt)))))
@@ -3021,7 +3086,7 @@ export const OandaProChart: React.FC = () => {
     }
     return [...firstTradeBySetup.values()]
       .sort((first, second) => second.trade.calculatedAt - first.trade.calculatedAt);
-  }, [granularity, hasRetainedDirectTradeSource, marketSymbol, retainedChartTradeOverlays, tradingTimeEnabled]);
+  }, [granularity, hasRetainedDirectTradeSource, marketSymbol, retainedChartTradeOverlays, savedChartMtfEntryQualification, tradingTimeEnabled]);
 
   // The Zone Table owns only direct chart-zone trades. MTF trades remain
   // drawable on the chart, but all their row/details UI belongs to MTF Table.
@@ -6106,6 +6171,19 @@ export const OandaProChart: React.FC = () => {
             >
               INT STRUCTURE {showInternal ? 'ON' : 'OFF'}
             </button>
+            <button
+              type="button"
+              onClick={() => void updateMt5Config({ mtfLtfFibRequired: !mtfLtfFibRequired })}
+              disabled={!mt5Status}
+              className={`whitespace-nowrap rounded-full border px-1.5 py-0.5 text-[8px] font-black transition ${
+                mtfLtfFibRequired
+                  ? 'border-fuchsia-200 bg-fuchsia-50 text-fuchsia-700'
+                  : 'border-slate-200 bg-white text-slate-500'
+              }`}
+              title="Require the lower-timeframe Fib for MTF CHoCH entries; the zone midpoint and engulfing are always required"
+            >
+              MTF LTF FIB REQUIRED {mtfLtfFibRequired ? 'ON' : 'OFF'}
+            </button>
             <div className="relative flex">
               <button
                 onClick={() => setShowFib((value) => !value)}
@@ -7165,6 +7243,13 @@ export const OandaProChart: React.FC = () => {
                 {retainedDirectChartTradesForTimeframe.map((overlay) => {
                   const bullish = overlay.trade.signal.direction === 'bullish';
                   const zoneLabel = tradeOverlayZoneLabel(overlay.label);
+                  const sourceZoneId = directTradeOverlayZoneId(overlay);
+                  const sourceZone = displayZones.find((zone) => zone.id === sourceZoneId)
+                    ?? [...trackedDirectTradeSetups.values()].find((setup) => (
+                      setup.scope === tradeTrackingScope && setup.zone.id === sourceZoneId
+                    ))?.zone;
+                  const currentFibLabels = sourceZone ? tradeZoneFibLabels(sourceZone) : [];
+                  const fibLabels = currentFibLabels.length > 0 ? currentFibLabels : overlay.fibLabels ?? [];
                   return (
                     <React.Fragment key={`open-chart-trade-${overlay.id}`}>
                       <tr className={`border-t ${bullish ? 'border-emerald-200 bg-emerald-50' : 'border-rose-200 bg-rose-50'}`}>
@@ -7175,6 +7260,11 @@ export const OandaProChart: React.FC = () => {
                               DEEP DISCOUNT
                             </span>
                           )}
+                          {fibLabels.map((label) => (
+                            <span key={label} className="ml-1 rounded bg-fuchsia-100 px-1 py-0.5 text-[8px] font-black text-fuchsia-800">
+                              {label}
+                            </span>
+                          ))}
                         </td>
                         <td className={`px-2 py-1 font-bold ${bullish ? 'text-emerald-700' : 'text-rose-700'}`}>
                           {bullish ? 'BUY' : 'SELL'}
@@ -7441,12 +7531,14 @@ export const OandaProChart: React.FC = () => {
                         <span className={isCompletedTrade(outsideTimePreview)
                           ? outsideTimePreview.status === 'sl-hit' ? 'text-rose-700' : 'text-emerald-700'
                           : 'text-blue-700'}>
+                          {tapBarsAgo} bars ·{' '}
                           {isCompletedTrade(outsideTimePreview)
                             ? tradeStatusLabel(outsideTimePreview)
                             : `ENTRY ${formatPrice(outsideTimePreview.entry)}`}
                         </span>
                       ) : historicalTrade ? (
                         <span className={historicalTrade.status === 'sl-hit' ? 'text-rose-700' : 'text-indigo-700'}>
+                          {tapBarsAgo} bars ·{' '}
                           {historicalEntry?.tradingTimeBlocked
                             ? isCompletedTrade(historicalTrade)
                               ? tradeStatusLabel(historicalTrade)

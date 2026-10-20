@@ -5,6 +5,8 @@ import {
   buildGoldIntradayMtfRows,
   buildMtfHistoryRows,
   buildMtfRows,
+  getSavedMtfEntryQualification,
+  isSavedMtfEntryQualified,
   type MtfTimeframeData,
 } from '../src/services/mtf';
 import type { MarketStructureResult, StructureCandle, StructureZone } from '../src/services/marketStructure';
@@ -58,19 +60,22 @@ test('Gold H1/M1 CHOCH route needs lower-timeframe Fib on a 50 pip zone', () => 
     H1: { candles: lowerCandles, structure: structure([higherZone]) },
     M1: { candles: lowerCandles, structure: structure([qml, rbs, db]) },
   };
-  const row = buildGoldScalpingMtfRows(data)[0];
+  const row = buildGoldScalpingMtfRows(data, true)[0];
   assert.equal(row?.goldScalping, true);
   assert.equal(row?.higherTimeframe, 'H1');
   assert.equal(row?.lowerTimeframe, 'M1');
   assert.equal(row?.engulfingType, 'T1');
   assert.equal(row?.engulfingDeepDiscount, false);
-  const withoutLowerFib = buildGoldScalpingMtfRows({
+  const withoutLowerFibData = {
     ...data,
     M1: { ...data.M1!, structure: structure([
       { ...qml, fibSourcePrice: undefined, fibZeroPrice: undefined }, rbs, db,
     ]) },
-  })[0];
+  };
+  const withoutLowerFib = buildGoldScalpingMtfRows(withoutLowerFibData, true)[0];
   assert.equal(withoutLowerFib?.engulfingType, undefined);
+  assert.equal(buildGoldScalpingMtfRows(withoutLowerFibData)[0]?.engulfingType, 'T1',
+    'Fib is optional by default while midpoint and scalp engulfing rules still apply');
   const longUpperWick = buildGoldScalpingMtfRows({
     ...data,
     M1: { ...data.M1!, candles: lowerCandles.map((item) => (
@@ -284,12 +289,15 @@ test('an engulfing outside the silent Fib A+ bands is not an MTF entry', () => {
     activeFromTime: 300, tjlPairTime: 50, bottom: 104, top: 105,
   });
   const db = zone({ id: 'm5-db', name: 'DB', chochTime: 300, bottom: 99, top: 100 });
-  const row = buildMtfRows({
+  const data = {
     H1: { candles: lowerCandles, structure: structure([higherZone]) },
     M5: { candles: lowerCandles, structure: structure([qml, rbs, db]) },
-  }).find((candidate) => candidate.confirmationKind === 'choch');
+  };
+  const row = buildMtfRows(data, true).find((candidate) => candidate.confirmationKind === 'choch');
   assert.equal(row?.tappedZone, 'QML');
   assert.equal(row?.engulfingType, undefined);
+  assert.equal(buildMtfRows(data)[0]?.engulfingType, 'T4',
+    'default mode accepts the midpoint and engulfing without a Fib-band touch');
 });
 
 test('an active valid HTF level remains eligible after its 30-bar drawing ends', () => {
@@ -506,4 +514,98 @@ test('sell flow applies MTF through DTD Major Liquidity and tracks its bearish C
   assert.equal(row?.higherTimeframeZone, 'DTD');
   assert.equal(row?.higherTimeframeMajorLiquidity, true);
   assert.equal(row?.higherTimeframeTapTime, 200);
+});
+
+test('MTF CHOCH waits for the tapped RBS midpoint before its engulfing', () => {
+  const candles = [
+    candle(100, 104, 105, 101, 102),
+    candle(200, 103, 104, 101, 102),
+    candle(300, 102, 108, 101, 107),
+    candle(400, 107, 108, 103, 104),
+    candle(500, 104, 110, 103, 109),
+  ];
+  const higherZone = zone({
+    id: 'h1-demand', name: 'DEMAND', category: 'supplyDemand',
+    bottom: 101, top: 104,
+  });
+  const qml = zone({
+    id: 'm5-qml', chochTime: 300, startTime: 100, activeFromTime: 300,
+    tjlPairTime: 50, bottom: 103, top: 105,
+    fibSourcePrice: 100, fibZeroPrice: 110,
+  });
+  const rbs = zone({
+    id: 'm5-rbs', name: 'RBS', chochTime: 300, startTime: 150,
+    activeFromTime: 300, tjlPairTime: 50, bottom: 100, top: 104,
+    tapTime: 400,
+  });
+  const db = zone({
+    id: 'm5-db', name: 'DB', chochTime: 300,
+    bottom: 99, top: 100,
+  });
+  const rowWith = (lowerCandles: StructureCandle[], tappedRbs = rbs) => buildMtfRows({
+    H1: { candles: lowerCandles, structure: structure([higherZone]) },
+    M5: { candles: lowerCandles, structure: structure([qml, tappedRbs, db]) },
+  }).find((row) => row.higherTimeframe === 'H1');
+  const savedEntry = {
+    id: 'MTF:H1-M5-external-choch-300:500:109',
+    signalTime: 500,
+    direction: 'bullish' as const,
+    engulfingType: 'T4' as const,
+    zoneName: 'RBS' as const,
+    goldIntraday: true,
+    requireLtfFib: true,
+  };
+  const savedEntryQualifies = (
+    lowerCandles: StructureCandle[],
+    sourceQml = qml,
+    tappedRbs = rbs,
+    requireLtfFib = true,
+  ) => isSavedMtfEntryQualified({
+    H1: { candles: lowerCandles, structure: structure([higherZone]) },
+    M5: { candles: lowerCandles, structure: structure([sourceQml, tappedRbs, db]) },
+  }, { ...savedEntry, requireLtfFib });
+
+  assert.equal(rowWith(candles)?.tappedZone, 'RBS');
+  assert.equal(rowWith(candles)?.engulfingType, undefined,
+    'HTF and QML midpoint touches cannot qualify the tapped RBS');
+  assert.equal(savedEntryQualifies(candles), false,
+    'the old saved RBS arrow must also disappear without its midpoint touch');
+  const midpointTouchedCandles = [
+    ...candles.slice(0, 3),
+    { ...candles[3], low: 101 },
+    candles[4],
+  ];
+  assert.equal(rowWith(midpointTouchedCandles)?.engulfingTime, 500,
+    'an RBS midpoint touch before engulfing allows the entry');
+  assert.equal(savedEntryQualifies(midpointTouchedCandles), true);
+  assert.equal(savedEntryQualifies(midpointTouchedCandles, {
+    ...qml, fibSourcePrice: undefined, fibZeroPrice: undefined,
+  }), false, 'an old MTF Fib label cannot qualify an RBS without current LTF Fib');
+  assert.equal(savedEntryQualifies(midpointTouchedCandles, {
+    ...qml, fibSourcePrice: undefined, fibZeroPrice: undefined,
+  }, rbs, false), true, 'default mode permits the same RBS entry without LTF Fib');
+  assert.equal(getSavedMtfEntryQualification({
+    H1: { candles: midpointTouchedCandles, structure: structure([higherZone]) },
+    M5: { candles: midpointTouchedCandles, structure: structure([
+      { ...qml, fibSourcePrice: undefined, fibZeroPrice: undefined }, rbs, db,
+    ]) },
+  }, { ...savedEntry, requireLtfFib: false })?.fibBand, undefined,
+  'a saved entry without Fib must not retain its old MTF Fib tooltip');
+
+  const recordedRbs = {
+    ...rbs,
+    engulfingType: 'T4' as const,
+    engulfingDirection: 'bullish' as const,
+    engulfingTime: 500,
+  };
+  assert.equal(savedEntryQualifies(midpointTouchedCandles, {
+    ...qml, fibSourcePrice: undefined, fibZeroPrice: undefined,
+  }, recordedRbs), false, 'a stored engulfing cannot bypass the missing LTF Fib source');
+  assert.equal(rowWith(candles, recordedRbs)?.engulfingType, undefined,
+    'a stored engulfing still needs the RBS midpoint first');
+  assert.equal(rowWith([
+    ...candles,
+    candle(600, 109, 110, 101, 107),
+  ], recordedRbs)?.engulfingType, undefined,
+  'a later midpoint touch must not qualify an earlier engulfing');
 });

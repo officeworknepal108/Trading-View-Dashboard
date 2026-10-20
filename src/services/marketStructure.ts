@@ -82,6 +82,7 @@ export interface StructureZone {
   // Zones converted/created by one CHoCH share this classification. It affects
   // trade eligibility only; normal zone invalidation continues unchanged.
   chochClass?: ChochClass;
+  m15H1ChochClosePending?: boolean;
   tradeable?: boolean;
   chochTime?: number;
   chochConfirmationTime?: number;
@@ -159,7 +160,7 @@ export interface StructureZone {
 type ChochMetadata = Pick<StructureZone,
   'chochClass' | 'tradeable' | 'chochTime' | 'chochConfirmationTime'
   | 'vipSupportTimeframe' | 'vipSupportZone' | 'vipSupportTapTime'
-  | 'confirmationRouteDisabled'>;
+  | 'confirmationRouteDisabled' | 'm15H1ChochClosePending'>;
 
 export function applySingleChochMetadataToZone(
   zone: StructureZone,
@@ -167,12 +168,12 @@ export function applySingleChochMetadataToZone(
 ): void {
   if (zone.name === 'DB' || zone.name === 'DT') {
     // The new extreme is already a completed same-timeframe structure zone.
-    // Retain its CHoCH origin for FIB anchoring, but do not turn the DB/DT
-    // itself into a mapped-HTF pending zone. Its inherent deep-discount status
-    // plus a matching zone-touching engulfing decide whether it can trade.
+    // Retain its CHoCH origin for FIB anchoring. A newly formed M15 CHoCH
+    // still waits for its mapped H1 close before this extreme can trade.
     zone.chochTime = context.chochTime;
-    zone.chochClass = undefined;
-    zone.tradeable = undefined;
+    zone.chochClass = context.m15H1ChochClosePending ? 'pending' : undefined;
+    zone.tradeable = context.m15H1ChochClosePending ? false : undefined;
+    zone.m15H1ChochClosePending = context.m15H1ChochClosePending;
     zone.chochConfirmationTime = undefined;
     zone.vipSupportTimeframe = undefined;
     zone.vipSupportZone = undefined;
@@ -627,6 +628,16 @@ export function classifyChoch(options: {
   return { chochClass: 'air', tradeable: false };
 }
 
+export function isM15H1ChochClosePending(
+  sourceBarSeconds: number,
+  confirmationBarSeconds: number | undefined,
+  chochClass: ChochClass,
+): boolean {
+  return sourceBarSeconds === 900
+    && confirmationBarSeconds === 3600
+    && chochClass === 'pending';
+}
+
 export function classifyFibOverlap(options: {
   zoneBottom: number;
   zoneTop: number;
@@ -789,6 +800,7 @@ export function findZoneEngulfingPattern(
   zone: StructureZone,
   type4MaxCandles = 10,
 ): EngulfingPattern | undefined {
+  if (zone.m15H1ChochClosePending) return undefined;
   const fibIndependentMajorLiquidity = usesMajorLiquidityTradingRules(zone);
   const isDeepFib = zone.fibBand === '0.71-0.79' || zone.fibBand === 'deep';
   const inherentDbDtDeepDiscount = zone.name === 'DB' || zone.name === 'DT';
@@ -851,6 +863,7 @@ export function findTradeableZoneEngulfingPattern(
  * the agreed QML + lower-timeframe engulfing entry route.
  */
 export function isZoneEligibleForEngulfingEntry(zone: StructureZone): boolean {
+  if (zone.m15H1ChochClosePending) return false;
   if (zone.confirmationRouteDisabled) return false;
   if (!zone.active || zone.status !== 'valid') return false;
   if (zone.tradeable !== false) return true;
@@ -1459,6 +1472,9 @@ export function analyzeMarketStructure(candles: StructureCandle[], options: {
     });
     return {
       ...classification,
+      m15H1ChochClosePending: isM15H1ChochClosePending(
+        sourceBarSeconds, options.confirmationBarSeconds, classification.chochClass,
+      ),
       chochTime: sourceChochTime,
       chochConfirmationTime: tjl2Confirmation.confirmationTime,
       vipSupportTimeframe: vipTap?.timeframe,

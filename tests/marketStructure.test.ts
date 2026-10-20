@@ -18,6 +18,7 @@ import {
   findZoneEngulfingPattern,
   findTradeableZoneEngulfingPattern,
   isZoneEligibleForEngulfingEntry,
+  isM15H1ChochClosePending,
   isDoubleChochZoneTradeable,
   findIssFiveWaves,
   findFirstZoneTapIndex,
@@ -97,6 +98,52 @@ test('CHoCH classification follows Valid, Air, VIP, and pending trade rules', ()
     classifyChoch({ tjl1Confirmed: true, tjl2Confirmed: false, vipZoneTapped: true }),
     { chochClass: 'pending', tradeable: false },
   );
+});
+
+test('a recent M15 CHoCH cannot trade any of its zones before the mapped H1 confirmation', () => {
+  assert.equal(isM15H1ChochClosePending(900, 3600, 'pending'), true);
+  assert.equal(isM15H1ChochClosePending(900, 3600, 'valid'), false);
+  assert.equal(isM15H1ChochClosePending(300, 900, 'pending'), false);
+
+  const pendingContext = {
+    chochClass: 'pending' as const,
+    tradeable: false,
+    chochTime: 0,
+    chochConfirmationTime: undefined,
+    m15H1ChochClosePending: true,
+  };
+  const entryCandles: StructureCandle[] = [
+    { time: 1, open: 96, high: 97, low: 93, close: 94, complete: true },
+    { time: 2, open: 94, high: 99, low: 92, close: 98, complete: true },
+  ];
+  for (const name of ['QML', 'SBR', 'DB'] as const) {
+    const candidate = zone({
+      name, isBuy: true, startTime: 0, activeFromTime: 1,
+      bottom: 90, top: 100, tapTime: 2,
+      fibStatus: 'a-plus', fibBand: '0.5-0.618', fibLevel50: 95,
+    });
+    applySingleChochMetadataToZone(candidate, pendingContext);
+    assert.equal(candidate.tradeable, false, `${name} must remain NO TRADE`);
+    assert.equal(isZoneEligibleForEngulfingEntry(candidate), false);
+    assert.equal(findZoneEngulfingPattern(entryCandles, candidate), undefined);
+
+    applySingleChochMetadataToZone(candidate, {
+      ...pendingContext,
+      chochClass: 'valid',
+      tradeable: true,
+      chochConfirmationTime: 3600,
+      m15H1ChochClosePending: false,
+    });
+    assert.equal(isZoneEligibleForEngulfingEntry(candidate), true);
+    assert.equal(findZoneEngulfingPattern(entryCandles, candidate)?.type, 'T1');
+  }
+
+  const airQml = zone({
+    name: 'QML', chochClass: 'air', tradeable: false, tapTime: 2,
+    fibStatus: 'a-plus', fibBand: '0.5-0.618', fibLevel50: 95,
+  });
+  assert.equal(isZoneEligibleForEngulfingEntry(airQml), true,
+    'the existing AIR QML route is unchanged');
 });
 
 test('overlapping ISS paths emit one canonical zone per structure ID', () => {

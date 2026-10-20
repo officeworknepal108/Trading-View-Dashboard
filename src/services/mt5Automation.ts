@@ -47,9 +47,15 @@ export function mt5SignalDisabledReason(
     enabledTimeframes: readonly Mt5EntryTimeframe[];
     scalpingEnabled: boolean;
     intradayEnabled: boolean;
+    mtfLtfFibRequired?: boolean;
   },
-  signal: Pick<Mt5SignalInput, 'zoneTimeframe' | 'signalTimeframe' | 'tradeStyle'>,
+  signal: Pick<Mt5SignalInput, 'zoneTimeframe' | 'signalTimeframe' | 'tradeStyle'>
+    & Partial<Pick<Mt5SignalInput, 'source' | 'mtfLtfFibRequiredAtSignal'>>,
 ): string | undefined {
+  if (signal.source === 'MTF' && typeof config.mtfLtfFibRequired === 'boolean'
+    && signal.mtfLtfFibRequiredAtSignal !== config.mtfLtfFibRequired) {
+    return 'MTF LTF Fib setting changed after this signal was created.';
+  }
   if (!isMt5SignalAllowedByTimeframes(config.enabledTimeframes, signal)) {
     return `${signal.zoneTimeframe} setup / ${signal.signalTimeframe} entry automatic trading is disabled.`;
   }
@@ -104,6 +110,7 @@ export interface Mt5AutomationConfig {
   dryRun: boolean;
   scalpingEnabled: boolean;
   intradayEnabled: boolean;
+  mtfLtfFibRequired: boolean;
   symbol: string;
   brokerSymbol: string;
   enabledTimeframes: Mt5EntryTimeframe[];
@@ -124,6 +131,7 @@ export interface Mt5SignalInput {
   direction: 'BUY' | 'SELL';
   orderType: 'MARKET' | 'LIMIT';
   source: 'ENGULFING' | 'MTF';
+  mtfLtfFibRequiredAtSignal?: boolean;
   tradeStyle?: 'SCALPING' | 'INTRADAY';
   zoneName: string;
   zoneTimeframe: TradeTimeframe;

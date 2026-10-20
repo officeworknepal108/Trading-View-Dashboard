@@ -82,6 +82,7 @@ const DEFAULT_MT5_CONFIG: Mt5AutomationConfig = {
   dryRun: true,
   scalpingEnabled: true,
   intradayEnabled: true,
+  mtfLtfFibRequired: false,
   symbol: 'XAUUSD',
   brokerSymbol: 'XAUUSDm',
   enabledTimeframes: [...MT5_DEFAULT_ENABLED_TIMEFRAMES],
@@ -251,6 +252,7 @@ async function readMt5Config(): Promise<Mt5AutomationConfig> {
       ...parsed,
       scalpingEnabled: parsed?.scalpingEnabled !== false,
       intradayEnabled: parsed?.intradayEnabled !== false,
+      mtfLtfFibRequired: parsed?.mtfLtfFibRequired === true,
       enabledTimeframes: normalizeMt5EnabledTimeframes(
         parsed?.enabledTimeframes,
         DEFAULT_MT5_CONFIG.enabledTimeframes,
@@ -367,6 +369,8 @@ function sanitizeMt5Config(candidate: any, current: Mt5AutomationConfig): Mt5Aut
     dryRun: candidate?.dryRun !== false,
     scalpingEnabled: candidate?.scalpingEnabled !== false,
     intradayEnabled: candidate?.intradayEnabled !== false,
+    mtfLtfFibRequired: candidate?.mtfLtfFibRequired === undefined
+      ? current.mtfLtfFibRequired : candidate.mtfLtfFibRequired === true,
     brokerSymbol: typeof candidate?.brokerSymbol === 'string'
       ? candidate.brokerSymbol.trim().slice(0, 30) || current.brokerSymbol
       : current.brokerSymbol,
@@ -819,9 +823,9 @@ async function scanMt5AutomationSignals(): Promise<number> {
     const structure = structures[timeframe];
     if (structure) mtfData[timeframe] = { candles: candles[timeframe], structure };
   }
-  const mtfRows = new Map(buildGoldIntradayMtfRows(mtfData)
+  const mtfRows = new Map(buildGoldIntradayMtfRows(mtfData, config.mtfLtfFibRequired)
     .map((row) => [row.id, row]));
-  for (const row of buildGoldScalpingMtfRows(mtfData)) mtfRows.set(row.id, row);
+  for (const row of buildGoldScalpingMtfRows(mtfData, config.mtfLtfFibRequired)) mtfRows.set(row.id, row);
   for (const row of mtfRows.values()) {
     if (!row.engulfingType || row.engulfingTime === undefined) continue;
     const rule = row.goldScalping
@@ -856,8 +860,9 @@ async function scanMt5AutomationSignals(): Promise<number> {
       pendingExpiryMinutes: config.pendingExpiryMinutes,
     });
     baseSignal.tradeStyle = row.goldScalping ? 'SCALPING' : 'INTRADAY';
+    baseSignal.mtfLtfFibRequiredAtSignal = config.mtfLtfFibRequired;
     baseSignal.zoneId = row.higherTimeframeZoneId;
-    const fibBand = row.engulfingDeepDiscount ? '0.71-0.79' : '0.5-0.618';
+    const fibBand = row.engulfingFibBand;
     baseSignal.journalContext = {
       biasAtEntry: journalBiasAt(candles, signalClose),
       autoReason: buildJournalAutoReason({
@@ -865,12 +870,12 @@ async function scanMt5AutomationSignals(): Promise<number> {
         zoneTimeframe: row.higherTimeframe,
         zoneName: baseSignal.zoneName,
         signal,
-        fibSource: 'MTF FIB',
+        fibSource: fibBand ? 'MTF FIB' : undefined,
         fibBand,
         volumeLogicStatus: volumeContext.volumeLogicStatus,
         source: 'MTF',
       }),
-      fibSource: row.goldScalping ? 'MTF CHOCH' : 'MTF FIB',
+      fibSource: fibBand ? row.goldScalping ? 'MTF CHOCH' : 'MTF FIB' : undefined,
       fibBand,
       ...volumeContext,
       entrySnapshotCandles: journalSnapshotCandles(

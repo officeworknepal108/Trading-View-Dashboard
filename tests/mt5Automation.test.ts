@@ -139,6 +139,25 @@ test('Scalping and Intraday switches independently gate setup routes, including 
   }), undefined);
 });
 
+test('MT5 rejects an MTF signal queued under the other LTF Fib setting', () => {
+  const base = {
+    enabledTimeframes: ['M5', 'M15', 'H1'] as const,
+    scalpingEnabled: true,
+    intradayEnabled: true,
+  };
+  const signal = {
+    source: 'MTF' as const,
+    zoneTimeframe: 'H1' as const,
+    signalTimeframe: 'M5' as const,
+    mtfLtfFibRequiredAtSignal: false,
+  };
+  assert.equal(mt5SignalDisabledReason({ ...base, mtfLtfFibRequired: false }, signal), undefined);
+  assert.match(mt5SignalDisabledReason({ ...base, mtfLtfFibRequired: true }, signal) ?? '', /Fib setting changed/);
+  assert.equal(mt5SignalDisabledReason({ ...base, mtfLtfFibRequired: true }, {
+    ...signal, mtfLtfFibRequiredAtSignal: true,
+  }), undefined);
+});
+
 test('XAUUSD lot size follows cash risk divided by SL pips times ten', () => {
   assert.equal(calculateXauUsdLotSize(100, 150), 1 / 15);
   assert.equal(calculateXauUsdLotSize(200, 150), 2 / 15);
