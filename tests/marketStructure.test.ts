@@ -294,11 +294,11 @@ test('the second-structure TJL2 becomes Major Liquidity after the first TJL2 swe
     ...bullishSweep, time: 302, open: 99.5, close: 99,
   }), false, 'a body invalidation is not a preserved liquidity sweep');
   assert.equal(isTjl2LiquidityCoverage(bullishFirst, {
-    ...bullishSweep, low: 100.6,
-  }), true, 'the buy wick reaches 70% down through the first TJL2');
+    ...bullishSweep, low: 100.8,
+  }), true, 'the buy wick reaches 60% down through the first TJL2');
   assert.equal(isTjl2LiquidityCoverage(bullishFirst, {
-    ...bullishSweep, low: 100.61,
-  }), false, 'less than 70% coverage does not qualify');
+    ...bullishSweep, low: 100.81,
+  }), false, 'less than 60% coverage does not qualify');
 
   const bullishSecond = zone({
     id: 'bull-second-tjl2', name: 'TJL2', isBuy: true,
@@ -327,13 +327,13 @@ test('the second-structure TJL2 becomes Major Liquidity after the first TJL2 swe
   });
   assert.equal(isTjl2LiquiditySweep(bearishFirst, bearishSweep), true);
   assert.equal(isTjl2LiquidityCoverage(bearishFirst, {
-    ...bearishSweep, high: 109.4,
-  }), true, 'the sell wick reaches 70% up through the first TJL2');
+    ...bearishSweep, high: 109.2,
+  }), true, 'the sell wick reaches 60% up through the first TJL2');
   assert.equal(isTjl2LiquidityCoverage(bearishFirst, {
-    ...bearishSweep, high: 109.39,
+    ...bearishSweep, high: 109.19,
   }), false);
   assert.equal(isTjl2LiquidityCoverage(bearishFirst, {
-    ...bearishSweep, high: 109.4, complete: false,
+    ...bearishSweep, high: 109.2, complete: false,
   }), false, 'an unfinished candle cannot qualify coverage');
   assert.equal(promoteTjl2ToMajorLiquidity(bearishSecond, bearishFirst, 700, 800), true);
   assert.equal(bearishSecond.majorLiquidity, true);
@@ -348,7 +348,7 @@ test('the second-structure TJL2 becomes Major Liquidity after the first TJL2 swe
   assert.equal(coverageSecond.majorLiquidity, true);
   assert.equal(coverageSecond.majorLiquidityCoverageTime, 700);
   assert.equal(coverageSecond.majorLiquiditySweepTime, undefined,
-    '70% coverage must not be recorded as a full sweep');
+    '60% coverage must not be recorded as a full sweep');
 
   const picturedFirst = zone({
     id: 'pictured-first', name: 'TJL2', isBuy: false,
@@ -356,7 +356,7 @@ test('the second-structure TJL2 becomes Major Liquidity after the first TJL2 swe
   });
   assert.equal(isTjl2LiquidityCoverage(picturedFirst, {
     time: 900, open: 4146, high: 4149.545, low: 4145, close: 4146, complete: true,
-  }), false, 'the pictured 62.35% retest remains below the requested 70% threshold');
+  }), true, 'the pictured 62.35% retest qualifies under the requested 60% threshold');
 
   const prematureSecond = zone({ id: 'premature', name: 'TJL2', isBuy: true });
   assert.equal(promoteTjl2ToMajorLiquidity(prematureSecond, bullishFirst, 400, 400), false,

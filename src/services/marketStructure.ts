@@ -65,7 +65,7 @@ export interface StructureZone {
   // TJL1 FIB anchor to its current paired TJL2 even when that pivot is newer.
   tjlPairTime?: number;
   // Major Liquidity includes DBD/DTD and the second structure's TJL2 when the
-  // first structure's TJL2 was swept or covered by at least 70% before the second BOS. Its trade
+  // first structure's TJL2 was swept or covered by at least 60% before the second BOS. Its trade
   // eligibility is independent from every FIB confluence layer.
   majorLiquidity?: boolean;
   majorLiquiditySourceZoneId?: string;
@@ -546,7 +546,7 @@ export function isTjl2LiquiditySweep(zone: StructureZone, candle: StructureCandl
   return zone.isBuy ? candle.low <= zone.bottom : candle.high >= zone.top;
 }
 
-export const TJL2_MAJOR_LIQUIDITY_COVERAGE = 0.7;
+export const TJL2_MAJOR_LIQUIDITY_COVERAGE = 0.6;
 
 export function isTjl2LiquidityCoverage(zone: StructureZone, candle: StructureCandle): boolean {
   if (zone.name !== 'TJL2' || zone.category !== 'mg' || !zone.active
