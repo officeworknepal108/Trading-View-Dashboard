@@ -403,19 +403,30 @@ export function resolveTjl1Confirmation(candles: StructureCandle[], options: {
     .slice(0, -1)
     .filter((bar) => bar.closeTime > options.formationTime);
   const firstCompletedBar = confirmationBars[0];
-  const confirmationIndex = confirmationBars.findIndex((bar) => (
-    options.confirmationDirection === 'up'
+  for (const [index, bar] of confirmationBars.entries()) {
+    const bodyLow = Math.min(bar.open, bar.close);
+    const bodyHigh = Math.max(bar.open, bar.close);
+    const invalidated = options.confirmationDirection === 'up'
+      ? bodyHigh < options.bottom
+      : bodyLow > options.top;
+    if (invalidated) {
+      return {
+        status: 'rejected',
+        tjl1ConfirmationAttempts: index + 1,
+        confirmationWindowCloseTime: firstCompletedBar.closeTime,
+      };
+    }
+    const confirmed = options.confirmationDirection === 'up'
       ? bar.close > bar.open && bar.close > options.top
-      : bar.close < bar.open && bar.close < options.bottom
-  ));
-  if (confirmationIndex >= 0) {
-    const completedBar = confirmationBars[confirmationIndex];
-    return {
-      status: 'valid',
-      tjl1ConfirmationAttempts: confirmationIndex + 1,
-      confirmationTime: completedBar.closeTime,
-      confirmationWindowCloseTime: firstCompletedBar.closeTime,
-    };
+      : bar.close < bar.open && bar.close < options.bottom;
+    if (confirmed) {
+      return {
+        status: 'valid',
+        tjl1ConfirmationAttempts: index + 1,
+        confirmationTime: bar.closeTime,
+        confirmationWindowCloseTime: firstCompletedBar.closeTime,
+      };
+    }
   }
 
   return {
@@ -1782,6 +1793,43 @@ export function analyzeMarketStructure(candles: StructureCandle[], options: {
         lastLHConfirmIndex = null;
         continue;
       }
+      // A close through PL without the full-body Double CHoCH break starts
+      // a fresh bearish BOS using the usual TJL pair.
+      if (pendingDouble?.direction === 'bullish'
+        && candle.time > pendingDouble.startedAt
+        && candle.complete !== false
+        && candle.close < protectedPoint.price) {
+        const confirmedLow = protectedPoint;
+        const confirmedHigh = activeHigh
+          ?? extreme(candles, confirmedLow.index, index, 'high');
+        removeStandaloneSwingMarker(confirmedHigh);
+        markers.push(
+          makeMarker(candles[confirmedLow.index], 'LL', 'belowBar', '#dc2626'),
+          makeMarker(candles[confirmedHigh.index], 'LH', 'aboveBar', '#dc2626'),
+        );
+        addSwing(confirmedLow, 'bearish');
+        addSwing(confirmedHigh, 'bearish');
+        addLevel('bos', 'bearish', confirmedLow, index, 'BOS');
+        currentTrendTjl1 = addTjlZone(confirmedLow, 'TJL1', false, 'low', candle.time + sourceBarSeconds);
+        currentTrendTjl2 = addTjlZone(confirmedHigh, 'TJL2', false, 'high', candle.time + sourceBarSeconds);
+        linkTjlPair(currentTrendTjl1, currentTrendTjl2);
+        lastBearishLow = confirmedLow;
+        if (options.allowSupplyDemand) {
+          const originIndex = findOrderBlock(candles, confirmedLow.index, index, false);
+          const origin = candles[originIndex];
+          addZone({ name: 'SUPPLY', category: 'supplyDemand', isBuy: false, startTime: origin.time,
+            activeFromTime: candle.time + sourceBarSeconds,
+            top: origin.high, bottom: Math.min(origin.open, origin.close) });
+        }
+        pendingDouble = null;
+        trend = 'bearish';
+        protectedPoint = confirmedHigh;
+        activeHigh = null;
+        activeLow = null;
+        bearishBreakCount = 1;
+        lastLHConfirmIndex = index;
+        continue;
+      }
       if (twoRed && activeHigh === null) {
         const leftBound = bullishBreakCount === 0
           ? protectedPoint.index
@@ -1914,6 +1962,43 @@ export function analyzeMarketStructure(candles: StructureCandle[], options: {
         activeLow = null;
         bullishBreakCount = 0;
         lastHLConfirmIndex = null;
+        continue;
+      }
+      // A close through PH without the full-body Double CHoCH break starts
+      // a fresh bullish BOS using the usual TJL pair.
+      if (pendingDouble?.direction === 'bearish'
+        && candle.time > pendingDouble.startedAt
+        && candle.complete !== false
+        && candle.close > protectedPoint.price) {
+        const confirmedHigh = protectedPoint;
+        const confirmedLow = activeLow
+          ?? extreme(candles, confirmedHigh.index, index, 'low');
+        removeStandaloneSwingMarker(confirmedLow);
+        markers.push(
+          makeMarker(candles[confirmedHigh.index], 'HH', 'aboveBar', '#059669'),
+          makeMarker(candles[confirmedLow.index], 'HL', 'belowBar', '#059669'),
+        );
+        addSwing(confirmedHigh, 'bullish');
+        addSwing(confirmedLow, 'bullish');
+        addLevel('bos', 'bullish', confirmedHigh, index, 'BOS');
+        currentTrendTjl1 = addTjlZone(confirmedHigh, 'TJL1', true, 'high', candle.time + sourceBarSeconds);
+        currentTrendTjl2 = addTjlZone(confirmedLow, 'TJL2', true, 'low', candle.time + sourceBarSeconds);
+        linkTjlPair(currentTrendTjl1, currentTrendTjl2);
+        lastBullishHigh = confirmedHigh;
+        if (options.allowSupplyDemand) {
+          const originIndex = findOrderBlock(candles, confirmedHigh.index, index, true);
+          const origin = candles[originIndex];
+          addZone({ name: 'DEMAND', category: 'supplyDemand', isBuy: true, startTime: origin.time,
+            activeFromTime: candle.time + sourceBarSeconds,
+            top: Math.max(origin.open, origin.close), bottom: origin.low });
+        }
+        pendingDouble = null;
+        trend = 'bullish';
+        protectedPoint = confirmedLow;
+        activeHigh = null;
+        activeLow = null;
+        bullishBreakCount = 1;
+        lastHLConfirmIndex = index;
         continue;
       }
       if (twoGreen && activeLow === null) {
@@ -2169,7 +2254,7 @@ export function findIssFiveWaves(
           : wave3FormationTime,
         bottom: wave3Bottom,
         top: wave3Top,
-        active: true,
+        active: wave3Confirmation.status === 'valid' || wave3Confirmation.status === 'pending',
         status: wave3Confirmation.status,
         tjl1ConfirmationAttempts: wave3Confirmation.tjl1ConfirmationAttempts,
         confirmationTime: wave3Confirmation.confirmationTime,
@@ -2381,7 +2466,7 @@ export function findIssFiveWaves(
         : formationTime,
       bottom,
       top,
-      active: true,
+      active: confirmation.status === 'valid' || confirmation.status === 'pending',
       status: confirmation.status,
       tjl1ConfirmationAttempts: confirmation.tjl1ConfirmationAttempts,
       confirmationTime: confirmation.confirmationTime,
@@ -2678,6 +2763,7 @@ export function findIssFiveWaves(
   }
 
   for (const zone of zones) {
+    if (zone.status === 'rejected') continue;
     for (const candle of candles) {
       const invalidationStart = requiresMappedConfirmation(zone)
         ? zone.confirmationWindowCloseTime

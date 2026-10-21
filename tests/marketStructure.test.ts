@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
   activateZoneAfterChoch,
+  analyzeMarketStructure,
   applyFibConfluence,
   applyIssLevel3Lifecycle,
   applySingleChochMetadataToZone,
@@ -1139,6 +1140,72 @@ test('a QML A+ from Pending becomes an engulfing entry only after the Double CHo
   }), undefined, 'QML A+ still requires numerical A+ FIB alignment');
 });
 
+test('partial-body breaks after pending CHoCH start fresh normal structures', () => {
+  const prices = [
+    [100, 101, 102, 90], [107, 110, 112, 106], [110, 108, 111, 107],
+    [108, 106, 109, 105], [106, 113, 114, 106], [113, 110, 114, 109],
+    [110, 107, 111, 106], [107, 104, 108, 103], [104, 102, 105, 101],
+    [102, 108, 109, 101], [108, 111, 112, 107], [111, 100, 112, 99],
+    [100, 106, 107, 99], [106, 109, 110, 105], [109, 114, 116, 108],
+    [114, 117, 120, 113], [117, 112, 118, 110], [112, 108, 113, 106],
+    [108, 98, 110, 97],
+  ];
+  const candles = prices.map(([open, close, high, low], index) => ({
+    time: index * 900, open, close, high, low,
+  }));
+  const result = analyzeMarketStructure(candles, {
+    sourceBarSeconds: 900,
+    confirmationBarSeconds: 3600,
+  });
+  assert.ok(result.lines.some((line) => line.label === 'CHoCH' && line.direction === 'bullish'));
+  assert.ok(result.zones.some((item) => item.name === 'DB' && item.chochClass === 'pending'));
+  assert.ok(result.lines.some((line) => line.label === 'BOS' && line.direction === 'bearish'
+    && line.toTime === 18 * 900), 'the close through PL is a new bearish BOS');
+  assert.equal(result.lines.some((line) => line.label === 'DOUBLE CHoCH'
+    && line.toTime === 18 * 900), false);
+  assert.ok(result.zones.some((item) => item.name === 'TJL1' && !item.isBuy
+    && item.tjlPairTime === 19 * 900));
+  assert.ok(result.zones.some((item) => item.name === 'TJL2' && !item.isBuy
+    && item.tjlPairTime === 19 * 900));
+
+  const forming = analyzeMarketStructure([
+    ...candles.slice(0, -1), { ...candles.at(-1)!, complete: false },
+  ], {
+    sourceBarSeconds: 900,
+    confirmationBarSeconds: 3600,
+  });
+  assert.equal(forming.lines.some((line) => line.label === 'BOS'
+    && line.toTime === 18 * 900), false, 'a forming candle cannot start the new structure');
+
+  const doubleChoch = analyzeMarketStructure([
+    ...candles.slice(0, -1),
+    { time: 18 * 900, open: 98, high: 99, low: 95, close: 96 },
+  ], {
+    sourceBarSeconds: 900,
+    confirmationBarSeconds: 3600,
+  });
+  assert.ok(doubleChoch.lines.some((line) => line.label === 'DOUBLE CHoCH'
+    && line.toTime === 18 * 900), 'the existing full-body Double CHoCH still takes precedence');
+  assert.equal(doubleChoch.lines.some((line) => line.label === 'BOS'
+    && line.toTime === 18 * 900), false);
+
+  const mirrored = analyzeMarketStructure([
+    ...candles.slice(0, 11),
+    { time: 11 * 900, open: 111, high: 116, low: 110, close: 115 },
+  ], {
+    sourceBarSeconds: 900,
+    confirmationBarSeconds: 3600,
+  });
+  assert.ok(mirrored.lines.some((line) => line.label === 'BOS' && line.direction === 'bullish'
+    && line.toTime === 11 * 900), 'the close through PH is a new bullish BOS');
+  assert.equal(mirrored.lines.some((line) => line.label === 'DOUBLE CHoCH'
+    && line.toTime === 11 * 900), false);
+  assert.ok(mirrored.zones.some((item) => item.name === 'TJL1' && item.isBuy
+    && item.tjlPairTime === 12 * 900));
+  assert.ok(mirrored.zones.some((item) => item.name === 'TJL2' && item.isBuy
+    && item.tjlPairTime === 12 * 900));
+});
+
 test('VIP support requires a mapped HTF zone tap before CHoCH while that zone is valid', () => {
   const sourceCandles = [
     candle(100, 120, 121, 119),
@@ -1281,6 +1348,57 @@ test('TJL1 stays pending when completed mapped candles have not closed through i
   assert.equal(result.status, 'pending');
   assert.equal(result.tjl1ConfirmationAttempts, 1);
   assert.equal(result.confirmationWindowCloseTime, 3600);
+});
+
+test('a completed HTF body beyond the invalidation side rejects a pending zone permanently', () => {
+  for (const [direction, invalidOpen, invalidClose, confirmOpen, confirmClose] of [
+    ['up', 99, 98, 105, 111],
+    ['down', 111, 112, 105, 99],
+  ] as const) {
+    const result = resolveTjl1Confirmation([
+      { time: 0, open: invalidOpen, high: Math.max(invalidOpen, invalidClose), low: Math.min(invalidOpen, invalidClose), close: invalidClose },
+      { time: 3600, open: confirmOpen, high: Math.max(confirmOpen, confirmClose), low: Math.min(confirmOpen, confirmClose), close: confirmClose },
+      candle(7200, confirmClose),
+    ], {
+      confirmationDirection: direction,
+      bottom: 100,
+      top: 110,
+      formationTime: 0,
+      sourceBarSeconds: 900,
+      confirmationBarSeconds: 3600,
+    });
+    assert.equal(result.status, 'rejected');
+    assert.equal(result.tjl1ConfirmationAttempts, 1);
+    assert.equal(result.confirmationTime, undefined);
+  }
+});
+
+test('wick and partial-body breaks leave HTF confirmation pending without a candle deadline', () => {
+  const priorBars = [
+    { time: 0, open: 105, high: 108, low: 98, close: 104 },
+    { time: 3600, open: 99, high: 103, low: 98, close: 101 },
+    { time: 7200, open: 105, high: 109, low: 101, close: 106 },
+  ];
+  const options = {
+    confirmationDirection: 'up' as const,
+    bottom: 100,
+    top: 110,
+    formationTime: 0,
+    sourceBarSeconds: 900,
+    confirmationBarSeconds: 3600,
+  };
+  const pending = resolveTjl1Confirmation([...priorBars, candle(10800, 106)], options);
+  assert.equal(pending.status, 'pending');
+  assert.equal(pending.tjl1ConfirmationAttempts, 3);
+
+  const confirmed = resolveTjl1Confirmation([
+    ...priorBars,
+    { time: 10800, open: 105, high: 112, low: 104, close: 111 },
+    candle(14400, 111),
+  ], options);
+  assert.equal(confirmed.status, 'valid');
+  assert.equal(confirmed.tjl1ConfirmationAttempts, 4);
+  assert.equal(confirmed.confirmationTime, 14400);
 });
 
 test('a newer same-direction TJL1 structurally supersedes only zones still pending at replacement time', () => {
