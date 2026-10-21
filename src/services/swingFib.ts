@@ -14,8 +14,8 @@ export interface SwingFibMove extends SwingFibSeed {
 
 /**
  * Builds an alternating swing FIB chain. Level 1 stays at the move origin and
- * level 0 follows the continuation extreme. A completed candle touching 0.5
- * starts the next move in the opposite direction from that level-0 extreme.
+ * level 0 follows the continuation extreme. A completed candle crossing 0.5
+ * from the level-0 side starts the opposite move from that extreme.
  */
 export function buildAlternatingSwingFibs(
   candles: StructureCandle[],
@@ -46,7 +46,7 @@ export function buildAlternatingSwingFibs(
       // confirm a new opposite Swing FIB until that candle is complete.
       if (candle.complete === false) continue;
       const midpoint = active.zeroPrice + (active.sourcePrice - active.zeroPrice) * 0.5;
-      if (candle.low > midpoint) continue;
+      if (candle.open <= midpoint || candle.low > midpoint) continue;
       active = {
         direction: 'down',
         sourceTime: active.zeroTime,
@@ -68,7 +68,7 @@ export function buildAlternatingSwingFibs(
     // low immediately, while waiting for a completed candle to reverse it.
     if (candle.complete === false) continue;
     const midpoint = active.zeroPrice + (active.sourcePrice - active.zeroPrice) * 0.5;
-    if (candle.high < midpoint) continue;
+    if (candle.open >= midpoint || candle.high < midpoint) continue;
     active = {
       direction: 'up',
       sourceTime: active.zeroTime,

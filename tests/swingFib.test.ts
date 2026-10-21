@@ -8,14 +8,15 @@ function candle(
   high: number,
   low: number,
   complete = true,
+  open = low,
 ): StructureCandle {
-  return { time, open: low, high, low, close: high, complete };
+  return { time, open, high, low, close: high, complete };
 }
 
 test('swing FIB alternates at 0.5 and retains only current and previous moves', () => {
   const moves = buildAlternatingSwingFibs([
     candle(200, 190, 160),
-    candle(300, 180, 140), // Touches 150: up FIB changes to down.
+    candle(300, 180, 140, true, 180), // Opens above 150, then touches it.
     candle(400, 150, 120), // Continues the down FIB to a lower level 0.
     candle(500, 170, 125), // Touches 160: down FIB changes to up.
   ], {
@@ -43,6 +44,30 @@ test('swing FIB alternates at 0.5 and retains only current and previous moves', 
       startedAt: 500,
     },
   ]);
+});
+
+test('a candle already beyond 0.5 at its open cannot reverse an upward swing', () => {
+  const seed = { sourceTime: 0, sourcePrice: 100, zeroTime: 100, zeroPrice: 200 };
+  const openedBelowMidpoint = candle(200, 190, 140, true, 145);
+  assert.equal(buildAlternatingSwingFibs([openedBelowMidpoint], seed).length, 1);
+  const moves = buildAlternatingSwingFibs([
+    openedBelowMidpoint,
+    candle(300, 180, 130, true, 180),
+  ], seed);
+  assert.equal(moves[1]?.direction, 'down');
+  assert.equal(moves[1]?.startedAt, 300);
+});
+
+test('a candle already beyond 0.5 at its open cannot reverse a downward swing', () => {
+  const seed = { sourceTime: 0, sourcePrice: 200, zeroTime: 100, zeroPrice: 100 };
+  const openedAboveMidpoint = candle(200, 170, 110, true, 160);
+  assert.equal(buildAlternatingSwingFibs([openedAboveMidpoint], seed).length, 1);
+  const moves = buildAlternatingSwingFibs([
+    openedAboveMidpoint,
+    candle(300, 170, 110, true, 120),
+  ], seed);
+  assert.equal(moves[1]?.direction, 'up');
+  assert.equal(moves[1]?.startedAt, 300);
 });
 
 test('unfinished H4 candle extends the active extreme but cannot reverse the swing FIB', () => {
