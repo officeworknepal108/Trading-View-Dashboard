@@ -80,6 +80,7 @@ const MT5_TERMINAL_STATUSES = new Set<Mt5SignalStatus>([
 const DEFAULT_MT5_CONFIG: Mt5AutomationConfig = {
   enabled: false,
   tradingTimeEnabled: true,
+  telegramMessagesEnabled: true,
   dryRun: true,
   scalpingEnabled: true,
   intradayEnabled: true,
@@ -252,6 +253,7 @@ async function readMt5Config(): Promise<Mt5AutomationConfig> {
     return {
       ...DEFAULT_MT5_CONFIG,
       ...parsed,
+      telegramMessagesEnabled: parsed?.telegramMessagesEnabled !== false,
       scalpingEnabled: parsed?.scalpingEnabled !== false,
       intradayEnabled: parsed?.intradayEnabled !== false,
       mtfLtfFibRequired: parsed?.mtfLtfFibRequired === true,
@@ -368,6 +370,8 @@ function sanitizeMt5Config(candidate: any, current: Mt5AutomationConfig): Mt5Aut
     ...current,
     enabled: candidate?.enabled === true,
     tradingTimeEnabled: candidate?.tradingTimeEnabled !== false,
+    telegramMessagesEnabled: candidate?.telegramMessagesEnabled === undefined
+      ? current.telegramMessagesEnabled : candidate.telegramMessagesEnabled !== false,
     dryRun: candidate?.dryRun !== false,
     scalpingEnabled: candidate?.scalpingEnabled !== false,
     intradayEnabled: candidate?.intradayEnabled !== false,
@@ -1067,6 +1071,7 @@ async function updateMt5JournalRecord(
 interface TelegramTradeAlert {
   id: string;
   kind: 'entry' | 'tp' | 'sl';
+  outsideTradingTime?: boolean;
   symbol: string;
   direction: 'BUY' | 'SELL';
   zoneName: string;
@@ -1093,6 +1098,7 @@ function validTelegramTradeAlert(value: any): value is TelegramTradeAlert {
   const now = Math.floor(Date.now() / 1000);
   return value && typeof value.id === 'string' && value.id.length > 0 && value.id.length <= 300
     && ['entry', 'tp', 'sl'].includes(value.kind)
+    && (value.outsideTradingTime === undefined || typeof value.outsideTradingTime === 'boolean')
     && typeof value.symbol === 'string' && /^[A-Z0-9]{3,12}$/.test(value.symbol)
     && ['BUY', 'SELL'].includes(value.direction)
     && typeof value.zoneName === 'string' && value.zoneName.length > 0 && value.zoneName.length <= 100
@@ -1130,6 +1136,7 @@ function telegramAlertText(alert: TelegramTradeAlert): string {
   if (alert.kind === 'entry') {
     return [
       `${alert.direction === 'BUY' ? '🟢' : '🔴'} ${alert.tradeStyle ? `${alert.tradeStyle} ` : ''}NEW ENTRY — ${title}`,
+      ...(alert.outsideTradingTime ? ['OUTSIDE TRADING TIME'] : []),
       `Time: ${telegramAlertTime(alert.openedAt)}`,
       `Setup: ${setup}`,
       `Confirmation: ${confirmation}`,
@@ -1606,6 +1613,10 @@ async function startServer() {
       return res.status(400).json({ ok: false, error: 'Invalid live trade alerts.' });
     }
     try {
+      const config = await readMt5Config();
+      if (!config.telegramMessagesEnabled) {
+        return res.json({ ok: true, acknowledged: alerts.map((alert: TelegramTradeAlert) => `${alert.id}:${alert.kind}`) });
+      }
       const acknowledged = await deliverTelegramAlerts(alerts);
       return res.json({ ok: true, acknowledged });
     } catch (error) {

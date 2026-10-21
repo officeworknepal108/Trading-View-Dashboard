@@ -18,6 +18,7 @@ import {
   findZoneEngulfingPattern,
   findTradeableZoneEngulfingPattern,
   isZoneEligibleForEngulfingEntry,
+  isGoldZoneOpportunityExpired,
   isM15H1ChochClosePending,
   isDoubleChochZoneTradeable,
   findIssFiveWaves,
@@ -62,6 +63,35 @@ function zone(overrides: Partial<StructureZone> = {}): StructureZone {
     ...overrides,
   };
 }
+
+test('Gold zone opportunity expires from its first tap after 50 completed bars', () => {
+  const tappedZone = zone({ isBuy: true, tapTime: 0, top: 101, bottom: 100 });
+  const candles = [candle(0, 100.5, 101, 100),
+    ...Array.from({ length: 49 }, (_, index) => candle(index + 1, 101, 102, 100.5))];
+  assert.equal(isGoldZoneOpportunityExpired(tappedZone, candles, 'M15', 0.1), false);
+  candles.push(candle(50, 101, 102, 100.5));
+  assert.equal(isGoldZoneOpportunityExpired(tappedZone, candles, 'M15', 0.1), true);
+  assert.equal(isGoldZoneOpportunityExpired(tappedZone, candles, 'M15', 0.1, 50), false);
+});
+
+test('Gold zone opportunity expires at each timeframe move limit before a later signal', () => {
+  for (const [timeframe, limit] of [['M1', 60], ['M5', 150], ['M15', 300], ['M30', 350]] as const) {
+    const tappedZone = zone({ isBuy: true, tapTime: 0, top: 101, bottom: 100 });
+    const candles = [candle(0, 100.5, 101, 100), candle(1, 102, 100 + limit * 0.1, 101)];
+    assert.equal(isGoldZoneOpportunityExpired(tappedZone, candles, timeframe, 0.1), true);
+    assert.equal(isGoldZoneOpportunityExpired(tappedZone, candles, timeframe, 0.1, 1), false);
+  }
+});
+
+test('Gold sell zone uses favorable downward movement and ignores unfinished bars', () => {
+  const tappedZone = zone({ tapTime: 0, top: 110, bottom: 100 });
+  const candles = [candle(0, 105, 110, 100),
+    { ...candle(1, 100, 101, 90), complete: false },
+    candle(2, 106, 107, 105)];
+  assert.equal(isGoldZoneOpportunityExpired(tappedZone, candles, 'M1', 0.1), false);
+  candles.push(candle(3, 105, 106, 104));
+  assert.equal(isGoldZoneOpportunityExpired(tappedZone, candles, 'M1', 0.1), true);
+});
 
 test('structure pivots include the first candle of a confirmed two-candle retracement', () => {
   const bullish = [

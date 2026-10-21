@@ -601,6 +601,40 @@ export function findFirstZoneTapIndex(candles: StructureCandle[], zone: Structur
   ));
 }
 
+const GOLD_UNFILLED_ZONE_MOVE_PIPS: Partial<Record<string, number>> = {
+  M1: 60,
+  M5: 150,
+  M15: 300,
+  M30: 350,
+};
+
+export function isGoldZoneOpportunityExpired(
+  zone: StructureZone,
+  candles: StructureCandle[],
+  timeframe: string,
+  pipSize: number,
+  beforeTime = Infinity,
+): boolean {
+  const maximumMovePips = GOLD_UNFILLED_ZONE_MOVE_PIPS[timeframe];
+  if (maximumMovePips === undefined || !Number.isFinite(pipSize) || pipSize <= 0) return false;
+  const tapTime = zone.tapTime;
+  if (tapTime === undefined) return false;
+  const tapCandle = candles.find((candle) => candle.time === tapTime);
+  if (!tapCandle) return false;
+  const tapPrice = zone.isBuy
+    ? Math.max(zone.bottom, Math.min(zone.top, tapCandle.low))
+    : Math.max(zone.bottom, Math.min(zone.top, tapCandle.high));
+  let completedBars = 0;
+  for (const candle of candles) {
+    if (candle.time <= tapTime || candle.time >= beforeTime || candle.complete === false) continue;
+    completedBars += 1;
+    if (completedBars >= 50) return true;
+    const favorableMove = zone.isBuy ? candle.high - tapPrice : tapPrice - candle.low;
+    if (favorableMove >= maximumMovePips * pipSize) return true;
+  }
+  return false;
+}
+
 function requiresMappedConfirmation(zone: StructureZone): boolean {
   return zone.name === 'TJL1' || zone.name === 'ISS L3' || zone.name === 'Internal TJL1';
 }
