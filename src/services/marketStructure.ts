@@ -1810,6 +1810,8 @@ export function analyzeMarketStructure(candles: StructureCandle[], options: {
         addSwing(confirmedLow, 'bearish');
         addSwing(confirmedHigh, 'bearish');
         addLevel('bos', 'bearish', confirmedLow, index, 'BOS');
+        const oldExtremeIndex = zones.indexOf(pendingDouble.extreme);
+        if (oldExtremeIndex >= 0) zones.splice(oldExtremeIndex, 1);
         currentTrendTjl1 = addTjlZone(confirmedLow, 'TJL1', false, 'low', candle.time + sourceBarSeconds);
         currentTrendTjl2 = addTjlZone(confirmedHigh, 'TJL2', false, 'high', candle.time + sourceBarSeconds);
         linkTjlPair(currentTrendTjl1, currentTrendTjl2);
@@ -1981,6 +1983,8 @@ export function analyzeMarketStructure(candles: StructureCandle[], options: {
         addSwing(confirmedHigh, 'bullish');
         addSwing(confirmedLow, 'bullish');
         addLevel('bos', 'bullish', confirmedHigh, index, 'BOS');
+        const oldExtremeIndex = zones.indexOf(pendingDouble.extreme);
+        if (oldExtremeIndex >= 0) zones.splice(oldExtremeIndex, 1);
         currentTrendTjl1 = addTjlZone(confirmedHigh, 'TJL1', true, 'high', candle.time + sourceBarSeconds);
         currentTrendTjl2 = addTjlZone(confirmedLow, 'TJL2', true, 'low', candle.time + sourceBarSeconds);
         linkTjlPair(currentTrendTjl1, currentTrendTjl2);

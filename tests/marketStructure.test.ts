@@ -1157,16 +1157,28 @@ test('partial-body breaks after pending CHoCH start fresh normal structures', ()
     sourceBarSeconds: 900,
     confirmationBarSeconds: 3600,
   });
+  const beforeNewBos = analyzeMarketStructure(candles.slice(0, -1), {
+    sourceBarSeconds: 900,
+    confirmationBarSeconds: 3600,
+  });
   assert.ok(result.lines.some((line) => line.label === 'CHoCH' && line.direction === 'bullish'));
-  assert.ok(result.zones.some((item) => item.name === 'DB' && item.chochClass === 'pending'));
+  const priorDb = beforeNewBos.zones.find((item) => item.name === 'DB'
+    && item.startTime === 11 * 900 && item.chochClass === 'pending');
+  assert.ok(priorDb);
   assert.ok(result.lines.some((line) => line.label === 'BOS' && line.direction === 'bearish'
     && line.toTime === 18 * 900), 'the close through PL is a new bearish BOS');
   assert.equal(result.lines.some((line) => line.label === 'DOUBLE CHoCH'
     && line.toTime === 18 * 900), false);
-  assert.ok(result.zones.some((item) => item.name === 'TJL1' && !item.isBuy
-    && item.tjlPairTime === 19 * 900));
+  const newSellTjl1 = result.zones.find((item) => item.name === 'TJL1' && !item.isBuy
+    && item.tjlPairTime === 19 * 900);
+  assert.ok(newSellTjl1);
+  assert.equal(newSellTjl1.startTime, priorDb.startTime);
+  assert.equal(newSellTjl1.bottom, priorDb.bottom);
+  assert.equal(newSellTjl1.top, priorDb.top);
   assert.ok(result.zones.some((item) => item.name === 'TJL2' && !item.isBuy
     && item.tjlPairTime === 19 * 900));
+  assert.equal(result.zones.some((item) => item.name === 'DB'
+    && item.startTime === 11 * 900), false, 'the PL zone becomes TJL1, not a remaining DB');
 
   const forming = analyzeMarketStructure([
     ...candles.slice(0, -1), { ...candles.at(-1)!, complete: false },
@@ -1204,6 +1216,8 @@ test('partial-body breaks after pending CHoCH start fresh normal structures', ()
     && item.tjlPairTime === 12 * 900));
   assert.ok(mirrored.zones.some((item) => item.name === 'TJL2' && item.isBuy
     && item.tjlPairTime === 12 * 900));
+  assert.equal(mirrored.zones.some((item) => item.name === 'DT'
+    && item.startTime === 4 * 900), false, 'the PH zone becomes TJL1, not a remaining DT');
 });
 
 test('VIP support requires a mapped HTF zone tap before CHoCH while that zone is valid', () => {
