@@ -72,6 +72,7 @@ const GRANULARITIES = new Set(['M1', 'M5', 'M15', 'M30', 'H1', 'H4', 'D', 'W', '
 const JOURNAL_FILE = path.resolve(process.cwd(), 'data', 'trade-journal.json');
 const MT5_SIGNALS_FILE = path.resolve(process.cwd(), 'data', 'mt5-signals.json');
 const MT5_CONFIG_FILE = path.resolve(process.cwd(), 'data', 'mt5-automation.json');
+const TELEGRAM_ALERTS_FILE = path.resolve(process.cwd(), 'data', 'telegram-alerts.json');
 const MT5_TERMINAL_STATUSES = new Set<Mt5SignalStatus>([
   'TP', 'SL', 'RF', 'CANCELLED', 'REJECTED', 'EXPIRED', 'SIMULATED',
 ]);
@@ -146,6 +147,7 @@ interface Mt5LivePosition {
 let mt5BridgeHeartbeat: Mt5BridgeHeartbeat | undefined;
 let mt5MutationQueue: Promise<unknown> = Promise.resolve();
 let journalMutationQueue: Promise<unknown> = Promise.resolve();
+let telegramAlertQueue: Promise<unknown> = Promise.resolve();
 const automationCandleCache: Partial<Record<TradeTimeframe, StructureCandle[]>> = {};
 const mt5MarketDataUpdatedAt: Partial<Record<TradeTimeframe, number>> = {};
 let mt5MarketDataVersion = 0;
@@ -1062,6 +1064,142 @@ async function updateMt5JournalRecord(
   });
 }
 
+interface TelegramTradeAlert {
+  id: string;
+  kind: 'entry' | 'tp' | 'sl';
+  symbol: string;
+  direction: 'BUY' | 'SELL';
+  zoneName: string;
+  zoneTimeframe: TradeTimeframe;
+  signalTimeframe: TradeTimeframe;
+  engulfingType: string;
+  entry: number;
+  stopLoss: number;
+  takeProfit: number;
+  riskPips: number;
+  rewardRisk: number;
+  tradeStyle?: 'SCALPING' | 'INTRADAY';
+  riskFree?: number;
+  openedAt: number;
+  closedAt?: number;
+  exitPrice?: number;
+  returnR?: number;
+}
+
+type SentTelegramAlerts = Record<string, { entry?: boolean; result?: 'tp' | 'sl' }>;
+
+function validTelegramTradeAlert(value: any): value is TelegramTradeAlert {
+  const timeframes = new Set(AUTOMATION_TIMEFRAMES);
+  const now = Math.floor(Date.now() / 1000);
+  return value && typeof value.id === 'string' && value.id.length > 0 && value.id.length <= 300
+    && ['entry', 'tp', 'sl'].includes(value.kind)
+    && typeof value.symbol === 'string' && /^[A-Z0-9]{3,12}$/.test(value.symbol)
+    && ['BUY', 'SELL'].includes(value.direction)
+    && typeof value.zoneName === 'string' && value.zoneName.length > 0 && value.zoneName.length <= 100
+    && timeframes.has(value.zoneTimeframe) && timeframes.has(value.signalTimeframe)
+    && typeof value.engulfingType === 'string' && value.engulfingType.length <= 20
+    && [value.entry, value.stopLoss, value.takeProfit, value.riskPips, value.rewardRisk, value.openedAt]
+      .every((number) => Number.isFinite(number) && number > 0)
+    && value.entry !== value.stopLoss
+    && (value.tradeStyle === undefined || ['SCALPING', 'INTRADAY'].includes(value.tradeStyle))
+    && (value.kind !== 'entry' || value.tradeStyle !== 'SCALPING'
+      || Number.isFinite(value.riskFree) && value.riskFree > 0)
+    && value.openedAt <= now + 5
+    && (value.kind === 'entry' ? now - value.openedAt <= 180
+      : Number.isFinite(value.closedAt) && value.closedAt >= value.openedAt
+        && value.closedAt <= now + 5 && Number.isFinite(value.exitPrice)
+        && value.exitPrice > 0 && Number.isFinite(value.returnR)
+        && Math.abs(value.returnR) <= 100);
+}
+
+function telegramAlertTime(seconds: number): string {
+  return `${new Intl.DateTimeFormat('en-GB', {
+    timeZone: 'Asia/Kathmandu', day: 'numeric', month: 'short', year: 'numeric',
+    hour: 'numeric', minute: '2-digit', hour12: true,
+  }).format(seconds * 1000)} Nepal time`;
+}
+
+function telegramAlertPrice(price: number): string {
+  return price.toFixed(Math.abs(price) < 10 ? 5 : 3);
+}
+
+function telegramAlertText(alert: TelegramTradeAlert): string {
+  const title = `${alert.symbol} ${alert.direction}`;
+  const setup = `${alert.zoneTimeframe} ${alert.zoneName}`;
+  const confirmation = `${alert.signalTimeframe} ${alert.direction === 'BUY' ? 'bullish' : 'bearish'} engulfing ${alert.engulfingType}`;
+  if (alert.kind === 'entry') {
+    return [
+      `${alert.direction === 'BUY' ? '🟢' : '🔴'} ${alert.tradeStyle ? `${alert.tradeStyle} ` : ''}NEW ENTRY — ${title}`,
+      `Time: ${telegramAlertTime(alert.openedAt)}`,
+      `Setup: ${setup}`,
+      `Confirmation: ${confirmation}`,
+      `Entry: ${telegramAlertPrice(alert.entry)}`,
+      `Stop loss: ${telegramAlertPrice(alert.stopLoss)} (${alert.riskPips} pips)`,
+      ...(alert.tradeStyle === 'SCALPING' ? [`RF point: ${telegramAlertPrice(alert.riskFree!)} (1R)`] : []),
+      `Take profit: ${telegramAlertPrice(alert.takeProfit)}`,
+      `Risk to reward: 1:${alert.rewardRisk}`,
+    ].join('\n');
+  }
+  const direction = alert.direction === 'BUY' ? 1 : -1;
+  const pipChange = (alert.exitPrice! - alert.entry) * direction
+    / Math.abs(alert.entry - alert.stopLoss) * alert.riskPips;
+  const pips = Math.round(pipChange * 10) / 10;
+  return [
+    `${alert.kind === 'tp' ? '✅' : '🛑'} ${alert.tradeStyle ? `${alert.tradeStyle} ` : ''}${alert.kind === 'tp' ? 'TP HIT' : 'SL HIT'} — ${title}`,
+    `Setup: ${setup}`,
+    `Confirmation: ${confirmation}`,
+    `Result: ${pips > 0 ? '+' : ''}${pips} pips (${alert.returnR}R)`,
+  ].join('\n');
+}
+
+async function sendTelegramTradeAlert(alert: TelegramTradeAlert): Promise<void> {
+  const token = process.env.TELEGRAM_BOT_TOKEN?.trim();
+  const chatId = process.env.TELEGRAM_CHAT_ID?.trim();
+  if (!token || !chatId) throw new Error('Telegram bot token and chat ID are not configured.');
+  const response = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ chat_id: chatId, text: telegramAlertText(alert) }),
+    signal: AbortSignal.timeout(10_000),
+  });
+  if (!response.ok) throw new Error(`Telegram rejected the alert (${response.status}).`);
+  const payload = await response.json() as { ok?: boolean };
+  if (!payload.ok) throw new Error('Telegram did not confirm the alert.');
+}
+
+async function deliverTelegramAlerts(alerts: TelegramTradeAlert[]): Promise<string[]> {
+  const task = telegramAlertQueue.then(async () => {
+    let sent: SentTelegramAlerts;
+    try {
+      sent = JSON.parse(await readFile(TELEGRAM_ALERTS_FILE, 'utf8')) as SentTelegramAlerts;
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+      sent = {};
+    }
+    const acknowledged: string[] = [];
+    for (const alert of alerts) {
+      const state = sent[alert.id] ?? {};
+      if (alert.kind === 'entry' ? state.entry : state.result === alert.kind) {
+        acknowledged.push(`${alert.id}:${alert.kind}`);
+        continue;
+      }
+      if (alert.kind !== 'entry' && (!state.entry || state.result)) {
+        acknowledged.push(`${alert.id}:${alert.kind}`);
+        continue;
+      }
+      await sendTelegramTradeAlert(alert);
+      sent[alert.id] = alert.kind === 'entry'
+        ? { ...state, entry: true } : { ...state, result: alert.kind };
+      await mkdir(path.dirname(TELEGRAM_ALERTS_FILE), { recursive: true });
+      await writeFile(TELEGRAM_ALERTS_FILE, `${JSON.stringify(sent, null, 2)}\n`, 'utf8');
+      acknowledged.push(`${alert.id}:${alert.kind}`);
+    }
+    return acknowledged;
+  });
+  telegramAlertQueue = task.then(() => undefined, () => undefined);
+  return task;
+}
+
 async function startServer() {
   const app = express();
   const port = Number(process.env.PORT || 3000);
@@ -1449,6 +1587,31 @@ async function startServer() {
       return res.status(500).json({
         ok: false,
         error: error instanceof Error ? error.message : 'Unable to save the trade journal.',
+      });
+    }
+  });
+
+  app.post('/api/telegram/alerts', async (req, res) => {
+    if (!['127.0.0.1', '::1', '::ffff:127.0.0.1'].includes(req.socket.remoteAddress ?? '')) {
+      return res.status(403).json({ ok: false, error: 'Local dashboard only.' });
+    }
+    const origin = req.get('origin');
+    if (origin && origin !== `http://${req.get('host')}`
+      && origin !== `https://${req.get('host')}`) {
+      return res.status(403).json({ ok: false, error: 'Same-origin requests only.' });
+    }
+    const alerts = req.body?.alerts;
+    if (!Array.isArray(alerts) || alerts.length === 0 || alerts.length > 40
+      || !alerts.every(validTelegramTradeAlert)) {
+      return res.status(400).json({ ok: false, error: 'Invalid live trade alerts.' });
+    }
+    try {
+      const acknowledged = await deliverTelegramAlerts(alerts);
+      return res.json({ ok: true, acknowledged });
+    } catch (error) {
+      return res.status(502).json({
+        ok: false,
+        error: error instanceof Error ? error.message : 'Telegram alert failed.',
       });
     }
   });

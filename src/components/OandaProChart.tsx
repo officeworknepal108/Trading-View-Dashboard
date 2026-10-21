@@ -1493,6 +1493,8 @@ export const OandaProChart: React.FC = () => {
   const updateHeaderCandleRef = useRef<(timestamp?: number) => void>(() => undefined);
   const replaySelectionLineRef = useRef<HTMLDivElement | null>(null);
   const journalSyncSignatureRef = useRef('');
+  const telegramAlertSentRef = useRef(new Set<string>());
+  const telegramAlertSendingRef = useRef(false);
   const mt5JournalImageSignatureRef = useRef('');
   const capturedTradeSetupsRef = useRef(new Set<string>());
   const zonesRef = useRef<StructureZone[]>([]);
@@ -3273,6 +3275,110 @@ export const OandaProChart: React.FC = () => {
     return Array.from(overlays.values())
       .sort((first, second) => second.trade.calculatedAt - first.trade.calculatedAt);
   }, [completedChartTradeKeys, directZoneEntryDecisions, goldScalpingAccuracyTrades, hasRetainedDirectTradeSource, liveMt5TradeOverlays, marketSymbol, mtfRows, replayIndex, retainedChartTradesForTimeframe, tradeOverlays, tradingTimeEnabled]);
+
+  useEffect(() => {
+    if (replayIndex !== null || telegramAlertSendingRef.current) return;
+    const now = Math.floor(Date.now() / 1000);
+    const alerts = new Map<string, Record<string, unknown>>();
+    const addEntry = (details: {
+      zoneName: string; zoneTimeframe: TradeTimeframe;
+      tradeStyle?: 'SCALPING' | 'INTRADAY';
+      trade: TradeLevels;
+    }) => {
+      const { trade } = details;
+      if (trade.filledAt === undefined || trade.filledAt > now + 5
+        || now - trade.filledAt > 180) return;
+      const id = [marketSymbol, trade.signal.direction, trade.signal.timeframe,
+        trade.signal.time, trade.entry.toFixed(5)].join(':');
+      const alert = {
+        id, kind: 'entry', symbol: marketSymbol,
+        direction: trade.signal.direction === 'bullish' ? 'BUY' : 'SELL',
+        zoneName: details.zoneName, zoneTimeframe: details.zoneTimeframe,
+        signalTimeframe: trade.signal.timeframe, engulfingType: trade.signal.type,
+        entry: trade.entry, stopLoss: trade.stopLoss, takeProfit: trade.takeProfit,
+        riskPips: trade.riskPips, rewardRisk: trade.rewardRisk, openedAt: trade.filledAt,
+        tradeStyle: details.tradeStyle,
+        ...(details.tradeStyle === 'SCALPING' ? { riskFree: trade.riskFree } : {}),
+      };
+      if (!telegramAlertSentRef.current.has(`${id}:entry`)) alerts.set(`${id}:entry`, alert);
+    };
+    for (const overlay of tradeOverlays) {
+      const { trade } = overlay;
+      if (trade.result || trade.filledAt === undefined) continue;
+      const mtfRow = overlay.id.startsWith('MTF:')
+        ? mtfRows.find((row) => row.trade?.signal.time === trade.signal.time
+          && row.trade.entry === trade.entry) : undefined;
+      const zoneTimeframe = mtfRow?.higherTimeframe
+        ?? (overlay.id.startsWith('GOLD_SCALP:')
+          ? overlay.id.split(':')[1] as TradeTimeframe : granularity);
+      addEntry({
+        zoneName: mtfRow?.tappedZone ?? mtfRow?.higherTimeframeZone
+          ?? tradeOverlayZoneLabel(overlay.label) ?? 'Chart entry',
+        zoneTimeframe, trade,
+        tradeStyle: marketSymbol === 'XAUUSD'
+          ? mtfRow?.goldScalping || overlay.id.startsWith('GOLD_SCALP:')
+            ? 'SCALPING' : 'INTRADAY' : undefined,
+      });
+    }
+    for (const record of [...accuracyTradeRecords].sort((first, second) => second.completedAt - first.completedAt)) {
+      if (record.symbol && record.symbol !== marketSymbol) continue;
+      if (tradingTimeEnabled && record.outsideTradingTime) continue;
+      if (!record.openedAt || !record.signalAt || !['tp', 'sl'].includes(record.result)
+        || now - record.completedAt > 86_400) continue;
+      const id = [marketSymbol, record.direction, record.signalTimeframe,
+        record.signalAt, record.entry.toFixed(5)].join(':');
+      const entryKey = `${id}:entry`;
+      if (now - record.openedAt <= 180 && !telegramAlertSentRef.current.has(entryKey)
+        && !alerts.has(entryKey)) {
+        addEntry({
+          zoneName: record.zoneName, zoneTimeframe: record.zoneTimeframe,
+          tradeStyle: record.tradeStyle,
+          trade: {
+            entry: record.entry, stopLoss: record.stopLoss, takeProfit: record.takeProfit,
+            riskFree: record.direction === 'bullish'
+              ? record.entry + Math.abs(record.entry - record.stopLoss)
+              : record.entry - Math.abs(record.entry - record.stopLoss),
+            riskPips: record.riskPips, rewardRisk: record.rewardRisk,
+            status: record.result === 'tp' ? 'tp-hit' : 'sl-hit', pendingAtCreation: false,
+            calculatedAt: record.signalAt, filledAt: record.openedAt,
+            signal: { type: record.engulfingType as EngulfingTradeSignal['type'],
+              direction: record.direction, timeframe: record.signalTimeframe,
+              time: record.signalAt, candleCount: 2 },
+          },
+        });
+      }
+      const resultKey = `${id}:${record.result}`;
+      if (telegramAlertSentRef.current.has(resultKey) || !record.completedAt) continue;
+      const returnR = record.result === 'sl' ? -1
+        : record.tradeStyle === 'INTRADAY' && !record.partialClosedAt
+          ? record.rewardRisk : (1 + record.rewardRisk) / 2;
+      alerts.set(resultKey, {
+        id, kind: record.result, symbol: marketSymbol,
+        direction: record.direction === 'bullish' ? 'BUY' : 'SELL',
+        zoneName: record.zoneName, zoneTimeframe: record.zoneTimeframe,
+        signalTimeframe: record.signalTimeframe, engulfingType: record.engulfingType,
+        entry: record.entry, stopLoss: record.stopLoss, takeProfit: record.takeProfit,
+        riskPips: record.riskPips, rewardRisk: record.rewardRisk, openedAt: record.openedAt,
+        tradeStyle: record.tradeStyle,
+        closedAt: record.closedAt ?? record.completedAt,
+        exitPrice: record.closePrice ?? (record.result === 'tp' ? record.takeProfit : record.stopLoss),
+        returnR,
+      });
+    }
+    if (alerts.size === 0) return;
+    telegramAlertSendingRef.current = true;
+    const batch = Array.from(alerts.entries()).slice(0, 40);
+    void fetch('/api/telegram/alerts', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ alerts: batch.map(([, alert]) => alert) }),
+    }).then(async (response) => {
+      if (!response.ok) return;
+      const payload = await response.json() as { acknowledged?: string[] };
+      for (const key of payload.acknowledged ?? []) telegramAlertSentRef.current.add(key);
+    }).catch(() => undefined).finally(() => {
+      telegramAlertSendingRef.current = false;
+    });
+  }, [accuracyTradeRecords, granularity, marketSymbol, mtfRows, replayIndex, tradeOverlays, tradingTimeEnabled]);
 
   const entryHovers = useMemo<EntryHover[]>(() => {
     const entries = new Map<string, EntryHover>();

@@ -16,6 +16,7 @@ data/ai-agent-memory.json
 data/trade-journal.json
 data/mt5-signals.json
 data/mt5-automation.json
+data/telegram-alerts.json
 .env.mt5
 .mt5_bridge_state.json
 __pycache__/
