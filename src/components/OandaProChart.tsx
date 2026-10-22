@@ -3671,7 +3671,6 @@ export const OandaProChart: React.FC = () => {
       color: bullish ? '#059669' : '#e11d48',
       shape: bullish ? 'arrowUp' as const : 'arrowDown' as const,
       size: projectedScalp ? 1 : 2,
-      text: projectedScalp ? `SCALP ${trade.signal.timeframe.slice(1)}m` : undefined,
     };
   }).sort((first, second) => Number(first.time) - Number(second.time) || second.size - first.size),
   [granularity, visibleEntryHovers]);
