@@ -6888,7 +6888,7 @@ export const OandaProChart: React.FC = () => {
                   </button>
                   {showLtfChoch && (
                     <div className="mb-2 text-[8px] text-slate-600">
-                      The latest lower TJL1/TJL2 pair appears after a chart zone tap. After CHoCH, only its active QML zone remains.
+                      The latest lower TJL1/TJL2 pair appears after a chart zone tap. After CHoCH, its QML, SBR/RBS, and DB/DT zones remain while valid or pending.
                     </div>
                   )}
                   <div className="mb-2 flex flex-wrap gap-1">
@@ -6922,7 +6922,7 @@ export const OandaProChart: React.FC = () => {
                   ) : comparisonZones.length === 0 ? (
                     <div className="text-[9px] text-slate-500">{ltfChochContext
                       ? ltfChochContext.confirmations.length > 0
-                        ? 'CHoCH confirmed; no active QML zone to show.'
+                        ? 'CHoCH confirmed; no valid or pending CHoCH zones to show.'
                         : 'Waiting for a chart zone tap or the latest lower TJL1/TJL2 pair.'
                       : 'No active, valid zones on this timeframe.'}</div>
                   ) : (

@@ -69,7 +69,7 @@ test('comparison keeps the most recent buy and sell zones independently', () => 
   assert.equal(selected.some(({ zone: item }) => item.id === 'buy-0' || item.id === 'sell-0'), false);
 });
 
-test('LTF CHoCH shows only the newest TJL pair, then its QML until invalidation', () => {
+test('LTF CHoCH shows the newest TJL pair, then all valid or pending CHoCH zones', () => {
   const higher = zone({ id: 'm15-buy', tapTime: 500 });
   const lowerZones = [
     zone({ id: 'old-tjl1', name: 'TJL1', isBuy: false, tjlPairTime: 200 }),
@@ -92,13 +92,22 @@ test('LTF CHoCH shows only the newest TJL pair, then its QML until invalidation'
   assert.equal(waiting.confirmations.length, 0);
   const qml = zone({ id: 'm1-qml', name: 'QML', isBuy: true,
     chochTime: 600, activeFromTime: 601 });
-  const confirmed = selectLtfChochContext([higher], [...lowerZones, qml], lines, 650);
-  assert.deepEqual(confirmed.zones.map(({ zone: item }) => item.id), ['m1-qml']);
-  assert.equal(confirmed.zones[0]?.visibleFromTime, 601);
+  const rbs = zone({ id: 'm1-rbs', name: 'RBS', isBuy: true,
+    status: 'pending', chochTime: 600, activeFromTime: 601 });
+  const db = zone({ id: 'm1-db', name: 'DB', isBuy: true,
+    chochTime: 600, activeFromTime: 601 });
+  const confirmed = selectLtfChochContext([higher], [...lowerZones, qml, rbs, db], lines, 650);
+  assert.deepEqual(confirmed.zones.map(({ zone: item }) => item.id),
+    ['m1-qml', 'm1-rbs', 'm1-db']);
+  assert.ok(confirmed.zones.every(({ visibleFromTime }) => visibleFromTime === 601));
   assert.equal(confirmed.confirmations[0]?.line.id, 'confirmed');
-  const invalidated = selectLtfChochContext([higher], [...lowerZones, {
-    ...qml, active: false, status: 'invalidated' as const,
-  }], lines, 700);
+  const oneInvalidated = selectLtfChochContext([higher], [...lowerZones, qml, {
+    ...rbs, active: false, status: 'invalidated' as const,
+  }, db], lines, 700);
+  assert.deepEqual(oneInvalidated.zones.map(({ zone: item }) => item.id), ['m1-qml', 'm1-db']);
+  const invalidated = selectLtfChochContext([higher], [...lowerZones, ...[qml, rbs, db].map((item) => ({
+    ...item, active: false, status: 'invalidated' as const,
+  }))], lines, 700);
   assert.deepEqual(invalidated.zones, []);
   assert.equal(invalidated.confirmations[0]?.line.id, 'confirmed');
 });

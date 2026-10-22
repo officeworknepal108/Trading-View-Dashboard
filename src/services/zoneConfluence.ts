@@ -132,12 +132,18 @@ export function selectLtfChochContext(
     && candidate.toTime >= tapTime && candidate.toTime <= currentTime)
     .sort((first, second) => second.toTime - first.toTime)[0];
   if (line) {
-    const chochZone = lowerZones.find((zone) => zone.category === 'mg'
-      && zone.name === (line.label === 'DOUBLE CHoCH' ? 'QML A+' : 'QML')
-      && zone.isBuy === tappedZone.isBuy && zone.active && zone.status === 'valid'
-      && (line.label === 'DOUBLE CHoCH' ? zone.doubleChochTime : zone.chochTime) === line.toTime);
+    const doubleChoch = line.label === 'DOUBLE CHoCH';
+    const zoneNames: StructureZone['name'][] = doubleChoch
+      ? ['QML A+', 'QML A++', 'RBS', 'SBR', 'DBD', 'DTD']
+      : ['QML', 'RBS', 'SBR', 'DB', 'DT'];
+    const chochZones = lowerZones.filter((zone) => zone.category === 'mg'
+      && zoneNames.includes(zone.name)
+      && zone.isBuy === tappedZone.isBuy && zone.active
+      && (zone.status === 'valid' || zone.status === 'pending')
+      && (doubleChoch ? zone.doubleChochTime : zone.chochTime) === line.toTime)
+      .sort((first, second) => zoneNames.indexOf(first.name) - zoneNames.indexOf(second.name));
     return {
-      zones: chochZone ? [display(chochZone)] : [],
+      zones: chochZones.map(display),
       confirmations: [{ zone: tappedZone, line }],
     };
   }
