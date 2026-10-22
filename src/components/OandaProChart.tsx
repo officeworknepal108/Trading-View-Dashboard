@@ -3514,7 +3514,7 @@ export const OandaProChart: React.FC = () => {
         },
       };
       add(record.id, trade,
-        projected ? `${record.signalTimeframe} INTRADAY ENTRY`
+        projected ? `${record.signalTimeframe} ${record.tradeStyle === 'SCALPING' ? 'SCALPING' : 'INTRADAY'} ENTRY`
           : record.source === 'MTF'
           ? `${record.zoneTimeframe} → ${record.signalTimeframe} MTF` : 'CANDLE CONFIRMATION',
         record.zoneName,
@@ -3661,16 +3661,20 @@ export const OandaProChart: React.FC = () => {
   }, [displayCandles, displayZones, expiredGoldZoneBeforeSignal, extremeAPlusTjl2Selection.blockedZoneIds, granularity, marketSymbol, pendingM15DbBlocksSignal, redundantStandaloneZoneIds, replayIndex, replayResultCutoff, tradingTimeEnabled]);
   const visibleEntryHovers = entryHovers;
   entryHoversRef.current = visibleEntryHovers;
-  const entryMarkers = useMemo(() => visibleEntryHovers.map(({ candleTime, trade }) => {
+  const entryMarkers = useMemo(() => visibleEntryHovers.map(({ candleTime, trade, style }) => {
     const bullish = trade.signal.direction === 'bullish';
+    const projectedScalp = granularity === 'M15' && style === 'SCALPING'
+      && (trade.signal.timeframe === 'M1' || trade.signal.timeframe === 'M5');
     return {
       time: candleTime as UTCTimestamp,
       position: bullish ? 'belowBar' as const : 'aboveBar' as const,
       color: bullish ? '#059669' : '#e11d48',
       shape: bullish ? 'arrowUp' as const : 'arrowDown' as const,
-      size: 2,
+      size: projectedScalp ? 1 : 2,
+      text: projectedScalp ? `SCALP ${trade.signal.timeframe.slice(1)}m` : undefined,
     };
-  }), [visibleEntryHovers]);
+  }).sort((first, second) => Number(first.time) - Number(second.time) || second.size - first.size),
+  [granularity, visibleEntryHovers]);
   const replayDirectHistoryByZone = useMemo(() => {
     const entries = new Map<string, EntryHover>();
     if (replayIndex === null) return entries;

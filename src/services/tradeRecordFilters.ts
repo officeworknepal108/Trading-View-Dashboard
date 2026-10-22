@@ -199,13 +199,22 @@ export function selectTradeChartRecords<T extends FilterableTradeRecord & {
   id: string; zoneTimeframe: TradeTimeframe; tradeStyle?: string;
   signalAt?: number; openedAt?: number;
 }>(records: readonly T[], chartTimeframe: TradeTimeframe,
-  candles: readonly { time: number }[], projectGoldIntraday = false): T[] {
+  candles: readonly { time: number }[], projectGoldEntries = false): T[] {
   const selected = selectAccuracyChartEntries(records, null, chartTimeframe);
-  if (projectGoldIntraday && chartTimeframe === 'M1') {
+  if (projectGoldEntries && chartTimeframe === 'M1') {
     selected.push(...selectGoldIntradayAfterScalp(records));
   }
+  if (projectGoldEntries && chartTimeframe === 'M15') {
+    selected.push(...records.filter((record) => record.tradeStyle === 'SCALPING'
+      && (record.signalTimeframe === 'M1' || record.signalTimeframe === 'M5')
+      && (record.result === 'tp' || record.result === 'sl' || record.result === 'rf')
+      && typeof record.openedAt === 'number' && Number.isFinite(record.openedAt)));
+  }
   const byId = new Map(selected.filter((record) => candles.some((candle) => (
-    candle.time === (record.signalTimeframe === chartTimeframe ? record.signalAt : record.openedAt)
+    record.signalTimeframe === chartTimeframe ? candle.time === record.signalAt
+      : chartTimeframe !== 'M15' ? candle.time === record.openedAt
+      : record.openedAt !== undefined && record.openedAt >= candle.time
+        && record.openedAt < candle.time + tradeTimeframeSeconds(chartTimeframe)
   ))).map((record) => [record.id, record]));
   return [...byId.values()].sort((first, second) => second.completedAt - first.completedAt);
 }

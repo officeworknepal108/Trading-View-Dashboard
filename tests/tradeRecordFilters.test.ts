@@ -115,6 +115,29 @@ test('saved past trades survive a chart-window change and regain matching arrows
   assert.equal(selectTradeChartRecords(canonical, 'M1', options.timeframeData.M1!.candles).length, 1);
 });
 
+test('M15 can display completed M1/M5 scalps on their filled-entry candles without adding trades', () => {
+  const { scalp, intraday } = synchronizedFixture();
+  const m1 = { ...scalp, openedAt: 899, completedAt: 2000 };
+  const m5 = { ...scalp, id: 'm5-scalp', source: 'ENGULFING' as const,
+    signalTimeframe: 'M5' as const, openedAt: 900, completedAt: 2100 };
+  const pending = { ...m1, id: 'unfilled', openedAt: undefined };
+  const open = { ...m1, id: 'open', result: 'open' as const };
+  const outside = { ...m1, id: 'outside-loaded-chart', openedAt: 3600, completedAt: 4000 };
+  const rows = [m1, m5, intraday, pending, open, outside];
+  const before = JSON.stringify(rows);
+  const candles = [{ time: 0 }, { time: 900 }, { time: 1800 }, { time: 2700 }];
+  const selected = selectTradeChartRecords(rows, 'M15', candles, true);
+  assert.deepEqual(new Set(selected.map((record) => record.id)), new Set([m1.id, m5.id, intraday.id]));
+  assert.deepEqual(selectTradeChartRecords(rows, 'M15', [{ time: 0 }], true), [m1],
+    'an entry at 899 belongs to the first M15 candle; an entry at 900 belongs to the next');
+  assert.deepEqual(selectTradeChartRecords(rows, 'M15', candles), [intraday],
+    'projection is enabled explicitly for the Gold chart');
+  assert.equal(selectTradeChartRecords(rows, 'M5', [{ time: 60 }, { time: 900 }], true)
+    .some((record) => record.id === m1.id), false, 'do not project these scalps onto other charts');
+  assert.equal(JSON.stringify(rows), before, 'displaying an extra arrow never alters trade records or results');
+  assert.equal(new Set(selected.map((record) => record.id)).size, selected.length);
+});
+
 test('RF and intraday SL outcomes keep the same prices and results in history and journal', () => {
   const { scalp, intraday, options } = synchronizedFixture();
   const source = options.timeframeData.M1!;
