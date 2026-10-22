@@ -6500,19 +6500,6 @@ export const OandaProChart: React.FC = () => {
             >
               INT STRUCTURE {showInternal ? 'ON' : 'OFF'}
             </button>
-            <button
-              type="button"
-              onClick={() => void updateMt5Config({ mtfLtfFibRequired: !mtfLtfFibRequired })}
-              disabled={!mt5Status}
-              className={`whitespace-nowrap rounded-full border px-1.5 py-0.5 text-[8px] font-black transition ${
-                mtfLtfFibRequired
-                  ? 'border-fuchsia-200 bg-fuchsia-50 text-fuchsia-700'
-                  : 'border-slate-200 bg-white text-slate-500'
-              }`}
-              title="Require the lower-timeframe Fib for MTF CHoCH entries; the zone midpoint and engulfing are always required"
-            >
-              MTF LTF FIB REQUIRED {mtfLtfFibRequired ? 'ON' : 'OFF'}
-            </button>
             <div className="relative flex">
               <button
                 onClick={() => setShowFib((value) => !value)}
@@ -6564,6 +6551,19 @@ export const OandaProChart: React.FC = () => {
                       CLEAR
                     </button>
                   </div>
+                  <button
+                    type="button"
+                    onClick={() => void updateMt5Config({ mtfLtfFibRequired: !mtfLtfFibRequired })}
+                    disabled={!mt5Status}
+                    className={`mb-1.5 w-full whitespace-nowrap rounded-full border px-1.5 py-0.5 text-[8px] font-black transition ${
+                      mtfLtfFibRequired
+                        ? 'border-fuchsia-200 bg-fuchsia-50 text-fuchsia-700'
+                        : 'border-slate-200 bg-white text-slate-500'
+                    }`}
+                    title="Require the lower-timeframe Fib for MTF CHoCH entries; the zone midpoint and engulfing are always required"
+                  >
+                    MTF LTF FIB REQUIRED {mtfLtfFibRequired ? 'ON' : 'OFF'}
+                  </button>
                   <div className="grid grid-cols-2 gap-1">
                     {FIB_VISIBILITY_OPTIONS.map(renderFibOptionButton)}
                     <button
