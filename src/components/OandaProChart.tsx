@@ -1577,6 +1577,7 @@ export const OandaProChart: React.FC = () => {
   const [telegramMessagesEnabled, setTelegramMessagesEnabled] = useState(true);
   const [showInvalidZones, setShowInvalidZones] = useState(false);
   const [showTradeLevels, setShowTradeLevels] = useState(true);
+  const [showEntryArrows, setShowEntryArrows] = useState(false);
   const [showAccuracyTable, setShowAccuracyTable] = useState(false);
   const [visibleAccuracyRecordIds, setVisibleAccuracyRecordIds] = useState<string[] | null>(null);
   const [showAccuracyOptions, setShowAccuracyOptions] = useState(false);
@@ -5174,7 +5175,7 @@ export const OandaProChart: React.FC = () => {
     markersRef.current?.setMarkers([
       ...(showStructure ? structure.markers : []),
       ...(showInternal ? structure.internalMarkers : []),
-      ...(showTradeLevels ? entryMarkers : []),
+      ...(showEntryArrows ? entryMarkers : []),
     ].sort((a: any, b: any) => Number(a.time) - Number(b.time)));
     if (displayCandles.length === 0) {
       scheduleOverlayRedraw();
@@ -5203,7 +5204,7 @@ export const OandaProChart: React.FC = () => {
     pendingMarketSymbolFitRef.current = false;
     scheduleOverlayRedraw();
     scheduleDrawingRedraw();
-  }, [displayCandles, entryMarkers, granularity, replayIndex, restorePresentChartView, scheduleDrawingRedraw, scheduleOverlayRedraw, showInternal, showIss, showStructure, showTradeLevels, structure.internalMarkers, structure.issMarkers, structure.markers]);
+  }, [displayCandles, entryMarkers, granularity, replayIndex, restorePresentChartView, scheduleDrawingRedraw, scheduleOverlayRedraw, showEntryArrows, showInternal, showIss, showStructure, structure.internalMarkers, structure.issMarkers, structure.markers]);
 
   useEffect(() => {
     const label = livePriceLabelRef.current;
@@ -6705,6 +6706,19 @@ export const OandaProChart: React.FC = () => {
             >
               LONG/SHORT POSITION {showTradeLevels ? 'ON' : 'OFF'}
             </button>
+            <button
+              type="button"
+              onClick={() => setShowEntryArrows((value) => !value)}
+              aria-pressed={showEntryArrows}
+              className={`whitespace-nowrap rounded-full border px-1.5 py-0.5 text-[8px] font-black transition ${
+                showEntryArrows
+                  ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
+                  : 'border-slate-200 bg-white text-slate-500'
+              }`}
+              title="Show or hide intraday and scalping entry arrows"
+            >
+              ENTRY ARROWS {showEntryArrows ? 'ON' : 'OFF'}
+            </button>
             <div className="relative flex">
               <button
                 type="button"
@@ -8012,7 +8026,7 @@ export const OandaProChart: React.FC = () => {
               showAllTrades={showAllAccuracyTrades}
               timeZone={chartTimeZone}
               marketSymbol={marketSymbol}
-              entryArrowsVisible={showTradeLevels}
+              entryArrowsVisible={showEntryArrows}
               onVisibleRecordIdsChange={setVisibleAccuracyRecordIds}
               onClose={() => {
                 setShowAccuracyTable(false);
