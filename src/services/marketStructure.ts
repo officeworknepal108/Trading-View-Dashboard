@@ -648,6 +648,58 @@ function recordedGoldZoneTapIndices(candles: StructureCandle[], zone: StructureZ
     .map((index) => index + firstTapIndex);
 }
 
+export function getGoldZoneTapState(
+  zone: StructureZone,
+  candles: StructureCandle[],
+  timeframe: string,
+  pipSize: number,
+  beforeTime = Infinity,
+  entry?: { price: number; filledAt: number; stopLoss: number },
+  includeBoundaryTap = false,
+): { tapIndices: number[]; opportunityExpired: boolean } {
+  const empty = { tapIndices: [] as number[], opportunityExpired: false };
+  const maximumMovePips = GOLD_ZONE_MOVE_PIPS[timeframe];
+  if (maximumMovePips === undefined || !Number.isFinite(pipSize) || pipSize <= 0) return empty;
+  const touches = recordedGoldZoneTapIndices(candles, zone);
+  if (touches.length === 0) return empty;
+  const touchIndices = new Set(touches);
+  const tapIndices: number[] = [];
+  const validEntry = entry
+    && Number.isFinite(entry.price) && Number.isFinite(entry.filledAt)
+    && Number.isFinite(entry.stopLoss) && entry.price !== entry.stopLoss
+    && entry.filledAt >= candles[touches[0]].time && entry.filledAt < beforeTime;
+  let anchorPrice = 0;
+  let anchorTime = -Infinity;
+  let maximumMove = maximumMovePips * pipSize;
+  let opportunityExpired = false;
+  let entryApplied = false;
+  for (let index = touches[0]; index < candles.length; index += 1) {
+    const candle = candles[index];
+    if (candle.time > beforeTime || (candle.time === beforeTime && !includeBoundaryTap)) break;
+    if (touchIndices.has(index) && (tapIndices.length === 0 || opportunityExpired)) {
+      tapIndices.push(index);
+      anchorPrice = zone.isBuy
+        ? Math.max(zone.bottom, Math.min(zone.top, candle.low))
+        : Math.max(zone.bottom, Math.min(zone.top, candle.high));
+      anchorTime = candle.time;
+      maximumMove = maximumMovePips * pipSize;
+      opportunityExpired = false;
+    }
+    if (candle.time >= beforeTime) break;
+    if (tapIndices.length === 1 && validEntry && !entryApplied
+      && !opportunityExpired && candle.time >= entry.filledAt) {
+      anchorPrice = entry.price;
+      anchorTime = entry.filledAt;
+      maximumMove = Math.abs(entry.price - entry.stopLoss);
+      entryApplied = true;
+    }
+    if (candle.time <= anchorTime || candle.complete === false || opportunityExpired) continue;
+    const favorableMove = zone.isBuy ? candle.high - anchorPrice : anchorPrice - candle.low;
+    if (favorableMove >= maximumMove) opportunityExpired = true;
+  }
+  return { tapIndices, opportunityExpired };
+}
+
 export function isGoldZoneOpportunityExpired(
   zone: StructureZone,
   candles: StructureCandle[],
@@ -656,32 +708,7 @@ export function isGoldZoneOpportunityExpired(
   beforeTime = Infinity,
   entry?: { price: number; filledAt: number; stopLoss: number },
 ): boolean {
-  const maximumMovePips = GOLD_ZONE_MOVE_PIPS[timeframe];
-  if (maximumMovePips === undefined || !Number.isFinite(pipSize) || pipSize <= 0) return false;
-  const taps = recordedGoldZoneTapIndices(candles, zone)
-    .filter((index) => candles[index].time < beforeTime);
-  const tapIndex = taps[taps.length - 1];
-  if (tapIndex === undefined) return false;
-  const tapCandle = candles[tapIndex];
-  const tapPrice = zone.isBuy
-    ? Math.max(zone.bottom, Math.min(zone.top, tapCandle.low))
-    : Math.max(zone.bottom, Math.min(zone.top, tapCandle.high));
-  const firstTapEntry = taps.length === 1 && entry
-    && Number.isFinite(entry.price) && Number.isFinite(entry.filledAt)
-    && Number.isFinite(entry.stopLoss) && entry.price !== entry.stopLoss
-    && entry.filledAt >= tapCandle.time && entry.filledAt < beforeTime;
-  const anchorPrice = firstTapEntry ? entry.price : tapPrice;
-  const anchorTime = firstTapEntry ? entry.filledAt : tapCandle.time;
-  const maximumMove = firstTapEntry
-    ? Math.abs(entry.price - entry.stopLoss)
-    : maximumMovePips * pipSize;
-  for (const candle of candles) {
-    if (candle.time <= anchorTime || candle.time >= beforeTime
-      || candle.complete === false) continue;
-    const favorableMove = zone.isBuy ? candle.high - anchorPrice : anchorPrice - candle.low;
-    if (favorableMove >= maximumMove) return true;
-  }
-  return false;
+  return getGoldZoneTapState(zone, candles, timeframe, pipSize, beforeTime, entry).opportunityExpired;
 }
 
 export function isGoldZoneEntryBlocked(
@@ -692,10 +719,8 @@ export function isGoldZoneEntryBlocked(
   beforeTime = Infinity,
   entry?: { price: number; filledAt: number; stopLoss: number },
 ): boolean {
-  if (recordedGoldZoneTapIndices(candles, zone).some((index, tapNumber) => (
-    tapNumber > 0 && candles[index].time <= beforeTime
-  ))) return true;
-  return isGoldZoneOpportunityExpired(zone, candles, timeframe, pipSize, beforeTime, entry);
+  const state = getGoldZoneTapState(zone, candles, timeframe, pipSize, beforeTime, entry, true);
+  return state.tapIndices.length > 1 || state.opportunityExpired;
 }
 
 function requiresMappedConfirmation(zone: StructureZone): boolean {

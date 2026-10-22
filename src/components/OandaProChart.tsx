@@ -24,6 +24,7 @@ import {
   analyzeMarketStructure,
   applyTradeableZoneEngulfingFallback,
   DISABLED_HIGHER_TIMEFRAME_CONFIRMATION,
+  getGoldZoneTapState,
   isZoneEligibleForEngulfingEntry,
   isGoldZoneEntryBlocked,
   isGoldZoneOpportunityExpired,
@@ -2254,6 +2255,20 @@ export const OandaProChart: React.FC = () => {
     }
     return trades;
   }, [directZoneEntryDecisions]);
+  const displayedTapCount = useCallback((zone: DisplayStructureZone): number | undefined => {
+    if (marketSymbol !== 'XAUUSD') return confluenceLatestTap(zone)?.count;
+    const trade = confluenceMapValue<TradeLevels>(zone, directZoneTrades);
+    const entry = trade?.filledAt === undefined ? undefined
+      : { price: trade.entry, filledAt: trade.filledAt, stopLoss: trade.stopLoss };
+    const latestMember = displayZoneMembers(zone)
+      .filter((member) => member.tapTime !== undefined)
+      .sort((first, second) => (second.lastTapTime ?? second.tapTime ?? 0)
+        - (first.lastTapTime ?? first.tapTime ?? 0))[0];
+    return latestMember
+      ? getGoldZoneTapState(latestMember, displayCandles, granularity,
+        marketConfig.pipSize, Infinity, entry).tapIndices.length
+      : undefined;
+  }, [directZoneTrades, displayCandles, granularity, marketConfig.pipSize, marketSymbol]);
   const directZoneMt5Signals = useMemo(() => {
     const signals = new Map<string, Mt5StoredSignal>();
     if (replayIndex !== null || liveChartDataSource !== 'MT5') return signals;
@@ -3568,9 +3583,9 @@ export const OandaProChart: React.FC = () => {
     const candidates = consolidatedDisplayZones
     .filter((zone) => zone.active && zone.status === 'valid'
       && !redundantStandaloneZoneIds.has(zone.id)
-      && ((confluenceLatestTap(zone)?.count ?? 0) > 1
+      && ((displayedTapCount(zone) ?? 0) > 1
         || !displayZoneMembers(zone).some((member) => retainedDirectTradeZoneIds.has(member.id)))
-      && ((confluenceLatestTap(zone)?.count ?? 0) > 1
+      && ((displayedTapCount(zone) ?? 0) > 1
         || !retainedDirectChartTradesForTimeframe.some((overlay) => {
           const trade = confluenceMapValue<TradeLevels>(zone, directZoneTrades);
           return trade && tradeOverlayExecutionKey(overlay.trade) === tradeOverlayExecutionKey(trade);
@@ -3599,7 +3614,7 @@ export const OandaProChart: React.FC = () => {
       const trade = confluenceMapValue<TradeLevels>(zone, directZoneTrades);
       return !trade || bestByTrade.get(tradeOverlayExecutionKey(trade))?.zone === zone;
     }).slice(0, 8);
-  }, [consolidatedDisplayZones, directZoneTrades, displayCandles, granularity, marketConfig.pipSize, marketSymbol, redundantStandaloneZoneIds, retainedDirectChartTradesForTimeframe, retainedDirectTradeZoneIds, showInternal]);
+  }, [consolidatedDisplayZones, directZoneTrades, displayedTapCount, displayCandles, granularity, marketConfig.pipSize, marketSymbol, redundantStandaloneZoneIds, retainedDirectChartTradesForTimeframe, retainedDirectTradeZoneIds, showInternal]);
   const scalpEntryTableRows = useMemo(() => {
     const rows = new Map<string, {
       id: string;
@@ -7591,9 +7606,9 @@ export const OandaProChart: React.FC = () => {
                     }`}>
                       <td className="px-2 py-1 font-black text-slate-800">
                         <span>{displayZoneName(zone.name, zone.oneMinuteGenesisQml)}</span>
-                        {zone.tapCount !== undefined && (
+                        {displayedTapCount(zone) !== undefined && (
                           <span className="ml-1 rounded bg-sky-100 px-1 py-0.5 text-[8px] font-black text-sky-800">
-                            TAP {zone.tapCount}
+                            TAP {displayedTapCount(zone)}
                           </span>
                         )}
                         <span className="ml-1 rounded bg-violet-100 px-1 py-0.5 text-[8px] font-black text-violet-800">
@@ -7666,8 +7681,8 @@ export const OandaProChart: React.FC = () => {
                                  : { price: displayedTrade.entry, filledAt: displayedTrade.filledAt, stopLoss: displayedTrade.stopLoss },
                              )
                                ? `${zone.lastTapBarsAgo ?? zone.tapBarsAgo} bars · DISTANCE REACHED · NO NEW ENTRY`
-                               : marketSymbol === 'XAUUSD' && (zone.tapCount ?? 0) > 1
-                                 ? `${zone.lastTapBarsAgo ?? zone.tapBarsAgo} bars · TAP ${zone.tapCount} · NO NEW ENTRY`
+                               : marketSymbol === 'XAUUSD' && (displayedTapCount(zone) ?? 0) > 1
+                                 ? `${zone.lastTapBarsAgo ?? zone.tapBarsAgo} bars · TAP ${displayedTapCount(zone)} · NO NEW ENTRY`
                                : `${zone.lastTapBarsAgo ?? zone.tapBarsAgo} bars · ${confirmationLabel} CONFIRMED · TRADE`}
                       </td>
                     </tr>
@@ -7710,6 +7725,7 @@ export const OandaProChart: React.FC = () => {
                   )) ?? measureListedZone(zone, marketConfig.pipSize);
                   const tapBarsAgo = confluenceTapBarsAgo(zone);
                   const latestTap = confluenceLatestTap(zone);
+                  const tapCount = displayedTapCount(zone);
                   const opportunityExpired = marketSymbol === 'XAUUSD'
                     && displayZoneMembers(zone).every((member) => isGoldZoneOpportunityExpired(
                       member, displayCandles, granularity, marketConfig.pipSize,
@@ -7733,7 +7749,7 @@ export const OandaProChart: React.FC = () => {
                       <span>{displayConfluenceZoneName(zone)}</span>
                       {latestTap && (
                         <span className="ml-1 rounded bg-sky-100 px-1 py-0.5 text-[8px] font-black text-sky-800">
-                          TAP {latestTap.count}
+                          TAP {tapCount ?? latestTap.count}
                         </span>
                       )}
                       {extremeAPlus && (

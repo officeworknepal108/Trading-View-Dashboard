@@ -26,6 +26,7 @@ import {
   findIssFiveWaves,
   findFirstZoneTapIndex,
   findZoneTapIndices,
+  getGoldZoneTapState,
   findVipSupportTap,
   findVipSupportTapAcrossContexts,
   getConfirmationBucketStart,
@@ -105,6 +106,42 @@ test('a second tap measures its own distance but never allows another entry', ()
   assert.equal(isGoldZoneEntryBlocked(tappedZone, candles, 'M1', 0.1), true);
   candles.push(candle(6, 108, 108, 102));
   assert.equal(isGoldZoneOpportunityExpired(tappedZone, candles, 'M1', 0.1), true);
+});
+
+test('Gold returns stay in the same tap until its timeframe limit is reached', () => {
+  const tappedZone = zone({ isBuy: true, startTime: -1, activeFromTime: 0,
+    tapTime: 0, top: 101, bottom: 100 });
+  const candles = [candle(0, 100.5, 101, 100), candle(1, 110, 120, 102),
+    candle(2, 100.5, 101, 100), candle(3, 120, 129, 102)];
+  assert.deepEqual(getGoldZoneTapState(tappedZone, candles, 'M15', 0.1).tapIndices, [0]);
+  assert.equal(isGoldZoneEntryBlocked(tappedZone, candles, 'M15', 0.1), false);
+  candles.push(candle(4, 125, 130, 102));
+  assert.equal(isGoldZoneOpportunityExpired(tappedZone, candles, 'M15', 0.1), true);
+  candles.push(candle(5, 100.5, 101, 100), candle(6, 110, 115, 102),
+    candle(7, 100.5, 101, 100));
+  assert.deepEqual(getGoldZoneTapState(tappedZone, candles, 'M15', 0.1).tapIndices, [0, 5]);
+  assert.equal(isGoldZoneOpportunityExpired(tappedZone, candles, 'M15', 0.1), false);
+  assert.equal(isGoldZoneEntryBlocked(tappedZone, candles, 'M15', 0.1), true);
+  candles.push(candle(8, 125, 130, 102), candle(9, 100.5, 101, 100));
+  assert.deepEqual(getGoldZoneTapState(tappedZone, candles, 'M15', 0.1).tapIndices, [0, 5, 9]);
+});
+
+test('a first-tap entry keeps later returns on tap one until 1R', () => {
+  const tappedZone = zone({ isBuy: true, startTime: -1, activeFromTime: 0,
+    tapTime: 0, top: 101, bottom: 100 });
+  const entry = { price: 105, filledAt: 3, stopLoss: 87 };
+  const candles = [candle(0, 100.5, 101, 100), candle(1, 110, 120, 102),
+    candle(2, 100.5, 101, 100), candle(3, 105, 110, 102),
+    candle(4, 120, 122, 110), candle(5, 100.5, 110, 100)];
+  assert.deepEqual(getGoldZoneTapState(tappedZone, candles, 'M15', 0.1,
+    Infinity, entry).tapIndices, [0]);
+  assert.equal(isGoldZoneEntryBlocked(tappedZone, candles, 'M15', 0.1,
+    Infinity, entry), false);
+  candles.push(candle(6, 120, 123, 102), candle(7, 100.5, 101, 100));
+  assert.deepEqual(getGoldZoneTapState(tappedZone, candles, 'M15', 0.1,
+    Infinity, entry).tapIndices, [0, 7]);
+  assert.equal(isGoldZoneOpportunityExpired(tappedZone, candles, 'M15', 0.1,
+    Infinity, entry), false);
 });
 
 test('first tap uses 1R from a filled entry, otherwise the timeframe limit from the tap', () => {
