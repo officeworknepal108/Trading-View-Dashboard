@@ -28,6 +28,7 @@ import {
   applyTradeableZoneEngulfingFallback,
   DISABLED_HIGHER_TIMEFRAME_CONFIRMATION,
   isZoneEligibleForEngulfingEntry,
+  isGoldZoneEntryBlocked,
   type StructureCandle,
 } from './src/services/marketStructure';
 import { buildAlternatingSwingFibs } from './src/services/swingFib';
@@ -680,7 +681,9 @@ async function scanMt5AutomationSignals(): Promise<number> {
           zone, zoneTimeframe, candles[scalpTimeframe],
         );
         const scalpRule = goldScalpingTradeRule(zoneTimeframe, scalpTimeframe);
-        if (scalpSignal && scalpRule) {
+        if (scalpSignal && scalpRule && !isGoldZoneEntryBlocked(
+          zone, sourceCandles, zoneTimeframe, 0.1, scalpSignal.time,
+        )) {
           const scalpClose = scalpSignal.time + AUTOMATION_SECONDS[scalpTimeframe];
           const scalpTrade = (!config.tradingTimeEnabled || isNepalTradingTime(scalpClose))
             ? calculateTradeLevels({
@@ -719,7 +722,8 @@ async function scanMt5AutomationSignals(): Promise<number> {
       }
       if (!isZoneEligibleForEngulfingEntry(zone)) continue;
       const signal = resolveZoneEngulfingSignal(zone, zoneTimeframe);
-      if (!signal || !isGoldIntradayCandleRoute(zoneTimeframe, signal.timeframe)) continue;
+      if (!signal || !isGoldIntradayCandleRoute(zoneTimeframe, signal.timeframe)
+        || isGoldZoneEntryBlocked(zone, sourceCandles, zoneTimeframe, 0.1, signal.time)) continue;
       const baseRule = getDirectTradeRule(zoneTimeframe, signal.timeframe);
       if (!baseRule) continue;
       const signalClose = signal.time + AUTOMATION_SECONDS[signal.timeframe];
@@ -753,7 +757,11 @@ async function scanMt5AutomationSignals(): Promise<number> {
           afterTime: trade.resolvedAt,
           originalRiskFree: trade.riskFree,
         });
-        if (reentrySignal) {
+        if (reentrySignal && !isGoldZoneEntryBlocked(
+          zone, sourceCandles, zoneTimeframe, 0.1, reentrySignal.time,
+          trade.filledAt === undefined ? undefined
+            : { price: trade.entry, filledAt: trade.filledAt },
+        )) {
           const reentryClose = reentrySignal.time + AUTOMATION_SECONDS[reentrySignal.timeframe];
           if (config.tradingTimeEnabled && !isNepalTradingTime(reentryClose)) continue;
           const reentryPolicy = resolveDirectEntryPolicy({
@@ -835,6 +843,13 @@ async function scanMt5AutomationSignals(): Promise<number> {
   for (const row of buildGoldScalpingMtfRows(mtfData, config.mtfLtfFibRequired)) mtfRows.set(row.id, row);
   for (const row of mtfRows.values()) {
     if (!row.engulfingType || row.engulfingTime === undefined) continue;
+    const higherZone = structures[row.higherTimeframe]?.zones.find((zone) => (
+      zone.id === row.higherTimeframeZoneId
+    ));
+    if (higherZone && isGoldZoneEntryBlocked(
+      higherZone, candles[row.higherTimeframe], row.higherTimeframe, 0.1,
+      row.engulfingTime,
+    )) continue;
     const rule = row.goldScalping
       ? goldScalpingChochTradeRule(row.higherTimeframe, row.lowerTimeframe)
       : goldIntradayMtfTradeRule(row.higherTimeframe, row.lowerTimeframe);

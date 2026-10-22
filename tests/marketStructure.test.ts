@@ -19,6 +19,7 @@ import {
   findZoneEngulfingPattern,
   findTradeableZoneEngulfingPattern,
   isZoneEligibleForEngulfingEntry,
+  isGoldZoneEntryBlocked,
   isGoldZoneOpportunityExpired,
   isM15H1ChochClosePending,
   isDoubleChochZoneTradeable,
@@ -67,7 +68,8 @@ function zone(overrides: Partial<StructureZone> = {}): StructureZone {
 }
 
 test('Gold zone opportunity remains eligible after 50 completed bars without the pip move', () => {
-  const tappedZone = zone({ isBuy: true, tapTime: 0, top: 101, bottom: 100 });
+  const tappedZone = zone({ isBuy: true, startTime: -1, activeFromTime: 0,
+    tapTime: 0, top: 101, bottom: 100 });
   const candles = [candle(0, 100.5, 101, 100),
     ...Array.from({ length: 75 }, (_, index) => candle(index + 1, 101, 102, 100.5))];
   assert.equal(isGoldZoneOpportunityExpired(tappedZone, candles, 'M15', 0.1), false);
@@ -78,14 +80,15 @@ test('Gold zone opportunity remains eligible after 50 completed bars without the
 
 test('Gold zone opportunity expires at each timeframe move limit before a later signal', () => {
   for (const [timeframe, limit] of [['M1', 60], ['M5', 150], ['M15', 300], ['M30', 350], ['H1', 700], ['H4', 1000]] as const) {
-    const tappedZone = zone({ isBuy: true, tapTime: 0, top: 101, bottom: 100 });
+    const tappedZone = zone({ isBuy: true, startTime: -1, activeFromTime: 0,
+      tapTime: 0, top: 101, bottom: 100 });
     const candles = [candle(0, 100.5, 101, 100), candle(1, 102, 100 + limit * 0.1, 101)];
     assert.equal(isGoldZoneOpportunityExpired(tappedZone, candles, timeframe, 0.1), true);
     assert.equal(isGoldZoneOpportunityExpired(tappedZone, candles, timeframe, 0.1, 1), false);
   }
 });
 
-test('a later zone tap is distinct but cannot reset first-tap distance expiry', () => {
+test('a second tap measures its own distance but never allows another entry', () => {
   const tappedZone = zone({ isBuy: true, startTime: 0, activeFromTime: 1,
     tapTime: 1, top: 101, bottom: 100 });
   const candles = [candle(0, 102, 103, 101.5),
@@ -95,11 +98,34 @@ test('a later zone tap is distinct but cannot reset first-tap distance expiry', 
     candle(4, 102, 103, 101.5),
     candle(5, 100.5, 101, 100)];
   assert.deepEqual(findZoneTapIndices(candles, tappedZone), [1, 5]);
+  assert.equal(isGoldZoneOpportunityExpired(tappedZone, candles, 'M1', 0.1, 5), true);
+  assert.equal(isGoldZoneOpportunityExpired(tappedZone, candles, 'M1', 0.1), false);
+  assert.equal(isGoldZoneEntryBlocked(tappedZone, candles, 'M1', 0.1), true);
+  candles.push(candle(6, 108, 108, 102));
   assert.equal(isGoldZoneOpportunityExpired(tappedZone, candles, 'M1', 0.1), true);
 });
 
+test('first tap uses entry price after fill, otherwise the tap price', () => {
+  const tappedZone = zone({ isBuy: true, startTime: -1, activeFromTime: 0,
+    tapTime: 0, top: 101, bottom: 100 });
+  const candles = [candle(0, 100.5, 101, 100), candle(1, 110, 110, 102),
+    candle(2, 130, 130, 110)];
+  assert.equal(isGoldZoneOpportunityExpired(tappedZone, candles, 'M15', 0.1), true);
+  assert.equal(isGoldZoneOpportunityExpired(tappedZone, candles, 'M15', 0.1,
+    Infinity, { price: 105, filledAt: 1 }), false);
+  assert.equal(isGoldZoneEntryBlocked(tappedZone, candles, 'M15', 0.1, 3), true);
+  assert.equal(isGoldZoneEntryBlocked(tappedZone, candles, 'M15', 0.1, 3,
+    { price: 105, filledAt: 1 }), false);
+  candles.push(candle(3, 135, 135, 131));
+  assert.equal(isGoldZoneOpportunityExpired(tappedZone, candles, 'M15', 0.1,
+    Infinity, { price: 105, filledAt: 1 }), true);
+  assert.equal(isGoldZoneEntryBlocked(tappedZone, candles, 'M15', 0.1, 4,
+    { price: 105, filledAt: 1 }), true);
+});
+
 test('Gold sell zone uses favorable downward movement and ignores unfinished bars', () => {
-  const tappedZone = zone({ tapTime: 0, top: 110, bottom: 100 });
+  const tappedZone = zone({ startTime: -1, activeFromTime: 0,
+    tapTime: 0, top: 110, bottom: 100 });
   const candles = [candle(0, 105, 110, 100),
     { ...candle(1, 100, 101, 90), complete: false },
     candle(2, 106, 107, 105)];

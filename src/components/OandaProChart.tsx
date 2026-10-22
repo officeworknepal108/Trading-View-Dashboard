@@ -25,6 +25,7 @@ import {
   applyTradeableZoneEngulfingFallback,
   DISABLED_HIGHER_TIMEFRAME_CONFIRMATION,
   isZoneEligibleForEngulfingEntry,
+  isGoldZoneEntryBlocked,
   isGoldZoneOpportunityExpired,
   StructureLine,
   StructureZone,
@@ -2035,9 +2036,13 @@ export const OandaProChart: React.FC = () => {
       && zone.bottom <= db.top && db.bottom <= zone.top
       && signalCandle.low <= db.top && signalCandle.high >= db.bottom);
   }, [displayCandles, displayZones, granularity]);
-  const expiredGoldZoneBeforeSignal = useCallback((zone: StructureZone, signal: EngulfingTradeSignal) => (
-    marketSymbol === 'XAUUSD' && isGoldZoneOpportunityExpired(
-      zone, displayCandles, granularity, marketConfig.pipSize, signal.time,
+  const expiredGoldZoneBeforeSignal = useCallback((
+    zone: StructureZone,
+    signal: EngulfingTradeSignal,
+    entry?: { price: number; filledAt: number },
+  ) => (
+    marketSymbol === 'XAUUSD' && isGoldZoneEntryBlocked(
+      zone, displayCandles, granularity, marketConfig.pipSize, signal.time, entry,
     )
   ), [displayCandles, granularity, marketConfig.pipSize, marketSymbol]);
   const currentDirectTradeSetups = useMemo(() => {
@@ -2160,7 +2165,9 @@ export const OandaProChart: React.FC = () => {
           afterTime: trade.resolvedAt,
           originalRiskFree: trade.riskFree,
         });
-        if (reentrySignal && !expiredGoldZoneBeforeSignal(currentZone, reentrySignal)) {
+        if (reentrySignal && !expiredGoldZoneBeforeSignal(currentZone, reentrySignal,
+          trade.filledAt === undefined ? undefined
+            : { price: trade.entry, filledAt: trade.filledAt })) {
           const reentryPolicy = resolveDirectEntryPolicy({
             zoneTimeframe: granularity,
             signal: reentrySignal,
@@ -2432,7 +2439,7 @@ export const OandaProChart: React.FC = () => {
         );
         const rule = goldScalpingTradeRule(zoneTimeframe, signalTimeframe);
         if (!signal || !rule) continue;
-        if (isGoldZoneOpportunityExpired(
+        if (isGoldZoneEntryBlocked(
           zone, zoneData.candles, zoneTimeframe, marketConfig.pipSize, signal.time,
         )) continue;
         const trade = calculateTradeLevels({
@@ -2467,7 +2474,7 @@ export const OandaProChart: React.FC = () => {
       const zone = zoneData?.structure.zones.find((candidate) => (
         candidate.id === row.higherTimeframeZoneId
       ));
-      return !zone || !zoneData || !isGoldZoneOpportunityExpired(
+      return !zone || !zoneData || !isGoldZoneEntryBlocked(
         zone, zoneData.candles, row.higherTimeframe, marketConfig.pipSize,
         row.engulfingTime ?? Infinity,
       );
@@ -3561,11 +3568,13 @@ export const OandaProChart: React.FC = () => {
     const candidates = consolidatedDisplayZones
     .filter((zone) => zone.active && zone.status === 'valid'
       && !redundantStandaloneZoneIds.has(zone.id)
-      && !displayZoneMembers(zone).some((member) => retainedDirectTradeZoneIds.has(member.id))
-      && !retainedDirectChartTradesForTimeframe.some((overlay) => {
-        const trade = confluenceMapValue<TradeLevels>(zone, directZoneTrades);
-        return trade && tradeOverlayExecutionKey(overlay.trade) === tradeOverlayExecutionKey(trade);
-      })
+      && ((confluenceLatestTap(zone)?.count ?? 0) > 1
+        || !displayZoneMembers(zone).some((member) => retainedDirectTradeZoneIds.has(member.id)))
+      && ((confluenceLatestTap(zone)?.count ?? 0) > 1
+        || !retainedDirectChartTradesForTimeframe.some((overlay) => {
+          const trade = confluenceMapValue<TradeLevels>(zone, directZoneTrades);
+          return trade && tradeOverlayExecutionKey(overlay.trade) === tradeOverlayExecutionKey(trade);
+        }))
       && (showInternal || zone.category !== 'internal')
       && zone.doubleChochStatus === undefined
       && (confluenceTapBarsAgo(zone) ?? Infinity) <= 50)
@@ -3579,7 +3588,9 @@ export const OandaProChart: React.FC = () => {
       if (!trade) continue;
       const key = tradeOverlayExecutionKey(trade);
       const expired = marketSymbol === 'XAUUSD' && displayZoneMembers(zone).every((member) => (
-        isGoldZoneOpportunityExpired(member, displayCandles, granularity, marketConfig.pipSize)
+        isGoldZoneOpportunityExpired(member, displayCandles, granularity, marketConfig.pipSize,
+          Infinity, trade.filledAt === undefined ? undefined
+            : { price: trade.entry, filledAt: trade.filledAt })
       ));
       const previous = bestByTrade.get(key);
       if (!previous || (previous.expired && !expired)) bestByTrade.set(key, { zone, expired });
@@ -7650,9 +7661,13 @@ export const OandaProChart: React.FC = () => {
                            : zone.tapTime === undefined
                              ? 'VALID DOUBLE CHoCH · NO TRADE'
                              : marketSymbol === 'XAUUSD' && isGoldZoneOpportunityExpired(
-                               zone, displayCandles, granularity, marketConfig.pipSize,
+                               zone, displayCandles, granularity, marketConfig.pipSize, Infinity,
+                               displayedTrade?.filledAt === undefined ? undefined
+                                 : { price: displayedTrade.entry, filledAt: displayedTrade.filledAt },
                              )
                                ? `${zone.lastTapBarsAgo ?? zone.tapBarsAgo} bars · DISTANCE REACHED · NO NEW ENTRY`
+                               : marketSymbol === 'XAUUSD' && (zone.tapCount ?? 0) > 1
+                                 ? `${zone.lastTapBarsAgo ?? zone.tapBarsAgo} bars · TAP ${zone.tapCount} · NO NEW ENTRY`
                                : `${zone.lastTapBarsAgo ?? zone.tapBarsAgo} bars · ${confirmationLabel} CONFIRMED · TRADE`}
                       </td>
                     </tr>
@@ -7698,6 +7713,8 @@ export const OandaProChart: React.FC = () => {
                   const opportunityExpired = marketSymbol === 'XAUUSD'
                     && displayZoneMembers(zone).every((member) => isGoldZoneOpportunityExpired(
                       member, displayCandles, granularity, marketConfig.pipSize,
+                      Infinity, trade?.filledAt === undefined ? undefined
+                        : { price: trade.entry, filledAt: trade.filledAt },
                     ));
                   const confluenceLabels = confluenceBadgeLabels(zone);
                   const extremeAPlus = displayZoneMembers(zone).some((member) => (
@@ -7840,6 +7857,8 @@ export const OandaProChart: React.FC = () => {
                         </span>
                       ) : opportunityExpired ? (
                         <span className="text-rose-700">DISTANCE REACHED · NO NEW ENTRY</span>
+                      ) : marketSymbol === 'XAUUSD' && (latestTap?.count ?? 0) > 1 ? (
+                        <span className="text-rose-700">TAP {latestTap?.count} · NO NEW ENTRY</span>
                       ) : entryDecision && !entryDecision.policy.allowed ? (
                         <span className="text-rose-700">
                           {directEntryPolicyLabel(entryDecision.policy)} · NO TRADE

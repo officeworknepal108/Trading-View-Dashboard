@@ -1,5 +1,6 @@
 import {
   detectEngulfingPatternAt,
+  isGoldZoneEntryBlocked,
   type EngulfingDirection,
   type EngulfingType,
   type MarketStructureResult,
@@ -281,6 +282,7 @@ function findMtfEngulfing(
   zone: StructureZone,
   goldScalping = false,
   requireLtfFib = false,
+  goldZoneTimeframe?: MtfGranularity,
 ): { type: EngulfingType; time: number; candleCount: number; deepDiscount: boolean } | undefined {
   if (zone.tapTime === undefined) return undefined;
   const requiredDirection: EngulfingDirection = event.isBuy ? 'bullish' : 'bearish';
@@ -310,6 +312,9 @@ function findMtfEngulfing(
       && goldScalpingConfirmationWickPasses(candle, requiredDirection)))
     && zone.engulfingTime >= validFrom
     && zone.engulfingTime >= midlineTouchTime
+    && (!goldZoneTimeframe || !isGoldZoneEntryBlocked(
+      zone, candles, goldZoneTimeframe, 0.1, zone.engulfingTime,
+    ))
     && (zone.invalidatedAt === undefined || zone.engulfingTime < zone.invalidatedAt)) {
     return {
       type: zone.engulfingType,
@@ -330,6 +335,9 @@ function findMtfEngulfing(
     if (!pattern || pattern.direction !== requiredDirection
       || (goldScalping && (!isGoldScalpingEngulfingType(pattern.type)
         || !goldScalpingConfirmationWickPasses(finalCandle, requiredDirection)))) continue;
+    if (goldZoneTimeframe && isGoldZoneEntryBlocked(
+      zone, candles, goldZoneTimeframe, 0.1, finalCandle.time,
+    )) continue;
     const patternCandles = candles.slice(pattern.startIndex, pattern.endIndex + 1);
     const touchesTappedZone = patternCandles.some((candle) => (
       candle.time >= validFrom
@@ -360,6 +368,7 @@ function eventToRow(
   higherTimeframeTouch: { zone: StructureZone; time: number; sourcePairOverlaps: boolean },
   goldScalping = false,
   requireLtfFib = false,
+  goldZoneRules = false,
 ): MtfRow {
   const entry = !higherTimeframeTouch.sourcePairOverlaps ? undefined : event.zones
     .filter((zone) => zone.status !== 'rejected'
@@ -367,6 +376,7 @@ function eventToRow(
       && (zone.invalidatedAt === undefined || zone.tapTime < zone.invalidatedAt))
     .map((zone) => ({ zone, engulfing: findMtfEngulfing(
       lowerCandles, event, zone, goldScalping, requireLtfFib,
+      goldZoneRules ? mapping.lower : undefined,
     ) }))
     .filter((candidate): candidate is {
       zone: StructureZone;
@@ -481,6 +491,7 @@ function buildMtfRowsInternal(
           candidate.higherTimeframeTouch,
           goldScalping,
           requireLtfFib,
+          goldScalping || goldIntraday,
         ));
       }
     }
