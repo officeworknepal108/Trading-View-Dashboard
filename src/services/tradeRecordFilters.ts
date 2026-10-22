@@ -205,8 +205,10 @@ export function selectTradeChartRecords<T extends FilterableTradeRecord & {
     selected.push(...selectGoldIntradayAfterScalp(records));
   }
   if (projectGoldEntries && (chartTimeframe === 'M15' || chartTimeframe === 'H1')) {
-    selected.push(...records.filter((record) => record.tradeStyle === 'SCALPING'
-      && (record.signalTimeframe === 'M1' || record.signalTimeframe === 'M5')
+    selected.push(...records.filter((record) => ((record.tradeStyle === 'SCALPING'
+      && (record.signalTimeframe === 'M1' || record.signalTimeframe === 'M5'))
+      || (chartTimeframe === 'H1' && record.tradeStyle === 'INTRADAY'
+        && record.signalTimeframe !== 'H1'))
       && (record.result === 'tp' || record.result === 'sl' || record.result === 'rf')
       && typeof record.openedAt === 'number' && Number.isFinite(record.openedAt)));
   }

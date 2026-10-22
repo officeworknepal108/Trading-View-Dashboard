@@ -159,6 +159,32 @@ test('H1 shows completed M1/M5 scalps on their filled-entry hour alongside nativ
   assert.equal(JSON.stringify(rows), before);
 });
 
+test('H1 projects completed intraday trades by filled entry without changing other chart selections', () => {
+  const { intraday } = synchronizedFixture();
+  const m15 = { ...intraday, openedAt: 3599, completedAt: 4000 };
+  const m30 = { ...intraday, id: 'm30-intraday', signalTimeframe: 'M30' as const,
+    openedAt: 3600, completedAt: 5000 };
+  const mtf = { ...intraday, id: 'mtf-intraday', source: 'MTF' as const,
+    signalTimeframe: 'M5' as const, openedAt: 3650, completedAt: 5500 };
+  const hourly = { ...intraday, id: 'h1-intraday', signalTimeframe: 'H1' as const,
+    signalAt: 0, openedAt: 3600, completedAt: 6000 };
+  const rows = [m15, m30, mtf, hourly,
+    { ...m15, id: 'unfilled-intraday', openedAt: undefined },
+    { ...m15, id: 'open-intraday', result: 'open' as const },
+    { ...m15, id: 'outside-intraday', openedAt: 7200, completedAt: 8000 }];
+  const before = JSON.stringify(rows);
+  const selected = selectTradeChartRecords(rows, 'H1', [{ time: 0 }, { time: 3600 }], true);
+  assert.deepEqual(new Set(selected.map((record) => record.id)), new Set([m15.id, m30.id, mtf.id, hourly.id]));
+  assert.equal(selected.length, 4, 'each trade appears once');
+  assert.deepEqual(new Set(selectTradeChartRecords(rows, 'H1', [{ time: 0 }], true)
+    .map((record) => record.id)), new Set([m15.id, hourly.id]));
+  assert.deepEqual(new Set(selectTradeChartRecords(rows, 'H1', [{ time: 3600 }], true)
+    .map((record) => record.id)), new Set([m30.id, mtf.id]));
+  assert.deepEqual(selectTradeChartRecords(rows, 'H1', [{ time: 0 }]), [hourly]);
+  assert.deepEqual(selectTradeChartRecords([m15, m30, mtf, hourly], 'M15', [{ time: 900 }], true), [m15]);
+  assert.equal(JSON.stringify(rows), before);
+});
+
 test('RF and intraday SL outcomes keep the same prices and results in history and journal', () => {
   const { scalp, intraday, options } = synchronizedFixture();
   const source = options.timeframeData.M1!;
