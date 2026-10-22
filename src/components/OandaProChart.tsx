@@ -3525,8 +3525,27 @@ export const OandaProChart: React.FC = () => {
         projected ? record.openedAt ?? signalAt + TIMEFRAME_SECONDS[record.signalTimeframe]
           : signalAt);
     }
+    for (const overlay of visibleTradeOverlays) {
+      const trade = overlay.trade;
+      if (!overlay.referenceOnly || trade.filledAt === undefined) continue;
+      if (Array.from(entries.values()).some((entry) => entry.trade.signal.time === trade.signal.time
+        && entry.trade.entry === trade.entry)) continue;
+      const mtfRow = overlay.id.startsWith('MTF:')
+        ? mtfRows.find((row) => row.previewTrade?.signal.time === trade.signal.time
+          && row.previewTrade.entry === trade.entry)
+        : undefined;
+      const goldScalp = overlay.id.startsWith('GOLD_SCALP:');
+      add(overlay.id, trade,
+        mtfRow ? `${mtfRow.higherTimeframe} → ${mtfRow.lowerTimeframe} MTF`
+          : goldScalp ? 'GOLD SCALP' : 'CANDLE CONFIRMATION',
+        mtfRow?.tappedZone ?? mtfRow?.higherTimeframeZone
+          ?? tradeOverlayZoneLabel(overlay.label) ?? 'Chart entry',
+        overlay.fibLabels?.join(' · ') ?? 'Not recorded',
+        mtfRow?.goldScalping ? 'SCALP MTF' : goldScalp ? 'SCALPING' : 'INTRADAY',
+        true, trade.filledAt);
+    }
     return Array.from(entries.values());
-  }, [allSavedAccuracyRecords, displayCandles, granularity, marketSymbol, timeframeAccuracyRecords, tradingTimeEnabled, visibleAccuracyRecordIds]);
+  }, [allSavedAccuracyRecords, displayCandles, granularity, marketSymbol, mtfRows, timeframeAccuracyRecords, tradingTimeEnabled, visibleAccuracyRecordIds, visibleTradeOverlays]);
   const latestCandle = displayCandles[displayCandles.length - 1] || null;
   const previousCandle = displayCandles.length > 1 ? displayCandles[displayCandles.length - 2] : null;
   const headerCandlesByTime = useMemo(() => new Map(displayCandles.map((candle, index) => (
@@ -7100,7 +7119,9 @@ export const OandaProChart: React.FC = () => {
                 <span>RF</span><b>{hoveredEntry.entry.trade.riskFreeEnabled === false ? 'Not used' : formatPrice(hoveredEntry.entry.trade.riskFree)}</b>
                 <span>Risk/reward</span><b>1:{hoveredEntry.entry.trade.rewardRisk}</b>
                 {hoveredEntry.entry.tradingTimeBlocked
-                  ? <><span>Accuracy</span><b>{hoveredEntry.entry.trade.result?.toUpperCase()}</b></>
+                  ? hoveredEntry.entry.trade.result
+                    ? <><span>Accuracy</span><b>{hoveredEntry.entry.trade.result.toUpperCase()}</b></>
+                    : <><span>Status</span><b>OUTSIDE TRADING TIME · REFERENCE ENTRY</b></>
                   : <><span>Status</span><b>{tradeStatusLabel(hoveredEntry.entry.trade)}</b></>}
               </div>
             </div>
