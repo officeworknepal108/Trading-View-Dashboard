@@ -359,6 +359,38 @@ test('an old HTF tap does not qualify an unrelated LTF CHOCH outside that zone',
   assert.equal(rows.some((row) => row.confirmationKind === 'choch'), false);
 });
 
+test('Gold M15/M1 scalp table observes a CHOCH whose DB origin is inside the tapped zone without allowing entry', () => {
+  const candles = [
+    candle(100, 101, 103, 99, 102),
+    candle(200, 106, 108, 105, 107),
+    candle(300, 104, 108, 104, 107),
+  ];
+  const higherZone = zone({
+    id: 'm15-qml', bottom: 98.9, top: 103,
+  });
+  const qml = zone({
+    id: 'm1-qml', chochTime: 300, tjlPairTime: 150,
+    bottom: 104, top: 105,
+  });
+  const rbs = zone({
+    id: 'm1-rbs', name: 'RBS', chochTime: 300, tjlPairTime: 150,
+    bottom: 106, top: 108,
+  });
+  const db = zone({
+    id: 'm1-db', name: 'DB', chochTime: 300, bottom: 99, top: 100,
+  });
+  const data = {
+    M15: { candles, structure: structure([higherZone]) },
+    M1: { candles, structure: structure([qml, rbs, db]) },
+  };
+  const [row] = buildGoldScalpingMtfRows(data);
+  assert.equal(row?.higherTimeframeZoneId, 'm15-qml');
+  assert.equal(row?.confirmationTime, 300);
+  assert.equal(row?.sourcePairOverlapsHigherZone, false);
+  assert.equal(row?.engulfingType, undefined);
+  assert.equal(buildMtfRows(data).length, 0);
+});
+
 test('a later LTF structure outside the HTF zone is not an MTF CHOCH', () => {
   const lowerCandles = [
     candle(100, 106, 108, 105, 107),

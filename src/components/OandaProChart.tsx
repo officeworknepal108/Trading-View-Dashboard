@@ -952,6 +952,9 @@ function mtfZoneLabel(name: StructureZone['name'], majorLiquidity = false): stri
 }
 
 function mtfSignalLabel(row: DisplayMtfRow, trade: TradeLevels | undefined): string {
+  if (row.sourcePairOverlapsHigherZone === false) {
+    return 'CHOCH OBSERVED · SOURCE OUTSIDE ZONE · NO ENTRY';
+  }
   if (row.tradingTimeBlocked) return trade
     ? `ENTRY ${formatPrice(trade.entry)} · OUTSIDE TRADING TIME · NO TRADE`
     : 'OUTSIDE TRADING TIME · NO TRADE';
@@ -1050,7 +1053,7 @@ const MultiTimeframeEntryTable: React.FC<{
                     {MTF_TABLE_LABELS[row.higherTimeframe]} → {MTF_TABLE_LABELS[row.lowerTimeframe]}
                   </td>
                   <td className={`px-2 py-1 font-black whitespace-nowrap ${bullish ? 'text-emerald-700' : 'text-rose-700'}`}>
-                    {row.goldScalping && row.trade ? 'SCALP · ' : ''}{bullish ? 'Bullish' : 'Bearish'} {row.confirmationKind === 'choch' ? 'CHOCH' : 'ISS'}
+                    {row.goldScalping ? 'SCALP · ' : ''}{bullish ? 'Bullish' : 'Bearish'} {row.confirmationKind === 'choch' ? 'CHOCH' : 'ISS'}
                   </td>
                   <td className={`px-2 py-1 font-black whitespace-nowrap ${bullish ? 'text-emerald-700' : 'text-rose-700'}`}>
                     <div>{MTF_TABLE_LABELS[row.higherTimeframe]} {mtfZoneLabel(

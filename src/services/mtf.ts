@@ -46,6 +46,7 @@ export interface MtfRow {
   engulfingDeepDiscount?: boolean;
   engulfingFibBand?: '0.5-0.618' | '0.71-0.79';
   goldScalping?: boolean;
+  sourcePairOverlapsHigherZone?: boolean;
 }
 
 interface MtfMapping {
@@ -117,8 +118,9 @@ function latestHigherTimeframeTouch(
   candles: StructureCandle[],
   zones: StructureZone[],
   event: ConfirmationEvent,
-): { zone: StructureZone; time: number } | undefined {
-  let latest: { zone: StructureZone; time: number } | undefined;
+  includeOriginOnly = false,
+): { zone: StructureZone; time: number; sourcePairOverlaps: boolean } | undefined {
+  let latest: { zone: StructureZone; time: number; sourcePairOverlaps: boolean } | undefined;
   for (const zone of zones) {
     if (!zone.active || zone.status !== 'valid' || zone.isBuy !== event.isBuy) continue;
     // MTF is a location-specific reversal. The exact LTF TJL pair converted by
@@ -132,7 +134,11 @@ function latestHigherTimeframeTouch(
       && sourceZone.tjlPairTime === event.sourceStructureTime
       && overlaps(sourceZone.bottom, sourceZone.top, zone.bottom, zone.top)
     ));
-    if (!sourcePairIsInZone) continue;
+    const chochOriginIsInZone = event.zones.some((sourceZone) => (
+      (sourceZone.name === 'DB' || sourceZone.name === 'DT')
+      && overlaps(sourceZone.bottom, sourceZone.top, zone.bottom, zone.top)
+    ));
+    if (!sourcePairIsInZone && !(includeOriginOnly && chochOriginIsInZone)) continue;
     let insideZone = false;
     let latestTapTime: number | undefined;
     for (const candle of candles) {
@@ -152,10 +158,12 @@ function latestHigherTimeframeTouch(
       }
       insideZone = overlaps;
     }
-    if (latestTapTime !== undefined && (latest === undefined || latestTapTime > latest.time
-      || (latestTapTime === latest.time && zone.majorLiquidity === true
-        && latest.zone.majorLiquidity !== true))) {
-      latest = { zone, time: latestTapTime };
+    if (latestTapTime !== undefined && (latest === undefined
+      || (sourcePairIsInZone && !latest.sourcePairOverlaps)
+      || (sourcePairIsInZone === latest.sourcePairOverlaps && (latestTapTime > latest.time
+        || (latestTapTime === latest.time && zone.majorLiquidity === true
+          && latest.zone.majorLiquidity !== true))))) {
+      latest = { zone, time: latestTapTime, sourcePairOverlaps: sourcePairIsInZone };
     }
   }
   return latest;
@@ -349,11 +357,11 @@ function eventToRow(
   event: ConfirmationEvent,
   lowerCandles: StructureCandle[],
   higherCandles: StructureCandle[],
-  higherTimeframeTouch: { zone: StructureZone; time: number },
+  higherTimeframeTouch: { zone: StructureZone; time: number; sourcePairOverlaps: boolean },
   goldScalping = false,
   requireLtfFib = false,
 ): MtfRow {
-  const entry = event.zones
+  const entry = !higherTimeframeTouch.sourcePairOverlaps ? undefined : event.zones
     .filter((zone) => zone.status !== 'rejected'
       && zone.tapTime !== undefined && zone.tapTime >= event.time
       && (zone.invalidatedAt === undefined || zone.tapTime < zone.invalidatedAt))
@@ -413,6 +421,7 @@ function eventToRow(
     engulfingDeepDiscount: engulfing?.deepDiscount,
     engulfingFibBand,
     goldScalping: goldScalping || undefined,
+    sourcePairOverlapsHigherZone: higherTimeframeTouch.sourcePairOverlaps,
     engulfingBarsAgo: engulfingIndex < 0
       ? undefined
       : lowerCandles.length - 1 - engulfingIndex,
@@ -452,11 +461,12 @@ function buildMtfRowsInternal(
             lower.candles,
             higher.structure.zones,
             event,
+            goldScalping && mapping.higher === 'M15' && mapping.lower === 'M1',
           ),
         }))
         .filter((item): item is {
           event: ConfirmationEvent;
-          higherTimeframeTouch: { zone: StructureZone; time: number };
+          higherTimeframeTouch: { zone: StructureZone; time: number; sourcePairOverlaps: boolean };
         } => item.higherTimeframeTouch !== undefined
           && (!goldScalping || isGoldScalpingChochZone(
             mapping.higher,
