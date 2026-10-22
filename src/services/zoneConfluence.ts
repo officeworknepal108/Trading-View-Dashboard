@@ -1,4 +1,4 @@
-import type { StructureZone } from './marketStructure';
+import type { StructureLine, StructureZone } from './marketStructure';
 
 export const ZONE_CONFLUENCE_PRICE_TOLERANCE = 0.1;
 
@@ -81,6 +81,7 @@ function priceRangesOverlap(first: StructureZone, second: StructureZone): boolea
 export interface ComparisonZone {
   zone: StructureZone;
   overlapsCurrentZone: boolean;
+  visibleFromTime?: number;
 }
 
 /** Keep the five most recent active, valid zones on each side of one timeframe. */
@@ -107,6 +108,44 @@ export function selectRecentComparisonZones(
       zone,
       overlapsCurrentZone: currentChartZones.some((current) => priceRangesOverlap(zone, current)),
     }));
+}
+
+export function selectLtfChochContext(
+  chartZones: readonly StructureZone[],
+  lowerZones: readonly StructureZone[],
+  lowerLines: readonly StructureLine[],
+  currentTime: number,
+): { zones: ComparisonZone[]; confirmations: Array<{ zone: StructureZone; line: StructureLine }> } {
+  const tappedZones = chartZones.filter((zone) => zone.active && zone.status === 'valid'
+    && zone.tapTime !== undefined && zone.tapTime <= currentTime)
+    .sort((first, second) => (second.lastTapTime ?? second.tapTime ?? 0)
+      - (first.lastTapTime ?? first.tapTime ?? 0)).slice(0, 4);
+  if (tappedZones.length === 0) return { zones: [], confirmations: [] };
+  const eligibleZones = lowerZones.filter((zone) => zone.category === 'mg'
+    && (zone.name === 'TJL1' || zone.name === 'TJL2')
+    && zone.active && (zone.status === 'valid' || zone.status === 'pending')
+    && zone.startTime <= currentTime && zone.top > zone.bottom);
+  const zones = (['TJL1', 'TJL2'] as const).flatMap((name) => (
+    eligibleZones.filter((zone) => zone.name === name)
+      .sort((first, second) => second.startTime - first.startTime)
+      .slice(0, 3)
+      .map((zone) => ({
+        zone,
+        visibleFromTime: Math.max(zone.startTime,
+          Math.min(...tappedZones.map((higherZone) => higherZone.tapTime!))),
+        overlapsCurrentZone: tappedZones.some((higherZone) => (
+          priceRangesOverlap(zone, higherZone)
+        )),
+      }))
+  ));
+  const confirmations = tappedZones.flatMap((zone) => {
+    const line = [...lowerLines].reverse().find((candidate) => candidate.type === 'choch'
+      && candidate.direction === (zone.isBuy ? 'bullish' : 'bearish')
+      && candidate.toTime >= zone.tapTime!
+      && candidate.toTime <= currentTime);
+    return line ? [{ zone, line }] : [];
+  });
+  return { zones, confirmations };
 }
 
 function priceRangeGap(first: StructureZone, second: StructureZone): number {

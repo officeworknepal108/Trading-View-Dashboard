@@ -1,10 +1,11 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import type { StructureZone } from '../src/services/marketStructure';
+import type { StructureLine, StructureZone } from '../src/services/marketStructure';
 import {
   consolidateZonesForDisplay,
   displayZoneMembers,
   redundantStandaloneLiquidityZoneIds,
+  selectLtfChochContext,
   selectRecentComparisonZones,
   selectExtremeAPlusTjl2Zones,
 } from '../src/services/zoneConfluence';
@@ -66,6 +67,30 @@ test('comparison keeps the most recent buy and sell zones independently', () => 
   assert.equal(selected.filter(({ zone: item }) => item.isBuy).length, 5);
   assert.equal(selected.filter(({ zone: item }) => !item.isBuy).length, 5);
   assert.equal(selected.some(({ zone: item }) => item.id === 'buy-0' || item.id === 'sell-0'), false);
+});
+
+test('LTF CHoCH waits for an HTF tap and shows both lower TJL zones before confirmation', () => {
+  const higher = zone({ id: 'm15-buy', tapTime: 500 });
+  const lowerZones = [
+    zone({ id: 'm1-tjl1', name: 'TJL1', isBuy: false, status: 'pending' }),
+    zone({ id: 'm1-tjl2', name: 'TJL2', isBuy: false }),
+    zone({ id: 'other-side', name: 'TJL2', isBuy: true, startTime: 90 }),
+  ];
+  const lines: StructureLine[] = [
+    { id: 'early', type: 'choch', direction: 'bullish', fromTime: 100,
+      fromPrice: 4150, toTime: 450, toPrice: 4150 },
+    { id: 'confirmed', type: 'choch', direction: 'bullish', fromTime: 500,
+      fromPrice: 4150, toTime: 600, toPrice: 4150 },
+  ];
+  assert.deepEqual(selectLtfChochContext([higher], lowerZones, lines, 499),
+    { zones: [], confirmations: [] });
+  const waiting = selectLtfChochContext([higher], lowerZones, lines, 550);
+  assert.deepEqual(waiting.zones.map(({ zone: item }) => item.id),
+    ['m1-tjl1', 'm1-tjl2', 'other-side']);
+  assert.equal(waiting.zones[0]?.visibleFromTime, 500);
+  assert.equal(waiting.confirmations.length, 0);
+  const confirmed = selectLtfChochContext([higher], lowerZones, lines, 650);
+  assert.equal(confirmed.confirmations[0]?.line.id, 'confirmed');
 });
 
 test('same-direction TJL2 and Internal DB display as one TJL2 confluence zone', () => {

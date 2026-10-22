@@ -120,6 +120,7 @@ import {
   consolidateZonesForDisplay,
   displayZoneMembers,
   redundantStandaloneLiquidityZoneIds,
+  selectLtfChochContext,
   selectRecentComparisonZones,
   selectExtremeAPlusTjl2Zones,
   type DisplayStructureZone,
@@ -1600,6 +1601,7 @@ export const OandaProChart: React.FC = () => {
   const [mt5BridgeControlError, setMt5BridgeControlError] = useState<string | null>(null);
   const [showIndicatorControls, setShowIndicatorControls] = useState(false);
   const [showZoneComparison, setShowZoneComparison] = useState(false);
+  const [showLtfChoch, setShowLtfChoch] = useState(false);
   const [comparisonTimeframe, setComparisonTimeframe] = useState<OandaGranularity | null>(null);
   const [hiddenComparisonZoneKeys, setHiddenComparisonZoneKeys] = useState<string[]>([]);
   const [showDrawingTools, setShowDrawingTools] = useState(false);
@@ -2373,14 +2375,28 @@ export const OandaProChart: React.FC = () => {
         : tableTimeframeData[timeframe]?.structure.zones
     )));
   }, [displayZones, expiredGoldZoneBeforeSignal, granularity, pendingM15DbBlocksSignal, tableTimeframeData]);
+  const ltfChochContext = useMemo(() => {
+    if (!showLtfChoch || !comparisonTimeframe
+      || DRAWING_TIMEFRAME_ORDER.indexOf(comparisonTimeframe)
+        >= DRAWING_TIMEFRAME_ORDER.indexOf(granularity)) return null;
+    const lowerData = tableTimeframeData[comparisonTimeframe];
+    const chartTime = displayCandles[displayCandles.length - 1]?.time;
+    if (!lowerData || chartTime === undefined) return null;
+    const lowerTime = lowerData.candles[lowerData.candles.length - 1]?.time ?? chartTime;
+    const currentTime = Math.min(Math.max(chartTime, lowerTime),
+      chartTime + TIMEFRAME_SECONDS[granularity] - 1);
+    return selectLtfChochContext(displayZones, lowerData.structure.zones,
+      lowerData.structure.lines, currentTime);
+  }, [comparisonTimeframe, displayCandles, displayZones, granularity, showLtfChoch, tableTimeframeData]);
   const comparisonZones = useMemo(() => {
     if (!comparisonTimeframe || comparisonTimeframe === granularity) return [];
+    if (ltfChochContext) return ltfChochContext.zones;
     const sourceZones = tableTimeframeData[comparisonTimeframe]?.structure.zones ?? [];
     const currentTime = displayCandles[displayCandles.length - 1]?.time;
     return currentTime === undefined ? [] : selectRecentComparisonZones(
       sourceZones, displayZones, currentTime,
     );
-  }, [comparisonTimeframe, displayCandles, displayZones, granularity, tableTimeframeData]);
+  }, [comparisonTimeframe, displayCandles, displayZones, granularity, ltfChochContext, tableTimeframeData]);
   const visibleComparisonZones = useMemo(() => comparisonZones.filter(({ zone }) => (
     !hiddenComparisonZoneKeys.includes(`${marketSymbol}:${comparisonTimeframe}:${zone.id}`)
   )), [comparisonTimeframe, comparisonZones, hiddenComparisonZoneKeys, marketSymbol]);
@@ -3911,21 +3927,27 @@ export const OandaProChart: React.FC = () => {
     // Interpolating logical coordinates also places lower-timeframe origins between chart bars.
     const latestLogicalIndex = displayCandles.length - 1;
     const comparisonEndX = chart.timeScale().logicalToCoordinate(latestLogicalIndex + 50);
-    for (const { zone, overlapsCurrentZone } of visibleComparisonZones) {
+    for (const { zone, overlapsCurrentZone, visibleFromTime } of visibleComparisonZones) {
       if (comparisonEndX === null) continue;
+      const sourceStartTime = visibleFromTime ?? zone.startTime;
       let nextIndex = 0;
       let high = displayCandles.length;
       while (nextIndex < high) {
         const middle = Math.floor((nextIndex + high) / 2);
-        if (displayCandles[middle].time < zone.startTime) nextIndex = middle + 1;
+        if (displayCandles[middle].time < sourceStartTime) nextIndex = middle + 1;
         else high = middle;
       }
       let originLogicalIndex = 0;
       if (nextIndex > 0 && nextIndex < displayCandles.length) {
         const previous = displayCandles[nextIndex - 1];
         const next = displayCandles[nextIndex];
-        originLogicalIndex = nextIndex - 1 + (zone.startTime - previous.time)
+        originLogicalIndex = nextIndex - 1 + (sourceStartTime - previous.time)
           / Math.max(1, next.time - previous.time);
+      } else if (nextIndex === displayCandles.length) {
+        const last = displayCandles[latestLogicalIndex];
+        if (sourceStartTime >= last.time + TIMEFRAME_SECONDS[granularity]) continue;
+        originLogicalIndex = latestLogicalIndex
+          + (sourceStartTime - last.time) / TIMEFRAME_SECONDS[granularity];
       }
       const comparisonStartX = chart.timeScale().logicalToCoordinate(originLogicalIndex);
       if (comparisonStartX === null) continue;
@@ -3986,6 +4008,35 @@ export const OandaProChart: React.FC = () => {
       });
       box.appendChild(closeButton);
       fragment.appendChild(box);
+    }
+    const shownLtfConfirmations = new Set<string>();
+    for (const { line } of ltfChochContext?.confirmations ?? []) {
+      const key = `${line.toTime}:${line.direction}`;
+      if (shownLtfConfirmations.has(key)) continue;
+      shownLtfConfirmations.add(key);
+      const confirmedAt = line.toTime + TIMEFRAME_SECONDS[comparisonTimeframe!];
+      const chartCandle = [...displayCandles].reverse().find((candle) => candle.time < confirmedAt);
+      if (!chartCandle || confirmedAt > chartCandle.time + TIMEFRAME_SECONDS[granularity]) continue;
+      if (visibleTimeRange && (chartCandle.time < Number(visibleTimeRange.from)
+        || chartCandle.time > Number(visibleTimeRange.to))) continue;
+      const x = chart.timeScale().timeToCoordinate(chartCandle.time as UTCTimestamp);
+      const y = series.priceToCoordinate(line.toPrice);
+      if (x === null || y === null || x < 0 || x > rightEdge) continue;
+      const badge = document.createElement('div');
+      badge.style.position = 'absolute';
+      badge.style.left = `${x}px`;
+      badge.style.top = `${Math.max(0, y + (line.direction === 'bullish' ? 10 : -24))}px`;
+      badge.style.transform = 'translateX(-50%)';
+      badge.style.padding = '2px 5px';
+      badge.style.borderRadius = '4px';
+      badge.style.background = line.direction === 'bullish' ? '#dcfce7' : '#ffe4e6';
+      badge.style.color = line.direction === 'bullish' ? '#166534' : '#9f1239';
+      badge.style.fontSize = '9px';
+      badge.style.fontWeight = '800';
+      badge.style.whiteSpace = 'nowrap';
+      badge.style.pointerEvents = 'none';
+      badge.textContent = `${GRANULARITY_LABELS[comparisonTimeframe!]} CHoCH CONFIRMED`;
+      fragment.appendChild(badge);
     }
     for (const zone of oneMinuteScalpingZones) {
       if (visibleTimeRange && (zone.endTime < Number(visibleTimeRange.from)
@@ -4707,7 +4758,7 @@ export const OandaProChart: React.FC = () => {
     // Swap the complete overlay in one operation so the browser does not
     // perform layout work for every individual zone, line, and label.
     layer.replaceChildren(fragment);
-  }, [comparisonTimeframe, directZoneTrades, displayCandles.length, extremeAPlusTjl2Selection, granularity, latestCandle?.time, marketConfig.pipSize, marketSymbol, mtfRows, oneMinuteScalpingZones, replayIndex, visibleComparisonZones, zoneTableRows]);
+  }, [comparisonTimeframe, directZoneTrades, displayCandles, extremeAPlusTjl2Selection, granularity, latestCandle?.time, ltfChochContext, marketConfig.pipSize, marketSymbol, mtfRows, oneMinuteScalpingZones, replayIndex, visibleComparisonZones, zoneTableRows]);
 
   redrawZonesRef.current = redrawZones;
 
@@ -5298,7 +5349,14 @@ export const OandaProChart: React.FC = () => {
       setReplaySelectionIndex(null);
     }
     setGranularity(nextGranularity);
-    if (comparisonTimeframe === nextGranularity) setComparisonTimeframe(null);
+    if (comparisonTimeframe === nextGranularity) {
+      setComparisonTimeframe(null);
+      setShowLtfChoch(false);
+    } else if (showLtfChoch && (!comparisonTimeframe
+      || DRAWING_TIMEFRAME_ORDER.indexOf(comparisonTimeframe)
+        >= DRAWING_TIMEFRAME_ORDER.indexOf(nextGranularity))) {
+      setShowLtfChoch(false);
+    }
   };
 
   const changeLiveChartDataSource = (nextSource: LiveChartDataSource) => {
@@ -6794,12 +6852,42 @@ export const OandaProChart: React.FC = () => {
                     </div>
                     <button
                       type="button"
-                      onClick={() => setComparisonTimeframe(null)}
+                      onClick={() => {
+                        setComparisonTimeframe(null);
+                        setShowLtfChoch(false);
+                      }}
                       className="rounded border border-slate-200 bg-white px-2 py-1 text-[8px] font-black text-slate-600 hover:bg-slate-100"
                     >
                       REMOVE ALL
                     </button>
                   </div>
+                  <button
+                    type="button"
+                    aria-pressed={showLtfChoch}
+                    disabled={granularity === 'M1'}
+                    onClick={() => {
+                      if (!showLtfChoch && (!comparisonTimeframe
+                        || DRAWING_TIMEFRAME_ORDER.indexOf(comparisonTimeframe)
+                          >= DRAWING_TIMEFRAME_ORDER.indexOf(granularity))) {
+                        const preferred = MTF_MAPPINGS.find((mapping) => mapping.higher === granularity)?.lower;
+                        setComparisonTimeframe(preferred ?? DRAWING_TIMEFRAME_ORDER[
+                          DRAWING_TIMEFRAME_ORDER.indexOf(granularity) - 1
+                        ]);
+                      }
+                      setShowLtfChoch((value) => !value);
+                    }}
+                    className={`mb-1 rounded border px-2 py-1 text-[9px] font-black ${showLtfChoch
+                      ? 'border-violet-300 bg-violet-100 text-violet-800'
+                      : 'border-slate-200 bg-white text-slate-600'} disabled:opacity-50`}
+                    title="After a chart zone tap, show lower-timeframe TJL1/TJL2 and its CHoCH on this chart"
+                  >
+                    LTF CHocH {showLtfChoch ? 'ON' : 'OFF'}
+                  </button>
+                  {showLtfChoch && (
+                    <div className="mb-2 text-[8px] text-slate-600">
+                      Lower TJL1/TJL2 appear after a chart zone tap. A confirmed lower CHoCH appears on this chart.
+                    </div>
+                  )}
                   <div className="mb-2 flex flex-wrap gap-1">
                     {DRAWING_TIMEFRAME_ORDER.filter((value) => value !== granularity).map((value) => {
                       const higher = DRAWING_TIMEFRAME_ORDER.indexOf(value)
@@ -6808,7 +6896,10 @@ export const OandaProChart: React.FC = () => {
                         <button
                           key={value}
                           type="button"
-                          onClick={() => setComparisonTimeframe(value)}
+                          onClick={() => {
+                            setComparisonTimeframe(value);
+                            if (higher) setShowLtfChoch(false);
+                          }}
                           aria-pressed={comparisonTimeframe === value}
                           className={`rounded border px-2 py-1 text-[8px] font-black ${
                             comparisonTimeframe === value
@@ -6826,7 +6917,9 @@ export const OandaProChart: React.FC = () => {
                   ) : !tableTimeframeData[comparisonTimeframe] ? (
                     <div className="text-[9px] text-slate-500">Loading {GRANULARITY_LABELS[comparisonTimeframe]} zones...</div>
                   ) : comparisonZones.length === 0 ? (
-                    <div className="text-[9px] text-slate-500">No active, valid zones on this timeframe.</div>
+                    <div className="text-[9px] text-slate-500">{ltfChochContext
+                      ? 'Waiting for a chart zone tap or a relevant lower TJL1/TJL2.'
+                      : 'No active, valid zones on this timeframe.'}</div>
                   ) : (
                     <div className="space-y-1">
                       {comparisonZones.map(({ zone, overlapsCurrentZone }) => {
