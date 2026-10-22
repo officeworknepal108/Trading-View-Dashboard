@@ -1,4 +1,5 @@
-import type { StructureLine, StructureZone } from './marketStructure';
+import type { StructureCandle, StructureLine, StructureZone } from './marketStructure';
+import { matchMtfChochEvents } from './mtf';
 
 export const ZONE_CONFLUENCE_PRICE_TOLERANCE = 0.1;
 
@@ -115,22 +116,38 @@ export function selectLtfChochContext(
   lowerZones: readonly StructureZone[],
   lowerLines: readonly StructureLine[],
   currentTime: number,
-): { zones: ComparisonZone[]; confirmations: Array<{ zone: StructureZone; line: StructureLine }> } {
+  lowerCandles: readonly StructureCandle[],
+  includeOriginOnly = false,
+): { zones: ComparisonZone[]; confirmations: Array<{
+  zone: StructureZone; line: StructureLine; chochSequence: number;
+}> } {
   const tappedZone = chartZones.filter((zone) => zone.active && zone.status === 'valid'
     && zone.tapTime !== undefined && zone.tapTime <= currentTime)
     .sort((first, second) => (second.lastTapTime ?? second.tapTime ?? 0)
       - (first.lastTapTime ?? first.tapTime ?? 0))[0];
   if (!tappedZone) return { zones: [], confirmations: [] };
-  const tapTime = tappedZone.lastTapTime ?? tappedZone.tapTime!;
+  const tapTime = tappedZone.tapTime!;
   const display = (zone: StructureZone): ComparisonZone => ({
     zone,
     visibleFromTime: Math.max(zone.startTime, zone.activeFromTime ?? zone.startTime, tapTime),
     overlapsCurrentZone: priceRangesOverlap(zone, tappedZone),
   });
-  const line = lowerLines.filter((candidate) => candidate.type === 'choch'
+  const matchedEvents = matchMtfChochEvents(lowerCandles, lowerZones, chartZones, includeOriginOnly)
+    .filter((item) => item.higherTimeframeTouch.zone.id === tappedZone.id);
+  const relatedLines = lowerLines.filter((candidate) => candidate.type === 'choch'
     && candidate.direction === (tappedZone.isBuy ? 'bullish' : 'bearish')
-    && candidate.toTime >= tapTime && candidate.toTime <= currentTime)
-    .sort((first, second) => second.toTime - first.toTime)[0];
+    && candidate.toTime >= tapTime && candidate.toTime <= currentTime
+    && (candidate.label === 'DOUBLE CHoCH'
+      ? lowerZones.some((zone) => zone.category === 'mg'
+        && zone.isBuy === tappedZone.isBuy && zone.doubleChochTime === candidate.toTime
+        && priceRangesOverlap(zone, tappedZone))
+      : matchedEvents.some((item) => item.event.structureScope === 'external'
+        && item.event.time === candidate.toTime)))
+    .sort((first, second) => first.toTime - second.toTime)
+    .filter((candidate, index, lines) => lines.findIndex((item) => (
+      item.toTime === candidate.toTime
+    )) === index);
+  const line = relatedLines[relatedLines.length - 1];
   if (line) {
     const doubleChoch = line.label === 'DOUBLE CHoCH';
     const zoneNames: StructureZone['name'][] = doubleChoch
@@ -144,7 +161,11 @@ export function selectLtfChochContext(
       .sort((first, second) => zoneNames.indexOf(first.name) - zoneNames.indexOf(second.name));
     return {
       zones: chochZones.map(display),
-      confirmations: [{ zone: tappedZone, line }],
+      confirmations: relatedLines.map((item) => ({
+        zone: tappedZone, line: item,
+        chochSequence: matchedEvents.find((event) => event.event.time === item.toTime)
+          ?.chochSequence ?? 1,
+      })),
     };
   }
   const pairs = new Map<number, { tjl1?: StructureZone; tjl2?: StructureZone }>();

@@ -47,6 +47,7 @@ import {
   buildMtfHistoryRows,
   buildMtfRows,
   getSavedMtfEntryQualification,
+  mtfChochSequenceLabel,
   type MtfGranularity,
   type MtfRow,
 } from '../services/mtf';
@@ -957,6 +958,7 @@ function mtfZoneLabel(name: StructureZone['name'], majorLiquidity = false): stri
 }
 
 function mtfSignalLabel(row: DisplayMtfRow, trade: TradeLevels | undefined): string {
+  if ((row.chochSequence ?? 1) > 1) return mtfChochSequenceLabel(row.chochSequence!);
   if (row.sourcePairOverlapsHigherZone === false) {
     return 'CHOCH OBSERVED · SOURCE OUTSIDE ZONE · NO ENTRY';
   }
@@ -2386,8 +2388,9 @@ export const OandaProChart: React.FC = () => {
     const currentTime = Math.min(Math.max(chartTime, lowerTime),
       chartTime + TIMEFRAME_SECONDS[granularity] - 1);
     return selectLtfChochContext(displayZones, lowerData.structure.zones,
-      lowerData.structure.lines, currentTime);
-  }, [comparisonTimeframe, displayCandles, displayZones, granularity, showLtfChoch, tableTimeframeData]);
+      lowerData.structure.lines, currentTime, lowerData.candles,
+      marketSymbol === 'XAUUSD' && granularity === 'M15' && comparisonTimeframe === 'M1');
+  }, [comparisonTimeframe, displayCandles, displayZones, granularity, marketSymbol, showLtfChoch, tableTimeframeData]);
   const comparisonZones = useMemo(() => {
     if (!comparisonTimeframe || comparisonTimeframe === granularity) return [];
     if (ltfChochContext) return ltfChochContext.zones;
@@ -2582,6 +2585,18 @@ export const OandaProChart: React.FC = () => {
       row.higherTimeframe === granularity || row.lowerTimeframe === granularity
     ))
   ), [allMtfTradeRows, granularity]);
+
+  const repeatedLtfChochLabels = useMemo(() => {
+    const rows = marketSymbol === 'XAUUSD'
+      ? [...buildGoldScalpingMtfHistoryRows(tableTimeframeData, mtfLtfFibRequired),
+        ...buildGoldIntradayMtfHistoryRows(tableTimeframeData, mtfLtfFibRequired)]
+      : buildMtfHistoryRows(tableTimeframeData, mtfLtfFibRequired);
+    return new Map(rows.filter((row) => row.lowerTimeframe === granularity
+      && (row.chochSequence ?? 1) > 1)
+      .sort((first, second) => first.higherTimeframeTapTime - second.higherTimeframeTapTime)
+      .map((row) => [`${row.structureScope}:${row.confirmationTime}`,
+        mtfChochSequenceLabel(row.chochSequence!)]));
+  }, [granularity, marketSymbol, mtfLtfFibRequired, tableTimeframeData]);
 
   const savedChartMtfEntryQualification = useCallback((entry: {
     id: string;
@@ -4013,7 +4028,7 @@ export const OandaProChart: React.FC = () => {
       fragment.appendChild(box);
     }
     const shownLtfConfirmations = new Set<string>();
-    for (const { line } of ltfChochContext?.confirmations ?? []) {
+    for (const { line, chochSequence } of ltfChochContext?.confirmations ?? []) {
       const key = `${line.toTime}:${line.direction}`;
       if (shownLtfConfirmations.has(key)) continue;
       shownLtfConfirmations.add(key);
@@ -4038,7 +4053,7 @@ export const OandaProChart: React.FC = () => {
       badge.style.fontWeight = '800';
       badge.style.whiteSpace = 'nowrap';
       badge.style.pointerEvents = 'none';
-      badge.textContent = `${GRANULARITY_LABELS[comparisonTimeframe!]} CHoCH CONFIRMED`;
+      badge.textContent = `${GRANULARITY_LABELS[comparisonTimeframe!]} ${mtfChochSequenceLabel(chochSequence)}${chochSequence === 1 ? ' CONFIRMED' : ''}`;
       fragment.appendChild(badge);
     }
     for (const zone of oneMinuteScalpingZones) {
@@ -4555,10 +4570,14 @@ export const OandaProChart: React.FC = () => {
         if (!isSwing && !isIssLine) line.setAttribute('stroke-dasharray', '4 3');
         svg.appendChild(line);
 
-        if (structureLine.label) {
+        const structureLabel = structureLine.type === 'choch' || structureLine.type === 'internal-choch'
+          ? repeatedLtfChochLabels.get(`${isInternalLine ? 'internal' : 'external'}:${structureLine.toTime}`)
+            ?? structureLine.label
+          : structureLine.label;
+        if (structureLabel) {
           const labelX = (x1 + x2) / 2;
           const preferredLabelY = y1 - 5;
-          const labelWidth = Math.max(28, structureLine.label.length * 5);
+          const labelWidth = Math.max(28, structureLabel.length * 5);
           const labelHeight = 10;
           let labelY = preferredLabelY;
           for (let attempt = 0; attempt < 20; attempt += 1) {
@@ -4590,7 +4609,7 @@ export const OandaProChart: React.FC = () => {
           text.setAttribute('fill-opacity', '0.55');
           text.setAttribute('font-size', '8');
           text.setAttribute('font-weight', '600');
-          text.textContent = structureLine.label;
+          text.textContent = structureLabel;
           svg.appendChild(text);
         }
       }
@@ -4761,7 +4780,7 @@ export const OandaProChart: React.FC = () => {
     // Swap the complete overlay in one operation so the browser does not
     // perform layout work for every individual zone, line, and label.
     layer.replaceChildren(fragment);
-  }, [comparisonTimeframe, directZoneTrades, displayCandles, extremeAPlusTjl2Selection, granularity, latestCandle?.time, ltfChochContext, marketConfig.pipSize, marketSymbol, mtfRows, oneMinuteScalpingZones, replayIndex, visibleComparisonZones, zoneTableRows]);
+  }, [comparisonTimeframe, directZoneTrades, displayCandles, extremeAPlusTjl2Selection, granularity, latestCandle?.time, ltfChochContext, marketConfig.pipSize, marketSymbol, mtfRows, oneMinuteScalpingZones, repeatedLtfChochLabels, replayIndex, visibleComparisonZones, zoneTableRows]);
 
   redrawZonesRef.current = redrawZones;
 

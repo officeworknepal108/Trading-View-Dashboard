@@ -7,6 +7,7 @@ import {
   buildMtfRows,
   getSavedMtfEntryQualification,
   isSavedMtfEntryQualified,
+  mtfChochSequenceLabel,
   type MtfTimeframeData,
 } from '../src/services/mtf';
 import type { MarketStructureResult, StructureCandle, StructureZone } from '../src/services/marketStructure';
@@ -86,7 +87,7 @@ test('Gold H1/M1 CHOCH route needs lower-timeframe Fib on a 50 pip zone', () => 
   assert.equal(buildMtfRows(data).length, 0);
 });
 
-test('MTF row follows the selected LTF CHOCH and promotes only an A+ engulfing', () => {
+test('a newer CHOCH in the same HTF zone cannot replace the first CHOCH entry', () => {
   const lowerCandles = [
     candle(100, 104, 105, 101, 102),
     candle(200, 103, 104, 101, 102),
@@ -139,12 +140,138 @@ test('MTF row follows the selected LTF CHOCH and promotes only an A+ engulfing',
   assert.equal(row?.confirmationBarsAgo, 2);
   assert.equal(row?.tappedZone, 'QML');
   assert.equal(row?.tapBarsAgo, 1);
-  assert.equal(row?.engulfingType, 'T4');
-  assert.equal(row?.engulfingBarsAgo, 0);
-  assert.equal(row?.engulfingDeepDiscount, false);
+  assert.equal(row?.chochSequence, 2);
+  assert.equal(row?.engulfingType, undefined);
+  assert.equal(row?.engulfingBarsAgo, undefined);
+  assert.equal(buildMtfRows(data).some((item) => item.chochSequence === 1), true,
+    'the compact table keeps the first setup beside the newer blocked CHOCH');
   assert.equal(buildMtfHistoryRows(data).filter((candidate) => (
     candidate.higherTimeframe === 'H1' && candidate.lowerTimeframe === 'M5'
-  )).length, 2, 'history retains the older MTF setup that the compact table omits');
+  )).length, 2, 'history retains both events with only the first eligible');
+});
+
+function repeatedChochFixture(isBuy = true, count = 3) {
+  const candles = Array.from({ length: count }, (_, index) => {
+    const offset = index * 500;
+    return [
+      candle(100 + offset, 104, 105, 101, 102),
+      candle(200 + offset, 103, 104, 101, 102),
+      candle(300 + offset, 102, 108, 101, 107),
+      candle(400 + offset, 107, 109, 103, 104),
+      candle(500 + offset, 104, 110, 103, 109.5),
+    ];
+  }).flat();
+  const zones = Array.from({ length: count }, (_, index) => {
+    const offset = index * 500;
+    return [
+      zone({ id: `qml-${index}`, chochTime: 300 + offset,
+        startTime: 100 + offset, activeFromTime: 300 + offset,
+        tjlPairTime: 50 + offset, bottom: 103, top: 105, tapTime: 400 + offset,
+        fibSourcePrice: 100, fibZeroPrice: 110 }),
+      zone({ id: `rbs-${index}`, name: 'RBS', chochTime: 300 + offset,
+        startTime: 150 + offset, activeFromTime: 300 + offset,
+        tjlPairTime: 50 + offset, bottom: 105, top: 106 }),
+      zone({ id: `db-${index}`, name: 'DB', chochTime: 300 + offset,
+        startTime: 100 + offset, activeFromTime: 300 + offset,
+        bottom: 99, top: 100 }),
+    ];
+  }).flat();
+  const higher = zone({ id: 'same-htf-zone', bottom: 101, top: 106,
+    tapTime: 100, lastTapTime: 1200, tapCount: 2 });
+  if (!isBuy) {
+    for (const item of candles) {
+      const { open, high, low, close } = item;
+      Object.assign(item, { open: 220 - open, high: 220 - low,
+        low: 220 - high, close: 220 - close });
+    }
+    for (const item of [higher, ...zones]) {
+      const { bottom, top } = item;
+      Object.assign(item, { bottom: 220 - top, top: 220 - bottom, isBuy: false,
+        name: item.name === 'RBS' ? 'SBR' : item.name === 'DB' ? 'DT' : item.name,
+        fibSourcePrice: item.fibSourcePrice === undefined ? undefined : 220 - item.fibSourcePrice,
+        fibZeroPrice: item.fibZeroPrice === undefined ? undefined : 220 - item.fibZeroPrice });
+    }
+  }
+  const higherData = { candles, structure: structure([higher]) };
+  const lowerData = { candles, structure: structure(zones) };
+  return { candles, zones, higher, data: {
+    M15: higherData, H1: higherData, M1: lowerData, M5: lowerData,
+  } };
+}
+
+test('three CHOCHs in one HTF zone allow only the first entry for buy and sell routes', () => {
+  for (const isBuy of [true, false]) {
+    const { data } = repeatedChochFixture(isBuy);
+    for (const build of [buildMtfRows, buildGoldScalpingMtfRows, buildGoldIntradayMtfRows]) {
+      const rows = build(data, true);
+      const first = rows.find((row) => row.chochSequence === 1);
+      const third = rows.find((row) => row.chochSequence === 3);
+      assert.ok(first?.engulfingType, 'the first entry remains available after later CHOCHs');
+      assert.equal(first.engulfingTime, 500);
+      assert.ok(third);
+      assert.equal(third.engulfingType, undefined);
+      assert.equal(third.engulfingTime, undefined);
+    }
+    const history = buildMtfHistoryRows(data, true).filter((row) => (
+      row.higherTimeframe === 'M15' && row.lowerTimeframe === 'M1'
+    ));
+    assert.deepEqual(history.map((row) => row.chochSequence), [3, 2, 1]);
+    assert.equal(history.filter((row) => row.engulfingType).length, 1);
+    for (const row of history) {
+      assert.equal(isSavedMtfEntryQualified(data, {
+        id: `MTF:${row.id}:${row.confirmationTime + 200}:109.5`,
+        signalTime: row.confirmationTime + 200,
+        direction: isBuy ? 'bullish' : 'bearish', engulfingType: 'T1', zoneName: 'QML',
+        goldScalping: true, requireLtfFib: true,
+      }), row.chochSequence === 1, 'saved later entries cannot bypass the restriction');
+    }
+  }
+  assert.equal(mtfChochSequenceLabel(2), '2nd CHOCH IN SAME ZONE · NO NEW ENTRY');
+  assert.equal(mtfChochSequenceLabel(3), '3rd CHOCH IN SAME ZONE · NO NEW ENTRY');
+  assert.ok(mtfChochSequenceLabel(11).startsWith('11th'));
+});
+
+test('no first entry, invalidated first LTF zones, and HTF retaps do not reopen CHOCH entries', () => {
+  const { data, zones, higher } = repeatedChochFixture();
+  for (const item of zones.filter((item) => item.chochTime === 300)) {
+    Object.assign(item, { tapTime: undefined, active: false,
+      status: 'invalidated', invalidatedAt: 550 });
+  }
+  higher.lastTapTime = 1200;
+  const history = buildMtfHistoryRows(data).filter((row) => (
+    row.higherTimeframe === 'M15' && row.lowerTimeframe === 'M1'
+  ));
+  assert.deepEqual(history.map((row) => row.chochSequence), [3, 2, 1]);
+  assert.ok(history.every((row) => row.engulfingTime === undefined));
+});
+
+test('CHOCH numbering precedes history limits and remains independent for a new HTF zone', () => {
+  const { data, higher } = repeatedChochFixture(true, 15);
+  const history = buildMtfHistoryRows(data).filter((row) => (
+    row.higherTimeframe === 'M15' && row.lowerTimeframe === 'M1'
+  ));
+  assert.equal(history[0]?.chochSequence, 15);
+  assert.equal(history.find((row) => row.chochSequence === 1)?.engulfingTime, 500);
+  assert.ok(history.filter((row) => row.chochSequence !== 1)
+    .every((row) => row.engulfingType === undefined));
+  data.M15.structure.zones = [{ ...higher, id: 'new-htf-zone',
+    startTime: 1000, activeFromTime: 1000, tapTime: 1100 }];
+  const first = buildMtfRows(data).find((row) => (
+    row.higherTimeframe === 'M15' && row.lowerTimeframe === 'M1' && row.chochSequence === 1
+  ));
+  assert.equal(first?.confirmationTime, 1300);
+});
+
+test('an observed first CHOCH without an entry does not permit a later scalp CHOCH to enter', () => {
+  const { data, zones } = repeatedChochFixture();
+  for (const item of zones.filter((item) => item.chochTime === 300)) {
+    if (item.name === 'DB') Object.assign(item, { bottom: 101, top: 102 });
+    else Object.assign(item, { bottom: 120, top: 122 });
+  }
+  const rows = buildGoldScalpingMtfRows(data).filter((row) => row.higherTimeframe === 'M15');
+  assert.equal(rows.find((row) => row.chochSequence === 1)?.sourcePairOverlapsHigherZone, false);
+  assert.equal(rows.find((row) => row.chochSequence === 3)?.engulfingTime, undefined);
+  assert.ok(rows.every((row) => row.engulfingType === undefined));
 });
 
 test('MTF entry accepts a complete internal CHOCH family without mixing external zones', () => {

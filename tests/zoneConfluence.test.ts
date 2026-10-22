@@ -84,32 +84,61 @@ test('LTF CHoCH shows the newest TJL pair, then all valid or pending CHoCH zones
     { id: 'confirmed', type: 'choch', direction: 'bullish', fromTime: 500,
       fromPrice: 4150, toTime: 600, toPrice: 4150 },
   ];
-  assert.deepEqual(selectLtfChochContext([higher], lowerZones, lines, 499),
+  const candles = [{ time: 500, open: 4155, high: 4156, low: 4154, close: 4155, complete: true }];
+  const select = (zones: StructureZone[], time: number) => selectLtfChochContext(
+    [higher], zones, lines, time, candles,
+  );
+  assert.deepEqual(select(lowerZones, 499),
     { zones: [], confirmations: [] });
-  const waiting = selectLtfChochContext([higher], lowerZones, lines, 550);
+  const waiting = select(lowerZones, 550);
   assert.deepEqual(waiting.zones.map(({ zone: item }) => item.id), ['m1-tjl1', 'm1-tjl2']);
   assert.equal(waiting.zones[0]?.visibleFromTime, 500);
   assert.equal(waiting.confirmations.length, 0);
   const qml = zone({ id: 'm1-qml', name: 'QML', isBuy: true,
-    chochTime: 600, activeFromTime: 601 });
+    tjlPairTime: 480, chochTime: 600, activeFromTime: 601 });
   const rbs = zone({ id: 'm1-rbs', name: 'RBS', isBuy: true,
-    status: 'pending', chochTime: 600, activeFromTime: 601 });
+    tjlPairTime: 480, status: 'pending', chochTime: 600, activeFromTime: 601 });
   const db = zone({ id: 'm1-db', name: 'DB', isBuy: true,
     chochTime: 600, activeFromTime: 601 });
-  const confirmed = selectLtfChochContext([higher], [...lowerZones, qml, rbs, db], lines, 650);
+  const confirmed = select([...lowerZones, qml, rbs, db], 650);
   assert.deepEqual(confirmed.zones.map(({ zone: item }) => item.id),
     ['m1-qml', 'm1-rbs', 'm1-db']);
   assert.ok(confirmed.zones.every(({ visibleFromTime }) => visibleFromTime === 601));
   assert.equal(confirmed.confirmations[0]?.line.id, 'confirmed');
-  const oneInvalidated = selectLtfChochContext([higher], [...lowerZones, qml, {
+  const oneInvalidated = select([...lowerZones, qml, {
     ...rbs, active: false, status: 'invalidated' as const,
-  }, db], lines, 700);
+  }, db], 700);
   assert.deepEqual(oneInvalidated.zones.map(({ zone: item }) => item.id), ['m1-qml', 'm1-db']);
-  const invalidated = selectLtfChochContext([higher], [...lowerZones, ...[qml, rbs, db].map((item) => ({
+  const invalidated = select([...lowerZones, ...[qml, rbs, db].map((item) => ({
     ...item, active: false, status: 'invalidated' as const,
-  }))], lines, 700);
+  }))], 700);
   assert.deepEqual(invalidated.zones, []);
   assert.equal(invalidated.confirmations[0]?.line.id, 'confirmed');
+});
+
+test('LTF CHoCH badges count repeated structures in the same zone without resetting on a retap', () => {
+  const higher = zone({ id: 'm15-buy', tapTime: 500, lastTapTime: 850 });
+  const lines: StructureLine[] = [600, 700, 900].map((time) => ({
+    id: `choch-${time}`, type: 'choch', direction: 'bullish',
+    fromTime: time - 50, fromPrice: 4150, toTime: time, toPrice: 4150,
+  }));
+  const zones = [600, 700, 900].flatMap((time) => (['QML', 'RBS'] as const).map((name) => zone({
+    id: `${name}-${time}`, name, chochTime: time, tjlPairTime: time - 100,
+    activeFromTime: time + 1,
+    ...(time === 600 ? { active: false, status: 'invalidated' as const } : {}),
+  })));
+  const candles = [{ time: 500, open: 4155, high: 4156, low: 4154, close: 4155, complete: true }];
+  const beforeThird = selectLtfChochContext([higher], zones, lines, 800, candles);
+  assert.deepEqual(beforeThird.confirmations.map((item) => item.chochSequence), [1, 2]);
+  const afterThird = selectLtfChochContext([higher], zones, lines, 950, candles);
+  assert.deepEqual(afterThird.confirmations.map((item) => item.chochSequence), [1, 2, 3]);
+  assert.deepEqual(afterThird.zones.map((item) => item.zone.id), ['QML-900', 'RBS-900']);
+  const unrelated = zone({ id: 'unrelated-qml', name: 'QML', chochTime: 550,
+    bottom: 4200, top: 4205 });
+  const withUnrelated = selectLtfChochContext([higher], [...zones, unrelated], [{
+    ...lines[0], id: 'unrelated-line', toTime: 550,
+  }, ...lines], 950, candles);
+  assert.equal(withUnrelated.confirmations.length, 3);
 });
 
 test('same-direction TJL2 and Internal DB display as one TJL2 confluence zone', () => {

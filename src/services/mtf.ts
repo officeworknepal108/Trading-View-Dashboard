@@ -48,6 +48,15 @@ export interface MtfRow {
   engulfingFibBand?: '0.5-0.618' | '0.71-0.79';
   goldScalping?: boolean;
   sourcePairOverlapsHigherZone?: boolean;
+  chochSequence?: number;
+}
+
+export function mtfChochSequenceLabel(sequence: number): string {
+  const lastTwo = sequence % 100;
+  const suffix = lastTwo >= 11 && lastTwo <= 13 ? 'th'
+    : sequence % 10 === 1 ? 'st' : sequence % 10 === 2 ? 'nd'
+      : sequence % 10 === 3 ? 'rd' : 'th';
+  return `${sequence}${suffix} CHOCH${sequence > 1 ? ' IN SAME ZONE · NO NEW ENTRY' : ''}`;
 }
 
 interface MtfMapping {
@@ -116,8 +125,8 @@ function candleTouchesZone(candle: StructureCandle, zone: StructureZone): boolea
 }
 
 function latestHigherTimeframeTouch(
-  candles: StructureCandle[],
-  zones: StructureZone[],
+  candles: readonly StructureCandle[],
+  zones: readonly StructureZone[],
   event: ConfirmationEvent,
   includeOriginOnly = false,
 ): { zone: StructureZone; time: number; sourcePairOverlaps: boolean } | undefined {
@@ -170,7 +179,7 @@ function latestHigherTimeframeTouch(
   return latest;
 }
 
-function buildChochEvents(zones: StructureZone[]): ConfirmationEvent[] {
+function buildChochEvents(zones: readonly StructureZone[]): ConfirmationEvent[] {
   const eventKeys = new Set(zones
     .filter((zone) => zone.chochTime !== undefined && (
       (zone.category === 'mg' && CHOCH_ZONE_NAMES.has(zone.name))
@@ -223,6 +232,29 @@ function buildChochEvents(zones: StructureZone[]): ConfirmationEvent[] {
       fibZeroPrice: fibZone?.fibZeroPrice,
     };
   }).filter((event) => event.zones.length > 0 && event.sourceStructureTime !== undefined);
+}
+
+export function matchMtfChochEvents(
+  lowerCandles: readonly StructureCandle[],
+  lowerZones: readonly StructureZone[],
+  higherZones: readonly StructureZone[],
+  includeOriginOnly = false,
+) {
+  const timesByZone = new Map<string, number[]>();
+  return buildChochEvents(lowerZones).sort((first, second) => first.time - second.time)
+    .flatMap((event) => {
+      const higherTimeframeTouch = latestHigherTimeframeTouch(
+        lowerCandles, higherZones, event, includeOriginOnly,
+      );
+      if (!higherTimeframeTouch) return [];
+      // Count the whole loaded history before trimming table/history rows.
+      // Retaps and invalidation of the earlier LTF zones never reset this HTF zone.
+      const times = timesByZone.get(higherTimeframeTouch.zone.id) ?? [];
+      if (!times.includes(event.time)) times.push(event.time);
+      timesByZone.set(higherTimeframeTouch.zone.id, times);
+      const chochSequence = times.indexOf(event.time) + 1;
+      return [{ event, higherTimeframeTouch, chochSequence }];
+    });
 }
 
 function latestTappedZone(event: ConfirmationEvent): StructureZone | undefined {
@@ -369,8 +401,10 @@ function eventToRow(
   goldScalping = false,
   requireLtfFib = false,
   goldZoneRules = false,
+  chochSequence?: number,
 ): MtfRow {
-  const entry = !higherTimeframeTouch.sourcePairOverlaps ? undefined : event.zones
+  const entry = !higherTimeframeTouch.sourcePairOverlaps || (chochSequence ?? 1) > 1
+    ? undefined : event.zones
     .filter((zone) => zone.status !== 'rejected'
       && zone.tapTime !== undefined && zone.tapTime >= event.time
       && (zone.invalidatedAt === undefined || zone.tapTime < zone.invalidatedAt))
@@ -432,6 +466,7 @@ function eventToRow(
     engulfingFibBand,
     goldScalping: goldScalping || undefined,
     sourcePairOverlapsHigherZone: higherTimeframeTouch.sourcePairOverlaps,
+    chochSequence,
     engulfingBarsAgo: engulfingIndex < 0
       ? undefined
       : lowerCandles.length - 1 - engulfingIndex,
@@ -458,31 +493,29 @@ function buildMtfRowsInternal(
     const higher = data[mapping.higher];
     const lower = data[mapping.lower];
     if (!higher || !lower) continue;
-    const allEvents = buildChochEvents(lower.structure.zones);
+    const matchedEvents = matchMtfChochEvents(
+      lower.candles, lower.structure.zones, higher.structure.zones,
+      goldScalping && mapping.higher === 'M15' && mapping.lower === 'M1',
+    );
 
     for (const kind of mapping.confirmations) {
-      const candidates = allEvents
-        .filter((event) => event.kind === kind)
-        .sort((first, second) => second.time - first.time)
+      const candidates = matchedEvents
+        .filter(({ event }) => event.kind === kind)
+        .sort((first, second) => second.event.time - first.event.time)
         .slice(0, maximumEventsToInspect)
-        .map((event) => ({
-          event,
-          higherTimeframeTouch: latestHigherTimeframeTouch(
-            lower.candles,
-            higher.structure.zones,
-            event,
-            goldScalping && mapping.higher === 'M15' && mapping.lower === 'M1',
-          ),
-        }))
-        .filter((item): item is {
-          event: ConfirmationEvent;
-          higherTimeframeTouch: { zone: StructureZone; time: number; sourcePairOverlaps: boolean };
-        } => item.higherTimeframeTouch !== undefined
-          && (!goldScalping || isGoldScalpingChochZone(
-            mapping.higher,
-            goldScalpingZoneWidthPips(item.higherTimeframeTouch.zone),
-          )));
-      for (const candidate of candidates.slice(0, maximumRowsPerMapping)) {
+        .filter((item) => !goldScalping || isGoldScalpingChochZone(
+          mapping.higher,
+          goldScalpingZoneWidthPips(item.higherTimeframeTouch.zone),
+        ));
+      const selected = candidates.slice(0, maximumRowsPerMapping);
+      // Keep the first setup available when a newer, blocked CHOCH is displayed.
+      for (const candidate of [...selected]) {
+        if ((candidate.chochSequence ?? 1) <= 1) continue;
+        const first = matchedEvents.find((item) => item.chochSequence === 1
+          && item.higherTimeframeTouch.zone.id === candidate.higherTimeframeTouch.zone.id);
+        if (first && !selected.includes(first)) selected.push(first);
+      }
+      for (const candidate of selected) {
         rows.push(eventToRow(
           mapping,
           candidate.event,
@@ -492,6 +525,7 @@ function buildMtfRowsInternal(
           goldScalping,
           requireLtfFib,
           goldScalping || goldIntraday,
+          candidate.chochSequence,
         ));
       }
     }
@@ -579,20 +613,20 @@ export function getSavedMtfEntryQualification(
   const lower = data[lowerTimeframe];
   if (!higher || !lower?.candles.some((candle) => candle.time === entry.signalTime
     && candle.complete !== false)) return undefined;
-  const event = buildChochEvents(lower.structure.zones.filter((zone) => (
-    zone.chochTime === confirmationTime
-  ))).find((candidate) => (
-    candidate.time === confirmationTime
-    && candidate.structureScope === structureScope
-    && (candidate.isBuy ? 'bullish' : 'bearish') === entry.direction
+  const matched = matchMtfChochEvents(
+    lower.candles, lower.structure.zones, higher.structure.zones,
+    entry.goldScalping === true && higherTimeframe === 'M15' && lowerTimeframe === 'M1',
+  ).find(({ event }) => (
+    event.time === confirmationTime
+    && event.structureScope === structureScope
+    && (event.isBuy ? 'bullish' : 'bearish') === entry.direction
   ));
-  if (!event) return undefined;
-  const higherTouch = latestHigherTimeframeTouch(
-    lower.candles, higher.structure.zones, event,
-  );
-  if (!higherTouch || (entry.goldScalping && !isGoldScalpingChochZone(
+  if (!matched || matched.chochSequence !== 1
+    || !matched.higherTimeframeTouch.sourcePairOverlaps) return undefined;
+  const { event, higherTimeframeTouch: higherTouch } = matched;
+  if (entry.goldScalping && !isGoldScalpingChochZone(
     higherTimeframe, goldScalpingZoneWidthPips(higherTouch.zone),
-  ))) return undefined;
+  )) return undefined;
   for (const zone of event.zones) {
     if (zone.name !== entry.zoneName || zone.status === 'rejected'
       || zone.tapTime === undefined || zone.tapTime < event.time
