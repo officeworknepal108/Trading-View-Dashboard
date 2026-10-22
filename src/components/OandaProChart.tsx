@@ -7873,8 +7873,8 @@ export const OandaProChart: React.FC = () => {
                         </span>
                       ) : opportunityExpired ? (
                         <span className="text-rose-700">DISTANCE REACHED · NO NEW ENTRY</span>
-                      ) : marketSymbol === 'XAUUSD' && (latestTap?.count ?? 0) > 1 ? (
-                        <span className="text-rose-700">TAP {latestTap?.count} · NO NEW ENTRY</span>
+                      ) : marketSymbol === 'XAUUSD' && (tapCount ?? 0) > 1 ? (
+                        <span className="text-rose-700">TAP {tapCount} · NO NEW ENTRY</span>
                       ) : entryDecision && !entryDecision.policy.allowed ? (
                         <span className="text-rose-700">
                           {directEntryPolicyLabel(entryDecision.policy)} · NO TRADE
