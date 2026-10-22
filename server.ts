@@ -1070,7 +1070,7 @@ async function updateMt5JournalRecord(
 
 interface TelegramTradeAlert {
   id: string;
-  kind: 'pending' | 'cancelled' | 'entry' | 'tp' | 'sl';
+  kind: 'pending' | 'cancelled' | 'entry' | 'rf' | 'tp' | 'sl';
   outsideTradingTime?: boolean;
   symbol: string;
   direction: 'BUY' | 'SELL';
@@ -1086,18 +1086,21 @@ interface TelegramTradeAlert {
   tradeStyle?: 'SCALPING' | 'INTRADAY';
   riskFree?: number;
   openedAt: number;
+  rfAt?: number;
+  partialClosedVolume?: number;
+  remainingVolume?: number;
   closedAt?: number;
   exitPrice?: number;
   returnR?: number;
 }
 
-type SentTelegramAlerts = Record<string, { pending?: boolean; cancelled?: boolean; entry?: boolean; result?: 'tp' | 'sl' }>;
+type SentTelegramAlerts = Record<string, { pending?: boolean; cancelled?: boolean; entry?: boolean; rf?: boolean; result?: 'tp' | 'sl' }>;
 
 function validTelegramTradeAlert(value: any): value is TelegramTradeAlert {
   const timeframes = new Set(AUTOMATION_TIMEFRAMES);
   const now = Math.floor(Date.now() / 1000);
   return value && typeof value.id === 'string' && value.id.length > 0 && value.id.length <= 300
-    && ['pending', 'cancelled', 'entry', 'tp', 'sl'].includes(value.kind)
+    && ['pending', 'cancelled', 'entry', 'rf', 'tp', 'sl'].includes(value.kind)
     && (value.outsideTradingTime === undefined || typeof value.outsideTradingTime === 'boolean')
     && typeof value.symbol === 'string' && /^[A-Z0-9]{3,12}$/.test(value.symbol)
     && ['BUY', 'SELL'].includes(value.direction)
@@ -1113,6 +1116,12 @@ function validTelegramTradeAlert(value: any): value is TelegramTradeAlert {
     && value.openedAt <= now + 5
     && (value.kind === 'pending' ? now - value.openedAt <= 14_400
       : value.kind === 'entry' ? now - value.openedAt <= 180
+      : value.kind === 'rf' ? value.tradeStyle === 'SCALPING'
+        && Number.isFinite(value.riskFree) && value.riskFree > 0
+        && Number.isFinite(value.partialClosedVolume) && value.partialClosedVolume > 0
+        && Number.isFinite(value.remainingVolume) && value.remainingVolume > 0
+        && Number.isFinite(value.rfAt) && value.rfAt >= value.openedAt
+        && value.rfAt <= now + 5 && now - value.rfAt <= 3600
       : value.kind === 'cancelled' ? Number.isFinite(value.closedAt)
         && value.closedAt >= value.openedAt && value.closedAt <= now + 5
         && now - value.closedAt <= 180
@@ -1175,6 +1184,16 @@ function telegramAlertText(alert: TelegramTradeAlert): string {
       `Risk to reward: 1:${alert.rewardRisk}`,
     ].join('\n');
   }
+  if (alert.kind === 'rf') {
+    return [
+      `RF HIT — ${title}`,
+      `Time: ${telegramAlertTime(alert.rfAt!)}`,
+      `Setup: ${setup}`,
+      `1R reached at ${telegramAlertPrice(alert.riskFree!)}`,
+      '50% of the lot closed.',
+      'Remaining 50% keeps the original SL and TP.',
+    ].join('\n');
+  }
   const direction = alert.direction === 'BUY' ? 1 : -1;
   const pipChange = (alert.exitPrice! - alert.entry) * direction
     / Math.abs(alert.entry - alert.stopLoss) * alert.riskPips;
@@ -1216,6 +1235,7 @@ async function deliverTelegramAlerts(alerts: TelegramTradeAlert[]): Promise<stri
       const state = sent[alert.id] ?? {};
       if (alert.kind === 'pending' ? state.pending
         : alert.kind === 'cancelled' ? state.cancelled
+        : alert.kind === 'rf' ? state.rf
         : alert.kind === 'entry' ? state.entry : state.result === alert.kind) {
         acknowledged.push(`${alert.id}:${alert.kind}`);
         continue;
@@ -1227,6 +1247,7 @@ async function deliverTelegramAlerts(alerts: TelegramTradeAlert[]): Promise<stri
       await sendTelegramTradeAlert(alert);
       sent[alert.id] = alert.kind === 'pending' ? { ...state, pending: true }
         : alert.kind === 'cancelled' ? { ...state, cancelled: true }
+        : alert.kind === 'rf' ? { ...state, rf: true }
         : alert.kind === 'entry' ? { ...state, entry: true } : { ...state, result: alert.kind };
       await mkdir(path.dirname(TELEGRAM_ALERTS_FILE), { recursive: true });
       await writeFile(TELEGRAM_ALERTS_FILE, `${JSON.stringify(sent, null, 2)}\n`, 'utf8');
@@ -1579,17 +1600,22 @@ async function startServer() {
         );
         const cancelledBeyondOneAndHalfR = status === 'CANCELLED'
           && updated.message === 'Pending order cancelled after price moved beyond 1.5R before entry.';
-        if ((status === 'PLACED' || status === 'ACTIVE' || cancelledBeyondOneAndHalfR)
+        const confirmedRf = status === 'RISK_FREE' && updated.tradeStyle === 'SCALPING'
+          && (updated.partialClosedAt ?? 0) > 0
+          && (updated.partialClosedVolume ?? 0) > 0
+          && (updated.remainingVolume ?? 0) > 0;
+        if ((status === 'PLACED' || status === 'ACTIVE' || cancelledBeyondOneAndHalfR || confirmedRf)
           && (await readMt5Config()).telegramMessagesEnabled) {
           const telegramAlert: TelegramTradeAlert = {
-            id: status === 'PLACED' || cancelledBeyondOneAndHalfR ? updated.id : [
+            id: status === 'PLACED' || cancelledBeyondOneAndHalfR || confirmedRf ? updated.id : [
               updated.symbol,
               updated.direction === 'BUY' ? 'bullish' : 'bearish',
               updated.signalTimeframe,
               updated.signalAt,
               updated.entry.toFixed(5),
             ].join(':'),
-            kind: cancelledBeyondOneAndHalfR ? 'cancelled' : status === 'PLACED' ? 'pending' : 'entry',
+            kind: cancelledBeyondOneAndHalfR ? 'cancelled'
+              : confirmedRf ? 'rf' : status === 'PLACED' ? 'pending' : 'entry',
             symbol: updated.symbol,
             direction: updated.direction,
             zoneName: updated.zoneName,
@@ -1604,6 +1630,11 @@ async function startServer() {
             tradeStyle: updated.tradeStyle,
             ...(updated.tradeStyle === 'SCALPING' ? { riskFree: updated.riskFree } : {}),
             openedAt: updated.openedAt ?? updated.updatedAt,
+            ...(confirmedRf ? {
+              rfAt: updated.partialClosedAt,
+              partialClosedVolume: updated.partialClosedVolume,
+              remainingVolume: updated.remainingVolume,
+            } : {}),
             ...(cancelledBeyondOneAndHalfR ? { closedAt: updated.updatedAt } : {}),
           };
           if (validTelegramTradeAlert(telegramAlert)) {
