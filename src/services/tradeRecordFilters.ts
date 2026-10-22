@@ -204,7 +204,7 @@ export function selectTradeChartRecords<T extends FilterableTradeRecord & {
   if (projectGoldEntries && chartTimeframe === 'M1') {
     selected.push(...selectGoldIntradayAfterScalp(records));
   }
-  if (projectGoldEntries && chartTimeframe === 'M15') {
+  if (projectGoldEntries && (chartTimeframe === 'M15' || chartTimeframe === 'H1')) {
     selected.push(...records.filter((record) => record.tradeStyle === 'SCALPING'
       && (record.signalTimeframe === 'M1' || record.signalTimeframe === 'M5')
       && (record.result === 'tp' || record.result === 'sl' || record.result === 'rf')
@@ -212,7 +212,7 @@ export function selectTradeChartRecords<T extends FilterableTradeRecord & {
   }
   const byId = new Map(selected.filter((record) => candles.some((candle) => (
     record.signalTimeframe === chartTimeframe ? candle.time === record.signalAt
-      : chartTimeframe !== 'M15' ? candle.time === record.openedAt
+      : chartTimeframe !== 'M15' && chartTimeframe !== 'H1' ? candle.time === record.openedAt
       : record.openedAt !== undefined && record.openedAt >= candle.time
         && record.openedAt < candle.time + tradeTimeframeSeconds(chartTimeframe)
   ))).map((record) => [record.id, record]));

@@ -138,6 +138,27 @@ test('M15 can display completed M1/M5 scalps on their filled-entry candles witho
   assert.equal(new Set(selected.map((record) => record.id)).size, selected.length);
 });
 
+test('H1 shows completed M1/M5 scalps on their filled-entry hour alongside native H1 trades', () => {
+  const { scalp, intraday } = synchronizedFixture();
+  const m1 = { ...scalp, openedAt: 3599, completedAt: 4000 };
+  const m5 = { ...scalp, id: 'hourly-m5-scalp', signalTimeframe: 'M5' as const,
+    zoneTimeframe: 'H1' as const, openedAt: 3600, completedAt: 4500 };
+  const hourly = { ...intraday, id: 'native-h1', signalTimeframe: 'H1' as const,
+    zoneTimeframe: 'H1' as const, signalAt: 0, openedAt: 3600, completedAt: 7000 };
+  const rows = [m1, m5, hourly,
+    { ...m1, id: 'unfilled-h1-scalp', openedAt: undefined },
+    { ...m1, id: 'open-h1-scalp', result: 'open' as const },
+    { ...m1, id: 'outside-h1-history', openedAt: 7200, completedAt: 8000 }];
+  const before = JSON.stringify(rows);
+  assert.deepEqual(new Set(selectTradeChartRecords(rows, 'H1', [{ time: 0 }, { time: 3600 }], true)
+    .map((record) => record.id)), new Set([m1.id, m5.id, hourly.id]));
+  assert.deepEqual(new Set(selectTradeChartRecords(rows, 'H1', [{ time: 0 }], true)
+    .map((record) => record.id)), new Set([m1.id, hourly.id]));
+  assert.deepEqual(selectTradeChartRecords(rows, 'H1', [{ time: 3600 }], true), [m5]);
+  assert.deepEqual(selectTradeChartRecords(rows, 'H1', [{ time: 0 }, { time: 3600 }]), [hourly]);
+  assert.equal(JSON.stringify(rows), before);
+});
+
 test('RF and intraday SL outcomes keep the same prices and results in history and journal', () => {
   const { scalp, intraday, options } = synchronizedFixture();
   const source = options.timeframeData.M1!;

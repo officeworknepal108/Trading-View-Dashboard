@@ -3663,7 +3663,7 @@ export const OandaProChart: React.FC = () => {
   entryHoversRef.current = visibleEntryHovers;
   const entryMarkers = useMemo(() => visibleEntryHovers.map(({ candleTime, trade, style }) => {
     const bullish = trade.signal.direction === 'bullish';
-    const projectedScalp = granularity === 'M15' && style === 'SCALPING'
+    const projectedScalp = (granularity === 'M15' || granularity === 'H1') && style === 'SCALPING'
       && (trade.signal.timeframe === 'M1' || trade.signal.timeframe === 'M5');
     return {
       time: candleTime as UTCTimestamp,
