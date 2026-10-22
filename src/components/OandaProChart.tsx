@@ -74,6 +74,7 @@ import {
   isDaySwingFibEntryTimeframe,
   isZoneEngulfingFibQualified,
   isDeepDiscountTradeSignal,
+  isUnfilledDirectSetupQualified,
   measureTradeableFibZone,
   resolveDirectEntryPolicy,
   resolveZoneEngulfingSignal,
@@ -2122,7 +2123,8 @@ export const OandaProChart: React.FC = () => {
     }
 
     for (const setup of setups.values()) {
-      const currentZone = displayZones.find((zone) => zone.id === setup.zone.id) ?? setup.zone;
+      const liveZone = displayZones.find((zone) => zone.id === setup.zone.id);
+      const currentZone = liveZone ?? setup.zone;
       if (pendingM15DbBlocksSignal(currentZone, setup.signal)
         || expiredGoldZoneBeforeSignal(currentZone, setup.signal)) continue;
       const sourceCandles = setup.signal.timeframe === granularity
@@ -2159,6 +2161,14 @@ export const OandaProChart: React.FC = () => {
         omitStopBuffer: marketSymbol !== 'XAUUSD'
           && isDeepDiscountTradeSignal(currentZone, setup.signal),
       });
+      if (trade && trade.filledAt === undefined && !isUnfilledDirectSetupQualified({
+        zone: liveZone,
+        signal: setup.signal,
+        zoneTimeframe: granularity,
+        sourceCandles,
+        goldZone: marketSymbol === 'XAUUSD'
+          ? { candles: displayCandles, pipSize: marketConfig.pipSize } : undefined,
+      })) continue;
       const firstOutsideTradingTime = tradingTimeEnabled && (!isNepalTradingTime(signalClose)
         || (trade?.filledAt !== undefined && !isNepalTradingTime(trade.filledAt)));
       const attempts = trade ? [trade] : [];
@@ -2244,6 +2254,7 @@ export const OandaProChart: React.FC = () => {
     granularity,
     expiredGoldZoneBeforeSignal,
     marketConfig.mt5AutomationEnabled,
+    marketConfig.pipSize,
     mt5Status?.positions,
     pendingM15DbBlocksSignal,
     replayIndex,

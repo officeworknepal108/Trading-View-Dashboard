@@ -10,6 +10,7 @@ import {
   getEngulfingVolumeStatus,
   getMtfTradeRule,
   isDeepDiscountTradeSignal,
+  isUnfilledDirectSetupQualified,
   isDaySwingFibEntryTimeframe,
   isZoneEngulfingFibQualified,
   measureTradeableFibZone,
@@ -27,6 +28,59 @@ const bullishSignal: EngulfingTradeSignal = {
   candleCount: 2,
   timeframe: 'M1',
 };
+
+test('an unfilled retained TJL1 entry requires its current zone, Fib and exact completed engulfing', () => {
+  const signal: EngulfingTradeSignal = {
+    type: 'T4', direction: 'bearish', time: 1800, candleCount: 3, timeframe: 'M15',
+  };
+  const zone: StructureZone = {
+    id: 'retained-tjl1', name: 'TJL1', category: 'mg', isBuy: false,
+    startTime: -900, endTime: 27000, activeFromTime: 0, confirmationTime: 0,
+    bottom: 104, top: 106, active: true, status: 'valid', tapTime: 900,
+    fibStatus: 'a-plus', fibBand: '0.5-0.618', fibLevel50: 105,
+    engulfingType: 'T4', engulfingDirection: 'bearish', engulfingTime: 1800,
+    engulfingCandleCount: 3,
+  };
+  const candles: StructureCandle[] = [
+    { time: 0, open: 100, high: 107, low: 99, close: 106, complete: true },
+    { time: 900, open: 105, high: 106, low: 100, close: 102, complete: true },
+    { time: 1800, open: 105, high: 106, low: 97, close: 98, complete: true },
+    { time: 2700, open: 97, high: 100, low: 95, close: 96, complete: true },
+  ];
+  const qualifies = (currentZone: StructureZone | undefined = zone, sourceCandles = candles) => (
+    isUnfilledDirectSetupQualified({ zone: currentZone, signal, zoneTimeframe: 'M15', sourceCandles })
+  );
+  assert.equal(qualifies(), true);
+  const pending = calculateTradeLevels({ sourceCandles: candles, executionCandles: candles,
+    signal, rule: { ...getDirectTradeRule('M15', 'M15')!, maximumRiskPips: 50 } });
+  assert.equal(pending?.status, 'pending', 'the cached signal can calculate a pending order');
+  assert.equal(isUnfilledDirectSetupQualified({ zone: undefined, signal,
+    zoneTimeframe: 'M15', sourceCandles: candles }), false, 'a missing zone cannot use its old snapshot');
+  for (const status of ['invalidated', 'rejected', 'pending', 'superseded'] as const) {
+    assert.equal(qualifies({ ...zone, status }), false, `reject a ${status} current zone`);
+  }
+  assert.equal(qualifies({ ...zone, active: false }), false);
+  assert.equal(qualifies({ ...zone, tradeable: false }), false);
+  assert.equal(qualifies({ ...zone, confirmationRouteDisabled: true }), false);
+  assert.equal(qualifies({ ...zone, fibStatus: 'not-valid', fibBand: undefined }), false,
+    'the stored T4 cannot supply missing current Fib qualification');
+  assert.equal(qualifies({ ...zone, engulfingTime: 900 }), false,
+    'a different current signal cannot validate the retained first signal');
+  assert.equal(qualifies({ ...zone, engulfingType: undefined }), false);
+  assert.equal(qualifies({ ...zone, isBuy: true }), false);
+  assert.equal(qualifies({ ...zone, activeFromTime: 2700 }), false);
+  assert.equal(qualifies({ ...zone, bottom: 200, top: 202 }), false);
+  assert.equal(qualifies(zone, candles.map((item) => item.time === 1800
+    ? { ...item, complete: false } : item)), false);
+  assert.equal(qualifies(zone, candles.map((item) => item.time === 1800
+    ? { ...item, close: 103 } : item)), false, 'recheck the actual candles, not just the T4 label');
+  assert.equal(isUnfilledDirectSetupQualified({ zone, signal, zoneTimeframe: 'M15',
+    sourceCandles: candles, goldZone: { candles, pipSize: 0.1 } }), true);
+  assert.equal(isUnfilledDirectSetupQualified({ zone, signal, zoneTimeframe: 'M15',
+    sourceCandles: candles, goldZone: { candles: [...candles,
+      { time: 3600, open: 97, high: 98, low: 75, close: 76, complete: true }], pipSize: 0.1 } }), false,
+  'an unfilled Gold setup cannot remain eligible after its current tap distance expires');
+});
 
 test('an open higher-timeframe bar exposes its full window to completed lower-timeframe candles', () => {
   assert.equal(timeframeWindowCutoff(10_800, 3_600), 14_400);

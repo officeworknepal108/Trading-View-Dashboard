@@ -4,7 +4,7 @@ import type {
   StructureCandle,
   StructureZone,
 } from './marketStructure';
-import { detectEngulfingPatternAt, isZoneEligibleForEngulfingEntry } from './marketStructure';
+import { detectEngulfingPatternAt, isGoldZoneEntryBlocked, isZoneEligibleForEngulfingEntry } from './marketStructure';
 export type TradeTimeframe = 'M1' | 'M5' | 'M15' | 'M30' | 'H1' | 'H4' | 'D';
 export type TradeStatus = 'pending' | 'active' | 'risk-free' | 'tp-hit' | 'sl-hit';
 export type TradeResult = 'sl' | 'rf' | 'tp';
@@ -360,6 +360,36 @@ export function resolveZoneEngulfingSignal(
     };
   }
   return undefined;
+}
+
+/** Revalidate an unfilled cached setup against the current source zone and candles. */
+export function isUnfilledDirectSetupQualified(options: {
+  zone: StructureZone | undefined;
+  signal: EngulfingTradeSignal;
+  zoneTimeframe: TradeTimeframe;
+  sourceCandles: StructureCandle[];
+  goldZone?: { candles: StructureCandle[]; pipSize: number };
+}): boolean {
+  const { zone, signal, zoneTimeframe, sourceCandles, goldZone } = options;
+  if (!zone || !isZoneEligibleForEngulfingEntry(zone)) return false;
+  const currentSignal = resolveZoneEngulfingSignal(zone, zoneTimeframe);
+  if (!currentSignal || currentSignal.type !== signal.type
+    || currentSignal.direction !== signal.direction || currentSignal.time !== signal.time
+    || currentSignal.timeframe !== signal.timeframe || currentSignal.candleCount !== signal.candleCount
+    || (zone.isBuy ? 'bullish' : 'bearish') !== signal.direction) return false;
+  const signalIndex = sourceCandles.findIndex((candle) => candle.time === signal.time);
+  if (signalIndex < 0 || sourceCandles[signalIndex].complete === false) return false;
+  const pattern = detectEngulfingPatternAt(sourceCandles, signalIndex);
+  if (!pattern || pattern.type !== signal.type || pattern.direction !== signal.direction
+    || pattern.candleCount !== signal.candleCount) return false;
+  const validFrom = Math.max(zone.startTime, zone.activeFromTime ?? zone.startTime,
+    zone.confirmationTime ?? zone.startTime);
+  if (signal.time < validFrom || !sourceCandles.slice(pattern.startIndex, pattern.endIndex + 1)
+    .some((candle) => candle.time > zone.startTime && candle.time >= validFrom
+      && candle.high >= zone.bottom && candle.low <= zone.top)) return false;
+  return !goldZone || !isGoldZoneEntryBlocked(
+    zone, goldZone.candles, zoneTimeframe, goldZone.pipSize,
+  );
 }
 
 /**
