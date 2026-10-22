@@ -36,3 +36,17 @@ test('keeps distinct entries and stops as separate trades', () => {
 test('falls back to record id when execution identity is incomplete', () => {
   assert.equal(tradeExecutionKey({ id: 'legacy', completedAt: 100 }), 'ID:legacy');
 });
+
+test('identical price and signal numbers on different symbols are different executions', () => {
+  assert.equal(deduplicateTradeRecords([
+    { ...base, id: 'gold', symbol: 'XAUUSD' },
+    { ...base, id: 'forex', symbol: 'EURUSD' },
+  ]).length, 2);
+});
+
+test('distinct broker tickets are separate actual executions even at identical prices', () => {
+  assert.equal(deduplicateTradeRecords([
+    { ...base, id: 'mt5-1', mt5Managed: true, brokerTicket: 1 },
+    { ...base, id: 'mt5-2', mt5Managed: true, brokerTicket: 2 },
+  ]).length, 2);
+});

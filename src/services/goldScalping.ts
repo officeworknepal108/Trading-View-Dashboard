@@ -7,6 +7,7 @@ import {
 } from './marketStructure';
 import {
   TRADE_PIP_SIZE,
+  getDirectTradeRule,
   getMtfTradeRule,
   isZoneEngulfingFibQualified,
   type EngulfingTradeSignal,
@@ -120,6 +121,34 @@ export function goldIntradayMtfTradeRule(
   };
 }
 
+/** Use the same route policy when a chart trade becomes accuracy/journal history. */
+export function isGoldTradeRecordRoute(record: {
+  source: string;
+  tradeStyle?: string;
+  zoneTimeframe: TradeTimeframe;
+  signalTimeframe: TradeTimeframe;
+  rewardRisk: number;
+  fibSource?: string;
+}, requireLtfFib = false): boolean {
+  if (record.tradeStyle === 'SCALPING') {
+    return record.rewardRisk === 3 && (
+      (record.source === 'MTF' && record.signalTimeframe === 'M1'
+        && (!requireLtfFib || record.fibSource === 'MTF FIB')
+        && (record.zoneTimeframe === 'M15' || record.zoneTimeframe === 'H1'))
+      || (record.source === 'ENGULFING'
+        && ((record.zoneTimeframe === 'M15'
+          && (record.signalTimeframe === 'M1' || record.signalTimeframe === 'M5'))
+          || (record.zoneTimeframe === 'H1' && record.signalTimeframe === 'M5')))
+    );
+  }
+  const rule = record.source === 'ENGULFING'
+    ? getDirectTradeRule(record.zoneTimeframe, record.signalTimeframe)
+    : goldIntradayMtfTradeRule(record.zoneTimeframe, record.signalTimeframe);
+  return rule !== undefined && record.rewardRisk === rule.rewardRisk
+    && (record.source !== 'ENGULFING'
+      || isGoldIntradayCandleRoute(record.zoneTimeframe, record.signalTimeframe));
+}
+
 export function findGoldScalpingCandleSignal(
   zone: StructureZone,
   zoneTimeframe: TradeTimeframe,
@@ -205,7 +234,8 @@ export function savedGoldScalpMatchesReversal(
   const zone = sourceZones.find((candidate) => candidate.id === zoneId);
   if (!zone) return false;
   const signal = findGoldScalpingReversalSignal(
-    zone, record.zoneTimeframe,
+    zone.invalidatedAt !== undefined && zone.invalidatedAt > record.signalAt
+      ? { ...zone, active: true, status: 'valid' } : zone, record.zoneTimeframe,
     signalCandles.filter((candle) => candle.time <= record.signalAt!),
   );
   return signal?.time === record.signalAt && signal.type === record.engulfingType;

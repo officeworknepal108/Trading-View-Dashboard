@@ -3,15 +3,167 @@ import test from 'node:test';
 import {
   DEFAULT_TRADE_RECORD_FILTERS,
   accuracyResultMatchesCandles,
+  buildCanonicalTradeRecords,
   filterTradeRecords,
   savedDirectZoneMatchesStructure,
   selectAccuracyChartEntries,
   selectGoldIntradayAfterScalp,
+  selectTradeChartRecords,
   tradeRecordDateKey,
   tradeRecordDatePeriodKey,
   tradeRecordPeriodKey,
   type FilterableTradeRecord,
+  type CanonicalTradeRecord,
+  type TradeRecordVerification,
 } from '../src/services/tradeRecordFilters';
+import { mergeTradeRecordAnnotations } from '../src/services/tradeRecordDeduplication';
+import { calculateJournalPerformance, type JournalTradeRecord } from '../src/components/TradeJournal';
+
+function synchronizedFixture() {
+  const scalp: JournalTradeRecord = {
+    id: 'MTF:M15-M1-external-choch-0:60:4094', symbol: 'XAUUSD',
+    source: 'MTF', tradeStyle: 'SCALPING', zoneName: 'RBS', zoneTimeframe: 'M15',
+    direction: 'bullish', signalTimeframe: 'M1', signalAt: 60, openedAt: 120,
+    engulfingType: 'T1', engulfingCandleCount: 2, entry: 4094, stopLoss: 4085,
+    takeProfit: 4121, rewardRisk: 3, riskPips: 90, result: 'tp', completedAt: 180,
+  };
+  const candles = [
+    { time: 0, open: 4092, high: 4093, low: 4089, close: 4090, complete: true },
+    { time: 60, open: 4090, high: 4095, low: 4089, close: 4094, complete: true },
+    { time: 120, open: 4094, high: 4096, low: 4093, close: 4095, complete: true },
+    { time: 180, open: 4095, high: 4122, low: 4094, close: 4121, complete: true },
+  ];
+  const intraday: JournalTradeRecord = {
+    ...scalp, id: 'DIRECT:db-zone:900:4094', source: 'ENGULFING', tradeStyle: 'INTRADAY',
+    zoneName: 'DB', signalTimeframe: 'M15', signalAt: 900, openedAt: 1800,
+    completedAt: 2700, takeProfit: 4112, rewardRisk: 2,
+  };
+  const options: TradeRecordVerification = {
+    marketSymbol: 'XAUUSD', pipSize: 0.1, requireLtfFib: false,
+    qualifyMtf: () => ({}),
+    timeframeData: {
+      M1: { candles, structure: { zones: [] } },
+      M15: { candles: candles.map((candle) => ({ ...candle, time: candle.time * 15 })),
+        structure: { zones: [{ id: 'db-zone', name: 'DB', category: 'mg', isBuy: true,
+          startTime: -900, endTime: 27000, bottom: 4089, top: 4095, active: true, status: 'valid' }] } },
+    },
+  };
+  return { scalp, intraday, options };
+}
+
+test('past scalping and intraday arrows, accuracy and journal read identical validated execution records', () => {
+  const { scalp, intraday, options } = synchronizedFixture();
+  const canonical = buildCanonicalTradeRecords([], [scalp, intraday], options);
+  assert.equal(canonical.length, 2, 'Fib-optional scalps must not disappear from history');
+  const journal = mergeTradeRecordAnnotations(canonical, [
+    { ...scalp, takeProfit: 4999, result: 'sl' as const, reason: 'Saved review' },
+    { ...scalp, id: 'rejected-phantom' },
+  ]);
+  assert.deepEqual(journal.map((record) => [record.id, record.entry, record.stopLoss, record.takeProfit, record.result]),
+    canonical.map((record) => [record.id, record.entry, record.stopLoss, record.takeProfit, record.result]));
+  assert.equal(calculateJournalPerformance(journal).completed, canonical.length);
+  assert.equal(calculateJournalPerformance(journal).winRate, 100);
+  for (const timeframe of ['M1', 'M15'] as const) {
+    const arrows = selectTradeChartRecords(canonical, timeframe, options.timeframeData[timeframe]!.candles);
+    const accuracyRows = canonical.filter((record) => record.signalTimeframe === timeframe);
+    assert.deepEqual(arrows, accuracyRows);
+  }
+  const strictFib = buildCanonicalTradeRecords([], [scalp, intraday], { ...options, requireLtfFib: true });
+  assert.deepEqual(strictFib.map((record) => record.id), [intraday.id]);
+});
+
+test('a later TP after SL, a false engulfing, an unfilled record and a later CHOCH are excluded everywhere', () => {
+  const { scalp, options } = synchronizedFixture();
+  const source = options.timeframeData.M1!;
+  const stoppedFirst = { ...options, timeframeData: { ...options.timeframeData,
+    M1: { ...source, candles: source.candles.map((candle) => candle.time === 120
+      ? { ...candle, low: 4080 } : candle) } } };
+  assert.deepEqual(buildCanonicalTradeRecords([scalp], [], stoppedFirst), []);
+  const falsePattern = { ...options, timeframeData: { ...options.timeframeData,
+    M1: { ...source, candles: source.candles.map((candle) => candle.time === 60
+      ? { ...candle, close: 4091 } : candle) } } };
+  assert.deepEqual(buildCanonicalTradeRecords([scalp], [], falsePattern), []);
+  assert.deepEqual(buildCanonicalTradeRecords([], [{ ...scalp, result: 'open', openedAt: undefined }], options), []);
+  assert.deepEqual(buildCanonicalTradeRecords([scalp], [], { ...options, qualifyMtf: () => undefined }), []);
+  const corrected = buildCanonicalTradeRecords([{ ...scalp, takeProfit: 4999, result: 'sl' }], [scalp], options);
+  assert.deepEqual(corrected, [{ ...scalp, fibSource: undefined, fibBand: undefined }]);
+});
+
+test('MT5 fill prices and results override a slipped chart duplicate in every completed-trade view', () => {
+  const { scalp, options } = synchronizedFixture();
+  const broker = { ...scalp, id: 'MT5:123', mt5Managed: true, brokerTicket: 123,
+    entry: 4094.1, stopLoss: 4085.1, takeProfit: 4121.1, result: 'sl' as const };
+  const canonical = buildCanonicalTradeRecords([broker], [scalp], options);
+  assert.deepEqual(canonical, [broker], 'a different feed cannot overwrite an actual broker outcome');
+  assert.deepEqual(selectTradeChartRecords(canonical, 'M1', options.timeframeData.M1!.candles), [broker]);
+  assert.deepEqual(mergeTradeRecordAnnotations(canonical, [scalp]), [broker]);
+  const running = buildCanonicalTradeRecords([{ ...broker, result: 'open' }], [scalp], options);
+  assert.equal(running.length, 1);
+  assert.equal(running[0].result, 'open');
+  assert.deepEqual(selectTradeChartRecords(running, 'M1', options.timeframeData.M1!.candles), []);
+  assert.equal(calculateJournalPerformance(running).completed, 0);
+});
+
+test('saved past trades survive a chart-window change and regain matching arrows when their candles are loaded', () => {
+  const { scalp, options } = synchronizedFixture();
+  const laterWindow = { ...options, timeframeData: { ...options.timeframeData,
+    M1: { ...options.timeframeData.M1!, candles: options.timeframeData.M1!.candles
+      .map((candle) => ({ ...candle, time: candle.time + 10000 })) } } };
+  const canonical = buildCanonicalTradeRecords([scalp], [], laterWindow);
+  assert.equal(canonical.length, 1);
+  assert.deepEqual(selectTradeChartRecords(canonical, 'M1', laterWindow.timeframeData.M1!.candles), []);
+  assert.equal(selectTradeChartRecords(canonical, 'M1', options.timeframeData.M1!.candles).length, 1);
+});
+
+test('RF and intraday SL outcomes keep the same prices and results in history and journal', () => {
+  const { scalp, intraday, options } = synchronizedFixture();
+  const source = options.timeframeData.M1!;
+  const rfOptions = { ...options, timeframeData: { ...options.timeframeData,
+    M1: { ...source, candles: source.candles.map((candle) => candle.time === 120
+      ? { ...candle, high: 4104 } : candle.time === 180 ? { ...candle, high: 4105, low: 4084 } : candle) } } };
+  const rf = buildCanonicalTradeRecords([], [{ ...scalp, result: 'rf' }], rfOptions);
+  assert.equal(rf.length, 1);
+  assert.equal(calculateJournalPerformance(rf).totalR, 0);
+  assert.deepEqual(selectTradeChartRecords(rf, 'M1', rfOptions.timeframeData.M1!.candles), rf);
+  const intradaySource = options.timeframeData.M15!;
+  const slOptions = { ...options, timeframeData: { ...options.timeframeData,
+    M15: { ...intradaySource, candles: intradaySource.candles.map((candle) => candle.time === 2700
+      ? { ...candle, high: 4110, low: 4084 } : candle) } } };
+  const sl = buildCanonicalTradeRecords([], [{ ...intraday, result: 'sl' }], slOptions);
+  assert.equal(sl.length, 1);
+  assert.equal(calculateJournalPerformance(sl).totalR, -1);
+});
+
+test('matching style and session filters select the same canonical records for arrows and journal', () => {
+  const { scalp, intraday, options } = synchronizedFixture();
+  const canonical = buildCanonicalTradeRecords([], [
+    { ...scalp, outsideTradingTime: true }, { ...intraday, outsideTradingTime: false },
+  ], options);
+  const filters = { ...DEFAULT_TRADE_RECORD_FILTERS, tradeStyle: 'SCALPING' as const,
+    tradingTime: 'NON_TRADING' as const };
+  const accuracy = filterTradeRecords(canonical, filters, 'Asia/Kathmandu');
+  const journal = filterTradeRecords(mergeTradeRecordAnnotations(canonical, []), filters, 'Asia/Kathmandu');
+  const arrows = selectTradeChartRecords(accuracy, 'M1', options.timeframeData.M1!.candles);
+  assert.deepEqual(accuracy.map((record) => record.id), [scalp.id]);
+  assert.deepEqual(arrows, journal);
+});
+
+test('a mapped signal waits for its own candle close and validates exits on the finer execution candles', () => {
+  const candles = [
+    { time: 0, high: 105, low: 99 },
+    { time: 900, high: 111, low: 99 },
+    { time: 1800, high: 104, low: 99 },
+    { time: 2700, high: 104, low: 94 },
+    { time: 3600, high: 111, low: 96 },
+  ];
+  const trade = { ...records[0], signalTimeframe: 'M30' as const, signalAt: 0,
+    openedAt: 1800, completedAt: 2700, result: 'sl' as const, tradeStyle: 'INTRADAY',
+    entry: 100, stopLoss: 95, takeProfit: 110 };
+  assert.equal(accuracyResultMatchesCandles(trade, candles, 900, 0, 1800), true,
+    'the pre-confirmation target cannot resolve a trade that has not entered');
+  assert.equal(accuracyResultMatchesCandles({ ...trade, result: 'tp', completedAt: 3600 },
+    candles, 900, 0, 1800), false, 'a target after the first SL cannot replace that result');
+});
 
 test('a later intraday entry from the same M15 Gold zone can also appear on M1', () => {
   const base = {

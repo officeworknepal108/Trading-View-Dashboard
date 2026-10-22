@@ -614,7 +614,10 @@ export function getSavedMtfEntryQualification(
   if (!higher || !lower?.candles.some((candle) => candle.time === entry.signalTime
     && candle.complete !== false)) return undefined;
   const matched = matchMtfChochEvents(
-    lower.candles, lower.structure.zones, higher.structure.zones,
+    lower.candles, lower.structure.zones, higher.structure.zones.map((zone) => (
+      zone.invalidatedAt !== undefined && zone.invalidatedAt > entry.signalTime
+        ? { ...zone, active: true, status: 'valid' as const } : zone
+    )),
     entry.goldScalping === true && higherTimeframe === 'M15' && lowerTimeframe === 'M1',
   ).find(({ event }) => (
     event.time === confirmationTime

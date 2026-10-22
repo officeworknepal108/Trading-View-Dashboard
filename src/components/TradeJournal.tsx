@@ -12,6 +12,7 @@ import {
   X,
 } from 'lucide-react';
 import type { ChartTimeZone } from '../services/chartTime';
+import { mergeTradeRecordAnnotations } from '../services/tradeRecordDeduplication';
 import type { OandaMarketSymbol } from '../services/marketSymbols';
 import {
   filterTradeRecords,
@@ -40,6 +41,7 @@ export interface JournalTradeRecord {
   direction: 'bullish' | 'bearish';
   signalTimeframe: TradeTimeframe;
   engulfingType: string;
+  engulfingCandleCount?: number;
   entry: number;
   stopLoss: number;
   takeProfit: number;
@@ -416,7 +418,8 @@ export const TradeJournal: React.FC<TradeJournalProps> = ({ records, timeZone, o
   const screenshotBackfillAttemptedRef = React.useRef(new Set<string>());
   const screenshotBackfillRunningRef = React.useRef(false);
   const calendarInitializedRef = React.useRef(false);
-  const [trades, setTrades] = useState<JournalTradeRecord[]>(records);
+  const [storedTrades, setTrades] = useState<JournalTradeRecord[]>(records);
+  const trades = useMemo(() => mergeTradeRecordAnnotations(records, storedTrades), [records, storedTrades]);
   const [activeView, setActiveView] = useState<JournalView>('overview');
   const [calendarMonth, setCalendarMonth] = useState(() => {
     const now = new Date();
@@ -428,6 +431,8 @@ export const TradeJournal: React.FC<TradeJournalProps> = ({ records, timeZone, o
   const [datePeriod, setDatePeriod] = useState<TradeRecordFilters['datePeriod']>('DAY');
   const [dateFilter, setDateFilter] = useState('ALL');
   const [sourceFilter, setSourceFilter] = useState<TradeRecordFilters['source']>('ALL');
+  const [tradeStyleFilter, setTradeStyleFilter] = useState<TradeRecordFilters['tradeStyle']>('ALL');
+  const [tradingTimeFilter, setTradingTimeFilter] = useState<TradeRecordFilters['tradingTime']>('ALL');
   const [sideFilter, setSideFilter] = useState<TradeRecordFilters['side']>('ALL');
   const [zoneFilter, setZoneFilter] = useState<TradeRecordFilters['zones']>('ALL');
   const [volumeFilter, setVolumeFilter] = useState<'ALL' | EngulfingVolumeStatus>('ALL');
@@ -448,21 +453,9 @@ export const TradeJournal: React.FC<TradeJournalProps> = ({ records, timeZone, o
         if (!storedResponse.ok || !storedPayload.ok) throw new Error(storedPayload.error || 'Unable to load journal.');
         const saved = storedPayload.trades ?? [];
         const storedById = new Map(saved.map((trade) => [trade.id, trade]));
-        const mergedRecords = records.map((record) => {
-          const stored = storedById.get(record.id);
-          return {
-            ...stored,
-            ...record,
-            session: stored?.session,
-            reason: stored?.reason,
-            mistake: stored?.mistake,
-            lesson: stored?.lesson,
-            screenshotDataUrl: stored?.screenshotDataUrl || record.screenshotDataUrl,
-          };
-        });
+        const mergedRecords = mergeTradeRecordAnnotations(records, saved);
         const missingRecords = records.filter((record) => !storedById.has(record.id));
-        let finalTrades = [...mergedRecords, ...saved.filter((trade) => !records.some((record) => record.id === trade.id))]
-          .sort((first, second) => second.completedAt - first.completedAt);
+        let finalTrades = mergedRecords;
         if (missingRecords.length > 0) {
           const saveResponse = await fetch('/api/journal/trades', {
             method: 'POST',
@@ -471,7 +464,7 @@ export const TradeJournal: React.FC<TradeJournalProps> = ({ records, timeZone, o
           });
           const savePayload = await saveResponse.json() as JournalResponse;
           if (!saveResponse.ok || !savePayload.ok) throw new Error(savePayload.error || 'Unable to save new trades.');
-          finalTrades = savePayload.trades ?? finalTrades;
+          finalTrades = mergeTradeRecordAnnotations(records, savePayload.trades ?? finalTrades);
         }
         if (cancelled) return;
         setTrades(finalTrades);
@@ -580,7 +573,7 @@ export const TradeJournal: React.FC<TradeJournalProps> = ({ records, timeZone, o
         if (!response.ok || !payload.ok) throw new Error(payload.error || 'Unable to save generated screenshots.');
         savedTrades = payload.trades ?? savedTrades;
       }
-      setTrades(savedTrades);
+      setTrades(mergeTradeRecordAnnotations(records, savedTrades));
       setMessage(`${generated.length} historical trade screenshot${generated.length === 1 ? '' : 's'} saved`);
     };
     void backfill()
@@ -592,7 +585,7 @@ export const TradeJournal: React.FC<TradeJournalProps> = ({ records, timeZone, o
         setPreparingScreenshots(false);
       });
     return undefined;
-  }, [journalLoaded, trades]);
+  }, [journalLoaded, records, trades]);
 
   useEffect(() => {
     if (!journalLoaded) return undefined;
@@ -600,14 +593,16 @@ export const TradeJournal: React.FC<TradeJournalProps> = ({ records, timeZone, o
       try {
         const response = await fetch('/api/journal/trades', { cache: 'no-store' });
         const payload = await response.json() as JournalResponse;
-        if (response.ok && payload.ok && Array.isArray(payload.trades)) setTrades(payload.trades);
+        if (response.ok && payload.ok && Array.isArray(payload.trades)) {
+          setTrades(mergeTradeRecordAnnotations(records, payload.trades));
+        }
       } catch {
         // Keep the currently loaded journal visible during a temporary server interruption.
       }
     };
     const timer = window.setInterval(() => void refresh(), 5_000);
     return () => window.clearInterval(timer);
-  }, [journalLoaded]);
+  }, [journalLoaded, records]);
 
   const selectedTrade = trades.find((trade) => trade.id === selectedId);
   useEffect(() => {
@@ -636,6 +631,8 @@ export const TradeJournal: React.FC<TradeJournalProps> = ({ records, timeZone, o
       datePeriod,
       date: dateFilter,
       source: sourceFilter,
+      tradeStyle: tradeStyleFilter,
+      tradingTime: tradingTimeFilter,
       side: sideFilter,
       result: 'ALL',
       zones: zoneFilter,
@@ -646,7 +643,7 @@ export const TradeJournal: React.FC<TradeJournalProps> = ({ records, timeZone, o
       && (!query || [trade.zoneName, trade.engulfingType, volumeStatus(trade), trade.session, trade.reason, trade.autoReason, trade.mistake, trade.lesson]
         .some((value) => value?.toLowerCase().includes(query)))
     ));
-  }, [dateFilter, datePeriod, resultFilter, search, sideFilter, sourceFilter, timeframeFilter, timeZone, trades, volumeFilter, zoneFilter]);
+  }, [dateFilter, datePeriod, resultFilter, search, sideFilter, sourceFilter, timeframeFilter, timeZone, trades, tradeStyleFilter, tradingTimeFilter, volumeFilter, zoneFilter]);
 
   useEffect(() => {
     if (filteredTrades.some((trade) => trade.id === selectedId)) return;
@@ -722,7 +719,8 @@ export const TradeJournal: React.FC<TradeJournalProps> = ({ records, timeZone, o
       });
       const payload = await response.json() as JournalResponse;
       if (!response.ok || !payload.ok) throw new Error(payload.error || 'Unable to save journal notes.');
-      setTrades(payload.trades ?? trades.map((trade) => trade.id === updated.id ? updated : trade));
+      setTrades(mergeTradeRecordAnnotations(records,
+        payload.trades ?? trades.map((trade) => trade.id === updated.id ? updated : trade)));
       setMessage('Trade review saved');
     } catch (error) {
       setMessage(error instanceof Error ? error.message : 'Unable to save journal notes.');
@@ -937,6 +935,12 @@ export const TradeJournal: React.FC<TradeJournalProps> = ({ records, timeZone, o
         <select value={sideFilter} onChange={(event) => setSideFilter(event.target.value as TradeRecordFilters['side'])} className="rounded border border-slate-200 px-2 py-1 text-[9px] font-bold">
           <option value="ALL">ALL SIDES</option><option value="BUY">BUY</option><option value="SELL">SELL</option>
         </select>
+        <select aria-label="Trade style" value={tradeStyleFilter} onChange={(event) => setTradeStyleFilter(event.target.value as TradeRecordFilters['tradeStyle'])} className="rounded border border-slate-200 px-2 py-1 text-[9px] font-bold">
+          <option value="ALL">ALL STYLES</option><option value="SCALPING">SCALPING</option><option value="INTRADAY">INTRADAY</option>
+        </select>
+        <select aria-label="Trading time" value={tradingTimeFilter} onChange={(event) => setTradingTimeFilter(event.target.value as TradeRecordFilters['tradingTime'])} className="rounded border border-slate-200 px-2 py-1 text-[9px] font-bold">
+          <option value="ALL">ALL TRADING TIMES</option><option value="TRADING">IN SESSION</option><option value="NON_TRADING">OUTSIDE TIME</option>
+        </select>
         <select value={resultFilter} onChange={(event) => setResultFilter(event.target.value as 'ALL' | JournalTradeRecord['result'])} className="rounded border border-slate-200 px-2 py-1 text-[9px] font-bold">
           <option value="ALL">ALL RESULTS</option><option value="open">OPEN</option><option value="risk-free">RF DONE</option><option value="tp">TP</option><option value="sl">SL</option><option value="rf">RISK FREE</option>
         </select>
@@ -955,6 +959,7 @@ export const TradeJournal: React.FC<TradeJournalProps> = ({ records, timeZone, o
         <button type="button" onClick={() => {
           setTimeframeFilter('ALL'); setDatePeriod('DAY'); setDateFilter('ALL'); setSourceFilter('ALL');
           setSideFilter('ALL'); setResultFilter('ALL'); setZoneFilter('ALL');
+          setTradeStyleFilter('ALL'); setTradingTimeFilter('ALL');
           setVolumeFilter('ALL'); setSearch('');
         }} className="rounded border border-slate-200 bg-slate-50 px-2 py-1 text-[9px] font-black text-slate-600 hover:bg-slate-100">RESET</button>
       </div>

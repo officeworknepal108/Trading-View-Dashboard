@@ -737,6 +737,12 @@ test('MTF CHOCH waits for the tapped RBS midpoint before its engulfing', () => {
   assert.equal(rowWith(midpointTouchedCandles)?.engulfingTime, 500,
     'an RBS midpoint touch before engulfing allows the entry');
   assert.equal(savedEntryQualifies(midpointTouchedCandles), true);
+  assert.equal(isSavedMtfEntryQualified({
+    H1: { candles: midpointTouchedCandles, structure: structure([
+      { ...higherZone, active: false, status: 'invalidated', invalidatedAt: 600 },
+    ]) },
+    M5: { candles: midpointTouchedCandles, structure: structure([qml, rbs, db]) },
+  }, savedEntry), true, 'later HTF invalidation does not erase an earlier qualified MTF entry');
   assert.equal(savedEntryQualifies(midpointTouchedCandles, {
     ...qml, fibSourcePrice: undefined, fibZeroPrice: undefined,
   }), false, 'an old MTF Fib label cannot qualify an RBS without current LTF Fib');

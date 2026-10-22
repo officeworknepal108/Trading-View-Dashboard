@@ -1,5 +1,34 @@
 import type { ChartTimeZone } from './chartTime';
 import type { TradeResult, TradeTimeframe } from './tradeLevels';
+import { detectEngulfingPatternAt, type StructureCandle, type StructureZone } from './marketStructure';
+import { reconcileTradeRecords } from './tradeRecordDeduplication';
+import { isGoldTradeRecordRoute, savedGoldScalpMatchesReversal } from './goldScalping';
+import { isNepalTradingTime } from './tradingTime';
+
+function tradeTimeframeSeconds(timeframe: TradeTimeframe): number {
+  return timeframe === 'D' ? 86400 : Number(timeframe.slice(1)) * (timeframe.startsWith('H') ? 3600 : 60);
+}
+
+export interface CanonicalTradeRecord extends FilterableTradeRecord {
+  id: string; symbol?: string; zoneTimeframe: TradeTimeframe;
+  signalAt?: number; openedAt?: number; engulfingType: string; engulfingCandleCount?: number;
+  entry: number; stopLoss: number; takeProfit: number; rewardRisk: number; riskPips: number;
+  tradeStyle?: 'SCALPING' | 'INTRADAY'; fibSource?: string; fibBand?: string;
+  brokerTicket?: number; mt5Managed?: boolean;
+}
+
+export interface TradeRecordVerification {
+  marketSymbol: string;
+  pipSize: number;
+  requireLtfFib: boolean;
+  timeframeData: Partial<Record<TradeTimeframe, {
+    candles: StructureCandle[]; structure: { zones: StructureZone[] };
+  }>>;
+  qualifyMtf: (entry: {
+    id: string; signalTime: number; direction: 'bullish' | 'bearish';
+    engulfingType: 'T1' | 'T2' | 'T3' | 'T4'; zoneName: string; goldScalping?: boolean;
+  }) => { fibBand?: string } | undefined;
+}
 
 export interface FilterableTradeRecord {
   completedAt: number;
@@ -8,6 +37,10 @@ export interface FilterableTradeRecord {
   direction: 'bullish' | 'bearish';
   result: TradeResult | 'open' | 'risk-free';
   zoneName: string;
+  tradeStyle?: string;
+  openedAt?: number;
+  signalAt?: number;
+  outsideTradingTime?: boolean;
 }
 
 export type TradeDatePeriod = 'DAY' | 'WEEK' | 'MONTH';
@@ -20,6 +53,8 @@ export interface TradeRecordFilters {
   side: 'ALL' | 'BUY' | 'SELL';
   result: 'ALL' | TradeResult;
   zones: 'ALL' | string[];
+  tradeStyle?: 'ALL' | 'SCALPING' | 'INTRADAY';
+  tradingTime?: 'ALL' | 'TRADING' | 'NON_TRADING';
 }
 
 export const DEFAULT_TRADE_RECORD_FILTERS: TradeRecordFilters = {
@@ -98,7 +133,18 @@ export function filterTradeRecords<T extends FilterableTradeRecord>(
       || (filters.side === 'BUY' ? record.direction === 'bullish' : record.direction === 'bearish'))
     && (filters.result === 'ALL' || record.result === filters.result)
     && (filters.zones === 'ALL' || filters.zones.includes(record.zoneName))
+    && (!filters.tradeStyle || filters.tradeStyle === 'ALL' || record.tradeStyle === filters.tradeStyle)
+    && (!filters.tradingTime || filters.tradingTime === 'ALL'
+      || tradeRecordOutsideTradingTime(record) === (filters.tradingTime === 'NON_TRADING'))
   ));
+}
+
+export function tradeRecordOutsideTradingTime(record: FilterableTradeRecord): boolean {
+  if (record.outsideTradingTime !== undefined) return record.outsideTradingTime;
+  const confirmedAt = record.signalAt === undefined ? undefined
+    : record.signalAt + tradeTimeframeSeconds(record.signalTimeframe);
+  return (confirmedAt !== undefined && !isNepalTradingTime(confirmedAt))
+    || (record.openedAt !== undefined && !isNepalTradingTime(record.openedAt));
 }
 
 /** Entry arrows represent only completed accuracy rows on the displayed candle timeframe. */
@@ -148,10 +194,43 @@ export function selectGoldIntradayAfterScalp<T extends FilterableTradeRecord & {
   });
 }
 
+/** One completed-record selection drives both chart arrows and its accuracy rows. */
+export function selectTradeChartRecords<T extends FilterableTradeRecord & {
+  id: string; zoneTimeframe: TradeTimeframe; tradeStyle?: string;
+  signalAt?: number; openedAt?: number;
+}>(records: readonly T[], chartTimeframe: TradeTimeframe,
+  candles: readonly { time: number }[], projectGoldIntraday = false): T[] {
+  const selected = selectAccuracyChartEntries(records, null, chartTimeframe);
+  if (projectGoldIntraday && chartTimeframe === 'M1') {
+    selected.push(...selectGoldIntradayAfterScalp(records));
+  }
+  const byId = new Map(selected.filter((record) => candles.some((candle) => (
+    candle.time === (record.signalTimeframe === chartTimeframe ? record.signalAt : record.openedAt)
+  ))).map((record) => [record.id, record]));
+  return [...byId.values()].sort((first, second) => second.completedAt - first.completedAt);
+}
+
 export interface AccuracyVerificationCandle {
   time: number;
   high: number;
   low: number;
+}
+
+/** A saved chart signal must still be a completed engulfing when its candles are loaded. */
+export function tradeSignalMatchesCandles(record: {
+  signalAt?: number;
+  engulfingType: string;
+  direction: 'bullish' | 'bearish';
+  engulfingCandleCount?: number;
+}, candles: readonly StructureCandle[] | undefined): boolean {
+  if (!candles?.length || record.signalAt === undefined) return true;
+  const index = candles.findIndex((candle) => candle.time === record.signalAt);
+  if (index < 0) return record.signalAt < candles[0].time
+    || record.signalAt > candles[candles.length - 1].time;
+  if (candles[index].complete === false) return false;
+  const pattern = detectEngulfingPatternAt([...candles], index);
+  return pattern?.type === record.engulfingType && pattern.direction === record.direction
+    && (record.engulfingCandleCount === undefined || pattern.candleCount === record.engulfingCandleCount);
 }
 
 export interface AccuracySourceZone {
@@ -188,10 +267,12 @@ export function accuracyResultMatchesCandles(
     entry: number;
     stopLoss: number;
     takeProfit: number;
+    tradeStyle?: string;
   },
   candles: readonly AccuracyVerificationCandle[] | undefined,
   timeframeSeconds: number,
   priceTolerance = 0,
+  signalBarSeconds = timeframeSeconds,
 ): boolean {
   if (!candles?.length || record.signalAt === undefined
     || !Number.isFinite(record.signalAt) || !Number.isFinite(record.completedAt)) return true;
@@ -206,7 +287,7 @@ export function accuracyResultMatchesCandles(
   if (signalFallsInsideLoadedCandle && !signalIsLoaded) return false;
   if (!signalIsLoaded) return true;
 
-  const firstExecutionTime = record.signalAt + timeframeSeconds;
+  const firstExecutionTime = record.signalAt + signalBarSeconds;
   const firstIndex = candles.findIndex((candle) => (
     firstExecutionTime >= candle.time && firstExecutionTime < candle.time + timeframeSeconds
   ));
@@ -218,23 +299,94 @@ export function accuracyResultMatchesCandles(
   const buy = record.direction === 'bullish';
   const entryTime = record.openedAt ?? firstExecutionTime;
   let filled = false;
+  let reachedOneR = false;
+  const risk = Math.abs(record.entry - record.stopLoss);
+  const oneR = buy ? record.entry + risk : record.entry - risk;
   for (let index = firstIndex; index <= lastIndex; index += 1) {
     const candle = candles[index];
     if (candle.time + timeframeSeconds <= entryTime) continue;
     if (!filled) {
-      filled = buy
-        ? candle.low <= record.entry + priceTolerance
-        : candle.high >= record.entry - priceTolerance;
+      filled = candle.low <= record.entry + priceTolerance
+        && candle.high >= record.entry - priceTolerance;
     }
-    if (index !== lastIndex) continue;
-    const exitReached = record.result === 'tp'
-      ? buy ? candle.high >= record.takeProfit - priceTolerance
-        : candle.low <= record.takeProfit + priceTolerance
-      : record.result === 'sl' || record.result === 'rf'
-        ? buy ? candle.low <= record.stopLoss + priceTolerance
-          : candle.high >= record.stopLoss - priceTolerance
-        : true;
-    return filled && exitReached;
+    if (!filled) continue;
+    const tpHit = buy ? candle.high >= record.takeProfit - priceTolerance
+      : candle.low <= record.takeProfit + priceTolerance;
+    const slHit = buy ? candle.low <= record.stopLoss + priceTolerance
+      : candle.high >= record.stopLoss - priceTolerance;
+    reachedOneR ||= buy ? candle.high >= oneR : candle.low <= oneR;
+    // Match the existing trade engine's TP priority when both exits share a candle.
+    if (tpHit) return index === lastIndex && record.result === 'tp';
+    if (slHit) {
+      const result = record.tradeStyle !== 'INTRADAY' && reachedOneR ? 'rf' : 'sl';
+      return index === lastIndex && record.result === result;
+    }
   }
   return false;
+}
+
+/** Shared validated record set for the journal, accuracy rows and historical entry arrows. */
+export function buildCanonicalTradeRecords<T extends CanonicalTradeRecord>(
+  saved: readonly T[], current: readonly T[], options: TradeRecordVerification,
+): T[] {
+  const { marketSymbol, pipSize, requireLtfFib, timeframeData, qualifyMtf } = options;
+  const belongsToSelectedMarket = (record: T): boolean => {
+    if (record.symbol) return record.symbol === marketSymbol;
+    if (marketSymbol === 'XAUUSD') return record.entry >= 1000;
+    if (record.entry >= 1000) return false;
+    const entryTime = record.openedAt;
+    const candle = timeframeData[record.signalTimeframe]?.candles.find((candidate) => (
+      entryTime !== undefined && entryTime >= candidate.time
+      && entryTime < (candidate.time + tradeTimeframeSeconds(record.signalTimeframe))
+    ));
+    return candle !== undefined && record.entry >= candle.low - pipSize * 3
+      && record.entry <= candle.high + pipSize * 3;
+  };
+  const brokerRecord = (record: T) => (
+    record.mt5Managed === true || record.brokerTicket !== undefined
+  );
+  const candidates = reconcileTradeRecords(saved, current, (record) => {
+    if (!belongsToSelectedMarket(record)
+      || ![record.entry, record.stopLoss, record.takeProfit, record.completedAt, record.signalAt,
+        record.openedAt].every((value) => typeof value === 'number' && Number.isFinite(value))
+      || record.openedAt! < record.signalAt!) return false;
+    if (brokerRecord(record)) return ['open', 'risk-free', 'tp', 'sl', 'rf'].includes(record.result);
+    if (!['tp', 'sl', 'rf'].includes(record.result) || record.completedAt < record.openedAt!
+      || record.openedAt! < record.signalAt! + tradeTimeframeSeconds(record.signalTimeframe)
+      || (record.direction === 'bullish'
+        ? record.stopLoss >= record.entry || record.takeProfit <= record.entry
+        : record.stopLoss <= record.entry || record.takeProfit >= record.entry)
+      || !Number.isFinite(record.riskPips) || record.riskPips <= 0) return false;
+    return marketSymbol !== 'XAUUSD' || isGoldTradeRecordRoute(record, requireLtfFib);
+  });
+  return candidates.flatMap((record): T[] => {
+    // Broker executions are facts; another feed must not rewrite their fill or result.
+    if (brokerRecord(record)) return [record];
+    const signalCandles = timeframeData[record.signalTimeframe]?.candles;
+    let verified = { ...record,
+      tradeStyle: record.tradeStyle ?? (marketSymbol === 'XAUUSD' ? 'INTRADAY' : undefined) };
+    if (record.source === 'MTF' && signalCandles?.some((candle) => candle.time === record.signalAt)) {
+      if (record.signalAt === undefined || !['T1', 'T2', 'T3', 'T4'].includes(record.engulfingType)) return [];
+      const qualification = qualifyMtf({
+        id: record.id, signalTime: record.signalAt, direction: record.direction,
+        engulfingType: record.engulfingType as 'T1' | 'T2' | 'T3' | 'T4',
+        zoneName: record.zoneName, goldScalping: record.tradeStyle === 'SCALPING',
+      });
+      if (!qualification) return [];
+      verified = { ...verified, fibSource: qualification.fibBand ? 'MTF FIB' : undefined,
+        fibBand: qualification.fibBand };
+    }
+    const executionTimeframe = tradeTimeframeSeconds(verified.zoneTimeframe)
+      < tradeTimeframeSeconds(verified.signalTimeframe) ? verified.zoneTimeframe : verified.signalTimeframe;
+    const executionCandles = timeframeData[executionTimeframe]?.candles;
+    if (!tradeSignalMatchesCandles(verified, signalCandles)
+      || !accuracyResultMatchesCandles(verified, executionCandles,
+        tradeTimeframeSeconds(executionTimeframe), 0,
+        tradeTimeframeSeconds(verified.signalTimeframe))
+      || !savedDirectZoneMatchesStructure(verified, signalCandles,
+        timeframeData[verified.zoneTimeframe]?.structure.zones)
+      || !savedGoldScalpMatchesReversal(verified,
+        timeframeData[verified.zoneTimeframe]?.structure.zones, signalCandles)) return [];
+    return [verified];
+  });
 }

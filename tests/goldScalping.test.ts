@@ -180,6 +180,9 @@ test('saved Gold scalp arrows exclude a later zone engulfing but retain a wick r
     signalAt, engulfingType: 'T1',
   });
   assert.equal(savedGoldScalpMatchesReversal(saved(180), [zone], candles), true);
+  assert.equal(savedGoldScalpMatchesReversal(saved(180), [{ ...zone,
+    status: 'invalidated', invalidatedAt: 240 }], candles), true,
+  'a later source-zone invalidation must not erase a verified historical entry');
   assert.equal(savedGoldScalpMatchesReversal(saved(300), [zone], candles), false);
 });
 

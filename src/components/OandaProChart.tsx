@@ -53,7 +53,6 @@ import {
 } from '../services/mtf';
 import {
   findGoldScalpingCandleSignal,
-  savedGoldScalpMatchesReversal,
   goldScalpingCandleTimeframe,
   goldScalpingChochTradeRule,
   goldScalpingTradeRule,
@@ -89,11 +88,10 @@ import {
 import { applyOneMinuteGenesisQml, executionZoneName } from '../services/oneMinuteGenesis';
 import {
   DEFAULT_TRADE_RECORD_FILTERS,
-  accuracyResultMatchesCandles,
+  buildCanonicalTradeRecords,
   filterTradeRecords,
-  savedDirectZoneMatchesStructure,
-  selectAccuracyChartEntries,
-  selectGoldIntradayAfterScalp,
+  tradeRecordOutsideTradingTime,
+  selectTradeChartRecords,
   tradeRecordDatePeriodKey,
   tradeRecordPeriodLabel,
   type TradeRecordFilters,
@@ -1121,19 +1119,11 @@ function matchesAccuracyTradingTime(
   filter: AccuracyTradingTimeFilter,
 ): boolean {
   if (filter === 'ALL') return true;
-  const entryTime = record.openedAt
-    ?? (record.signalAt !== undefined
-      ? record.signalAt + TIMEFRAME_SECONDS[record.signalTimeframe]
-      : record.completedAt);
-  return isNepalTradingTime(entryTime) === (filter === 'TRADING');
+  return tradeRecordOutsideTradingTime(record) === (filter === 'NON_TRADING');
 }
 
 function accuracyRecordOutsideTradingTime(record: AccuracyTradeRecord): boolean {
-  if (record.outsideTradingTime !== undefined) return record.outsideTradingTime;
-  const confirmedAt = record.signalAt === undefined ? undefined
-    : record.signalAt + TIMEFRAME_SECONDS[record.signalTimeframe];
-  return (confirmedAt !== undefined && !isNepalTradingTime(confirmedAt))
-    || (record.openedAt !== undefined && !isNepalTradingTime(record.openedAt));
+  return tradeRecordOutsideTradingTime(record);
 }
 
 function formatAccuracyTradeTime(time: number, timeZone: ChartTimeZone): string {
@@ -1234,14 +1224,11 @@ const EngulfingAccuracyTable: React.FC<{
         && matchesStyle(record)),
     [allRecords, filters, timeZone, tradingTimeFilter, selectedStyle],
   );
-  const summaryRecords = useMemo(() => showAllTrades
-    ? filterTradeRecords<AccuracyTradeRecord>(records, filters, timeZone)
-      .filter((record) => matchesAccuracyTradingTime(record, tradingTimeFilter)
-        && (selectedStyle === 'ALL' || record.tradeStyle === selectedStyle))
-    : records.filter((record) => matchesAccuracyTradingTime(record, tradingTimeFilter)
-      && (selectedStyle === 'ALL' || record.tradeStyle === selectedStyle)),
-  [filters, records, selectedStyle, showAllTrades, timeZone, tradingTimeFilter]);
-  const visibleChartIds = useMemo(() => new Set(summaryRecords.map((record) => record.id)), [summaryRecords]);
+  const summaryRecords = filteredAllRecords;
+  const visibleChartIds = useMemo(() => {
+    const selectedIds = new Set(summaryRecords.map((record) => record.id));
+    return new Set(records.filter((record) => selectedIds.has(record.id)).map((record) => record.id));
+  }, [records, summaryRecords]);
   useEffect(() => {
     onVisibleRecordIdsChange(summaryRecords.map((record) => record.id));
   }, [onVisibleRecordIdsChange, summaryRecords]);
@@ -1290,7 +1277,7 @@ const EngulfingAccuracyTable: React.FC<{
     }`}>
       <div className="flex shrink-0 items-center gap-2 border-b border-slate-300 bg-indigo-50 px-2 py-1 text-[9px] font-black uppercase tracking-wide text-indigo-700">
         <span>
-          {marketSymbol} chart accuracy · {entryArrowsVisible ? summaryRecords.length : 0} arrow{summaryRecords.length === 1 && entryArrowsVisible ? '' : 's'}
+          {marketSymbol} trade accuracy · {entryArrowsVisible ? visibleChartIds.size : 0} arrow{visibleChartIds.size === 1 && entryArrowsVisible ? '' : 's'}
         </span>
         <select
           value={tradingTimeFilter}
@@ -1328,11 +1315,9 @@ const EngulfingAccuracyTable: React.FC<{
           <table className="w-full border-collapse text-center text-[9px]">
             <thead>{header('Timeframe')}</thead>
             <tbody>
-              {resultRow(showAllTrades
-                ? filters.timeframes === 'ALL'
-                  ? 'ALL'
-                  : filters.timeframes.map((value) => GRANULARITY_LABELS[value].toUpperCase()).join(', ') || 'NONE'
-                : GRANULARITY_LABELS[timeframe].toUpperCase(), timeframeCounts)}
+              {resultRow(filters.timeframes === 'ALL'
+                ? 'ALL'
+                : filters.timeframes.map((value) => GRANULARITY_LABELS[value].toUpperCase()).join(', ') || 'NONE', timeframeCounts)}
               {header('Trade source')}
               {resultRow('ENGULFING', accuracyCounts(
                 summaryRecords.filter((record) => record.source === 'ENGULFING'),
@@ -1352,7 +1337,7 @@ const EngulfingAccuracyTable: React.FC<{
           <div className="min-w-0 max-w-[calc(100vw-338px)] flex-1 overflow-auto">
             <div className="sticky left-0 top-0 z-20 border-b border-indigo-200 bg-indigo-50">
               <div className="bg-indigo-100 px-2 py-1 text-[9px] font-black uppercase tracking-wide text-indigo-800">
-                All completed setups · {filteredAllRecords.length}/{allRecords.length} shown · {entryArrowsVisible ? summaryRecords.length : 0} chart arrows · newest first
+                All completed setups · {filteredAllRecords.length}/{allRecords.length} shown · {entryArrowsVisible ? visibleChartIds.size : 0} chart arrows · newest first
               </div>
               <div className="flex flex-wrap items-center gap-1 border-t border-indigo-100 px-1.5 py-1">
                 <TradeMultiSelect
@@ -2649,6 +2634,7 @@ export const OandaProChart: React.FC = () => {
         direction: trade.signal.direction,
         signalTimeframe: trade.signal.timeframe,
         engulfingType: trade.signal.type,
+        engulfingCandleCount: trade.signal.candleCount,
         entry: trade.entry,
         stopLoss: trade.stopLoss,
         takeProfit: trade.takeProfit,
@@ -2666,51 +2652,80 @@ export const OandaProChart: React.FC = () => {
 
     // Reconstruct direct engulfing outcomes from every historical zone that
     // retained a qualified signal, including zones invalidated after entry.
-    for (const zone of displayZones) {
-      if (redundantStandaloneZoneIds.has(zone.id)) continue;
-      if (extremeAPlusTjl2Selection.blockedZoneIds.has(zone.id)) continue;
-      if (zone.status === 'rejected'
-        || (!isZoneEligibleForEngulfingEntry(zone) && zone.tradeable === false)) continue;
-      const signal = resolveZoneEngulfingSignal(zone, granularity);
-      if (!signal) continue;
-      if (pendingM15DbBlocksSignal(zone, signal) || expiredGoldZoneBeforeSignal(zone, signal)) continue;
-      if (marketSymbol === 'XAUUSD'
-        && !isGoldIntradayCandleRoute(granularity, signal.timeframe)) continue;
-      const baseRule = getDirectTradeRule(granularity, signal.timeframe);
-      if (!baseRule) continue;
-      const sourceCandles = signal.timeframe === granularity
-        ? displayCandles
-        : vipCandles[signal.timeframe] || [];
-      const rule = resolveRuleForDirectEntry({
-        zoneTimeframe: granularity,
-        signal,
-        sourceCandles,
-        baseRule,
-      });
-      if (!rule) continue;
-      const executionCandles = TIMEFRAME_SECONDS[signal.timeframe]
-        < TIMEFRAME_SECONDS[granularity]
-        ? sourceCandles
-        : displayCandles;
-      const trade = calculateTradeLevels({
-        sourceCandles,
-        executionCandles,
-        signal,
-        rule,
-        riskFreeEnabled: marketSymbol !== 'XAUUSD',
-        omitStopBuffer: marketSymbol !== 'XAUUSD'
-          && isDeepDiscountTradeSignal(zone, signal),
-      });
-      addRecord(
-        `DIRECT:${zone.id}:${signal.time}:${trade?.entry ?? 'NA'}`,
-        executionZoneName(zone),
-        granularity,
-        'ENGULFING',
-        trade,
-        sourceCandles,
-        { ...journalFibMetadata(zone, signal),
-          ...(marketSymbol === 'XAUUSD' ? { tradeStyle: 'INTRADAY' as const } : {}) },
-      );
+    const historyTimeframes: TradeTimeframe[] = marketSymbol === 'XAUUSD' ? ['M15', 'H1'] : [granularity];
+    for (const zoneTimeframe of historyTimeframes) {
+      const zoneData = tableTimeframeData[zoneTimeframe];
+      if (!zoneData) continue;
+      let sourceZones = zoneTimeframe === granularity ? displayZones
+        : applySwingFibConfluence(zoneData.candles, zoneData.structure.zones, swingFibMoves).zones;
+      if (zoneTimeframe !== granularity) {
+        if (zoneTimeframe === 'M15') {
+          const moves = buildDayFibs(zoneData.candles);
+          sourceZones = applyDayFibConfluence(zoneData.candles, sourceZones, moves[moves.length - 1]).zones;
+        }
+        for (const fallback of DIRECT_ENGULFING_FALLBACKS[zoneTimeframe] ?? []) {
+          sourceZones = applyTradeableZoneEngulfingFallback(
+            tableTimeframeData[fallback]?.candles.filter((candle) => candle.complete !== false) ?? [],
+            sourceZones, fallback, zoneTimeframe === 'H1',
+          );
+        }
+      }
+      const redundantIds = redundantStandaloneLiquidityZoneIds(sourceZones, marketConfig.pipSize);
+      const blockedIds = selectExtremeAPlusTjl2Zones(sourceZones, marketConfig.pipSize).blockedZoneIds;
+      for (const zone of sourceZones) {
+        if (redundantIds.has(zone.id)) continue;
+        if (blockedIds.has(zone.id)) continue;
+        if (zone.status === 'rejected'
+          || (!isZoneEligibleForEngulfingEntry(zone) && zone.tradeable === false)) continue;
+        const signal = resolveZoneEngulfingSignal(zone, zoneTimeframe);
+        if (!signal) continue;
+        if (zoneTimeframe === granularity && pendingM15DbBlocksSignal(zone, signal)) continue;
+        if (zoneTimeframe === 'M15' && signal.timeframe === 'M15' && sourceZones.some((db) => (
+          db.name === 'DB' && db.active && db.m15H1ChochClosePending && db.isBuy === zone.isBuy
+          && signal.time >= (db.chochTime ?? db.startTime) && zone.bottom <= db.top && db.bottom <= zone.top
+          && zoneData.candles.some((candle) => candle.time === signal.time && candle.low <= db.top && candle.high >= db.bottom)
+        ))) continue;
+        if (marketSymbol === 'XAUUSD' && isGoldZoneEntryBlocked(
+          zone, zoneData.candles, zoneTimeframe, marketConfig.pipSize, signal.time,
+        )) continue;
+        if (marketSymbol === 'XAUUSD'
+          && !isGoldIntradayCandleRoute(zoneTimeframe, signal.timeframe)) continue;
+        const baseRule = getDirectTradeRule(zoneTimeframe, signal.timeframe);
+        if (!baseRule) continue;
+        const sourceCandles = signal.timeframe === zoneTimeframe
+          ? zoneData.candles
+          : tableTimeframeData[signal.timeframe]?.candles || [];
+        const rule = resolveRuleForDirectEntry({
+          zoneTimeframe,
+          signal,
+          sourceCandles,
+          baseRule,
+        });
+        if (!rule) continue;
+        const executionCandles = TIMEFRAME_SECONDS[signal.timeframe]
+          < TIMEFRAME_SECONDS[zoneTimeframe]
+          ? sourceCandles
+          : zoneData.candles;
+        const trade = calculateTradeLevels({
+          sourceCandles,
+          executionCandles,
+          signal,
+          rule,
+          riskFreeEnabled: marketSymbol !== 'XAUUSD',
+          omitStopBuffer: marketSymbol !== 'XAUUSD'
+            && isDeepDiscountTradeSignal(zone, signal),
+        });
+        addRecord(
+          `DIRECT:${zone.id}:${signal.time}:${trade?.entry ?? 'NA'}`,
+          executionZoneName(zone),
+          zoneTimeframe,
+          'ENGULFING',
+          trade,
+          sourceCandles,
+          { ...journalFibMetadata(zone, signal),
+            ...(marketSymbol === 'XAUUSD' ? { tradeStyle: 'INTRADAY' as const } : {}) },
+        );
+      }
     }
 
     for (const { zone, zoneTimeframe, trade } of goldScalpingAccuracyTrades) {
@@ -2833,138 +2848,59 @@ export const OandaProChart: React.FC = () => {
     pendingM15DbBlocksSignal,
     redundantStandaloneZoneIds,
     tableTimeframeData,
+    swingFibMoves,
     trackedDirectTradeSetups,
     tradeTrackingScope,
     tradingTimeEnabled,
     vipCandles,
   ]);
 
+  const canonicalTradeRecords = useMemo(() => buildCanonicalTradeRecords(
+    savedJournalTrades, accuracyTradeRecords, {
+      marketSymbol, pipSize: marketConfig.pipSize, requireLtfFib: mtfLtfFibRequired,
+      timeframeData: tableTimeframeData, qualifyMtf: savedChartMtfEntryQualification,
+    },
+  ), [accuracyTradeRecords, marketConfig.pipSize, marketSymbol, mtfLtfFibRequired,
+    savedChartMtfEntryQualification, savedJournalTrades, tableTimeframeData]);
+  const allSavedAccuracyRecords = useMemo(() => canonicalTradeRecords.filter((record) => (
+    record.result === 'tp' || record.result === 'sl' || record.result === 'rf'
+  )), [canonicalTradeRecords]);
+
   useEffect(() => {
-    if (accuracyTradeRecords.length === 0) return;
-    const signature = accuracyTradeRecords
-      .map((record) => [
-        record.id,
-        record.result,
-        record.completedAt,
-        record.volumeLogicStatus,
-        record.volume1,
-        record.volume2,
-        record.volume3,
-      ].join(':'))
-      .sort()
-      .join('|');
+    const facts = (record: AccuracyTradeRecord) => JSON.stringify([
+      record.id, record.result, record.completedAt, record.entry, record.stopLoss,
+      record.takeProfit, record.openedAt, record.rewardRisk, record.tradeStyle,
+      record.fibSource, record.fibBand, record.volumeLogicStatus,
+      record.volume1, record.volume2, record.volume3, record.engulfingCandleCount,
+    ]);
+    const stored = new Map(savedJournalTrades.map((record) => [record.id, facts(record)]));
+    const changed = canonicalTradeRecords.filter((record) => stored.get(record.id) !== facts(record));
+    if (changed.length === 0) return;
+    const signature = changed.map(facts).sort().join('|');
     if (signature === journalSyncSignatureRef.current) return;
     journalSyncSignatureRef.current = signature;
-    void fetch('/api/journal/trades', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ trades: accuracyTradeRecords }),
-    }).then(async (response) => {
-      if (!response.ok) {
-        journalSyncSignatureRef.current = '';
-        return;
-      }
-      const payload = await response.json() as { ok?: boolean; trades?: AccuracyTradeRecord[] };
-      if (payload.ok && Array.isArray(payload.trades)) {
-        setSavedJournalTrades(payload.trades);
-        for (const record of accuracyTradeRecords) {
+    void (async () => {
+      let saved: AccuracyTradeRecord[] | undefined;
+      for (let offset = 0; offset < changed.length; offset += 2000) {
+        const batch = changed.slice(offset, offset + 2000);
+        const response = await fetch('/api/journal/trades', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ trades: batch }),
+        });
+        if (!response.ok) throw new Error('Unable to save validated trade records.');
+        const payload = await response.json() as { ok?: boolean; trades?: AccuracyTradeRecord[] };
+        if (!payload.ok || !Array.isArray(payload.trades)) throw new Error('Invalid journal response.');
+        saved = payload.trades;
+        for (const record of batch) {
           if (!record.screenshotDataUrl) continue;
-          try {
-            window.localStorage.removeItem(`${JOURNAL_SCREENSHOT_PREFIX}${record.id}`);
-          } catch {
-            // The server copy is durable; local cleanup is only a quota optimization.
-          }
+          try { window.localStorage.removeItem(`${JOURNAL_SCREENSHOT_PREFIX}${record.id}`); }
+          catch { /* The server copy remains durable. */ }
         }
       }
-    }).catch(() => {
-      journalSyncSignatureRef.current = '';
-    });
-  }, [accuracyTradeRecords]);
+      if (saved) setSavedJournalTrades(saved);
+    })().catch(() => { journalSyncSignatureRef.current = ''; });
+  }, [canonicalTradeRecords, savedJournalTrades]);
 
-  const allSavedAccuracyRecords = useMemo<AccuracyTradeRecord[]>(() => {
-    const completedSavedJournalTrades = savedJournalTrades.filter((record) => (
-      record.result === 'tp' || record.result === 'sl' || record.result === 'rf'
-    )).flatMap((record): AccuracyTradeRecord[] => {
-      if (record.source !== 'MTF' || record.brokerTicket !== undefined
-        || record.mt5Managed === true) return [record];
-      if (record.signalAt === undefined || !['T1', 'T2', 'T3', 'T4'].includes(record.engulfingType)) {
-        return [];
-      }
-      const qualification = savedChartMtfEntryQualification({
-          id: record.id,
-          signalTime: record.signalAt,
-          direction: record.direction,
-          engulfingType: record.engulfingType as EngulfingTradeSignal['type'],
-          zoneName: record.zoneName,
-          goldScalping: record.tradeStyle === 'SCALPING',
-      });
-      return qualification ? [{
-        ...record,
-        fibSource: qualification.fibBand ? 'MTF FIB' : undefined,
-        fibBand: qualification.fibBand,
-      }] : [];
-    }).filter((record) => accuracyResultMatchesCandles(
-      record,
-      tableTimeframeData[record.signalTimeframe]?.candles,
-      TIMEFRAME_SECONDS[record.signalTimeframe],
-      marketConfig.pipSize * 3,
-    ) && savedDirectZoneMatchesStructure(
-      record,
-      tableTimeframeData[record.signalTimeframe]?.candles,
-      tableTimeframeData[record.zoneTimeframe]?.structure.zones,
-    ) && savedGoldScalpMatchesReversal(
-      record,
-      tableTimeframeData[record.zoneTimeframe]?.structure.zones,
-      tableTimeframeData[record.signalTimeframe]?.candles,
-    ));
-    const belongsToSelectedMarket = (record: AccuracyTradeRecord): boolean => {
-      if (record.symbol) return record.symbol === marketSymbol;
-      // Older journal entries did not save a symbol. Gold is unambiguous among
-      // the supported markets; currency pairs need a candle at the trade time.
-      if (marketSymbol === 'XAUUSD') return record.entry >= 1000;
-      if (record.entry >= 1000) return false;
-      const entryTime = record.openedAt ?? (record.signalAt !== undefined
-        ? record.signalAt + TIMEFRAME_SECONDS[record.signalTimeframe] : undefined);
-      if (entryTime === undefined) return false;
-      const candle = tableTimeframeData[record.signalTimeframe]?.candles.find((candidate) => (
-        entryTime >= candidate.time
-        && entryTime < marketCandleCloseTime(candidate.time, record.signalTimeframe)
-      ));
-      if (!candle) return false;
-      const tolerance = Math.max(marketConfig.pipSize * 3,
-        Math.abs(record.entry - record.stopLoss) * 0.03);
-      return record.entry >= candle.low - tolerance && record.entry <= candle.high + tolerance;
-    };
-    if (marketSymbol !== 'XAUUSD') {
-      return deduplicateTradeRecords([...completedSavedJournalTrades, ...accuracyTradeRecords])
-        .filter(belongsToSelectedMarket);
-    }
-    const taughtGoldRoute = (record: AccuracyTradeRecord): boolean => {
-      if (record.tradeStyle === 'SCALPING') {
-        return record.rewardRisk === 3 && (
-          (record.source === 'MTF' && record.signalTimeframe === 'M1'
-            && record.fibSource === 'MTF FIB'
-            && (record.zoneTimeframe === 'M15' || record.zoneTimeframe === 'H1'))
-          || (record.source === 'ENGULFING'
-            && ((record.zoneTimeframe === 'M15'
-              && (record.signalTimeframe === 'M1' || record.signalTimeframe === 'M5'))
-              || (record.zoneTimeframe === 'H1' && record.signalTimeframe === 'M5')))
-        );
-      }
-      if (record.source === 'ENGULFING') {
-        const rule = getDirectTradeRule(record.zoneTimeframe, record.signalTimeframe);
-        return isGoldIntradayCandleRoute(record.zoneTimeframe, record.signalTimeframe)
-          && record.rewardRisk === rule?.rewardRisk;
-      }
-      const rule = goldIntradayMtfTradeRule(record.zoneTimeframe, record.signalTimeframe);
-      return record.source === 'MTF' && rule !== undefined
-        && record.rewardRisk === rule.rewardRisk;
-    };
-    return deduplicateTradeRecords([...completedSavedJournalTrades, ...accuracyTradeRecords]
-      .filter(taughtGoldRoute)
-      .map((record) => ({ ...record, tradeStyle: record.tradeStyle ?? 'INTRADAY' })))
-      .filter(belongsToSelectedMarket);
-  }, [accuracyTradeRecords, marketConfig.pipSize, marketSymbol, savedChartMtfEntryQualification, savedJournalTrades, tableTimeframeData]);
   const replayResultCutoff = replayIndex === null ? undefined
     : displayCandles.length === 0 ? Number.NEGATIVE_INFINITY
       : marketCandleCloseTime(displayCandles[displayCandles.length - 1].time, granularity);
@@ -2972,13 +2908,12 @@ export const OandaProChart: React.FC = () => {
     ? allSavedAccuracyRecords
     : allSavedAccuracyRecords.filter((record) => record.completedAt <= replayResultCutoff),
   [allSavedAccuracyRecords, replayResultCutoff]);
-  const timeframeAccuracyRecords = useMemo(() => selectAccuracyChartEntries<AccuracyTradeRecord>(
-    replayVisibleAccuracyRecords, null, granularity,
-  ).filter((record) => ['T1', 'T2', 'T3', 'T4'].includes(record.engulfingType)
-    && displayCandles.some((candle) => record.signalAt === candle.time))
-    .sort((first, second) => second.completedAt - first.completedAt), [
+  const timeframeAccuracyRecords = useMemo(() => selectTradeChartRecords(
+    replayVisibleAccuracyRecords, granularity, displayCandles, marketSymbol === 'XAUUSD',
+  ), [
       displayCandles,
       granularity,
+      marketSymbol,
       replayVisibleAccuracyRecords,
     ]);
 
@@ -3476,7 +3411,7 @@ export const OandaProChart: React.FC = () => {
         && (trade.filledAt === undefined || isNepalTradingTime(trade.filledAt))) continue;
       addEntry({ zoneName: executionZoneName(zone), zoneTimeframe, tradeStyle: 'SCALPING', trade });
     }
-    for (const record of [...accuracyTradeRecords].sort((first, second) => second.completedAt - first.completedAt)) {
+    for (const record of [...allSavedAccuracyRecords].sort((first, second) => second.completedAt - first.completedAt)) {
       if (record.symbol && record.symbol !== marketSymbol) continue;
       if (!record.openedAt || !record.signalAt || !['tp', 'sl'].includes(record.result)
         || now - record.completedAt > 86_400) continue;
@@ -3533,7 +3468,7 @@ export const OandaProChart: React.FC = () => {
     }).catch(() => undefined).finally(() => {
       telegramAlertSendingRef.current = false;
     });
-  }, [accuracyTradeRecords, directZoneEntryDecisions, displayZones, goldScalpingAccuracyTrades, granularity, marketSymbol, mt5Status?.config?.telegramMessagesEnabled, mtfRows, replayIndex, telegramMessagesEnabled, tradeOverlays]);
+  }, [allSavedAccuracyRecords, directZoneEntryDecisions, displayZones, goldScalpingAccuracyTrades, granularity, marketSymbol, mt5Status?.config?.telegramMessagesEnabled, mtfRows, replayIndex, telegramMessagesEnabled, tradeOverlays]);
 
   const entryHovers = useMemo<EntryHover[]>(() => {
     const entries = new Map<string, EntryHover>();
@@ -3550,9 +3485,7 @@ export const OandaProChart: React.FC = () => {
     };
     const visibleIds = visibleAccuracyRecordIds === null
       ? null : new Set<string>(visibleAccuracyRecordIds);
-    const projectedIntraday = marketSymbol === 'XAUUSD' && granularity === 'M1'
-      ? selectGoldIntradayAfterScalp(allSavedAccuracyRecords) : [];
-    for (const record of [...timeframeAccuracyRecords, ...projectedIntraday]) {
+    for (const record of timeframeAccuracyRecords) {
       if (visibleIds !== null && !visibleIds.has(record.id)) continue;
       const signalAt = record.signalAt!;
       const projected = record.signalTimeframe !== granularity;
@@ -3576,7 +3509,7 @@ export const OandaProChart: React.FC = () => {
           type: record.engulfingType as EngulfingTradeSignal['type'],
           direction: record.direction,
           time: signalAt,
-          candleCount: record.engulfingType === 'T1' ? 2 : 3,
+          candleCount: record.engulfingCandleCount ?? (record.engulfingType === 'T1' ? 2 : 3),
           timeframe: record.signalTimeframe,
         },
       };
@@ -3590,25 +3523,6 @@ export const OandaProChart: React.FC = () => {
         tradingTimeEnabled && accuracyRecordOutsideTradingTime(record),
         projected ? record.openedAt ?? signalAt + TIMEFRAME_SECONDS[record.signalTimeframe]
           : signalAt);
-    }
-    for (const overlay of visibleTradeOverlays) {
-      const trade = overlay.trade;
-      if (!overlay.referenceOnly || trade.filledAt === undefined) continue;
-      if (Array.from(entries.values()).some((entry) => entry.trade.signal.time === trade.signal.time
-        && entry.trade.entry === trade.entry)) continue;
-      const mtfRow = overlay.id.startsWith('MTF:')
-        ? mtfRows.find((row) => row.previewTrade?.signal.time === trade.signal.time
-          && row.previewTrade.entry === trade.entry)
-        : undefined;
-      const goldScalp = overlay.id.startsWith('GOLD_SCALP:');
-      add(overlay.id, trade,
-        mtfRow ? `${mtfRow.higherTimeframe} → ${mtfRow.lowerTimeframe} MTF`
-          : goldScalp ? 'GOLD SCALP' : 'CANDLE CONFIRMATION',
-        mtfRow?.tappedZone ?? mtfRow?.higherTimeframeZone
-          ?? tradeOverlayZoneLabel(overlay.label) ?? 'Chart entry',
-        overlay.fibLabels?.join(' · ') ?? 'Not recorded',
-        mtfRow?.goldScalping ? 'SCALP MTF' : goldScalp ? 'SCALPING' : 'INTRADAY',
-        true, trade.filledAt);
     }
     return Array.from(entries.values());
   }, [allSavedAccuracyRecords, displayCandles, granularity, marketSymbol, mtfRows, timeframeAccuracyRecords, tradingTimeEnabled, visibleAccuracyRecordIds, visibleTradeOverlays]);
@@ -3745,13 +3659,7 @@ export const OandaProChart: React.FC = () => {
     }
     return entries;
   }, [displayCandles, displayZones, expiredGoldZoneBeforeSignal, extremeAPlusTjl2Selection.blockedZoneIds, granularity, marketSymbol, pendingM15DbBlocksSignal, redundantStandaloneZoneIds, replayIndex, replayResultCutoff, tradingTimeEnabled]);
-  const visibleEntryHovers = useMemo(() => {
-    const entries = new Map(entryHovers.map((entry) => [entry.id, entry]));
-    for (const entry of replayDirectCandidates) {
-      if (!entries.has(entry.id)) entries.set(entry.id, entry);
-    }
-    return Array.from(entries.values());
-  }, [entryHovers, replayDirectCandidates]);
+  const visibleEntryHovers = entryHovers;
   entryHoversRef.current = visibleEntryHovers;
   const entryMarkers = useMemo(() => visibleEntryHovers.map(({ candleTime, trade }) => {
     const bullish = trade.signal.direction === 'bullish';
@@ -8112,7 +8020,7 @@ export const OandaProChart: React.FC = () => {
           )}
           {showJournal && (
             <TradeJournal
-              records={accuracyTradeRecords}
+              records={canonicalTradeRecords}
               timeZone={chartTimeZone}
               onClose={() => setShowJournal(false)}
             />
