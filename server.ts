@@ -1070,7 +1070,7 @@ async function updateMt5JournalRecord(
 
 interface TelegramTradeAlert {
   id: string;
-  kind: 'pending' | 'entry' | 'tp' | 'sl';
+  kind: 'pending' | 'cancelled' | 'entry' | 'tp' | 'sl';
   outsideTradingTime?: boolean;
   symbol: string;
   direction: 'BUY' | 'SELL';
@@ -1091,13 +1091,13 @@ interface TelegramTradeAlert {
   returnR?: number;
 }
 
-type SentTelegramAlerts = Record<string, { pending?: boolean; entry?: boolean; result?: 'tp' | 'sl' }>;
+type SentTelegramAlerts = Record<string, { pending?: boolean; cancelled?: boolean; entry?: boolean; result?: 'tp' | 'sl' }>;
 
 function validTelegramTradeAlert(value: any): value is TelegramTradeAlert {
   const timeframes = new Set(AUTOMATION_TIMEFRAMES);
   const now = Math.floor(Date.now() / 1000);
   return value && typeof value.id === 'string' && value.id.length > 0 && value.id.length <= 300
-    && ['pending', 'entry', 'tp', 'sl'].includes(value.kind)
+    && ['pending', 'cancelled', 'entry', 'tp', 'sl'].includes(value.kind)
     && (value.outsideTradingTime === undefined || typeof value.outsideTradingTime === 'boolean')
     && typeof value.symbol === 'string' && /^[A-Z0-9]{3,12}$/.test(value.symbol)
     && ['BUY', 'SELL'].includes(value.direction)
@@ -1113,6 +1113,9 @@ function validTelegramTradeAlert(value: any): value is TelegramTradeAlert {
     && value.openedAt <= now + 5
     && (value.kind === 'pending' ? now - value.openedAt <= 14_400
       : value.kind === 'entry' ? now - value.openedAt <= 180
+      : value.kind === 'cancelled' ? Number.isFinite(value.closedAt)
+        && value.closedAt >= value.openedAt && value.closedAt <= now + 5
+        && now - value.closedAt <= 180
       : Number.isFinite(value.closedAt) && value.closedAt >= value.openedAt
         && value.closedAt <= now + 5 && Number.isFinite(value.exitPrice)
         && value.exitPrice > 0 && Number.isFinite(value.returnR)
@@ -1144,6 +1147,18 @@ function telegramAlertText(alert: TelegramTradeAlert): string {
       `Stop loss: ${telegramAlertPrice(alert.stopLoss)} (${alert.riskPips} pips)`,
       `Take profit: ${telegramAlertPrice(alert.takeProfit)}`,
       'This order has not filled yet.',
+    ].join('\n');
+  }
+  if (alert.kind === 'cancelled') {
+    const risk = Math.abs(alert.entry - alert.stopLoss);
+    const twoR = alert.entry + (alert.direction === 'BUY' ? 2 : -2) * risk;
+    return [
+      `PENDING ORDER CANCELLED — ${title}`,
+      `Time: ${telegramAlertTime(alert.closedAt!)}`,
+      `Setup: ${setup}`,
+      `Limit entry: ${telegramAlertPrice(alert.entry)}`,
+      `2R level: ${telegramAlertPrice(twoR)}`,
+      'Price moved beyond 2R before entry. MT5 removed the unfilled order.',
     ].join('\n');
   }
   if (alert.kind === 'entry') {
@@ -1200,6 +1215,7 @@ async function deliverTelegramAlerts(alerts: TelegramTradeAlert[]): Promise<stri
     for (const alert of alerts) {
       const state = sent[alert.id] ?? {};
       if (alert.kind === 'pending' ? state.pending
+        : alert.kind === 'cancelled' ? state.cancelled
         : alert.kind === 'entry' ? state.entry : state.result === alert.kind) {
         acknowledged.push(`${alert.id}:${alert.kind}`);
         continue;
@@ -1210,6 +1226,7 @@ async function deliverTelegramAlerts(alerts: TelegramTradeAlert[]): Promise<stri
       }
       await sendTelegramTradeAlert(alert);
       sent[alert.id] = alert.kind === 'pending' ? { ...state, pending: true }
+        : alert.kind === 'cancelled' ? { ...state, cancelled: true }
         : alert.kind === 'entry' ? { ...state, entry: true } : { ...state, result: alert.kind };
       await mkdir(path.dirname(TELEGRAM_ALERTS_FILE), { recursive: true });
       await writeFile(TELEGRAM_ALERTS_FILE, `${JSON.stringify(sent, null, 2)}\n`, 'utf8');
@@ -1560,17 +1577,19 @@ async function startServer() {
           req.body && typeof req.body === 'object' ? req.body : {},
           updated.updatedAt,
         );
-        if ((status === 'PLACED' || status === 'ACTIVE')
+        const cancelledBeyondTwoR = status === 'CANCELLED'
+          && updated.message === 'Pending order cancelled after price moved beyond 2R before entry.';
+        if ((status === 'PLACED' || status === 'ACTIVE' || cancelledBeyondTwoR)
           && (await readMt5Config()).telegramMessagesEnabled) {
           const telegramAlert: TelegramTradeAlert = {
-            id: status === 'PLACED' ? updated.id : [
+            id: status === 'PLACED' || cancelledBeyondTwoR ? updated.id : [
               updated.symbol,
               updated.direction === 'BUY' ? 'bullish' : 'bearish',
               updated.signalTimeframe,
               updated.signalAt,
               updated.entry.toFixed(5),
             ].join(':'),
-            kind: status === 'PLACED' ? 'pending' : 'entry',
+            kind: cancelledBeyondTwoR ? 'cancelled' : status === 'PLACED' ? 'pending' : 'entry',
             symbol: updated.symbol,
             direction: updated.direction,
             zoneName: updated.zoneName,
@@ -1585,6 +1604,7 @@ async function startServer() {
             tradeStyle: updated.tradeStyle,
             ...(updated.tradeStyle === 'SCALPING' ? { riskFree: updated.riskFree } : {}),
             openedAt: updated.openedAt ?? updated.updatedAt,
+            ...(cancelledBeyondTwoR ? { closedAt: updated.updatedAt } : {}),
           };
           if (validTelegramTradeAlert(telegramAlert)) {
             try {
