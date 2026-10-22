@@ -100,27 +100,29 @@ test('a second tap measures its own distance but never allows another entry', ()
   assert.deepEqual(findZoneTapIndices(candles, tappedZone), [1, 5]);
   assert.equal(isGoldZoneOpportunityExpired(tappedZone, candles, 'M1', 0.1, 5), true);
   assert.equal(isGoldZoneOpportunityExpired(tappedZone, candles, 'M1', 0.1), false);
+  assert.equal(isGoldZoneOpportunityExpired(tappedZone, candles, 'M1', 0.1,
+    Infinity, { price: 102, filledAt: 2, stopLoss: 101 }), false);
   assert.equal(isGoldZoneEntryBlocked(tappedZone, candles, 'M1', 0.1), true);
   candles.push(candle(6, 108, 108, 102));
   assert.equal(isGoldZoneOpportunityExpired(tappedZone, candles, 'M1', 0.1), true);
 });
 
-test('first tap uses entry price after fill, otherwise the tap price', () => {
+test('first tap uses 1R from a filled entry, otherwise the timeframe limit from the tap', () => {
   const tappedZone = zone({ isBuy: true, startTime: -1, activeFromTime: 0,
     tapTime: 0, top: 101, bottom: 100 });
-  const candles = [candle(0, 100.5, 101, 100), candle(1, 110, 110, 102),
-    candle(2, 130, 130, 110)];
+  const candles = [candle(0, 100.5, 101, 100), candle(1, 110, 120, 102),
+    candle(2, 105, 110, 104), candle(3, 120, 122, 110)];
+  assert.equal(isGoldZoneOpportunityExpired(tappedZone, candles, 'M15', 0.1), false);
+  assert.equal(isGoldZoneOpportunityExpired(tappedZone, candles, 'M15', 0.1,
+    Infinity, { price: 105, filledAt: 2, stopLoss: 87 }), false);
+  candles.push(candle(4, 122, 123, 121));
+  assert.equal(isGoldZoneOpportunityExpired(tappedZone, candles, 'M15', 0.1,
+    Infinity, { price: 105, filledAt: 2, stopLoss: 87 }), true);
+  assert.equal(isGoldZoneOpportunityExpired(tappedZone, candles, 'M15', 0.1), false);
+  assert.equal(isGoldZoneEntryBlocked(tappedZone, candles, 'M15', 0.1, 5,
+    { price: 105, filledAt: 2, stopLoss: 87 }), true);
+  candles.push(candle(5, 123, 130, 122));
   assert.equal(isGoldZoneOpportunityExpired(tappedZone, candles, 'M15', 0.1), true);
-  assert.equal(isGoldZoneOpportunityExpired(tappedZone, candles, 'M15', 0.1,
-    Infinity, { price: 105, filledAt: 1 }), false);
-  assert.equal(isGoldZoneEntryBlocked(tappedZone, candles, 'M15', 0.1, 3), true);
-  assert.equal(isGoldZoneEntryBlocked(tappedZone, candles, 'M15', 0.1, 3,
-    { price: 105, filledAt: 1 }), false);
-  candles.push(candle(3, 135, 135, 131));
-  assert.equal(isGoldZoneOpportunityExpired(tappedZone, candles, 'M15', 0.1,
-    Infinity, { price: 105, filledAt: 1 }), true);
-  assert.equal(isGoldZoneEntryBlocked(tappedZone, candles, 'M15', 0.1, 4,
-    { price: 105, filledAt: 1 }), true);
 });
 
 test('Gold sell zone uses favorable downward movement and ignores unfinished bars', () => {

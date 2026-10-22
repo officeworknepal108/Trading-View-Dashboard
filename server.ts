@@ -760,7 +760,7 @@ async function scanMt5AutomationSignals(): Promise<number> {
         if (reentrySignal && !isGoldZoneEntryBlocked(
           zone, sourceCandles, zoneTimeframe, 0.1, reentrySignal.time,
           trade.filledAt === undefined ? undefined
-            : { price: trade.entry, filledAt: trade.filledAt },
+            : { price: trade.entry, filledAt: trade.filledAt, stopLoss: trade.stopLoss },
         )) {
           const reentryClose = reentrySignal.time + AUTOMATION_SECONDS[reentrySignal.timeframe];
           if (config.tradingTimeEnabled && !isNepalTradingTime(reentryClose)) continue;

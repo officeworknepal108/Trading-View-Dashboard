@@ -654,7 +654,7 @@ export function isGoldZoneOpportunityExpired(
   timeframe: string,
   pipSize: number,
   beforeTime = Infinity,
-  entry?: { price: number; filledAt: number },
+  entry?: { price: number; filledAt: number; stopLoss: number },
 ): boolean {
   const maximumMovePips = GOLD_ZONE_MOVE_PIPS[timeframe];
   if (maximumMovePips === undefined || !Number.isFinite(pipSize) || pipSize <= 0) return false;
@@ -668,14 +668,18 @@ export function isGoldZoneOpportunityExpired(
     : Math.max(zone.bottom, Math.min(zone.top, tapCandle.high));
   const firstTapEntry = taps.length === 1 && entry
     && Number.isFinite(entry.price) && Number.isFinite(entry.filledAt)
+    && Number.isFinite(entry.stopLoss) && entry.price !== entry.stopLoss
     && entry.filledAt >= tapCandle.time && entry.filledAt < beforeTime;
   const anchorPrice = firstTapEntry ? entry.price : tapPrice;
   const anchorTime = firstTapEntry ? entry.filledAt : tapCandle.time;
+  const maximumMove = firstTapEntry
+    ? Math.abs(entry.price - entry.stopLoss)
+    : maximumMovePips * pipSize;
   for (const candle of candles) {
     if (candle.time <= anchorTime || candle.time >= beforeTime
       || candle.complete === false) continue;
     const favorableMove = zone.isBuy ? candle.high - anchorPrice : anchorPrice - candle.low;
-    if (favorableMove >= maximumMovePips * pipSize) return true;
+    if (favorableMove >= maximumMove) return true;
   }
   return false;
 }
@@ -686,7 +690,7 @@ export function isGoldZoneEntryBlocked(
   timeframe: string,
   pipSize: number,
   beforeTime = Infinity,
-  entry?: { price: number; filledAt: number },
+  entry?: { price: number; filledAt: number; stopLoss: number },
 ): boolean {
   if (recordedGoldZoneTapIndices(candles, zone).some((index, tapNumber) => (
     tapNumber > 0 && candles[index].time <= beforeTime
