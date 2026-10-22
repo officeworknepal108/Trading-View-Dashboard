@@ -837,7 +837,15 @@ async function scanMt5AutomationSignals(): Promise<number> {
   const mtfData: Partial<Record<MtfGranularity, MtfTimeframeData>> = {};
   for (const timeframe of ['M1', 'M5', 'M15', 'H1', 'H4', 'D'] as MtfGranularity[]) {
     const structure = structures[timeframe];
-    if (structure) mtfData[timeframe] = { candles: candles[timeframe], structure };
+    if (structure) {
+      const supplyDemandFibZones = new Map(applySwingFibConfluence(
+        candles[timeframe], structure.zones.filter((zone) => zone.category === 'supplyDemand'),
+        swingFibMoves,
+      ).zones.map((zone) => [zone.id, zone]));
+      mtfData[timeframe] = { candles: candles[timeframe], structure: {
+        ...structure, zones: structure.zones.map((zone) => supplyDemandFibZones.get(zone.id) ?? zone),
+      } };
+    }
   }
   const mtfRows = new Map(buildGoldIntradayMtfRows(mtfData, config.mtfLtfFibRequired)
     .map((row) => [row.id, row]));

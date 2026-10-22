@@ -13,6 +13,7 @@ import {
   isGoldScalpingChochZone,
   isGoldScalpingEngulfingType,
 } from './goldScalping';
+import { isZoneEngulfingFibQualified } from './tradeLevels';
 
 export type MtfGranularity = 'M1' | 'M5' | 'M15' | 'H1' | 'H4' | 'D';
 export type MtfConfirmationKind = 'choch' | 'iss';
@@ -133,6 +134,10 @@ function latestHigherTimeframeTouch(
   let latest: { zone: StructureZone; time: number; sourcePairOverlaps: boolean } | undefined;
   for (const zone of zones) {
     if (!zone.active || zone.status !== 'valid' || zone.isBuy !== event.isBuy) continue;
+    if ((zone.category === 'supplyDemand' || zone.name === 'SUPPLY' || zone.name === 'DEMAND')
+      && !(['structure', 'swing', 'day'] as const).some((source) => (
+        isZoneEngulfingFibQualified(zone, source)
+      ))) continue;
     // MTF is a location-specific reversal. The exact LTF TJL pair converted by
     // this CHOCH must have formed in/overlapping the tapped HTF zone. Merely
     // finding any same-direction CHOCH after an older HTF tap is not enough.

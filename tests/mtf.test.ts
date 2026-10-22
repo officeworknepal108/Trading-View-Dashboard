@@ -11,6 +11,7 @@ import {
   type MtfTimeframeData,
 } from '../src/services/mtf';
 import type { MarketStructureResult, StructureCandle, StructureZone } from '../src/services/marketStructure';
+import { applySwingFibConfluence } from '../src/services/swingFibConfluence';
 
 function candle(time: number, open: number, high: number, low: number, close: number): StructureCandle {
   return { time, open, high, low, close, complete: true };
@@ -28,6 +29,8 @@ function zone(overrides: Partial<StructureZone> = {}): StructureZone {
     id: 'zone', name: 'QML', category: 'mg', isBuy: true,
     startTime: 0, endTime: 10_000, activeFromTime: 0,
     bottom: 100, top: 102, active: true, status: 'valid',
+    ...(overrides.category === 'supplyDemand' || overrides.name === 'SUPPLY' || overrides.name === 'DEMAND'
+      ? { fibStatus: 'a-plus' as const, fibBand: '0.5-0.618' as const } : {}),
     ...overrides,
   };
 }
@@ -198,6 +201,52 @@ function repeatedChochFixture(isBuy = true, count = 3) {
     M15: higherData, H1: higherData, M1: lowerData, M5: lowerData,
   } };
 }
+
+test('Supply and Demand HTF zones require Fib even when the LTF Fib switch is off', () => {
+  for (const isBuy of [true, false]) {
+    const { data, higher } = repeatedChochFixture(isBuy, 1);
+    Object.assign(higher, { name: isBuy ? 'DEMAND' : 'SUPPLY', category: 'supplyDemand' });
+    for (const build of [buildMtfRows, buildGoldScalpingMtfRows, buildGoldIntradayMtfRows]) {
+      for (const requireLtfFib of [false, true]) {
+        assert.equal(build(data, requireLtfFib).length, 0,
+          'a tap and LTF CHOCH cannot bypass the HTF Supply/Demand Fib requirement');
+      }
+    }
+    const aligned = applySwingFibConfluence(data.H1.candles, [higher], {
+      direction: isBuy ? 'up' : 'down', startedAt: -100, sourceTime: -100,
+      sourcePrice: isBuy ? 100 : 120, zeroTime: 0, zeroPrice: 110,
+    }).zones[0];
+    Object.assign(higher, { swingFibStatus: aligned.swingFibStatus, swingFibBand: aligned.swingFibBand });
+    assert.equal(higher.swingFibStatus, 'a-plus');
+    assert.ok(buildGoldScalpingMtfRows(data).some((row) => row.engulfingType === 'T1'));
+    Object.assign(higher, { swingFibStatus: undefined, swingFibBand: undefined });
+    for (const alignment of [
+      { fibStatus: 'a-plus', fibBand: '0.5-0.618' },
+      { fibStatus: 'a-plus', fibBand: '0.71-0.79' },
+      { swingFibStatus: 'a-plus', swingFibBand: '0.5-0.618' },
+      { dayFibStatus: 'a-plus', dayFibBand: '0.71-0.79' },
+    ]) {
+      Object.assign(higher, alignment);
+      for (const build of [buildMtfRows, buildGoldScalpingMtfRows, buildGoldIntradayMtfRows]) {
+        assert.ok(build(data, false).some((row) => row.engulfingType === 'T1'));
+      }
+      const row = buildGoldScalpingMtfRows(data, false)[0];
+      const entry = { id: `MTF:${row.id}:500:109.5`, signalTime: 500,
+        direction: isBuy ? 'bullish' as const : 'bearish' as const,
+        engulfingType: 'T1' as const, zoneName: 'QML' as const, goldScalping: true };
+      assert.equal(isSavedMtfEntryQualified(data, entry), true);
+      Object.assign(higher, { fibStatus: undefined, fibBand: undefined,
+        swingFibStatus: undefined, swingFibBand: undefined, dayFibStatus: undefined, dayFibBand: undefined });
+      assert.equal(isSavedMtfEntryQualified(data, entry), false,
+        'saved chart entries must pass the same Supply/Demand Fib check');
+    }
+    Object.assign(higher, { fibStatus: 'not-valid', fibBand: '0.5-0.618' });
+    assert.equal(buildGoldScalpingMtfRows(data).length, 0);
+    Object.assign(higher, { name: 'QML', category: 'mg', fibStatus: undefined, fibBand: undefined });
+    assert.ok(buildGoldScalpingMtfRows(data).some((row) => row.engulfingType === 'T1'),
+      'other HTF zone rules stay unchanged');
+  }
+});
 
 test('three CHOCHs in one HTF zone allow only the first entry for buy and sell routes', () => {
   for (const isBuy of [true, false]) {

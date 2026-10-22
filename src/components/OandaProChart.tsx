@@ -2379,9 +2379,18 @@ export const OandaProChart: React.FC = () => {
           zoneVisualBars: 30,
           }),
       };
+      const context = data[tableGranularity]!;
+      const supplyDemandFibZones = new Map(applySwingFibConfluence(
+        timeframeCandles,
+        context.structure.zones.filter((zone) => zone.category === 'supplyDemand'),
+        swingFibMoves,
+      ).zones.map((zone) => [zone.id, zone]));
+      context.structure = { ...context.structure, zones: context.structure.zones.map((zone) => (
+        supplyDemandFibZones.get(zone.id) ?? zone
+      )) };
     }
     return data;
-  }, [displayCandles, granularity, replayIndex, structure, vipCandles]);
+  }, [displayCandles, granularity, replayIndex, structure, swingFibMoves, vipCandles]);
   const hasRetainedDirectTradeSource = useCallback((overlay: TradeOverlay) => {
     const sourceZoneId = directTradeOverlayZoneId(overlay);
     const sourceZone = overlay.id.startsWith('DIRECT:')
