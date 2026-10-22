@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import type { StructureLine, StructureZone } from '../src/services/marketStructure';
+import type { StructureCandle, StructureLine, StructureZone } from '../src/services/marketStructure';
 import {
   consolidateZonesForDisplay,
   displayZoneMembers,
@@ -8,6 +8,7 @@ import {
   selectLtfChochContext,
   selectRecentComparisonZones,
   selectExtremeAPlusTjl2Zones,
+  tappedZoneDrawingEndIndex,
 } from '../src/services/zoneConfluence';
 
 function zone(overrides: Partial<StructureZone>): StructureZone {
@@ -25,6 +26,53 @@ function zone(overrides: Partial<StructureZone>): StructureZone {
     ...overrides,
   };
 }
+
+test('a tapped zone extends 20 candles ahead until its own timeframe pip limit, then restores its endpoint', () => {
+  for (const [timeframe, limit] of Object.entries({ M1: 60, M5: 150, M15: 300, M30: 350, H1: 700, H4: 1000 })) {
+    for (const isBuy of [true, false]) {
+      const tapped = zone({ bottom: 100, top: 102, startTime: 100,
+        endTime: 3100, tapTime: 200 });
+      const candles: StructureCandle[] = [
+        { time: 200, open: 101, high: 102, low: 100, close: 101, complete: true },
+        { time: 300, open: 104, high: 100 + limit * 0.1 - 0.1, low: 103, close: 104, complete: true },
+        { time: 400, open: 104, high: 100 + limit * 0.1, low: 103, close: 104, complete: true },
+      ];
+      if (!isBuy) {
+        Object.assign(tapped, { isBuy: false, bottom: 118, top: 120 });
+        for (const item of candles) {
+          const { open, high, low, close } = item;
+          Object.assign(item, { open: 220 - open, high: 220 - low,
+            low: 220 - high, close: 220 - close });
+        }
+      }
+      assert.equal(tappedZoneDrawingEndIndex(tapped, candles.slice(0, 2), timeframe, 0.1), 21,
+        `${timeframe}: extend from the latest candle, not the zone origin`);
+      assert.equal(tappedZoneDrawingEndIndex(tapped, candles, timeframe, 0.1), undefined,
+        `${timeframe}: use the original endpoint at the pip limit`);
+      assert.equal(tapped.endTime, 3100, 'the stored 30-bar endpoint is never changed');
+    }
+  }
+});
+
+test('a later tap can extend the same zone again and live distance crossing retracts its drawing', () => {
+  const tapped = zone({ bottom: 100, top: 102, tapTime: 200 });
+  const candles: StructureCandle[] = [
+    { time: 200, open: 101, high: 102, low: 100, close: 101, complete: true },
+    { time: 300, open: 104, high: 130, low: 103, close: 104, complete: true },
+    { time: 400, open: 104, high: 105, low: 103, close: 104, complete: true },
+    { time: 500, open: 101, high: 102, low: 100, close: 101, complete: true },
+    { time: 600, open: 104, high: 105, low: 103, close: 104, complete: false },
+  ];
+  assert.equal(tappedZoneDrawingEndIndex(tapped, candles.slice(0, 3), 'M15', 0.1), undefined);
+  assert.equal(tappedZoneDrawingEndIndex(tapped, candles, 'M15', 0.1), 24);
+  candles[4].high = 130;
+  assert.equal(tappedZoneDrawingEndIndex(tapped, candles, 'M15', 0.1), undefined);
+  assert.equal(candles[4].complete, false, 'drawing evaluation never completes the real live candle');
+  assert.equal(tappedZoneDrawingEndIndex({ ...tapped, tapTime: undefined }, candles, 'M15', 0.1), undefined);
+  assert.equal(tappedZoneDrawingEndIndex({ ...tapped, active: false, status: 'invalidated' }, candles, 'M15', 0.1), undefined);
+  assert.equal(tappedZoneDrawingEndIndex({ ...tapped, status: 'pending' }, candles, 'M15', 0.1), undefined);
+  assert.equal(tappedZoneDrawingEndIndex(tapped, candles, 'D', 0.1), undefined);
+});
 
 test('comparison shows five recent valid source zones and identifies price overlap', () => {
   const chartZone = zone({ id: 'm15-tjl2', bottom: 4150, top: 4155 });

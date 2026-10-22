@@ -1,4 +1,5 @@
 import type { StructureCandle, StructureLine, StructureZone } from './marketStructure';
+import { getGoldZoneTapState } from './marketStructure';
 import { matchMtfChochEvents } from './mtf';
 
 export const ZONE_CONFLUENCE_PRICE_TOLERANCE = 0.1;
@@ -73,6 +74,28 @@ export function consolidateZonesForDisplay(
 
 export function displayZoneMembers(zone: DisplayStructureZone): StructureZone[] {
   return zone.confluenceMembers ?? [zone];
+}
+
+/** Temporary drawing endpoint for an unexpired pip-distance tap; source zones stay unchanged. */
+export function tappedZoneDrawingEndIndex(
+  zone: DisplayStructureZone,
+  candles: StructureCandle[],
+  timeframe: string,
+  pipSize: number,
+): number | undefined {
+  const latest = candles[candles.length - 1];
+  if (!latest) return undefined;
+  // A drawing can react to the current live wick without changing trading confirmation rules.
+  const drawingCandles = latest.complete === false
+    ? [...candles.slice(0, -1), { ...latest, complete: true }]
+    : candles;
+  const extend = displayZoneMembers(zone).some((member) => {
+    if (!member.active || member.status !== 'valid') return false;
+    // No entry is supplied: drawing length always follows the timeframe's pip limit.
+    const state = getGoldZoneTapState(member, drawingCandles, timeframe, pipSize);
+    return state.tapIndices.length > 0 && !state.opportunityExpired;
+  });
+  return extend ? candles.length - 1 + 20 : undefined;
 }
 
 function priceRangesOverlap(first: StructureZone, second: StructureZone): boolean {

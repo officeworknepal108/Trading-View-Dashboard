@@ -124,6 +124,7 @@ import {
   selectLtfChochContext,
   selectRecentComparisonZones,
   selectExtremeAPlusTjl2Zones,
+  tappedZoneDrawingEndIndex,
   type DisplayStructureZone,
 } from '../services/zoneConfluence';
 import {
@@ -4098,10 +4099,15 @@ export const OandaProChart: React.FC = () => {
     for (const zone of visualZonesRef.current) {
       if (!isVisualZoneVisible(zone)) continue;
       const listedInTable = displayZoneMembers(zone).some((member) => listedZoneIds.has(member.id));
-      if (visibleTimeRange && (zone.endTime < Number(visibleTimeRange.from)
+      const extendedEndIndex = marketSymbol === 'XAUUSD'
+        ? tappedZoneDrawingEndIndex(zone, displayCandles, granularity, marketConfig.pipSize)
+        : undefined;
+      if (visibleTimeRange && ((extendedEndIndex === undefined && zone.endTime < Number(visibleTimeRange.from))
         || zone.startTime > Number(visibleTimeRange.to))) continue;
       const rawLeft = chart.timeScale().timeToCoordinate(zone.startTime as UTCTimestamp);
-      const rawRight = chart.timeScale().timeToCoordinate(zone.endTime as UTCTimestamp);
+      const rawRight = extendedEndIndex === undefined
+        ? chart.timeScale().timeToCoordinate(zone.endTime as UTCTimestamp)
+        : chart.timeScale().logicalToCoordinate(extendedEndIndex);
       const top = series.priceToCoordinate(zone.top);
       const bottom = series.priceToCoordinate(zone.bottom);
       if (top === null || bottom === null) continue;
