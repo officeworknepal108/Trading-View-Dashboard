@@ -727,9 +727,16 @@ function confluenceFirstValue<T>(
 
 function confluenceTapBarsAgo(zone: DisplayStructureZone): number | undefined {
   const values = displayZoneMembers(zone)
-    .map((member) => member.tapBarsAgo)
+    .map((member) => member.lastTapBarsAgo ?? member.tapBarsAgo)
     .filter((value): value is number => value !== undefined);
   return values.length > 0 ? Math.min(...values) : undefined;
+}
+
+function confluenceLatestTap(zone: DisplayStructureZone): { time: number; count: number } | undefined {
+  const taps = displayZoneMembers(zone)
+    .map((member) => ({ time: member.lastTapTime ?? member.tapTime, count: member.tapCount ?? 1 }))
+    .filter((tap): tap is { time: number; count: number } => tap.time !== undefined);
+  return taps.sort((a, b) => b.time - a.time)[0];
 }
 
 function confluenceEngulfingLabel(zone: DisplayStructureZone): string | undefined {
@@ -1985,12 +1992,8 @@ export const OandaProChart: React.FC = () => {
     return zones;
   }, [dayFibConfluence.zones, displayCandles, granularity, vipCandles]);
   const consolidatedDisplayZones = useMemo(
-    () => consolidateZonesForDisplay(displayZones.filter((zone) => (
-      marketSymbol !== 'XAUUSD' || !isGoldZoneOpportunityExpired(
-        zone, displayCandles, granularity, marketConfig.pipSize,
-      )
-    )), marketConfig.pipSize),
-    [displayCandles, displayZones, granularity, marketConfig.pipSize, marketSymbol],
+    () => consolidateZonesForDisplay(displayZones, marketConfig.pipSize),
+    [displayZones, marketConfig.pipSize],
   );
   const redundantStandaloneZoneIds = useMemo(
     () => redundantStandaloneLiquidityZoneIds(displayZones, marketConfig.pipSize),
@@ -2153,7 +2156,7 @@ export const OandaProChart: React.FC = () => {
           afterTime: trade.resolvedAt,
           originalRiskFree: trade.riskFree,
         });
-        if (reentrySignal) {
+        if (reentrySignal && !expiredGoldZoneBeforeSignal(currentZone, reentrySignal)) {
           const reentryPolicy = resolveDirectEntryPolicy({
             zoneTimeframe: granularity,
             signal: reentrySignal,
@@ -2455,7 +2458,7 @@ export const OandaProChart: React.FC = () => {
     .filter((row) => !extremeAPlusMtfBlockedZoneIds
       .get(row.higherTimeframe)?.has(row.higherTimeframeZoneId))
     .filter((row) => {
-      if (marketSymbol !== 'XAUUSD') return true;
+      if (marketSymbol !== 'XAUUSD' || row.engulfingTime === undefined) return true;
       const zoneData = tableTimeframeData[row.higherTimeframe];
       const zone = zoneData?.structure.zones.find((candidate) => (
         candidate.id === row.higherTimeframeZoneId
@@ -3539,8 +3542,8 @@ export const OandaProChart: React.FC = () => {
       && zone.doubleChochStatus === undefined
       && (confluenceTapBarsAgo(zone) ?? Infinity) <= 50)
     .sort((a, b) => (
-      Math.max(...displayZoneMembers(b).map((member) => member.tapTime ?? member.startTime))
-      - Math.max(...displayZoneMembers(a).map((member) => member.tapTime ?? member.startTime))
+      (confluenceLatestTap(b)?.time ?? b.startTime)
+      - (confluenceLatestTap(a)?.time ?? a.startTime)
     ))
     .slice(0, 8), [consolidatedDisplayZones, redundantStandaloneZoneIds, retainedDirectTradeZoneIds, showInternal]);
   const scalpEntryTableRows = useMemo(() => {
@@ -3728,7 +3731,7 @@ export const OandaProChart: React.FC = () => {
     .filter((zone) => zone.active && zone.status === 'valid'
       && zone.doubleChochStatus !== undefined
       && (zone.tapTime !== undefined
-        ? (zone.tapBarsAgo ?? Infinity) <= 50
+        ? (zone.lastTapBarsAgo ?? zone.tapBarsAgo ?? Infinity) <= 50
         : zone.doubleChochStatus === 'pending'
           ? zone.name === 'SBR' || zone.name === 'RBS'
           : (zone.name === 'SBR' || zone.name === 'RBS')
@@ -7521,6 +7524,11 @@ export const OandaProChart: React.FC = () => {
                     }`}>
                       <td className="px-2 py-1 font-black text-slate-800">
                         <span>{displayZoneName(zone.name, zone.oneMinuteGenesisQml)}</span>
+                        {zone.tapCount !== undefined && (
+                          <span className="ml-1 rounded bg-sky-100 px-1 py-0.5 text-[8px] font-black text-sky-800">
+                            TAP {zone.tapCount}
+                          </span>
+                        )}
                         <span className="ml-1 rounded bg-violet-100 px-1 py-0.5 text-[8px] font-black text-violet-800">
                           DOUBLE CHoCH
                         </span>
@@ -7578,14 +7586,18 @@ export const OandaProChart: React.FC = () => {
                           : mt5Signal
                           ? <span className={mt5SignalStatusClassName(mt5Signal)}>{mt5SignalStatusLabel(mt5Signal)}</span>
                           : isCompletedTrade(trade)
-                          ? <>{zone.tapBarsAgo} bars · <TradeStatusText trade={trade!} /></>
+                          ? <>{zone.lastTapBarsAgo ?? zone.tapBarsAgo} bars · <TradeStatusText trade={trade!} /></>
                            : pending
                            ? `WAIT ${confirmationLabel} ${confirmationSide} · NO TRADE`
                            : zone.tradeable === false
                              ? 'VALID DOUBLE CHoCH · NO TRADE'
                            : zone.tapTime === undefined
                              ? 'VALID DOUBLE CHoCH · NO TRADE'
-                             : `${zone.tapBarsAgo} bars · ${confirmationLabel} CONFIRMED · TRADE`}
+                             : marketSymbol === 'XAUUSD' && isGoldZoneOpportunityExpired(
+                               zone, displayCandles, granularity, marketConfig.pipSize,
+                             )
+                               ? `${zone.lastTapBarsAgo ?? zone.tapBarsAgo} bars · DISTANCE REACHED · NO NEW ENTRY`
+                               : `${zone.lastTapBarsAgo ?? zone.tapBarsAgo} bars · ${confirmationLabel} CONFIRMED · TRADE`}
                       </td>
                     </tr>
                     {displayedTrade && !isCompletedTrade(displayedTrade)
@@ -7626,6 +7638,11 @@ export const OandaProChart: React.FC = () => {
                     measureTradeableFibZone(member, marketConfig.pipSize)
                   )) ?? measureListedZone(zone, marketConfig.pipSize);
                   const tapBarsAgo = confluenceTapBarsAgo(zone);
+                  const latestTap = confluenceLatestTap(zone);
+                  const opportunityExpired = marketSymbol === 'XAUUSD'
+                    && displayZoneMembers(zone).every((member) => isGoldZoneOpportunityExpired(
+                      member, displayCandles, granularity, marketConfig.pipSize,
+                    ));
                   const confluenceLabels = confluenceBadgeLabels(zone);
                   const extremeAPlus = displayZoneMembers(zone).some((member) => (
                     extremeAPlusTjl2Selection.extremeZoneIds.has(member.id)
@@ -7641,6 +7658,11 @@ export const OandaProChart: React.FC = () => {
                   <tr className="border-t border-slate-100 text-slate-700">
                     <td className="px-2 py-1 font-black text-slate-800">
                       <span>{displayConfluenceZoneName(zone)}</span>
+                      {latestTap && (
+                        <span className="ml-1 rounded bg-sky-100 px-1 py-0.5 text-[8px] font-black text-sky-800">
+                          TAP {latestTap.count}
+                        </span>
+                      )}
                       {extremeAPlus && (
                         <span className="ml-1 rounded bg-emerald-100 px-1 py-0.5 text-[8px] font-black text-emerald-800">
                           EXTREME A+
@@ -7760,6 +7782,8 @@ export const OandaProChart: React.FC = () => {
                           {replayIndex !== null && historicalEntry && `ENTRY ${formatPrice(trade!.entry)} · `}
                           {tapBarsAgo} bars · <TradeStatusText trade={trade!} />
                         </span>
+                      ) : opportunityExpired ? (
+                        <span className="text-rose-700">DISTANCE REACHED · NO NEW ENTRY</span>
                       ) : entryDecision && !entryDecision.policy.allowed ? (
                         <span className="text-rose-700">
                           {directEntryPolicyLabel(entryDecision.policy)} · NO TRADE

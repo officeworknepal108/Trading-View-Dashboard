@@ -84,8 +84,12 @@ CHART MARKINGS
   confirmation side shown in the zone table.
 - TJL1 mapping: 1m to 5m, 5m to 15m, 15m/30m to 1h, 1h to 4h,
   4h to daily, and daily to weekly.
-- Every zone is drawn for 30 bars only. Its validity remains stored until the
-  MG invalidation rule is met.
+- Every zone is drawn for 30 bars only. A zone row is shown for 50 bars after
+  each distinct tap and returns after a later tap.
+  Entry eligibility expires only after the first-tap move reaches 60 pips on
+  1m, 150 on 5m, 300 on 15m, 350 on 30m, 700 on 1h, or 1000 on 4h.
+  A later tap never resets that first-tap distance. Zone validity continues
+  until the normal MG invalidation rule is met.
 - S/D 1H+ ON shows supply and demand only on the 1h, 4h and daily charts.
 - ISS 5-WAVE ON shows MG-style 0-5 ISS waves and ISS L3/L4 zones.
 - Use each button at the top of the chart to show or hide that layer.

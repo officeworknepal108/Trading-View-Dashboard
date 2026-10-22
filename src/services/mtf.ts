@@ -406,7 +406,7 @@ function eventToRow(
       : higherCandles.length - 1 - higherTimeframeTapIndex,
     tappedZone: tappedZone?.name,
     tapTime: tappedZone?.tapTime,
-    tapBarsAgo: tappedZone?.tapBarsAgo,
+    tapBarsAgo: tappedZone?.lastTapBarsAgo ?? tappedZone?.tapBarsAgo,
     engulfingType: engulfing?.type,
     engulfingTime: engulfing?.time,
     engulfingCandleCount: engulfing?.candleCount,

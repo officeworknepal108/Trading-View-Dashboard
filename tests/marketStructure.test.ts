@@ -24,6 +24,7 @@ import {
   isDoubleChochZoneTradeable,
   findIssFiveWaves,
   findFirstZoneTapIndex,
+  findZoneTapIndices,
   findVipSupportTap,
   findVipSupportTapAcrossContexts,
   getConfirmationBucketStart,
@@ -65,23 +66,36 @@ function zone(overrides: Partial<StructureZone> = {}): StructureZone {
   };
 }
 
-test('Gold zone opportunity expires from its first tap after 50 completed bars', () => {
+test('Gold zone opportunity remains eligible after 50 completed bars without the pip move', () => {
   const tappedZone = zone({ isBuy: true, tapTime: 0, top: 101, bottom: 100 });
   const candles = [candle(0, 100.5, 101, 100),
-    ...Array.from({ length: 49 }, (_, index) => candle(index + 1, 101, 102, 100.5))];
+    ...Array.from({ length: 75 }, (_, index) => candle(index + 1, 101, 102, 100.5))];
   assert.equal(isGoldZoneOpportunityExpired(tappedZone, candles, 'M15', 0.1), false);
-  candles.push(candle(50, 101, 102, 100.5));
+  candles.push(candle(76, 110, 130, 100.5));
   assert.equal(isGoldZoneOpportunityExpired(tappedZone, candles, 'M15', 0.1), true);
-  assert.equal(isGoldZoneOpportunityExpired(tappedZone, candles, 'M15', 0.1, 50), false);
+  assert.equal(isGoldZoneOpportunityExpired(tappedZone, candles, 'M15', 0.1, 76), false);
 });
 
 test('Gold zone opportunity expires at each timeframe move limit before a later signal', () => {
-  for (const [timeframe, limit] of [['M1', 60], ['M5', 150], ['M15', 300], ['M30', 350]] as const) {
+  for (const [timeframe, limit] of [['M1', 60], ['M5', 150], ['M15', 300], ['M30', 350], ['H1', 700], ['H4', 1000]] as const) {
     const tappedZone = zone({ isBuy: true, tapTime: 0, top: 101, bottom: 100 });
     const candles = [candle(0, 100.5, 101, 100), candle(1, 102, 100 + limit * 0.1, 101)];
     assert.equal(isGoldZoneOpportunityExpired(tappedZone, candles, timeframe, 0.1), true);
     assert.equal(isGoldZoneOpportunityExpired(tappedZone, candles, timeframe, 0.1, 1), false);
   }
+});
+
+test('a later zone tap is distinct but cannot reset first-tap distance expiry', () => {
+  const tappedZone = zone({ isBuy: true, startTime: 0, activeFromTime: 1,
+    tapTime: 1, top: 101, bottom: 100 });
+  const candles = [candle(0, 102, 103, 101.5),
+    candle(1, 100.5, 101, 100),
+    candle(2, 102, 103, 101.5),
+    candle(3, 108, 108, 102),
+    candle(4, 102, 103, 101.5),
+    candle(5, 100.5, 101, 100)];
+  assert.deepEqual(findZoneTapIndices(candles, tappedZone), [1, 5]);
+  assert.equal(isGoldZoneOpportunityExpired(tappedZone, candles, 'M1', 0.1), true);
 });
 
 test('Gold sell zone uses favorable downward movement and ignores unfinished bars', () => {

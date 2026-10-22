@@ -79,6 +79,9 @@ export interface StructureZone {
   supersededAt?: number;
   tapTime?: number;
   tapBarsAgo?: number;
+  lastTapTime?: number;
+  lastTapBarsAgo?: number;
+  tapCount?: number;
   // Zones converted/created by one CHoCH share this classification. It affects
   // trade eligibility only; normal zone invalidation continues unchanged.
   chochClass?: ChochClass;
@@ -612,11 +615,29 @@ export function findFirstZoneTapIndex(candles: StructureCandle[], zone: Structur
   ));
 }
 
+export function findZoneTapIndices(candles: StructureCandle[], zone: StructureZone): number[] {
+  if (requiresMappedConfirmation(zone) && zone.status !== 'valid') return [];
+  const activeFromTime = zone.activeFromTime ?? zone.startTime;
+  const taps: number[] = [];
+  let wasTouching = false;
+  for (let index = 0; index < candles.length; index += 1) {
+    const candle = candles[index];
+    if (candle.time <= zone.startTime || candle.time < activeFromTime) continue;
+    if (zone.invalidatedAt !== undefined && candle.time >= zone.invalidatedAt) break;
+    const touching = candle.high >= zone.bottom && candle.low <= zone.top;
+    if (touching && !wasTouching) taps.push(index);
+    wasTouching = touching;
+  }
+  return taps;
+}
+
 const GOLD_UNFILLED_ZONE_MOVE_PIPS: Partial<Record<string, number>> = {
   M1: 60,
   M5: 150,
   M15: 300,
   M30: 350,
+  H1: 700,
+  H4: 1000,
 };
 
 export function isGoldZoneOpportunityExpired(
@@ -635,11 +656,8 @@ export function isGoldZoneOpportunityExpired(
   const tapPrice = zone.isBuy
     ? Math.max(zone.bottom, Math.min(zone.top, tapCandle.low))
     : Math.max(zone.bottom, Math.min(zone.top, tapCandle.high));
-  let completedBars = 0;
   for (const candle of candles) {
     if (candle.time <= tapTime || candle.time >= beforeTime || candle.complete === false) continue;
-    completedBars += 1;
-    if (completedBars >= 50) return true;
     const favorableMove = zone.isBuy ? candle.high - tapPrice : tapPrice - candle.low;
     if (favorableMove >= maximumMovePips * pipSize) return true;
   }
@@ -2150,10 +2168,15 @@ export function analyzeMarketStructure(candles: StructureCandle[], options: {
   // MG Bhai tap rule: after a zone's creation candle, its first candle whose
   // high/low overlaps the complete price range is the one recorded as the tap.
   for (const zone of zones) {
-    const tapIndex = findFirstZoneTapIndex(candles, zone);
-    if (tapIndex >= 0) {
-      zone.tapTime = candles[tapIndex].time;
-      zone.tapBarsAgo = candles.length - 1 - tapIndex;
+    const tapIndices = findZoneTapIndices(candles, zone);
+    if (tapIndices.length > 0) {
+      const firstTapIndex = tapIndices[0];
+      const lastTapIndex = tapIndices[tapIndices.length - 1];
+      zone.tapTime = candles[firstTapIndex].time;
+      zone.tapBarsAgo = candles.length - 1 - firstTapIndex;
+      zone.lastTapTime = candles[lastTapIndex].time;
+      zone.lastTapBarsAgo = candles.length - 1 - lastTapIndex;
+      zone.tapCount = tapIndices.length;
     }
 
     // TJL1 uses the same fixed visual width as every other zone.
@@ -2785,6 +2808,6 @@ export function findIssFiveWaves(
     markers: markers.slice(-36),
     internalMarkers: internalMarkers.slice(-80),
     lines: lines.slice(-120),
-    zones: zones.slice(-60),
+    zones: zones.filter((zone, index) => zone.active || index >= zones.length - 60),
   };
 }
