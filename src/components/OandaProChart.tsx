@@ -1271,7 +1271,7 @@ const EngulfingAccuracyTable: React.FC<{
   );
 
   return (
-    <div data-journal-exclude="true" className={`pointer-events-auto absolute z-20 overflow-hidden rounded-md border border-slate-300 bg-white/95 shadow-md ${
+    <div data-journal-exclude="true" className={`pointer-events-auto absolute z-30 overflow-hidden rounded-md border border-slate-300 bg-white/95 shadow-md ${
       showAllTrades
         ? 'bottom-3 left-3 top-3 flex w-fit max-w-[calc(100%_-_24px)] flex-col'
         : 'left-3 top-1/2 max-w-[calc(100%_-_24px)] -translate-y-1/2'
