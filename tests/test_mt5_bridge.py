@@ -52,12 +52,14 @@ class TradeStyleRiskFreeTests(unittest.TestCase):
              patch.object(bridge, "close_half_position", return_value=partial) as close_half, \
              patch.object(bridge, "update_status") as update:
             intraday = {"trade": {**base_record, "tradeStyle": "INTRADAY"}}
-            bridge.manage_open_signals(intraday, [], {"moveStopToBreakEvenAtR": 1})
+            bridge.manage_open_signals(intraday, [], {"moveStopToBreakEvenAtR": 1,
+                                                    "scalpingEnabled": False, "intradayEnabled": False})
             close_half.assert_not_called()
             update.assert_not_called()
 
             scalp = {"trade": {**base_record, "tradeStyle": "SCALPING"}}
-            bridge.manage_open_signals(scalp, [], {"moveStopToBreakEvenAtR": 1})
+            bridge.manage_open_signals(scalp, [], {"moveStopToBreakEvenAtR": 1,
+                                                 "scalpingEnabled": False, "intradayEnabled": False})
             close_half.assert_called_once()
             self.assertEqual(update.call_args.args[1], "RISK_FREE")
 

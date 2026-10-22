@@ -11,6 +11,7 @@ import {
   canMt5SignalExpireBeforeExecution,
   priorGoldMt5ZoneExecution,
   mt5SignalDisabledReason,
+  isTradeStyleEnabled,
   normalizeMt5EnabledTimeframes,
   normalizeMt5RiskPercent,
   isExecutableTrade,
@@ -1244,6 +1245,7 @@ async function deliverTelegramAlerts(
   allowResultWithoutEntry = false,
 ): Promise<string[]> {
   const task = telegramAlertQueue.then(async () => {
+    const config = await readMt5Config();
     let sent: SentTelegramAlerts;
     try {
       sent = JSON.parse(await readFile(TELEGRAM_ALERTS_FILE, 'utf8')) as SentTelegramAlerts;
@@ -1253,6 +1255,10 @@ async function deliverTelegramAlerts(
     }
     const acknowledged: string[] = [];
     for (const alert of alerts) {
+      if (!config.telegramMessagesEnabled || !isTradeStyleEnabled(config, alert)) {
+        acknowledged.push(`${alert.id}:${alert.kind}`);
+        continue;
+      }
       const state = sent[alert.id] ?? {};
       if (alert.kind === 'pending' ? state.pending
         : alert.kind === 'cancelled' ? state.cancelled

@@ -42,6 +42,16 @@ export function isMt5SignalAllowedByTimeframes(
     && (!controlled.has(signal.signalTimeframe) || enabled.includes(signal.signalTimeframe as Mt5EntryTimeframe));
 }
 
+/** The dashboard, alerts and execution use the same trade-style switches. */
+export function isTradeStyleEnabled(
+  config: { scalpingEnabled: boolean; intradayEnabled: boolean },
+  trade: { tradeStyle?: 'SCALPING' | 'INTRADAY'; zoneTimeframe?: TradeTimeframe },
+): boolean {
+  const style = trade.tradeStyle
+    ?? (trade.zoneTimeframe === 'M1' || trade.zoneTimeframe === 'M5' ? 'SCALPING' : 'INTRADAY');
+  return style === 'SCALPING' ? config.scalpingEnabled : config.intradayEnabled;
+}
+
 export function mt5SignalDisabledReason(
   config: {
     enabledTimeframes: readonly Mt5EntryTimeframe[];
@@ -59,17 +69,10 @@ export function mt5SignalDisabledReason(
   if (!isMt5SignalAllowedByTimeframes(config.enabledTimeframes, signal)) {
     return `${signal.zoneTimeframe} setup / ${signal.signalTimeframe} entry automatic trading is disabled.`;
   }
-  if (signal.tradeStyle === 'SCALPING') {
-    return config.scalpingEnabled ? undefined : 'Scalping automatic trading is disabled.';
-  }
-  if (signal.tradeStyle === 'INTRADAY') {
-    return config.intradayEnabled ? undefined : 'Intraday automatic trading is disabled.';
-  }
-  // M5 entries can belong to either route. The setup timeframe identifies it.
-  if (signal.zoneTimeframe === 'M1' || signal.zoneTimeframe === 'M5') {
-    return config.scalpingEnabled ? undefined : 'Scalping automatic trading is disabled.';
-  }
-  return config.intradayEnabled ? undefined : 'Intraday automatic trading is disabled.';
+  if (isTradeStyleEnabled(config, signal)) return undefined;
+  const scalping = signal.tradeStyle === 'SCALPING' || (signal.tradeStyle === undefined
+    && (signal.zoneTimeframe === 'M1' || signal.zoneTimeframe === 'M5'));
+  return `${scalping ? 'Scalping' : 'Intraday'} automatic trading is disabled.`;
 }
 
 export function normalizeMt5RiskPercent(value: unknown, fallback = 0.25): number {

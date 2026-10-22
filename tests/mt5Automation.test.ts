@@ -14,6 +14,7 @@ import {
   isExecutableTrade,
   isMt5EntryTimeframeEnabled,
   isMt5SignalAllowedByTimeframes,
+  isTradeStyleEnabled,
   mt5ClosedReturnR,
   mt5SignalDisabledReason,
   normalizeMt5EnabledTimeframes,
@@ -152,6 +153,29 @@ test('Scalping and Intraday switches independently gate setup routes, including 
   assert.equal(mt5SignalDisabledReason(intradayOnly, {
     zoneTimeframe: 'H1', signalTimeframe: 'M5', tradeStyle: 'INTRADAY',
   }), undefined);
+});
+
+test('trade-style visibility, alerts and new orders agree for all four switch combinations', () => {
+  const scalp = { tradeStyle: 'SCALPING' as const, zoneTimeframe: 'H1' as const, signalTimeframe: 'M5' as const };
+  const intraday = { tradeStyle: 'INTRADAY' as const, zoneTimeframe: 'M15' as const, signalTimeframe: 'M5' as const };
+  const history = [scalp, intraday];
+  const before = JSON.stringify(history);
+  for (const scalpingEnabled of [false, true]) {
+    for (const intradayEnabled of [false, true]) {
+      const config = { scalpingEnabled, intradayEnabled, enabledTimeframes: MT5_DEFAULT_ENABLED_TIMEFRAMES };
+      assert.equal(isTradeStyleEnabled(config, scalp), scalpingEnabled);
+      assert.equal(isTradeStyleEnabled(config, intraday), intradayEnabled);
+      assert.deepEqual(history.filter((trade) => isTradeStyleEnabled(config, trade)),
+        [...(scalpingEnabled ? [scalp] : []), ...(intradayEnabled ? [intraday] : [])]);
+      for (const trade of history) {
+        assert.equal(mt5SignalDisabledReason(config, trade) === undefined, isTradeStyleEnabled(config, trade));
+      }
+      assert.equal(isTradeStyleEnabled(config, { zoneTimeframe: 'M1' }), scalpingEnabled);
+      assert.equal(isTradeStyleEnabled(config, { zoneTimeframe: 'M5' }), scalpingEnabled);
+      assert.equal(isTradeStyleEnabled(config, { zoneTimeframe: 'H1' }), intradayEnabled);
+    }
+  }
+  assert.equal(JSON.stringify(history), before, 'switches do not mutate or delete stored history');
 });
 
 test('MT5 rejects an MTF signal queued under the other LTF Fib setting', () => {

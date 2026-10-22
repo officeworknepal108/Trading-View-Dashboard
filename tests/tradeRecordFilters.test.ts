@@ -18,6 +18,7 @@ import {
 } from '../src/services/tradeRecordFilters';
 import { mergeTradeRecordAnnotations } from '../src/services/tradeRecordDeduplication';
 import { calculateJournalPerformance, type JournalTradeRecord } from '../src/components/TradeJournal';
+import { isTradeStyleEnabled } from '../src/services/mt5Automation';
 
 function synchronizedFixture() {
   const scalp: JournalTradeRecord = {
@@ -183,6 +184,29 @@ test('H1 projects completed intraday trades by filled entry without changing oth
   assert.deepEqual(selectTradeChartRecords(rows, 'H1', [{ time: 0 }]), [hourly]);
   assert.deepEqual(selectTradeChartRecords([m15, m30, mtf, hourly], 'M15', [{ time: 900 }], true), [m15]);
   assert.equal(JSON.stringify(rows), before);
+});
+
+test('style switches keep arrows, accuracy and journal on the same records without deleting history', () => {
+  const { scalp, intraday, options } = synchronizedFixture();
+  const stored = buildCanonicalTradeRecords([], [scalp, intraday], options);
+  const before = JSON.stringify(stored);
+  for (const scalpingEnabled of [false, true]) {
+    for (const intradayEnabled of [false, true]) {
+      const config = { scalpingEnabled, intradayEnabled };
+      const visible = stored.filter((record) => isTradeStyleEnabled(config, record));
+      const ids = new Set([...(scalpingEnabled ? [scalp.id] : []), ...(intradayEnabled ? [intraday.id] : [])]);
+      assert.deepEqual(new Set(visible.map((record) => record.id)), ids);
+      assert.equal(calculateJournalPerformance(mergeTradeRecordAnnotations(visible, stored)).completed,
+        Number(scalpingEnabled) + Number(intradayEnabled));
+      for (const timeframe of ['M15', 'H1'] as const) {
+        const arrows = selectTradeChartRecords(visible, timeframe, [{ time: 0 }, { time: 900 }], true);
+        assert.deepEqual(new Set(arrows.map((record) => record.id)), ids);
+      }
+    }
+  }
+  assert.equal(JSON.stringify(stored), before);
+  assert.equal(stored.filter((record) => isTradeStyleEnabled({ scalpingEnabled: true, intradayEnabled: true }, record)).length, 2,
+    're-enabling both styles restores the original history');
 });
 
 test('RF and intraday SL outcomes keep the same prices and results in history and journal', () => {
