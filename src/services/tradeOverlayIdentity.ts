@@ -86,6 +86,45 @@ export function tradeOverlayEntryEventKey(signal: {
   return `${signal.timeframe}:${signal.direction}:${Math.floor(signal.time)}`;
 }
 
+/** The same chart trade can be attributed to two nearby source zones. */
+export function tradeOverlayExecutionKey(trade: {
+  signal: { timeframe: string; direction: string; time: number };
+  entry: number;
+  stopLoss: number;
+  takeProfit: number;
+}): string {
+  return [trade.signal.timeframe, trade.signal.direction, trade.entry, trade.stopLoss, trade.takeProfit]
+    .map((value) => typeof value === 'number' ? value.toFixed(5) : value)
+    .join(':');
+}
+
+/** MT5 and chart feeds can name one MTF setup differently while confirming the same entry. */
+export function liveMtfPositionMatchesChartRow(
+  position: {
+    setupId?: string;
+    source?: string;
+    zoneTimeframe?: string;
+    signalTimeframe?: string;
+    signalAt?: number;
+    direction: 'BUY' | 'SELL';
+  },
+  row: {
+    id: string;
+    higherTimeframe: string;
+    lowerTimeframe: string;
+    direction: 'bullish' | 'bearish';
+    engulfingTime?: number;
+  },
+): boolean {
+  if (position.setupId === `MTF:${row.id}`) return true;
+  return (position.source === 'MTF' || position.setupId?.startsWith('MTF:') === true)
+    && row.engulfingTime !== undefined
+    && position.signalAt === row.engulfingTime
+    && position.zoneTimeframe === row.higherTimeframe
+    && position.signalTimeframe === row.lowerTimeframe
+    && position.direction === (row.direction === 'bullish' ? 'BUY' : 'SELL');
+}
+
 export function isTradeOverlayTerminated(
   setupKey: string,
   entryEventKey: string,

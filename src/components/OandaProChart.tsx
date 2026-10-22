@@ -107,9 +107,11 @@ import {
   isDirectTradeOverlay,
   isTradeOverlayTerminated,
   isTradeOverlayVisibleOnTimeframe,
+  liveMtfPositionMatchesChartRow,
   retainedDirectTradeHasSource,
   resolveTradeOverlaySetupKey,
   tradeOverlayEntryEventKey,
+  tradeOverlayExecutionKey,
   tradeOverlayZoneLabel,
 } from '../services/tradeOverlayIdentity';
 import {
@@ -980,10 +982,9 @@ const MultiTimeframeEntryTable: React.FC<{
   liveTrades: LiveMt5TableTrade[];
 }> = ({ rows, liveTrades }) => {
   const [expanded, setExpanded] = useState(true);
-  const liveSetupIds = new Set(liveTrades
-    .map(({ position }) => position.setupId)
-    .filter((setupId): setupId is string => Boolean(setupId)));
-  const displayRows = rows.filter((row) => !liveSetupIds.has(`MTF:${row.id}`));
+  const displayRows = rows.filter((row) => !liveTrades.some(({ position }) => (
+    liveMtfPositionMatchesChartRow(position, row)
+  )));
   return (
     <div data-journal-exclude="true" className={`pointer-events-auto absolute right-3 top-3 z-20 overflow-hidden rounded-md border border-slate-300 bg-white/95 shadow-sm ${expanded ? 'w-fit max-w-[calc(100%_-_24px)]' : 'w-auto'}`}>
       <div className="flex items-center justify-between gap-3 border-b border-slate-200 bg-indigo-50 px-2 py-1 text-[9px] font-black uppercase tracking-wide text-indigo-700">
@@ -3556,18 +3557,38 @@ export const OandaProChart: React.FC = () => {
       .map(directTradeOverlayZoneId)
       .filter((zoneId): zoneId is string => Boolean(zoneId)),
   ), [retainedChartTradesForTimeframe]);
-  const zoneTableRows = useMemo(() => consolidatedDisplayZones
+  const zoneTableRows = useMemo(() => {
+    const candidates = consolidatedDisplayZones
     .filter((zone) => zone.active && zone.status === 'valid'
       && !redundantStandaloneZoneIds.has(zone.id)
       && !displayZoneMembers(zone).some((member) => retainedDirectTradeZoneIds.has(member.id))
+      && !retainedDirectChartTradesForTimeframe.some((overlay) => {
+        const trade = confluenceMapValue<TradeLevels>(zone, directZoneTrades);
+        return trade && tradeOverlayExecutionKey(overlay.trade) === tradeOverlayExecutionKey(trade);
+      })
       && (showInternal || zone.category !== 'internal')
       && zone.doubleChochStatus === undefined
       && (confluenceTapBarsAgo(zone) ?? Infinity) <= 50)
     .sort((a, b) => (
       (confluenceLatestTap(b)?.time ?? b.startTime)
       - (confluenceLatestTap(a)?.time ?? a.startTime)
-    ))
-    .slice(0, 8), [consolidatedDisplayZones, redundantStandaloneZoneIds, retainedDirectTradeZoneIds, showInternal]);
+    ));
+    const bestByTrade = new Map<string, { zone: DisplayStructureZone; expired: boolean }>();
+    for (const zone of candidates) {
+      const trade = confluenceMapValue<TradeLevels>(zone, directZoneTrades);
+      if (!trade) continue;
+      const key = tradeOverlayExecutionKey(trade);
+      const expired = marketSymbol === 'XAUUSD' && displayZoneMembers(zone).every((member) => (
+        isGoldZoneOpportunityExpired(member, displayCandles, granularity, marketConfig.pipSize)
+      ));
+      const previous = bestByTrade.get(key);
+      if (!previous || (previous.expired && !expired)) bestByTrade.set(key, { zone, expired });
+    }
+    return candidates.filter((zone) => {
+      const trade = confluenceMapValue<TradeLevels>(zone, directZoneTrades);
+      return !trade || bestByTrade.get(tradeOverlayExecutionKey(trade))?.zone === zone;
+    }).slice(0, 8);
+  }, [consolidatedDisplayZones, directZoneTrades, displayCandles, granularity, marketConfig.pipSize, marketSymbol, redundantStandaloneZoneIds, retainedDirectChartTradesForTimeframe, retainedDirectTradeZoneIds, showInternal]);
   const scalpEntryTableRows = useMemo(() => {
     const rows = new Map<string, {
       id: string;
@@ -3719,12 +3740,21 @@ export const OandaProChart: React.FC = () => {
         .map((zone) => zone.id),
     ]);
     const rows = new Map<string, StructureZone>();
+    const listedTradeKeys = new Set([
+      ...retainedDirectChartTradesForTimeframe.map((overlay) => tradeOverlayExecutionKey(overlay.trade)),
+      ...zoneTableRows.flatMap((zone) => {
+        const trade = confluenceMapValue<TradeLevels>(zone, directZoneTrades);
+        return trade ? [tradeOverlayExecutionKey(trade)] : [];
+      }),
+    ]);
     for (const setup of trackedDirectTradeSetups.values()) {
       if (setup.scope !== tradeTrackingScope || activeZoneIds.has(setup.zone.id)
         || retainedDirectTradeZoneIds.has(setup.zone.id)
         || redundantStandaloneZoneIds.has(setup.zone.id)) continue;
       const trade = directZoneTrades.get(setup.zone.id);
       if (!trade) continue;
+      const tradeKey = tradeOverlayExecutionKey(trade);
+      if (listedTradeKeys.has(tradeKey)) continue;
       const row = displayZones.find((zone) => zone.id === setup.zone.id) ?? setup.zone;
       if ((!showInternal && row.category === 'internal')
         || (isCompletedTrade(trade) && (row.tapBarsAgo ?? Infinity) > 50)) continue;
@@ -3732,6 +3762,7 @@ export const OandaProChart: React.FC = () => {
         setup.zone.id,
         row,
       );
+      listedTradeKeys.add(tradeKey);
     }
     const sorted = Array.from(rows.values())
       .sort((a, b) => (b.invalidatedAt ?? b.startTime) - (a.invalidatedAt ?? a.startTime));
@@ -3743,6 +3774,7 @@ export const OandaProChart: React.FC = () => {
     displayZones,
     showInternal,
     retainedDirectTradeZoneIds,
+    retainedDirectChartTradesForTimeframe,
     redundantStandaloneZoneIds,
     trackedDirectTradeSetups,
     tradeTrackingScope,

@@ -5,10 +5,12 @@ import {
   isDirectTradeOverlay,
   isTradeOverlayTerminated,
   isTradeOverlayVisibleOnTimeframe,
+  liveMtfPositionMatchesChartRow,
   normalizeTradeSetupId,
   retainedDirectTradeHasSource,
   resolveTradeOverlaySetupKey,
   tradeOverlayEntryEventKey,
+  tradeOverlayExecutionKey,
   tradeOverlayZoneLabel,
 } from '../src/services/tradeOverlayIdentity';
 
@@ -32,6 +34,37 @@ test('keeps MTF setup identities unchanged', () => {
     resolveTradeOverlaySetupKey('MTF:setup-42:1792171800:4165.02'),
     'MTF:setup-42',
   );
+});
+
+test('matches one broker MTF entry to its chart row across differing feed zone IDs', () => {
+  const position = {
+    setupId: 'MTF:M15-M1-external-choch-broker',
+    source: 'MTF', zoneTimeframe: 'M15', signalTimeframe: 'M1',
+    signalAt: 1792651260, direction: 'BUY' as const,
+  };
+  const row = {
+    id: 'M15-M1-external-choch-chart', higherTimeframe: 'M15',
+    lowerTimeframe: 'M1', direction: 'bullish' as const, engulfingTime: 1792651260,
+  };
+  assert.equal(liveMtfPositionMatchesChartRow(position, row), true);
+  assert.equal(liveMtfPositionMatchesChartRow(position, { ...row, engulfingTime: 1792651320 }), false);
+  assert.equal(liveMtfPositionMatchesChartRow(position, { ...row, direction: 'bearish' }), false);
+  assert.equal(liveMtfPositionMatchesChartRow(position, { ...row, higherTimeframe: 'H1' }), false);
+});
+
+test('identifies duplicate chart entries without merging distinct prices', () => {
+  const trade = {
+    signal: { timeframe: 'M15', direction: 'bullish', time: 1792647900 },
+    entry: 4084.8, stopLoss: 4064.8, takeProfit: 4124.8,
+  };
+  assert.equal(tradeOverlayExecutionKey(trade), tradeOverlayExecutionKey({ ...trade }));
+  assert.equal(tradeOverlayExecutionKey(trade), tradeOverlayExecutionKey({
+    ...trade, entry: 4084.800000000001,
+  }));
+  assert.notEqual(tradeOverlayExecutionKey(trade), tradeOverlayExecutionKey({ ...trade, entry: 4085 }));
+  assert.equal(tradeOverlayExecutionKey(trade), tradeOverlayExecutionKey({
+    ...trade, signal: { ...trade.signal, time: 1792648800 },
+  }), 'the zone table shows one pending entry even when two zone taps have different times');
 });
 
 test('does not merge different direct zones', () => {
