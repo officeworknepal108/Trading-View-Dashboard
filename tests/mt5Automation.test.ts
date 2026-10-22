@@ -14,6 +14,7 @@ import {
   isExecutableTrade,
   isMt5EntryTimeframeEnabled,
   isMt5SignalAllowedByTimeframes,
+  mt5ClosedReturnR,
   mt5SignalDisabledReason,
   normalizeMt5EnabledTimeframes,
   normalizeMt5RiskPercent,
@@ -21,6 +22,20 @@ import {
   tradeToMt5Signal,
 } from '../src/services/mt5Automation';
 import type { TradeLevels } from '../src/services/tradeLevels';
+
+test('MT5 result R includes the partial scalp close and the remaining exit', () => {
+  const trade = {
+    direction: 'BUY' as const,
+    entry: 4090.56,
+    stopLoss: 4086.81,
+    initialVolume: 0.72,
+    partialClosedVolume: 0.36,
+    partialClosePrice: 4094.77,
+  };
+  assert.equal(Math.round(mt5ClosedReturnR({ ...trade, closePrice: 4099.89 }) * 100) / 100, 1.81);
+  assert.equal(Math.round(mt5ClosedReturnR({ ...trade, closePrice: 4086.81 }) * 100) / 100, 0.06);
+  assert.equal(mt5ClosedReturnR({ ...trade, partialClosedVolume: 0, closePrice: 4086.81 }), -1);
+});
 
 test('Gold scalp and later intraday entries share one MT5 zone execution key', () => {
   const scalp = {

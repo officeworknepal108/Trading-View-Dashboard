@@ -14,6 +14,7 @@ import {
   normalizeMt5EnabledTimeframes,
   normalizeMt5RiskPercent,
   isExecutableTrade,
+  mt5ClosedReturnR,
   canQueueSingleSlReentry,
   shouldRemoveOpenMt5JournalRecord,
   tradeToMt5Signal,
@@ -1223,7 +1224,10 @@ async function sendTelegramTradeAlert(alert: TelegramTradeAlert): Promise<void> 
   if (!payload.ok) throw new Error('Telegram did not confirm the alert.');
 }
 
-async function deliverTelegramAlerts(alerts: TelegramTradeAlert[]): Promise<string[]> {
+async function deliverTelegramAlerts(
+  alerts: TelegramTradeAlert[],
+  allowResultWithoutEntry = false,
+): Promise<string[]> {
   const task = telegramAlertQueue.then(async () => {
     let sent: SentTelegramAlerts;
     try {
@@ -1242,7 +1246,8 @@ async function deliverTelegramAlerts(alerts: TelegramTradeAlert[]): Promise<stri
         acknowledged.push(`${alert.id}:${alert.kind}`);
         continue;
       }
-      if ((alert.kind === 'tp' || alert.kind === 'sl') && (!state.entry || state.result)) {
+      if ((alert.kind === 'tp' || alert.kind === 'sl')
+        && ((!state.entry && !allowResultWithoutEntry) || state.result)) {
         acknowledged.push(`${alert.id}:${alert.kind}`);
         continue;
       }
@@ -1606,7 +1611,21 @@ async function startServer() {
           && (updated.partialClosedAt ?? 0) > 0
           && (updated.partialClosedVolume ?? 0) > 0
           && (updated.remainingVolume ?? 0) > 0;
-        if ((status === 'PLACED' || status === 'ACTIVE' || cancelledBeyondOneAndHalfR || confirmedRf)
+        const confirmedResult = (status === 'TP' || status === 'SL' || status === 'RF')
+          && (updated.closedAt ?? 0) > 0 && (updated.closePrice ?? 0) > 0;
+        const filledEntry = updated.executionPrice ?? updated.entry;
+        const initialStopLoss = updated.initialStopLoss ?? updated.stopLoss;
+        const returnR = confirmedResult ? mt5ClosedReturnR({
+          direction: updated.direction,
+          entry: filledEntry,
+          stopLoss: initialStopLoss,
+          closePrice: updated.closePrice!,
+          initialVolume: updated.initialVolume ?? updated.volume,
+          partialClosedVolume: updated.partialClosedVolume,
+          partialClosePrice: updated.partialClosePrice,
+        }) : 0;
+        if ((status === 'PLACED' || status === 'ACTIVE' || cancelledBeyondOneAndHalfR
+          || confirmedRf || confirmedResult)
           && (await readMt5Config()).telegramMessagesEnabled) {
           const telegramAlert: TelegramTradeAlert = {
             id: status === 'PLACED' || cancelledBeyondOneAndHalfR || confirmedRf ? updated.id : [
@@ -1617,17 +1636,18 @@ async function startServer() {
               updated.entry.toFixed(5),
             ].join(':'),
             kind: cancelledBeyondOneAndHalfR ? 'cancelled'
-              : confirmedRf ? 'rf' : status === 'PLACED' ? 'pending' : 'entry',
+              : confirmedRf ? 'rf' : status === 'PLACED' ? 'pending'
+                : status === 'TP' ? 'tp' : status === 'SL' || status === 'RF' ? 'sl' : 'entry',
             symbol: updated.symbol,
             direction: updated.direction,
             zoneName: updated.zoneName,
             zoneTimeframe: updated.zoneTimeframe,
             signalTimeframe: updated.signalTimeframe,
             engulfingType: updated.engulfingType,
-            entry: status === 'ACTIVE' || confirmedRf
+            entry: status === 'ACTIVE' || confirmedRf || confirmedResult
               ? updated.executionPrice ?? updated.entry
               : updated.entry,
-            stopLoss: updated.stopLoss,
+            stopLoss: confirmedResult ? initialStopLoss : updated.stopLoss,
             takeProfit: updated.takeProfit,
             riskPips: updated.riskPips,
             rewardRisk: updated.rewardRisk,
@@ -1639,11 +1659,16 @@ async function startServer() {
               partialClosedVolume: updated.partialClosedVolume,
               remainingVolume: updated.remainingVolume,
             } : {}),
+            ...(confirmedResult ? {
+              closedAt: updated.closedAt,
+              exitPrice: updated.closePrice,
+              returnR: Math.round(returnR * 100) / 100,
+            } : {}),
             ...(cancelledBeyondOneAndHalfR ? { closedAt: updated.updatedAt } : {}),
           };
           if (validTelegramTradeAlert(telegramAlert)) {
             try {
-              await deliverTelegramAlerts([telegramAlert]);
+              await deliverTelegramAlerts([telegramAlert], confirmedResult);
             } catch (error) {
               console.error('Unable to send MT5 Telegram alert:', error);
             }

@@ -88,6 +88,30 @@ export function calculateXauUsdLotSize(cashRisk: number, stopLossPips: number): 
   return cashRisk / (stopLossPips * 10);
 }
 
+export function mt5ClosedReturnR(options: {
+  direction: 'BUY' | 'SELL';
+  entry: number;
+  stopLoss: number;
+  closePrice: number;
+  initialVolume?: number;
+  partialClosedVolume?: number;
+  partialClosePrice?: number;
+}): number {
+  const risk = Math.abs(options.entry - options.stopLoss);
+  if (risk <= 0) return 0;
+  const direction = options.direction === 'BUY' ? 1 : -1;
+  const initialVolume = options.initialVolume ?? 0;
+  if (initialVolume <= 0) {
+    return (options.closePrice - options.entry) * direction / risk;
+  }
+  const partialVolume = options.partialClosePrice === undefined ? 0
+    : Math.min(Math.max(options.partialClosedVolume ?? 0, 0), initialVolume);
+  return ((options.partialClosePrice !== undefined
+    ? (options.partialClosePrice - options.entry) * direction * partialVolume : 0)
+    + (options.closePrice - options.entry) * direction * (initialVolume - partialVolume))
+    / (risk * initialVolume);
+}
+
 export type Mt5SignalStatus = 'QUEUED' | 'CLAIMED' | 'PLACED' | 'ACTIVE'
   | 'RISK_FREE' | 'TP' | 'SL' | 'RF' | 'CANCELLED' | 'REJECTED' | 'EXPIRED' | 'SIMULATED';
 

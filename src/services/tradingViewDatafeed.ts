@@ -81,7 +81,9 @@ export async function fetchTradingViewCandles(options: {
       if (settled) return;
       settled = true;
       clearTimeout(timer);
-      socket.removeAllListeners();
+      socket.removeAllListeners('open');
+      socket.removeAllListeners('message');
+      socket.removeAllListeners('close');
       socket.close();
       if (error) reject(error);
       else resolve(candles || []);
