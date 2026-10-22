@@ -81,11 +81,9 @@ export function deduplicateTradeRecords<T extends DeduplicableTradeRecord>(recor
         || record.direction !== broker.direction || record.source !== broker.source
         || record.zoneName !== broker.zoneName || record.zoneTimeframe !== broker.zoneTimeframe
         || record.tradeStyle !== broker.tradeStyle) return false;
-      const risk = Math.abs(Number(record.entry) - Number(record.stopLoss));
-      const pipSize = record.riskPips && record.riskPips > 0 ? risk / record.riskPips : 0;
-      const tolerance = Math.max(pipSize * 3, risk * 0.03, 0.000001);
-      return Math.abs(Number(record.entry) - Number(broker.entry)) <= tolerance
-        && Math.abs(Number(record.stopLoss) - Number(broker.stopLoss)) <= tolerance;
+      // The broker owns this signal's execution. Feed differences and later
+      // recalculation can change chart prices beyond any slippage tolerance.
+      return true;
     }))
     .sort((first, second) => second.completedAt - first.completedAt);
 }

@@ -116,6 +116,26 @@ test('saved past trades survive a chart-window change and regain matching arrows
   assert.equal(selectTradeChartRecords(canonical, 'M1', options.timeframeData.M1!.candles).length, 1);
 });
 
+test('the reported M15 DB duplicate has one broker arrow, accuracy outcome and journal row', () => {
+  const { intraday, options } = synchronizedFixture();
+  const broker = { ...intraday, id: 'MT5:M15:1792647900:BUY:4084.530:4064.530:4124.530',
+    signalAt: 1792647900, openedAt: 1792655712, completedAt: 1792668116,
+    entry: 4084.530, stopLoss: 4064.530, takeProfit: 4124.530, riskPips: 200,
+    result: 'sl' as const, mt5Managed: true, brokerTicket: 59002375235 };
+  const chart = { ...intraday, id: 'DIRECT:DB-1791993600-4077.12905:1792647900:4086.125',
+    signalAt: broker.signalAt, openedAt: 1792655340, completedAt: 1792668060,
+    entry: 4086.125, stopLoss: 4066.125, takeProfit: 4126.125, riskPips: 200, result: 'sl' as const };
+  const saved = [broker, chart];
+  const before = JSON.stringify(saved);
+  const canonical = buildCanonicalTradeRecords(saved, [], { ...options, timeframeData: {} });
+  assert.deepEqual(canonical, [broker]);
+  assert.deepEqual(selectTradeChartRecords(canonical, 'M15', [{ time: broker.signalAt }], true), [broker]);
+  assert.deepEqual(mergeTradeRecordAnnotations(canonical, saved), [broker]);
+  assert.equal(calculateJournalPerformance(canonical).completed, 1);
+  assert.equal(calculateJournalPerformance(canonical).totalR, -1);
+  assert.equal(JSON.stringify(saved), before, 'saved history is not rewritten or deleted');
+});
+
 test('M15 can display completed M1/M5 scalps on their filled-entry candles without adding trades', () => {
   const { scalp, intraday } = synchronizedFixture();
   const m1 = { ...scalp, openedAt: 899, completedAt: 2000 };

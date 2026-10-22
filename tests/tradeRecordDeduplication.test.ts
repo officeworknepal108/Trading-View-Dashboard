@@ -50,3 +50,26 @@ test('distinct broker tickets are separate actual executions even at identical p
     { ...base, id: 'mt5-2', mt5Managed: true, brokerTicket: 2 },
   ]).length, 2);
 });
+
+test('a broker fill replaces all recalculated chart prices for the same identified signal', () => {
+  const signal = { ...base, source: 'ENGULFING', zoneName: 'DB', zoneTimeframe: 'M15',
+    signalTimeframe: 'M15', tradeStyle: 'INTRADAY', signalAt: 1792647900 };
+  const broker = { ...signal, id: 'MT5:59002375235', mt5Managed: true, brokerTicket: 59002375235,
+    entry: 4084.530, stopLoss: 4064.530 };
+  const chart = { ...signal, id: 'DIRECT:db:4086.125', entry: 4086.125, stopLoss: 4066.125 };
+  const olderChart = { ...chart, id: 'DIRECT:db:4084.8', entry: 4084.8, stopLoss: 4064.8 };
+  assert.deepEqual(deduplicateTradeRecords([chart, broker, olderChart]), [broker]);
+  assert.deepEqual(deduplicateTradeRecords([broker, olderChart, chart]), [broker]);
+  assert.deepEqual(deduplicateTradeRecords([chart, olderChart]), [chart, olderChart],
+    'this change only replaces chart calculations when an actual broker record exists');
+  for (const change of [
+    { signalAt: signal.signalAt + 900 }, { zoneName: 'QML' }, { zoneTimeframe: 'H1' },
+    { signalTimeframe: 'M5' }, { direction: 'bearish' }, { tradeStyle: 'SCALPING' },
+    { source: 'MTF' }, { symbol: 'EURUSD' },
+  ]) {
+    assert.equal(deduplicateTradeRecords([broker, { ...chart, ...change }]).length, 2,
+      'other identified signals must remain separate');
+  }
+  assert.equal(deduplicateTradeRecords([chart, broker,
+    { ...broker, id: 'MT5:another-ticket', brokerTicket: 59002375236 }]).length, 2);
+});
