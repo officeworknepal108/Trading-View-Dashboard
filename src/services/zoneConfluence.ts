@@ -116,36 +116,50 @@ export function selectLtfChochContext(
   lowerLines: readonly StructureLine[],
   currentTime: number,
 ): { zones: ComparisonZone[]; confirmations: Array<{ zone: StructureZone; line: StructureLine }> } {
-  const tappedZones = chartZones.filter((zone) => zone.active && zone.status === 'valid'
+  const tappedZone = chartZones.filter((zone) => zone.active && zone.status === 'valid'
     && zone.tapTime !== undefined && zone.tapTime <= currentTime)
     .sort((first, second) => (second.lastTapTime ?? second.tapTime ?? 0)
-      - (first.lastTapTime ?? first.tapTime ?? 0)).slice(0, 4);
-  if (tappedZones.length === 0) return { zones: [], confirmations: [] };
-  const eligibleZones = lowerZones.filter((zone) => zone.category === 'mg'
-    && (zone.name === 'TJL1' || zone.name === 'TJL2')
-    && zone.active && (zone.status === 'valid' || zone.status === 'pending')
-    && zone.startTime <= currentTime && zone.top > zone.bottom);
-  const zones = (['TJL1', 'TJL2'] as const).flatMap((name) => (
-    eligibleZones.filter((zone) => zone.name === name)
-      .sort((first, second) => second.startTime - first.startTime)
-      .slice(0, 3)
-      .map((zone) => ({
-        zone,
-        visibleFromTime: Math.max(zone.startTime,
-          Math.min(...tappedZones.map((higherZone) => higherZone.tapTime!))),
-        overlapsCurrentZone: tappedZones.some((higherZone) => (
-          priceRangesOverlap(zone, higherZone)
-        )),
-      }))
-  ));
-  const confirmations = tappedZones.flatMap((zone) => {
-    const line = [...lowerLines].reverse().find((candidate) => candidate.type === 'choch'
-      && candidate.direction === (zone.isBuy ? 'bullish' : 'bearish')
-      && candidate.toTime >= zone.tapTime!
-      && candidate.toTime <= currentTime);
-    return line ? [{ zone, line }] : [];
+      - (first.lastTapTime ?? first.tapTime ?? 0))[0];
+  if (!tappedZone) return { zones: [], confirmations: [] };
+  const tapTime = tappedZone.lastTapTime ?? tappedZone.tapTime!;
+  const display = (zone: StructureZone): ComparisonZone => ({
+    zone,
+    visibleFromTime: Math.max(zone.startTime, zone.activeFromTime ?? zone.startTime, tapTime),
+    overlapsCurrentZone: priceRangesOverlap(zone, tappedZone),
   });
-  return { zones, confirmations };
+  const line = lowerLines.filter((candidate) => candidate.type === 'choch'
+    && candidate.direction === (tappedZone.isBuy ? 'bullish' : 'bearish')
+    && candidate.toTime >= tapTime && candidate.toTime <= currentTime)
+    .sort((first, second) => second.toTime - first.toTime)[0];
+  if (line) {
+    const chochZone = lowerZones.find((zone) => zone.category === 'mg'
+      && zone.name === (line.label === 'DOUBLE CHoCH' ? 'QML A+' : 'QML')
+      && zone.isBuy === tappedZone.isBuy && zone.active && zone.status === 'valid'
+      && (line.label === 'DOUBLE CHoCH' ? zone.doubleChochTime : zone.chochTime) === line.toTime);
+    return {
+      zones: chochZone ? [display(chochZone)] : [],
+      confirmations: [{ zone: tappedZone, line }],
+    };
+  }
+  const pairs = new Map<number, { tjl1?: StructureZone; tjl2?: StructureZone }>();
+  for (const zone of lowerZones) {
+    if (zone.category !== 'mg' || (zone.name !== 'TJL1' && zone.name !== 'TJL2')
+      || zone.isBuy === tappedZone.isBuy || !zone.active
+      || (zone.status !== 'valid' && zone.status !== 'pending')
+      || zone.tjlPairTime === undefined || zone.tjlPairTime > currentTime
+      || zone.startTime > currentTime || zone.top <= zone.bottom) continue;
+    const pair = pairs.get(zone.tjlPairTime) ?? {};
+    if (zone.name === 'TJL1') pair.tjl1 = zone;
+    else pair.tjl2 = zone;
+    pairs.set(zone.tjlPairTime, pair);
+  }
+  const latestPair = [...pairs.entries()]
+    .filter(([, pair]) => pair.tjl1 && pair.tjl2)
+    .sort(([firstTime], [secondTime]) => secondTime - firstTime)[0]?.[1];
+  return {
+    zones: latestPair ? [display(latestPair.tjl1!), display(latestPair.tjl2!)] : [],
+    confirmations: [],
+  };
 }
 
 function priceRangeGap(first: StructureZone, second: StructureZone): number {

@@ -69,12 +69,14 @@ test('comparison keeps the most recent buy and sell zones independently', () => 
   assert.equal(selected.some(({ zone: item }) => item.id === 'buy-0' || item.id === 'sell-0'), false);
 });
 
-test('LTF CHoCH waits for an HTF tap and shows both lower TJL zones before confirmation', () => {
+test('LTF CHoCH shows only the newest TJL pair, then its QML until invalidation', () => {
   const higher = zone({ id: 'm15-buy', tapTime: 500 });
   const lowerZones = [
-    zone({ id: 'm1-tjl1', name: 'TJL1', isBuy: false, status: 'pending' }),
-    zone({ id: 'm1-tjl2', name: 'TJL2', isBuy: false }),
-    zone({ id: 'other-side', name: 'TJL2', isBuy: true, startTime: 90 }),
+    zone({ id: 'old-tjl1', name: 'TJL1', isBuy: false, tjlPairTime: 200 }),
+    zone({ id: 'old-tjl2', name: 'TJL2', isBuy: false, tjlPairTime: 200 }),
+    zone({ id: 'm1-tjl1', name: 'TJL1', isBuy: false, status: 'pending', tjlPairTime: 480 }),
+    zone({ id: 'm1-tjl2', name: 'TJL2', isBuy: false, tjlPairTime: 480 }),
+    zone({ id: 'other-side', name: 'TJL2', isBuy: true, tjlPairTime: 490 }),
   ];
   const lines: StructureLine[] = [
     { id: 'early', type: 'choch', direction: 'bullish', fromTime: 100,
@@ -85,12 +87,20 @@ test('LTF CHoCH waits for an HTF tap and shows both lower TJL zones before confi
   assert.deepEqual(selectLtfChochContext([higher], lowerZones, lines, 499),
     { zones: [], confirmations: [] });
   const waiting = selectLtfChochContext([higher], lowerZones, lines, 550);
-  assert.deepEqual(waiting.zones.map(({ zone: item }) => item.id),
-    ['m1-tjl1', 'm1-tjl2', 'other-side']);
+  assert.deepEqual(waiting.zones.map(({ zone: item }) => item.id), ['m1-tjl1', 'm1-tjl2']);
   assert.equal(waiting.zones[0]?.visibleFromTime, 500);
   assert.equal(waiting.confirmations.length, 0);
-  const confirmed = selectLtfChochContext([higher], lowerZones, lines, 650);
+  const qml = zone({ id: 'm1-qml', name: 'QML', isBuy: true,
+    chochTime: 600, activeFromTime: 601 });
+  const confirmed = selectLtfChochContext([higher], [...lowerZones, qml], lines, 650);
+  assert.deepEqual(confirmed.zones.map(({ zone: item }) => item.id), ['m1-qml']);
+  assert.equal(confirmed.zones[0]?.visibleFromTime, 601);
   assert.equal(confirmed.confirmations[0]?.line.id, 'confirmed');
+  const invalidated = selectLtfChochContext([higher], [...lowerZones, {
+    ...qml, active: false, status: 'invalidated' as const,
+  }], lines, 700);
+  assert.deepEqual(invalidated.zones, []);
+  assert.equal(invalidated.confirmations[0]?.line.id, 'confirmed');
 });
 
 test('same-direction TJL2 and Internal DB display as one TJL2 confluence zone', () => {

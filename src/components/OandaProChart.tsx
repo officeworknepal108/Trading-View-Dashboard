@@ -3971,7 +3971,10 @@ export const OandaProChart: React.FC = () => {
       box.style.boxSizing = 'border-box';
       box.style.pointerEvents = 'none';
       const label = document.createElement('span');
-      label.textContent = `${GRANULARITY_LABELS[comparisonTimeframe!]} ${zone.isBuy ? 'BUY' : 'SELL'} ${zone.name}${overlapsCurrentZone ? ' · OVERLAP' : ''}`;
+      const chochZone = ltfChochContext?.confirmations.some(({ line }) => (
+        zone.chochTime === line.toTime || zone.doubleChochTime === line.toTime
+      ));
+      label.textContent = `${GRANULARITY_LABELS[comparisonTimeframe!]} ${zone.isBuy ? 'BUY' : 'SELL'} ${chochZone ? 'CHoCH ZONE · ' : ''}${zone.name}${overlapsCurrentZone ? ' · OVERLAP' : ''}`;
       label.style.position = 'absolute';
       label.style.right = '19px';
       label.style.top = Math.abs(bottom - top) >= 14 ? '1px' : '-12px';
@@ -6885,7 +6888,7 @@ export const OandaProChart: React.FC = () => {
                   </button>
                   {showLtfChoch && (
                     <div className="mb-2 text-[8px] text-slate-600">
-                      Lower TJL1/TJL2 appear after a chart zone tap. A confirmed lower CHoCH appears on this chart.
+                      The latest lower TJL1/TJL2 pair appears after a chart zone tap. After CHoCH, only its active QML zone remains.
                     </div>
                   )}
                   <div className="mb-2 flex flex-wrap gap-1">
@@ -6918,7 +6921,9 @@ export const OandaProChart: React.FC = () => {
                     <div className="text-[9px] text-slate-500">Loading {GRANULARITY_LABELS[comparisonTimeframe]} zones...</div>
                   ) : comparisonZones.length === 0 ? (
                     <div className="text-[9px] text-slate-500">{ltfChochContext
-                      ? 'Waiting for a chart zone tap or a relevant lower TJL1/TJL2.'
+                      ? ltfChochContext.confirmations.length > 0
+                        ? 'CHoCH confirmed; no active QML zone to show.'
+                        : 'Waiting for a chart zone tap or the latest lower TJL1/TJL2 pair.'
                       : 'No active, valid zones on this timeframe.'}</div>
                   ) : (
                     <div className="space-y-1">
