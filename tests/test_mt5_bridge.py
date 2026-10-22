@@ -62,14 +62,14 @@ class TradeStyleRiskFreeTests(unittest.TestCase):
             self.assertEqual(update.call_args.args[1], "RISK_FREE")
 
 
-class PendingOrderTwoRTests(unittest.TestCase):
-    def test_uses_executable_quote_and_requires_more_than_two_r(self) -> None:
+class PendingOrderOneAndHalfRTests(unittest.TestCase):
+    def test_uses_executable_quote_and_requires_more_than_one_and_half_r(self) -> None:
         buy = {"direction": "BUY", "entry": 100, "stopLoss": 90}
         sell = {"direction": "SELL", "entry": 100, "stopLoss": 110}
-        self.assertFalse(bridge.pending_order_passed_two_r(buy, SimpleNamespace(bid=120, ask=121)))
-        self.assertTrue(bridge.pending_order_passed_two_r(buy, SimpleNamespace(bid=120.01, ask=121)))
-        self.assertFalse(bridge.pending_order_passed_two_r(sell, SimpleNamespace(bid=79, ask=80)))
-        self.assertTrue(bridge.pending_order_passed_two_r(sell, SimpleNamespace(bid=78, ask=79.99)))
+        self.assertFalse(bridge.pending_order_passed_one_and_half_r(buy, SimpleNamespace(bid=115, ask=116)))
+        self.assertTrue(bridge.pending_order_passed_one_and_half_r(buy, SimpleNamespace(bid=115.01, ask=116)))
+        self.assertFalse(bridge.pending_order_passed_one_and_half_r(sell, SimpleNamespace(bid=84, ask=85)))
+        self.assertTrue(bridge.pending_order_passed_one_and_half_r(sell, SimpleNamespace(bid=83, ask=84.99)))
 
     def test_removes_broker_order_before_reporting_cancellation(self) -> None:
         record = {"status": "PLACED", "direction": "BUY", "symbol": "XAUUSD",
@@ -77,7 +77,7 @@ class PendingOrderTwoRTests(unittest.TestCase):
         state = {"pending": dict(record)}
         with patch.object(bridge.mt5, "orders_get", return_value=[SimpleNamespace(ticket=123)]), \
              patch.object(bridge.mt5, "symbol_info_tick",
-                          return_value=SimpleNamespace(bid=120.01, ask=121)), \
+                          return_value=SimpleNamespace(bid=115.01, ask=116)), \
              patch.object(bridge.mt5, "order_send",
                           return_value=SimpleNamespace(retcode=bridge.mt5.TRADE_RETCODE_DONE)) as send, \
              patch.object(bridge, "update_status") as update:
@@ -85,7 +85,7 @@ class PendingOrderTwoRTests(unittest.TestCase):
         self.assertNotIn("pending", state)
         self.assertEqual(send.call_args.args[0]["action"], bridge.mt5.TRADE_ACTION_REMOVE)
         self.assertEqual(update.call_args.args[1], "CANCELLED")
-        self.assertIn("beyond 2R", update.call_args.kwargs["message"])
+        self.assertIn("beyond 1.5R", update.call_args.kwargs["message"])
 
     def test_failed_broker_removal_keeps_pending_order(self) -> None:
         record = {"status": "PLACED", "direction": "SELL", "symbol": "XAUUSD",
@@ -93,7 +93,7 @@ class PendingOrderTwoRTests(unittest.TestCase):
         state = {"pending": dict(record)}
         with patch.object(bridge.mt5, "orders_get", return_value=[SimpleNamespace(ticket=123)]), \
              patch.object(bridge.mt5, "symbol_info_tick",
-                          return_value=SimpleNamespace(bid=78, ask=79.99)), \
+                          return_value=SimpleNamespace(bid=83, ask=84.99)), \
              patch.object(bridge.mt5, "order_send", return_value=SimpleNamespace(retcode=0)), \
              patch.object(bridge, "update_status") as update:
             bridge.manage_open_signals(state, [], {"tradingTimeEnabled": False})

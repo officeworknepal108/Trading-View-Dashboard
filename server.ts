@@ -1151,14 +1151,14 @@ function telegramAlertText(alert: TelegramTradeAlert): string {
   }
   if (alert.kind === 'cancelled') {
     const risk = Math.abs(alert.entry - alert.stopLoss);
-    const twoR = alert.entry + (alert.direction === 'BUY' ? 2 : -2) * risk;
+    const oneAndHalfR = alert.entry + (alert.direction === 'BUY' ? 1.5 : -1.5) * risk;
     return [
       `PENDING ORDER CANCELLED — ${title}`,
       `Time: ${telegramAlertTime(alert.closedAt!)}`,
       `Setup: ${setup}`,
       `Limit entry: ${telegramAlertPrice(alert.entry)}`,
-      `2R level: ${telegramAlertPrice(twoR)}`,
-      'Price moved beyond 2R before entry. MT5 removed the unfilled order.',
+      `1.5R level: ${telegramAlertPrice(oneAndHalfR)}`,
+      'Price moved beyond 1.5R before entry. MT5 removed the unfilled order.',
     ].join('\n');
   }
   if (alert.kind === 'entry') {
@@ -1577,19 +1577,19 @@ async function startServer() {
           req.body && typeof req.body === 'object' ? req.body : {},
           updated.updatedAt,
         );
-        const cancelledBeyondTwoR = status === 'CANCELLED'
-          && updated.message === 'Pending order cancelled after price moved beyond 2R before entry.';
-        if ((status === 'PLACED' || status === 'ACTIVE' || cancelledBeyondTwoR)
+        const cancelledBeyondOneAndHalfR = status === 'CANCELLED'
+          && updated.message === 'Pending order cancelled after price moved beyond 1.5R before entry.';
+        if ((status === 'PLACED' || status === 'ACTIVE' || cancelledBeyondOneAndHalfR)
           && (await readMt5Config()).telegramMessagesEnabled) {
           const telegramAlert: TelegramTradeAlert = {
-            id: status === 'PLACED' || cancelledBeyondTwoR ? updated.id : [
+            id: status === 'PLACED' || cancelledBeyondOneAndHalfR ? updated.id : [
               updated.symbol,
               updated.direction === 'BUY' ? 'bullish' : 'bearish',
               updated.signalTimeframe,
               updated.signalAt,
               updated.entry.toFixed(5),
             ].join(':'),
-            kind: cancelledBeyondTwoR ? 'cancelled' : status === 'PLACED' ? 'pending' : 'entry',
+            kind: cancelledBeyondOneAndHalfR ? 'cancelled' : status === 'PLACED' ? 'pending' : 'entry',
             symbol: updated.symbol,
             direction: updated.direction,
             zoneName: updated.zoneName,
@@ -1604,7 +1604,7 @@ async function startServer() {
             tradeStyle: updated.tradeStyle,
             ...(updated.tradeStyle === 'SCALPING' ? { riskFree: updated.riskFree } : {}),
             openedAt: updated.openedAt ?? updated.updatedAt,
-            ...(cancelledBeyondTwoR ? { closedAt: updated.updatedAt } : {}),
+            ...(cancelledBeyondOneAndHalfR ? { closedAt: updated.updatedAt } : {}),
           };
           if (validTelegramTradeAlert(telegramAlert)) {
             try {

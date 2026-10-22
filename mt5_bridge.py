@@ -545,15 +545,15 @@ def closed_trade_details(record: dict[str, Any], was_risk_free: bool) -> dict[st
     return details
 
 
-def pending_order_passed_two_r(record: dict[str, Any], tick: Any) -> bool:
+def pending_order_passed_one_and_half_r(record: dict[str, Any], tick: Any) -> bool:
     entry = float(record["entry"])
     stop_loss = float(record["stopLoss"])
     risk = abs(entry - stop_loss)
     if risk <= 0 or tick is None:
         return False
     if record["direction"] == "BUY":
-        return float(tick.bid) > entry + 2 * risk
-    return float(tick.ask) < entry - 2 * risk
+        return float(tick.bid) > entry + 1.5 * risk
+    return float(tick.ask) < entry - 1.5 * risk
 
 
 def manage_open_signals(
@@ -599,22 +599,22 @@ def manage_open_signals(
             ticket = int(record.get("brokerTicket") or 0)
             if ticket and (mt5.orders_get(ticket=ticket) or []):
                 tick = mt5.symbol_info_tick(record["symbol"])
-                if pending_order_passed_two_r(record, tick):
+                if pending_order_passed_one_and_half_r(record, tick):
                     removal = mt5.order_send({
                         "action": mt5.TRADE_ACTION_REMOVE,
                         "order": ticket,
                         "magic": MAGIC_NUMBER,
-                        "comment": "Pending passed 2R",
+                        "comment": "Pending passed 1.5R",
                     })
                     if not removal or removal.retcode != mt5.TRADE_RETCODE_DONE:
-                        print(f"Could not remove 2R-expired pending order {ticket}: {mt5.last_error()}", file=sys.stderr)
+                        print(f"Could not remove 1.5R-expired pending order {ticket}: {mt5.last_error()}", file=sys.stderr)
                         continue
                     update_status(
                         signal_id, "CANCELLED",
-                        message="Pending order cancelled after price moved beyond 2R before entry.",
+                        message="Pending order cancelled after price moved beyond 1.5R before entry.",
                     )
                     state.pop(signal_id, None)
-                    print(f"CANCELLED: pending order {ticket} moved beyond 2R before entry")
+                    print(f"CANCELLED: pending order {ticket} moved beyond 1.5R before entry")
                 continue
             position = find_position(record)
             if position:
