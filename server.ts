@@ -1186,9 +1186,11 @@ function telegramAlertText(alert: TelegramTradeAlert): string {
   }
   if (alert.kind === 'rf') {
     return [
-      `RF HIT — ${title}`,
+      `RF HIT (SCALPING) — ${title}`,
       `Time: ${telegramAlertTime(alert.rfAt!)}`,
+      `Confirmation: ${confirmation}`,
       `Setup: ${setup}`,
+      `Entry: ${telegramAlertPrice(alert.entry)}`,
       `1R reached at ${telegramAlertPrice(alert.riskFree!)}`,
       '50% of the lot closed.',
       'Remaining 50% keeps the original SL and TP.',
@@ -1622,7 +1624,9 @@ async function startServer() {
             zoneTimeframe: updated.zoneTimeframe,
             signalTimeframe: updated.signalTimeframe,
             engulfingType: updated.engulfingType,
-            entry: status === 'ACTIVE' ? updated.executionPrice ?? updated.entry : updated.entry,
+            entry: status === 'ACTIVE' || confirmedRf
+              ? updated.executionPrice ?? updated.entry
+              : updated.entry,
             stopLoss: updated.stopLoss,
             takeProfit: updated.takeProfit,
             riskPips: updated.riskPips,
