@@ -1070,7 +1070,7 @@ async function updateMt5JournalRecord(
 
 interface TelegramTradeAlert {
   id: string;
-  kind: 'entry' | 'tp' | 'sl';
+  kind: 'pending' | 'entry' | 'tp' | 'sl';
   outsideTradingTime?: boolean;
   symbol: string;
   direction: 'BUY' | 'SELL';
@@ -1091,13 +1091,13 @@ interface TelegramTradeAlert {
   returnR?: number;
 }
 
-type SentTelegramAlerts = Record<string, { entry?: boolean; result?: 'tp' | 'sl' }>;
+type SentTelegramAlerts = Record<string, { pending?: boolean; entry?: boolean; result?: 'tp' | 'sl' }>;
 
 function validTelegramTradeAlert(value: any): value is TelegramTradeAlert {
   const timeframes = new Set(AUTOMATION_TIMEFRAMES);
   const now = Math.floor(Date.now() / 1000);
   return value && typeof value.id === 'string' && value.id.length > 0 && value.id.length <= 300
-    && ['entry', 'tp', 'sl'].includes(value.kind)
+    && ['pending', 'entry', 'tp', 'sl'].includes(value.kind)
     && (value.outsideTradingTime === undefined || typeof value.outsideTradingTime === 'boolean')
     && typeof value.symbol === 'string' && /^[A-Z0-9]{3,12}$/.test(value.symbol)
     && ['BUY', 'SELL'].includes(value.direction)
@@ -1111,7 +1111,8 @@ function validTelegramTradeAlert(value: any): value is TelegramTradeAlert {
     && (value.kind !== 'entry' || value.tradeStyle !== 'SCALPING'
       || Number.isFinite(value.riskFree) && value.riskFree > 0)
     && value.openedAt <= now + 5
-    && (value.kind === 'entry' ? now - value.openedAt <= 180
+    && (value.kind === 'pending' ? now - value.openedAt <= 14_400
+      : value.kind === 'entry' ? now - value.openedAt <= 180
       : Number.isFinite(value.closedAt) && value.closedAt >= value.openedAt
         && value.closedAt <= now + 5 && Number.isFinite(value.exitPrice)
         && value.exitPrice > 0 && Number.isFinite(value.returnR)
@@ -1133,6 +1134,18 @@ function telegramAlertText(alert: TelegramTradeAlert): string {
   const title = `${alert.symbol} ${alert.direction}`;
   const setup = `${alert.zoneTimeframe} ${alert.zoneName}`;
   const confirmation = `${alert.signalTimeframe} ${alert.direction === 'BUY' ? 'bullish' : 'bearish'} engulfing ${alert.engulfingType}`;
+  if (alert.kind === 'pending') {
+    return [
+      `PENDING LIMIT ORDER PLACED — ${title}`,
+      `Time: ${telegramAlertTime(alert.openedAt)}`,
+      `Setup: ${setup}`,
+      `Confirmation: ${confirmation}`,
+      `Limit entry: ${telegramAlertPrice(alert.entry)}`,
+      `Stop loss: ${telegramAlertPrice(alert.stopLoss)} (${alert.riskPips} pips)`,
+      `Take profit: ${telegramAlertPrice(alert.takeProfit)}`,
+      'This order has not filled yet.',
+    ].join('\n');
+  }
   if (alert.kind === 'entry') {
     return [
       `${alert.direction === 'BUY' ? '🟢' : '🔴'} ${alert.tradeStyle ? `${alert.tradeStyle} ` : ''}NEW ENTRY — ${title}`,
@@ -1186,17 +1199,18 @@ async function deliverTelegramAlerts(alerts: TelegramTradeAlert[]): Promise<stri
     const acknowledged: string[] = [];
     for (const alert of alerts) {
       const state = sent[alert.id] ?? {};
-      if (alert.kind === 'entry' ? state.entry : state.result === alert.kind) {
+      if (alert.kind === 'pending' ? state.pending
+        : alert.kind === 'entry' ? state.entry : state.result === alert.kind) {
         acknowledged.push(`${alert.id}:${alert.kind}`);
         continue;
       }
-      if (alert.kind !== 'entry' && (!state.entry || state.result)) {
+      if ((alert.kind === 'tp' || alert.kind === 'sl') && (!state.entry || state.result)) {
         acknowledged.push(`${alert.id}:${alert.kind}`);
         continue;
       }
       await sendTelegramTradeAlert(alert);
-      sent[alert.id] = alert.kind === 'entry'
-        ? { ...state, entry: true } : { ...state, result: alert.kind };
+      sent[alert.id] = alert.kind === 'pending' ? { ...state, pending: true }
+        : alert.kind === 'entry' ? { ...state, entry: true } : { ...state, result: alert.kind };
       await mkdir(path.dirname(TELEGRAM_ALERTS_FILE), { recursive: true });
       await writeFile(TELEGRAM_ALERTS_FILE, `${JSON.stringify(sent, null, 2)}\n`, 'utf8');
       acknowledged.push(`${alert.id}:${alert.kind}`);
@@ -1546,6 +1560,40 @@ async function startServer() {
           req.body && typeof req.body === 'object' ? req.body : {},
           updated.updatedAt,
         );
+        if ((status === 'PLACED' || status === 'ACTIVE')
+          && (await readMt5Config()).telegramMessagesEnabled) {
+          const telegramAlert: TelegramTradeAlert = {
+            id: status === 'PLACED' ? updated.id : [
+              updated.symbol,
+              updated.direction === 'BUY' ? 'bullish' : 'bearish',
+              updated.signalTimeframe,
+              updated.signalAt,
+              updated.entry.toFixed(5),
+            ].join(':'),
+            kind: status === 'PLACED' ? 'pending' : 'entry',
+            symbol: updated.symbol,
+            direction: updated.direction,
+            zoneName: updated.zoneName,
+            zoneTimeframe: updated.zoneTimeframe,
+            signalTimeframe: updated.signalTimeframe,
+            engulfingType: updated.engulfingType,
+            entry: status === 'ACTIVE' ? updated.executionPrice ?? updated.entry : updated.entry,
+            stopLoss: updated.stopLoss,
+            takeProfit: updated.takeProfit,
+            riskPips: updated.riskPips,
+            rewardRisk: updated.rewardRisk,
+            tradeStyle: updated.tradeStyle,
+            ...(updated.tradeStyle === 'SCALPING' ? { riskFree: updated.riskFree } : {}),
+            openedAt: updated.openedAt ?? updated.updatedAt,
+          };
+          if (validTelegramTradeAlert(telegramAlert)) {
+            try {
+              await deliverTelegramAlerts([telegramAlert]);
+            } catch (error) {
+              console.error('Unable to send MT5 Telegram alert:', error);
+            }
+          }
+        }
       }
       return updated
         ? res.json({ ok: true, signal: updated })
