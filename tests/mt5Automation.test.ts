@@ -7,7 +7,9 @@ import {
   applySignalOppositePositionTarget,
   buildMt5SignalId,
   canMt5SignalExpireBeforeExecution,
-  canQueueSingleSlReentry,
+  findEarlierZoneEntry,
+  tradeZoneExecutionKey,
+  tradeRecordZoneExecutionKey,
   calculateXauUsdLotSize,
   goldMt5ZoneExecutionKey,
   priorGoldMt5ZoneExecution,
@@ -59,7 +61,7 @@ test('Gold scalp and later intraday entries share one MT5 zone execution key', (
   ], consumed), undefined);
   assert.equal(priorGoldMt5ZoneExecution(intraday, [
     { ...earlierScalp, setupId: intraday.setupId },
-  ], consumed), undefined);
+  ], consumed)?.setupId, intraday.setupId);
 });
 
 test('MT5 risk selector exposes only the agreed percentages and normalizes legacy values', () => {
@@ -72,16 +74,48 @@ test('MT5 risk selector exposes only the agreed percentages and normalizes legac
   assert.equal(normalizeMt5RiskPercent('invalid', 1), 1);
 });
 
-test('MT5 permits exactly one later retry only after a full SL', () => {
-  assert.equal(canQueueSingleSlReentry([{ status: 'SL', signalAt: 100 }], 200), true);
-  assert.equal(canQueueSingleSlReentry([{ status: 'SL', signalAt: 100 }], 100), false);
-  assert.equal(canQueueSingleSlReentry([{ status: 'RF', signalAt: 100 }], 200), false);
-  assert.equal(canQueueSingleSlReentry([{ status: 'TP', signalAt: 100 }], 200), false);
-  assert.equal(canQueueSingleSlReentry([{ status: 'ACTIVE', signalAt: 100 }], 200), false);
-  assert.equal(canQueueSingleSlReentry([
-    { status: 'SL', signalAt: 100 },
-    { status: 'SL', signalAt: 200 },
-  ], 300), false, 'a second SL cannot create a third attempt');
+test('the same zone cannot execute again after SL, TP, RF or while active', () => {
+  const candidate = { symbol: 'XAUUSD', zoneTimeframe: 'M15' as const,
+    zoneId: 'TJL2-1792708200-4032.49', setupId: 'DIRECT:M15:TJL2-1792708200-4032.49' };
+  const consumed = new Set(['ACTIVE', 'TP', 'SL', 'RF'] as const);
+  for (const status of consumed) {
+    const earlier = { ...candidate, status };
+    assert.equal(priorGoldMt5ZoneExecution(candidate, [earlier], consumed), earlier);
+    const scalp = { ...earlier, setupId: 'GOLD_SCALP:M15:TJL2-1792708200-4032.49' };
+    assert.equal(priorGoldMt5ZoneExecution(candidate, [scalp], consumed), scalp);
+  }
+});
+
+test('zone identity survives price revisions but keeps different origins, markets and timeframes separate', () => {
+  const zone = { symbol: 'XAUUSD', zoneTimeframe: 'M15', zoneId: 'TJL2-1792708200-4032.49' };
+  const key = tradeZoneExecutionKey(zone);
+  assert.equal(tradeZoneExecutionKey({ ...zone, zoneId: 'TJL2-1792708200-4032.365' }), key);
+  assert.notEqual(tradeZoneExecutionKey({ ...zone, zoneId: 'TJL2-1792716300-4032.365' }), key);
+  assert.notEqual(tradeZoneExecutionKey({ ...zone, symbol: 'EURUSD' }), key);
+  assert.notEqual(tradeZoneExecutionKey({ ...zone, zoneTimeframe: 'H1' }), key);
+});
+
+test('a filled Major Liquidity chart entry blocks a later Fib entry, including legacy journals', () => {
+  const candidate = { symbol: 'XAUUSD', zoneTimeframe: 'M15',
+    zoneId: 'TJL2-1792708200-4032.49', signalAt: 300 };
+  const earlier = { id: 'DIRECT:TJL2-1792708200-4032.49:100:4014.365',
+    zoneTimeframe: 'M15', signalAt: 100, openedAt: 110 };
+  assert.equal(tradeRecordZoneExecutionKey(earlier), tradeZoneExecutionKey(candidate));
+  assert.equal(findEarlierZoneEntry(candidate, [earlier]), earlier);
+  const scalp = { ...earlier, id: 'GOLD_SCALP:M15:TJL2-1792708200-4032.49:100:4014.365' };
+  assert.equal(findEarlierZoneEntry(candidate, [scalp]), scalp);
+  const legacyDirect = { ...earlier, id: 'DIRECT:M15:TJL2-1792708200-4032.49:100:4014.365' };
+  assert.equal(findEarlierZoneEntry(candidate, [legacyDirect]), legacyDirect);
+  const mapped = { ...earlier, id: 'MTF:some-setup:100:4014.365', zoneId: candidate.zoneId };
+  assert.equal(findEarlierZoneEntry(candidate, [mapped]), mapped);
+  assert.equal(findEarlierZoneEntry(candidate, [{ ...earlier, openedAt: undefined }]), undefined);
+  assert.equal(findEarlierZoneEntry(candidate, [{ ...earlier, outsideTradingTime: true }]), undefined);
+  const broker = { ...earlier, outsideTradingTime: true, mt5Managed: true };
+  assert.equal(findEarlierZoneEntry(candidate, [broker]), broker,
+    'a real broker entry consumes its zone even when the session filter was disabled');
+  assert.equal(findEarlierZoneEntry(candidate, [{ ...earlier, signalAt: 300 }]), undefined,
+    'keep the existing entry visible rather than treating it as another entry');
+  assert.equal(findEarlierZoneEntry(candidate, [{ ...earlier, symbol: 'EURUSD' }]), undefined);
 });
 
 test('MT5 expiry applies only before execution and stale terminal journal cards are removed', () => {

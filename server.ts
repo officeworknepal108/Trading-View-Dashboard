@@ -16,7 +16,7 @@ import {
   normalizeMt5RiskPercent,
   isExecutableTrade,
   mt5ClosedReturnR,
-  canQueueSingleSlReentry,
+  findEarlierZoneEntry,
   shouldRemoveOpenMt5JournalRecord,
   tradeToMt5Signal,
   Mt5AutomationConfig,
@@ -52,7 +52,6 @@ import {
   assessEngulfingVolumeLogic,
   getEngulfingVolumeStatus,
   getDirectTradeRule,
-  findDirectZoneReentrySignal,
   isDaySwingFibEntryTimeframe,
   resolveDirectEntryPolicy,
   resolveZoneEngulfingSignal,
@@ -417,8 +416,7 @@ async function enqueueMt5Signal(
   }
   return serializeMt5Mutation(async () => {
     const signals = await readMt5Signals();
-    // A setup normally remains single-use. Its sole exception is one fresh
-    // engulfing retry after the first attempt has closed as a full SL.
+    // A zone is single-use across entry routes, including after a full SL.
     const consumedSetupStatuses = new Set<Mt5SignalStatus>([
       'QUEUED', 'CLAIMED', 'PLACED', 'ACTIVE', 'RISK_FREE', 'TP', 'SL', 'RF',
     ]);
@@ -432,10 +430,10 @@ async function enqueueMt5Signal(
       signal.setupId === candidate.setupId && consumedSetupStatuses.has(signal.status)
     ));
     const priorZoneAttempt = priorGoldMt5ZoneExecution(candidate, signals, consumedSetupStatuses);
-    const setupAllowsReentry = candidate.source === 'ENGULFING'
-      && canQueueSingleSlReentry(priorSetupAttempts, candidate.signalAt);
-    const existing = exactExisting ?? priorZoneAttempt
-      ?? (!setupAllowsReentry ? priorSetupAttempts[0] : undefined);
+    const existing = exactExisting ?? priorZoneAttempt ?? priorSetupAttempts[0];
+    if (!existing && findEarlierZoneEntry(candidate, await readJournalTrades())) {
+      throw new Error('This zone already had an entry; a second entry is blocked.');
+    }
     if (existing) {
       const zones = new Set([existing.zoneName, ...(existing.confluenceZones ?? []), candidate.zoneName,
         ...(candidate.confluenceZones ?? [])]);
@@ -739,7 +737,7 @@ async function scanMt5AutomationSignals(): Promise<number> {
       const executionCandles = AUTOMATION_SECONDS[signal.timeframe] < AUTOMATION_SECONDS[zoneTimeframe]
         ? candles[signal.timeframe]
         : sourceCandles;
-      let trade = calculateTradeLevels({
+      const trade = calculateTradeLevels({
         sourceCandles: candles[signal.timeframe],
         executionCandles,
         signal,
@@ -749,49 +747,6 @@ async function scanMt5AutomationSignals(): Promise<number> {
       });
       if (config.tradingTimeEnabled && trade?.filledAt !== undefined
         && !isNepalTradingTime(trade.filledAt)) continue;
-      if (trade?.result === 'sl' && trade.resolvedAt !== undefined
-        && zone.active && zone.status === 'valid') {
-        const reentrySignal = findDirectZoneReentrySignal({
-          zone,
-          candles: candles[signal.timeframe],
-          timeframe: signal.timeframe,
-          afterTime: trade.resolvedAt,
-          originalRiskFree: trade.riskFree,
-        });
-        if (reentrySignal && !isGoldZoneEntryBlocked(
-          zone, sourceCandles, zoneTimeframe, 0.1, reentrySignal.time,
-          trade.filledAt === undefined ? undefined
-            : { price: trade.entry, filledAt: trade.filledAt, stopLoss: trade.stopLoss },
-        )) {
-          const reentryClose = reentrySignal.time + AUTOMATION_SECONDS[reentrySignal.timeframe];
-          if (config.tradingTimeEnabled && !isNepalTradingTime(reentryClose)) continue;
-          const reentryPolicy = resolveDirectEntryPolicy({
-            zoneTimeframe,
-            signal: reentrySignal,
-            sourceCandles: candles[reentrySignal.timeframe],
-            baseRule,
-          });
-          if (reentryPolicy.allowed && reentryPolicy.rule) {
-            const reentryExecutionCandles = AUTOMATION_SECONDS[reentrySignal.timeframe]
-              < AUTOMATION_SECONDS[zoneTimeframe]
-              ? candles[reentrySignal.timeframe]
-              : sourceCandles;
-            const reentryTrade = calculateTradeLevels({
-              sourceCandles: candles[reentrySignal.timeframe],
-              executionCandles: reentryExecutionCandles,
-              signal: reentrySignal,
-              rule: reentryPolicy.rule,
-              omitStopBuffer: false,
-              riskFreeEnabled: false,
-            });
-            if (reentryTrade && (!config.tradingTimeEnabled
-              || reentryTrade.filledAt === undefined
-              || isNepalTradingTime(reentryTrade.filledAt))) {
-              trade = reentryTrade;
-            }
-          }
-        }
-      }
       if (!trade || !isExecutableTrade(trade)) continue;
       const volumeContext = journalVolumeContext(candles[signal.timeframe], signal);
       let fibSource = zone.majorLiquidity ? 'MAJOR LIQUIDITY' : 'ZONE FIB';
@@ -1045,6 +1000,8 @@ async function updateMt5JournalRecord(
       id: journalId,
       symbol: 'XAUUSD',
       mt5SignalId: signal.id,
+      zoneId: signal.zoneId,
+      setupId: signal.setupId,
       mt5Managed: true,
       lifecycleStatus: final ? 'closed' : status === 'RISK_FREE' ? 'risk-free' : 'open',
       result,

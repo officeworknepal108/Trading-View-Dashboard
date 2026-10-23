@@ -190,14 +190,62 @@ export interface Mt5SignalInput {
   };
 }
 
-/** The same Gold HTF zone may create separate scalp and intraday chart entries. */
+/** One structure origin stays the same zone when its quoted price is revised. */
+export function tradeZoneExecutionKey(signal: {
+  symbol?: string; zoneTimeframe: string; zoneId?: string; setupId?: string;
+}): string | undefined {
+  const direct = signal.setupId?.match(/^(?:GOLD_SCALP|DIRECT):(M1|M5|M15|M30|H1|H4|D):(.+)$/);
+  const zoneId = signal.zoneId ?? direct?.[2];
+  if (!zoneId) return undefined;
+  const origin = zoneId.replace(/^(.+-\d{9,})-\d+(?:\.\d+)?$/, '$1');
+  return `${signal.symbol ?? 'XAUUSD'}:${direct?.[1] ?? signal.zoneTimeframe}:${origin}`;
+}
+
+export interface ZoneTradeRecord {
+  id: string;
+  symbol?: string;
+  zoneTimeframe?: string;
+  zoneId?: string;
+  setupId?: string;
+  signalAt?: number;
+  openedAt?: number;
+  outsideTradingTime?: boolean;
+  mt5Managed?: boolean;
+  brokerTicket?: number;
+}
+
+/** Read explicit zone identity and migrate older direct/scalp journal IDs. */
+export function tradeRecordZoneExecutionKey(record: ZoneTradeRecord): string | undefined {
+  if (!record.zoneTimeframe) return undefined;
+  const parts = record.id.split(':');
+  const legacyZoneId = parts[0] === 'DIRECT' ? parts.slice(
+    /^(M1|M5|M15|M30|H1|H4|D)$/.test(parts[1]) ? 2 : 1, -2,
+  ).join(':')
+    : parts[0] === 'GOLD_SCALP' ? parts.slice(2, -2).join(':') : undefined;
+  return tradeZoneExecutionKey({
+    ...record, zoneTimeframe: record.zoneTimeframe,
+    zoneId: record.zoneId ?? legacyZoneId,
+  });
+}
+
+export function findEarlierZoneEntry(
+  candidate: { symbol: string; zoneTimeframe: string; zoneId?: string; setupId?: string; signalAt: number },
+  records: readonly ZoneTradeRecord[],
+): ZoneTradeRecord | undefined {
+  const key = tradeZoneExecutionKey(candidate);
+  if (!key) return undefined;
+  return records.find((record) => Number.isFinite(record.openedAt) && record.openedAt! > 0
+    && (record.outsideTradingTime !== true || record.mt5Managed === true
+      || Number.isFinite(record.brokerTicket))
+    && Number.isFinite(record.signalAt) && record.signalAt! < candidate.signalAt
+    && tradeRecordZoneExecutionKey(record) === key);
+}
+
+/** Scalp, Major Liquidity and intraday routes consume the same Gold zone. */
 export function goldMt5ZoneExecutionKey(signal: Pick<Mt5SignalInput,
   'symbol' | 'zoneTimeframe' | 'zoneId' | 'setupId'>): string | undefined {
   if (signal.symbol !== 'XAUUSD') return undefined;
-  const legacyDirectZone = signal.setupId?.match(/^(?:GOLD_SCALP|DIRECT):(M15|H1):(.+)$/);
-  const zoneId = signal.zoneId ?? legacyDirectZone?.[2];
-  const zoneTimeframe = legacyDirectZone?.[1] ?? signal.zoneTimeframe;
-  return zoneId ? `${signal.symbol}:${zoneTimeframe}:${zoneId}` : undefined;
+  return tradeZoneExecutionKey(signal);
 }
 
 export function priorGoldMt5ZoneExecution<T extends Pick<Mt5SignalInput,
@@ -208,8 +256,7 @@ export function priorGoldMt5ZoneExecution<T extends Pick<Mt5SignalInput,
 ): T | undefined {
   const zoneKey = goldMt5ZoneExecutionKey(candidate);
   return zoneKey === undefined ? undefined : signals.find((signal) => (
-    signal.setupId !== candidate.setupId
-    && consumedStatuses.has(signal.status)
+    consumedStatuses.has(signal.status)
     && goldMt5ZoneExecutionKey(signal) === zoneKey
   ));
 }
@@ -396,13 +443,4 @@ export function tradeToMt5Signal(options: {
 
 export function isExecutableTrade(trade: TradeLevels): boolean {
   return trade.status === 'pending' || trade.status === 'active';
-}
-
-export function canQueueSingleSlReentry(
-  priorAttempts: Array<{ status: Mt5SignalStatus; signalAt: number }>,
-  candidateSignalAt: number,
-): boolean {
-  return priorAttempts.length === 1
-    && priorAttempts[0].status === 'SL'
-    && candidateSignalAt > priorAttempts[0].signalAt;
 }

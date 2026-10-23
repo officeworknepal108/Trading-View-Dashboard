@@ -47,7 +47,7 @@ export type EngulfingVolumeStatus = 'not-applicable' | 'unavailable' | 'failed' 
 export interface DirectEntryPolicyDecision {
   allowed: boolean;
   reason: 'unchanged' | 'volume-confirmed' | 'volume-failed'
-    | 'volume-unavailable' | 'volume-not-applicable' | 'outside-trading-time';
+    | 'volume-unavailable' | 'volume-not-applicable' | 'outside-trading-time' | 'zone-used';
   rule?: TradeRule;
   volume: EngulfingVolumeAssessment;
 }
@@ -390,58 +390,6 @@ export function isUnfilledDirectSetupQualified(options: {
   return !goldZone || !isGoldZoneEntryBlocked(
     zone, goldZone.candles, zoneTimeframe, goldZone.pipSize,
   );
-}
-
-/**
- * A valid zone gets one controlled retry when its first entry was a full loss
- * before 1R. The retry must be a wholly new, completed engulfing sequence: no
- * candle from the first trade or its SL candle can be reused. Touching the
- * original trade's 1R price after the SL permanently closes the retry window.
- */
-export function findDirectZoneReentrySignal(options: {
-  zone: StructureZone;
-  candles: StructureCandle[];
-  timeframe: TradeTimeframe;
-  afterTime: number;
-  originalRiskFree: number;
-  type4MaxCandles?: number;
-}): EngulfingTradeSignal | undefined {
-  const {
-    zone,
-    candles,
-    timeframe,
-    afterTime,
-    originalRiskFree,
-    type4MaxCandles = 10,
-  } = options;
-  if (!isZoneEligibleForEngulfingEntry(zone)) return undefined;
-  const requiredDirection: EngulfingDirection = zone.isBuy ? 'bullish' : 'bearish';
-  for (let endIndex = 0; endIndex < candles.length; endIndex += 1) {
-    const finalCandle = candles[endIndex];
-    if (finalCandle.time <= afterTime) continue;
-    const reachedOriginalOneR = zone.isBuy
-      ? finalCandle.high >= originalRiskFree
-      : finalCandle.low <= originalRiskFree;
-    if (reachedOriginalOneR) return undefined;
-    if (finalCandle.complete === false) continue;
-    if (endIndex === 0) continue;
-    const pattern = detectEngulfingPatternAt(candles, endIndex, type4MaxCandles);
-    if (!pattern || pattern.direction !== requiredDirection) continue;
-    const patternCandles = candles.slice(pattern.startIndex, pattern.endIndex + 1);
-    if (patternCandles[0]?.time <= afterTime) continue;
-    const touchesZone = patternCandles.some((candle) => (
-      candle.high >= zone.bottom && candle.low <= zone.top
-    ));
-    if (!touchesZone) continue;
-    return {
-      type: pattern.type,
-      direction: pattern.direction,
-      time: finalCandle.time,
-      candleCount: pattern.candleCount,
-      timeframe,
-    };
-  }
-  return undefined;
 }
 
 function isDeepFibBand(band: StructureZone['fibBand'] | StructureZone['swingFibBand']

@@ -5,7 +5,6 @@ import {
   applyOppositePositionRewardRisk,
   calculateHalfAtOneRResult,
   calculateTradeLevels,
-  findDirectZoneReentrySignal,
   getDirectTradeRule,
   getEngulfingVolumeStatus,
   getMtfTradeRule,
@@ -84,57 +83,6 @@ test('an unfilled retained TJL1 entry requires its current zone, Fib and exact c
 
 test('an open higher-timeframe bar exposes its full window to completed lower-timeframe candles', () => {
   assert.equal(timeframeWindowCutoff(10_800, 3_600), 14_400);
-});
-
-test('a valid zone accepts one fresh engulfing sequence after a full SL', () => {
-  const zone: StructureZone = {
-    id: 'retry-db', name: 'DB', category: 'mg', isBuy: true,
-    startTime: 0, endTime: 600, bottom: 99, top: 101,
-    active: true, status: 'valid', tradeable: true,
-  };
-  const candles: StructureCandle[] = [
-    { time: 60, open: 104, high: 105, low: 102, close: 103, complete: true },
-    { time: 120, open: 104, high: 106, low: 99, close: 100, complete: true },
-    { time: 180, open: 100, high: 108, low: 100, close: 107, complete: true },
-  ];
-
-  assert.deepEqual(findDirectZoneReentrySignal({
-    zone, candles, timeframe: 'M1', afterTime: 60, originalRiskFree: 110,
-  }), {
-    type: 'T1', direction: 'bullish', time: 180, candleCount: 2, timeframe: 'M1',
-  });
-  assert.equal(findDirectZoneReentrySignal({
-    zone, candles, timeframe: 'M1', afterTime: 120, originalRiskFree: 110,
-  }), undefined, 'the retry cannot reuse the SL candle as part of its pattern');
-  assert.equal(findDirectZoneReentrySignal({
-    zone: { ...zone, active: false, status: 'invalidated' },
-    candles,
-    timeframe: 'M1',
-    afterTime: 60,
-    originalRiskFree: 110,
-  }), undefined, 'an invalidated zone cannot re-enter');
-});
-
-test('a direct-zone re-entry is cancelled after price touches the original 1R level', () => {
-  const zone: StructureZone = {
-    id: 'retry-cutoff-db', name: 'DB', category: 'mg', isBuy: true,
-    startTime: 0, endTime: 600, bottom: 99, top: 101,
-    active: true, status: 'valid', tradeable: true,
-  };
-  const candles: StructureCandle[] = [
-    { time: 60, open: 101, high: 102, low: 98, close: 99, complete: true },
-    { time: 120, open: 108, high: 110, low: 107, close: 109, complete: true },
-    { time: 180, open: 104, high: 105, low: 99, close: 100, complete: true },
-    { time: 240, open: 100, high: 108, low: 100, close: 107, complete: true },
-  ];
-
-  assert.equal(findDirectZoneReentrySignal({
-    zone,
-    candles,
-    timeframe: 'M1',
-    afterTime: 60,
-    originalRiskFree: 110,
-  }), undefined);
 });
 
 test('engulfing signals cannot resolve without their matching A+ FIB qualification', () => {

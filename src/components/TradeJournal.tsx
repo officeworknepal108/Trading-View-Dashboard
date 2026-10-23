@@ -31,6 +31,8 @@ import { TradeMultiSelect } from './TradeMultiSelect';
 
 export interface JournalTradeRecord {
   id: string;
+  zoneId?: string;
+  setupId?: string;
   symbol?: OandaMarketSymbol;
   zoneName: string;
   zoneTimeframe: TradeTimeframe;
