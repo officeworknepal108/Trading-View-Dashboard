@@ -5,16 +5,21 @@ import {
   accuracyResultMatchesCandles,
   buildCanonicalTradeRecords,
   filterTradeRecords,
+  filterAccuracyTradeRecords,
   savedDirectZoneMatchesStructure,
   selectAccuracyChartEntries,
   selectGoldIntradayAfterScalp,
   selectTradeChartRecords,
+  selectTwoMonthAccuracyRecords,
+  selectTwoMonthJournalRecords,
+  twoMonthAccuracyWindow,
   tradeRecordDateKey,
   tradeRecordDatePeriodKey,
   tradeRecordPeriodKey,
   type FilterableTradeRecord,
   type CanonicalTradeRecord,
   type TradeRecordVerification,
+  type TradeRecordFilters,
 } from '../src/services/tradeRecordFilters';
 import { mergeTradeRecordAnnotations } from '../src/services/tradeRecordDeduplication';
 import { calculateJournalPerformance, type JournalTradeRecord } from '../src/components/TradeJournal';
@@ -134,6 +139,43 @@ test('the reported M15 DB duplicate has one broker arrow, accuracy outcome and j
   assert.equal(calculateJournalPerformance(canonical).completed, 1);
   assert.equal(calculateJournalPerformance(canonical).totalR, -1);
   assert.equal(JSON.stringify(saved), before, 'saved history is not rewritten or deleted');
+});
+
+test('M15 accuracy includes its M1/M5 scalps and intraday results, with matching chart arrows', () => {
+  const { scalp, intraday } = synchronizedFixture();
+  const m5 = { ...scalp, id: 'm15-m5-scalp', signalTimeframe: 'M5' as const, result: 'sl' as const };
+  const hourlyScalp = { ...scalp, id: 'h1-scalp', zoneTimeframe: 'H1' as const };
+  const lowerIntraday = { ...intraday, id: 'm5-intraday', signalTimeframe: 'M5' as const };
+  const history = [scalp, m5, intraday, hourlyScalp, lowerIntraday];
+  const before = JSON.stringify(history);
+  const filters = { ...DEFAULT_TRADE_RECORD_FILTERS, timeframes: ['M15'] as const };
+  const select = (tradeStyle: 'ALL' | 'SCALPING' | 'INTRADAY') => filterAccuracyTradeRecords(history,
+    { ...filters, timeframes: ['M15'], tradeStyle }, 'Asia/Kathmandu', 'XAUUSD');
+  const summary = select('ALL');
+  assert.deepEqual(summary, [scalp, m5, intraday]);
+  assert.deepEqual(select('SCALPING'), [scalp, m5]);
+  assert.deepEqual(select('INTRADAY'), [intraday]);
+  assert.deepEqual(new Set(selectTradeChartRecords(summary, 'M15', [{ time: 0 }, { time: 900 }], true)
+    .map((record) => record.id)), new Set(summary.map((record) => record.id)));
+  assert.deepEqual(filterAccuracyTradeRecords(history, { ...filters, timeframes: ['M15'], result: 'sl' },
+    'Asia/Kathmandu', 'XAUUSD'), [m5]);
+  assert.deepEqual(filterAccuracyTradeRecords(history, { ...filters, timeframes: ['M15'], source: 'ENGULFING' },
+    'Asia/Kathmandu', 'XAUUSD'), [intraday]);
+  assert.deepEqual(filterAccuracyTradeRecords(history, { ...filters, timeframes: ['H1'] },
+    'Asia/Kathmandu', 'XAUUSD'), [hourlyScalp]);
+  assert.deepEqual(filterAccuracyTradeRecords(history, { ...filters, timeframes: ['M1'] },
+    'Asia/Kathmandu', 'XAUUSD'), [scalp, hourlyScalp]);
+  assert.deepEqual(filterAccuracyTradeRecords(history, { ...filters, timeframes: ['M15', 'M1', 'M5'] },
+    'Asia/Kathmandu', 'XAUUSD'), history, 'selecting both setup and entry timeframes does not duplicate a trade');
+  assert.deepEqual(filterAccuracyTradeRecords(history, DEFAULT_TRADE_RECORD_FILTERS,
+    'Asia/Kathmandu', 'XAUUSD'), history);
+  assert.deepEqual(filterAccuracyTradeRecords(history, { ...filters, timeframes: [] },
+    'Asia/Kathmandu', 'XAUUSD'), []);
+  assert.deepEqual(filterAccuracyTradeRecords(history, { ...filters, timeframes: ['M15'] },
+    'Asia/Kathmandu', 'EURUSD'), [intraday], 'other markets keep their entry-timeframe selection');
+  assert.deepEqual(filterTradeRecords(history, { ...filters, timeframes: ['M15'] },
+    'Asia/Kathmandu'), [intraday], 'journal filtering remains unchanged');
+  assert.equal(JSON.stringify(history), before);
 });
 
 test('M15 can display completed M1/M5 scalps on their filled-entry candles without adding trades', () => {
@@ -457,4 +499,81 @@ test('replay entry arrows wait until the trade result has occurred', () => {
   ];
   assert.deepEqual(selectAccuracyChartEntries(rows, null, 'M15', 250).map((row) => row.id), ['resolved']);
   assert.deepEqual(selectAccuracyChartEntries(rows, null, 'M15', 400).map((row) => row.id), ['resolved', 'future-result']);
+});
+
+test('two-month accuracy uses calendar months and clamps month ends across leap years', () => {
+  for (const [end, expectedStart] of [
+    ['2026-10-24T09:00:00Z', '2026-08-24T09:00:00Z'],
+    ['2026-04-30T09:00:00Z', '2026-02-28T09:00:00Z'],
+    ['2024-04-30T09:00:00Z', '2024-02-29T09:00:00Z'],
+    ['2026-01-31T09:00:00Z', '2025-11-30T09:00:00Z'],
+  ]) {
+    const asOf = Date.parse(end) / 1000;
+    assert.deepEqual(twoMonthAccuracyWindow(asOf), { from: Date.parse(expectedStart) / 1000, to: asOf });
+  }
+});
+
+test('journal completed trades match accuracy for the same two-month, setup, style and session filters', () => {
+  const asOf = Date.parse('2026-10-24T09:00:00Z') / 1000;
+  const { from } = twoMonthAccuracyWindow(asOf);
+  const { scalp, intraday } = synchronizedFixture();
+  const history: JournalTradeRecord[] = [
+    { ...scalp, completedAt: from, outsideTradingTime: false },
+    { ...intraday, completedAt: asOf - 100, outsideTradingTime: true, result: 'sl' },
+    { ...scalp, id: 'hourly-scalp', zoneTimeframe: 'H1', completedAt: asOf - 200 },
+    { ...intraday, id: 'old', completedAt: from - 1 },
+    { ...intraday, id: 'future-result', completedAt: asOf + 1 },
+    { ...intraday, id: 'running', openedAt: from - 100, result: 'open' },
+    { ...scalp, id: 'running-rf', result: 'risk-free' },
+    { ...intraday, id: 'future-open', openedAt: asOf + 1, result: 'open' },
+  ];
+  const before = JSON.stringify(history);
+  for (const timeframes of [['M15'], ['H1'], ['M1'], 'ALL'] as const) {
+    for (const tradeStyle of ['ALL', 'INTRADAY', 'SCALPING'] as const) {
+      for (const tradingTime of ['ALL', 'TRADING', 'NON_TRADING'] as const) {
+        const filters: TradeRecordFilters = {
+          ...DEFAULT_TRADE_RECORD_FILTERS,
+          timeframes: timeframes === 'ALL' ? 'ALL' : [...timeframes], tradeStyle, tradingTime,
+        };
+        const journal = filterAccuracyTradeRecords(selectTwoMonthJournalRecords(history, asOf), filters, 'Asia/Kathmandu', 'XAUUSD');
+        const accuracy = filterAccuracyTradeRecords(selectTwoMonthAccuracyRecords(history, asOf), filters, 'Asia/Kathmandu', 'XAUUSD');
+        const completed = journal.filter((record) => ['tp', 'sl', 'rf'].includes(record.result));
+        assert.deepEqual(completed, accuracy);
+        assert.deepEqual(calculateJournalPerformance(completed), calculateJournalPerformance(accuracy));
+      }
+    }
+  }
+  assert.deepEqual(selectTwoMonthJournalRecords(history, asOf).filter((record) => ['open', 'risk-free'].includes(record.result))
+    .map((record) => record.id), ['running', 'running-rf'], 'running positions remain visible but future positions do not');
+  assert.equal(JSON.stringify(history), before, 'limiting the displayed history does not delete saved trades');
+});
+
+test('two-month completed outcomes and verification arrows keep identical IDs through style and timeframe filters', () => {
+  const asOf = Date.parse('2026-10-24T09:00:00Z') / 1000;
+  const { from } = twoMonthAccuracyWindow(asOf);
+  const make = (id: string, completedAt: number, result: FilterableTradeRecord['result']) => ({
+    ...records[0], id, signalAt: from - 900, completedAt, result,
+    signalTimeframe: 'M15' as const, zoneTimeframe: 'M15' as const, tradeStyle: 'INTRADAY',
+  });
+  const history = [
+    make('old', from - 1, 'tp'),
+    make('boundary-tp', from, 'tp'),
+    make('sl', asOf - 2, 'sl'),
+    make('rf', asOf - 1, 'rf'),
+    make('end-tp', asOf, 'tp'),
+    make('future', asOf + 1, 'tp'),
+    make('open', asOf - 1, 'open'),
+    make('risk-free-active', asOf - 1, 'risk-free'),
+    { ...make('other-timeframe', asOf - 1, 'tp'), signalTimeframe: 'M5' as const },
+    { ...make('scalp', asOf - 1, 'tp'), tradeStyle: 'SCALPING' },
+  ];
+  const summary = filterTradeRecords(selectTwoMonthAccuracyRecords(history, asOf), {
+    ...DEFAULT_TRADE_RECORD_FILTERS, timeframes: ['M15'], tradeStyle: 'INTRADAY',
+  }, 'Asia/Kathmandu');
+  const ids = summary.map((record) => record.id);
+  assert.deepEqual(ids, ['boundary-tp', 'sl', 'rf', 'end-tp']);
+  assert.deepEqual(selectTradeChartRecords(summary, 'M15', [{ time: from - 900 }])
+    .map((record) => record.id).sort(), [...ids].sort());
+  assert.equal(selectTwoMonthAccuracyRecords(history, from - 1).some((record) => record.id === 'boundary-tp'), false,
+    'replay must not count outcomes completed after its current time');
 });

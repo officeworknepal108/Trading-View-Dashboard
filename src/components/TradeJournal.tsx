@@ -15,7 +15,9 @@ import type { ChartTimeZone } from '../services/chartTime';
 import { mergeTradeRecordAnnotations } from '../services/tradeRecordDeduplication';
 import type { OandaMarketSymbol } from '../services/marketSymbols';
 import {
-  filterTradeRecords,
+  filterAccuracyTradeRecords,
+  selectTwoMonthJournalRecords,
+  twoMonthAccuracyWindow,
   tradeRecordDatePeriodKey,
   tradeRecordPeriodLabel,
   type TradeRecordFilters,
@@ -108,6 +110,9 @@ interface JournalResponse {
 
 interface TradeJournalProps {
   records: JournalTradeRecord[];
+  timeframe: TradeTimeframe;
+  marketSymbol: OandaMarketSymbol;
+  historyAsOf: number;
   timeZone: ChartTimeZone;
   onClose: () => void;
 }
@@ -416,7 +421,7 @@ export function renderHistoricalTradeSnapshot(
   return canvas.toDataURL('image/jpeg', 0.78);
 }
 
-export const TradeJournal: React.FC<TradeJournalProps> = ({ records, timeZone, onClose }) => {
+export const TradeJournal: React.FC<TradeJournalProps> = ({ records, timeframe, marketSymbol, historyAsOf, timeZone, onClose }) => {
   const screenshotBackfillAttemptedRef = React.useRef(new Set<string>());
   const screenshotBackfillRunningRef = React.useRef(false);
   const calendarInitializedRef = React.useRef(false);
@@ -429,7 +434,14 @@ export const TradeJournal: React.FC<TradeJournalProps> = ({ records, timeZone, o
   });
   const [selectedId, setSelectedId] = useState<string | null>(records[0]?.id ?? null);
   const [resultFilter, setResultFilter] = useState<'ALL' | JournalTradeRecord['result']>('ALL');
-  const [timeframeFilter, setTimeframeFilter] = useState<TradeRecordFilters['timeframes']>('ALL');
+  const [timeframeFilter, setTimeframeFilter] = useState<TradeRecordFilters['timeframes']>([timeframe]);
+  useEffect(() => {
+    setTimeframeFilter([timeframe]);
+  }, [timeframe]);
+  const historyWindow = twoMonthAccuracyWindow(historyAsOf);
+  const formatHistoryDate = (time: number) => new Date(time * 1000).toLocaleDateString('en-GB', {
+    timeZone, day: '2-digit', month: 'short', year: 'numeric',
+  });
   const [datePeriod, setDatePeriod] = useState<TradeRecordFilters['datePeriod']>('DAY');
   const [dateFilter, setDateFilter] = useState('ALL');
   const [sourceFilter, setSourceFilter] = useState<TradeRecordFilters['source']>('ALL');
@@ -620,7 +632,7 @@ export const TradeJournal: React.FC<TradeJournalProps> = ({ records, timeZone, o
 
   const availableTimeframes = useMemo(() => {
     const order: TradeTimeframe[] = ['M1', 'M5', 'M15', 'M30', 'H1', 'H4', 'D'];
-    return Array.from(new Set<TradeTimeframe>(trades.map((trade) => trade.signalTimeframe)))
+    return Array.from(new Set<TradeTimeframe>([...order, ...trades.map((trade) => trade.signalTimeframe)]))
       .sort((first, second) => order.indexOf(first) - order.indexOf(second));
   }, [trades]);
   const availableZones = useMemo(() => Array.from(new Set(
@@ -628,7 +640,7 @@ export const TradeJournal: React.FC<TradeJournalProps> = ({ records, timeZone, o
   )).sort(), [trades]);
   const filteredTrades = useMemo(() => {
     const query = search.trim().toLowerCase();
-    const coreFiltered = filterTradeRecords(trades as Array<JournalTradeRecord & { result: TradeResult }>, {
+    const coreFiltered = filterAccuracyTradeRecords<JournalTradeRecord>(selectTwoMonthJournalRecords<JournalTradeRecord>(trades, historyAsOf), {
       timeframes: timeframeFilter,
       datePeriod,
       date: dateFilter,
@@ -638,14 +650,14 @@ export const TradeJournal: React.FC<TradeJournalProps> = ({ records, timeZone, o
       side: sideFilter,
       result: 'ALL',
       zones: zoneFilter,
-    }, timeZone);
+    }, timeZone, marketSymbol);
     return coreFiltered.filter((trade) => (
       (volumeFilter === 'ALL' || volumeStatus(trade) === volumeFilter)
       && (resultFilter === 'ALL' || trade.result === resultFilter)
       && (!query || [trade.zoneName, trade.engulfingType, volumeStatus(trade), trade.session, trade.reason, trade.autoReason, trade.mistake, trade.lesson]
         .some((value) => value?.toLowerCase().includes(query)))
     ));
-  }, [dateFilter, datePeriod, resultFilter, search, sideFilter, sourceFilter, timeframeFilter, timeZone, trades, tradeStyleFilter, tradingTimeFilter, volumeFilter, zoneFilter]);
+  }, [dateFilter, datePeriod, resultFilter, search, sideFilter, sourceFilter, timeframeFilter, timeZone, trades, tradeStyleFilter, tradingTimeFilter, volumeFilter, zoneFilter, historyAsOf, marketSymbol]);
 
   useEffect(() => {
     if (filteredTrades.some((trade) => trade.id === selectedId)) return;
@@ -910,6 +922,9 @@ export const TradeJournal: React.FC<TradeJournalProps> = ({ records, timeZone, o
         ))}
       </div>
 
+      <div className="shrink-0 border-b border-indigo-100 bg-white px-3 py-1 text-[9px] font-bold text-indigo-700">
+        {formatHistoryDate(historyWindow.from)} – {formatHistoryDate(historyWindow.to)}
+      </div>
       <div className="flex shrink-0 flex-wrap items-center gap-1.5 border-b border-slate-200 bg-white px-2 py-1.5">
         <TradeMultiSelect
           allLabel="ALL TIMEFRAMES"
@@ -959,7 +974,7 @@ export const TradeJournal: React.FC<TradeJournalProps> = ({ records, timeZone, o
         <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search zone, reason, mistake or lesson"
           className="min-w-48 flex-1 rounded border border-slate-200 px-2 py-1 text-[9px] font-semibold outline-none focus:border-indigo-300" />
         <button type="button" onClick={() => {
-          setTimeframeFilter('ALL'); setDatePeriod('DAY'); setDateFilter('ALL'); setSourceFilter('ALL');
+          setTimeframeFilter([timeframe]); setDatePeriod('DAY'); setDateFilter('ALL'); setSourceFilter('ALL');
           setSideFilter('ALL'); setResultFilter('ALL'); setZoneFilter('ALL');
           setTradeStyleFilter('ALL'); setTradingTimeFilter('ALL');
           setVolumeFilter('ALL'); setSearch('');

@@ -88,9 +88,11 @@ import { applyOneMinuteGenesisQml, executionZoneName } from '../services/oneMinu
 import {
   DEFAULT_TRADE_RECORD_FILTERS,
   buildCanonicalTradeRecords,
-  filterTradeRecords,
+  filterAccuracyTradeRecords,
   tradeRecordOutsideTradingTime,
   selectTradeChartRecords,
+  selectTwoMonthAccuracyRecords,
+  twoMonthAccuracyWindow,
   tradeRecordDatePeriodKey,
   tradeRecordPeriodLabel,
   type TradeRecordFilters,
@@ -1210,23 +1212,34 @@ const EngulfingAccuracyTable: React.FC<{
   allRecords: AccuracyTradeRecord[];
   timeframe: OandaGranularity;
   showAllTrades: boolean;
+  historyAsOf: number;
   timeZone: ChartTimeZone;
   marketSymbol: OandaMarketSymbol;
   entryArrowsVisible: boolean;
   onClose: () => void;
   onVisibleRecordIdsChange: (ids: string[]) => void;
-}> = ({ records, allRecords, timeframe, showAllTrades, timeZone, marketSymbol, entryArrowsVisible, onClose, onVisibleRecordIdsChange }) => {
-  const [filters, setFilters] = useState<TradeRecordFilters>(DEFAULT_TRADE_RECORD_FILTERS);
+}> = ({ records, allRecords, timeframe, showAllTrades, historyAsOf, timeZone, marketSymbol, entryArrowsVisible, onClose, onVisibleRecordIdsChange }) => {
+  const [filters, setFilters] = useState<TradeRecordFilters>(() => ({
+    ...DEFAULT_TRADE_RECORD_FILTERS,
+    timeframes: [timeframe],
+  }));
+  useEffect(() => {
+    setFilters((current) => ({ ...current, timeframes: [timeframe] }));
+  }, [timeframe]);
   const [tradingTimeFilter, setTradingTimeFilter] = useState<AccuracyTradingTimeFilter>('ALL');
   const [tradeStyleFilter, setTradeStyleFilter] = useState<'ALL' | 'SCALPING' | 'INTRADAY'>('ALL');
   const selectedStyle = marketSymbol === 'XAUUSD' ? tradeStyleFilter : 'ALL';
   const matchesStyle = (record: AccuracyTradeRecord) => selectedStyle === 'ALL'
     || record.tradeStyle === selectedStyle;
+  const historyWindow = twoMonthAccuracyWindow(historyAsOf);
+  const formatHistoryDate = (time: number) => new Date(time * 1000).toLocaleDateString('en-GB', {
+    timeZone, day: '2-digit', month: 'short', year: 'numeric',
+  });
   const filteredAllRecords = useMemo(
-    () => filterTradeRecords<AccuracyTradeRecord>(allRecords, filters, timeZone)
+    () => filterAccuracyTradeRecords<AccuracyTradeRecord>(selectTwoMonthAccuracyRecords(allRecords, historyAsOf), filters, timeZone, marketSymbol)
       .filter((record) => matchesAccuracyTradingTime(record, tradingTimeFilter)
         && matchesStyle(record)),
-    [allRecords, filters, timeZone, tradingTimeFilter, selectedStyle],
+    [allRecords, filters, timeZone, tradingTimeFilter, selectedStyle, historyAsOf, marketSymbol],
   );
   const summaryRecords = filteredAllRecords;
   const visibleChartIds = useMemo(() => {
@@ -1238,7 +1251,7 @@ const EngulfingAccuracyTable: React.FC<{
   }, [onVisibleRecordIdsChange, summaryRecords]);
   const timeframeCounts = accuracyCounts(summaryRecords);
   const availableTimeframes = useMemo(() => Array.from(new Set<TradeTimeframe>(
-    allRecords.map((record) => record.signalTimeframe),
+    [...TIMEFRAMES.map(({ value }) => value), ...allRecords.map((record) => record.signalTimeframe)],
   )).sort((first, second) => TIMEFRAME_SECONDS[first] - TIMEFRAME_SECONDS[second]), [allRecords]);
   const availableZones = useMemo(() => Array.from(new Set(
     allRecords.map((record) => record.zoneName),
@@ -1277,12 +1290,22 @@ const EngulfingAccuracyTable: React.FC<{
     <div data-journal-exclude="true" className={`pointer-events-auto absolute z-30 overflow-hidden rounded-md border border-slate-300 bg-white/95 shadow-md ${
       showAllTrades
         ? 'bottom-3 left-3 top-3 flex w-fit max-w-[calc(100%_-_24px)] flex-col'
-        : 'left-3 top-1/2 max-w-[calc(100%_-_24px)] -translate-y-1/2'
+        : 'left-3 top-1/2 flex max-h-[calc(100%_-_24px)] max-w-[calc(100%_-_24px)] -translate-y-1/2 flex-col'
     }`}>
       <div className="flex shrink-0 items-center gap-2 border-b border-slate-300 bg-indigo-50 px-2 py-1 text-[9px] font-black uppercase tracking-wide text-indigo-700">
         <span>
           {marketSymbol} trade accuracy · {entryArrowsVisible ? visibleChartIds.size : 0} arrow{visibleChartIds.size === 1 && entryArrowsVisible ? '' : 's'}
         </span>
+        <TradeMultiSelect
+          allLabel="ALL TIMEFRAMES"
+          emptyLabel="NO TIMEFRAMES"
+          selected={filters.timeframes}
+          options={availableTimeframes.map((value) => ({ value, label: formatTradeTimeframe(value) }))}
+          onChange={(timeframes) => setFilters((current) => ({
+            ...current,
+            timeframes: timeframes as TradeRecordFilters['timeframes'],
+          }))}
+        />
         <select
           value={tradingTimeFilter}
           onChange={(event) => setTradingTimeFilter(event.target.value as AccuracyTradingTimeFilter)}
@@ -1314,7 +1337,10 @@ const EngulfingAccuracyTable: React.FC<{
           ×
         </button>
       </div>
-      <div className={showAllTrades ? 'flex min-h-0 flex-1' : ''}>
+      <div className="shrink-0 border-b border-indigo-100 bg-white px-2 py-1 text-[9px] font-bold text-indigo-700">
+        {formatHistoryDate(historyWindow.from)} – {formatHistoryDate(historyWindow.to)}
+      </div>
+      <div className={showAllTrades ? 'flex min-h-0 flex-1' : 'min-h-0 overflow-auto'}>
         <div className={showAllTrades ? 'w-[290px] shrink-0 overflow-auto border-r border-slate-300' : ''}>
           <table className="w-full border-collapse text-center text-[9px]">
             <thead>{header('Timeframe')}</thead>
@@ -1322,6 +1348,11 @@ const EngulfingAccuracyTable: React.FC<{
               {resultRow(filters.timeframes === 'ALL'
                 ? 'ALL'
                 : filters.timeframes.map((value) => GRANULARITY_LABELS[value].toUpperCase()).join(', ') || 'NONE', timeframeCounts)}
+              {marketSymbol === 'XAUUSD' && <>
+                {header('Trade style')}
+                {resultRow('INTRADAY', accuracyCounts(summaryRecords.filter((record) => record.tradeStyle === 'INTRADAY')))}
+                {resultRow('SCALPING', accuracyCounts(summaryRecords.filter((record) => record.tradeStyle === 'SCALPING')))}
+              </>}
               {header('Trade source')}
               {resultRow('ENGULFING', accuracyCounts(
                 summaryRecords.filter((record) => record.source === 'ENGULFING'),
@@ -1344,16 +1375,6 @@ const EngulfingAccuracyTable: React.FC<{
                 All completed setups · {filteredAllRecords.length}/{allRecords.length} shown · {entryArrowsVisible ? visibleChartIds.size : 0} chart arrows · newest first
               </div>
               <div className="flex flex-wrap items-center gap-1 border-t border-indigo-100 px-1.5 py-1">
-                <TradeMultiSelect
-                  allLabel="ALL TIMEFRAMES"
-                  emptyLabel="NO TIMEFRAMES"
-                  selected={filters.timeframes}
-                  options={availableTimeframes.map((value) => ({ value, label: formatTradeTimeframe(value) }))}
-                  onChange={(timeframes) => setFilters((current) => ({
-                    ...current,
-                    timeframes: timeframes as TradeRecordFilters['timeframes'],
-                  }))}
-                />
                 <select value={filters.datePeriod} onChange={(event) => setFilters((current) => ({
                   ...current,
                   datePeriod: event.target.value as TradeRecordFilters['datePeriod'],
@@ -1386,7 +1407,7 @@ const EngulfingAccuracyTable: React.FC<{
                   onChange={(zones) => setFilters((current) => ({ ...current, zones }))}
                 />
                 <button type="button" onClick={() => {
-                  setFilters(DEFAULT_TRADE_RECORD_FILTERS);
+                  setFilters({ ...DEFAULT_TRADE_RECORD_FILTERS, timeframes: [timeframe] });
                   setTradingTimeFilter('ALL');
                   setTradeStyleFilter('ALL');
                 }} className="rounded border border-slate-200 bg-white px-1.5 py-1 text-[8px] font-black text-slate-600 hover:bg-slate-100">RESET</button>
@@ -3747,6 +3768,7 @@ export const OandaProChart: React.FC = () => {
       position: bullish ? 'belowBar' as const : 'aboveBar' as const,
       color: bullish ? '#059669' : '#e11d48',
       shape: bullish ? 'arrowUp' as const : 'arrowDown' as const,
+      text: trade.result?.toUpperCase(),
       size: projectedScalp ? 1 : 2,
     };
   }).sort((first, second) => Number(first.time) - Number(second.time) || second.size - first.size),
@@ -4947,7 +4969,7 @@ export const OandaProChart: React.FC = () => {
         const query = new URLSearchParams({
           symbol: marketSymbol,
           granularity: requestedGranularity,
-          count: '1500',
+          count: ['M1', 'M5', 'M15', 'M30'].includes(requestedGranularity) ? '5000' : '1500',
         });
         if (replayTime !== null) query.set('endTime', String(replayTime));
         const useMt5BrokerFeed = replayTime === null && liveChartDataSource === 'MT5'
@@ -6803,6 +6825,7 @@ export const OandaProChart: React.FC = () => {
                 type="button"
                 onClick={() => {
                   if (showAccuracyTable) setVisibleAccuracyRecordIds(null);
+                  else setShowEntryArrows(true);
                   setShowAccuracyTable((value) => !value);
                 }}
                 className={`whitespace-nowrap rounded-l-full border border-r-0 px-1.5 py-0.5 text-[8px] font-black transition ${
@@ -6839,6 +6862,7 @@ export const OandaProChart: React.FC = () => {
                     type="button"
                     onClick={() => {
                       setShowAllAccuracyTrades((value) => !value);
+                      setShowEntryArrows(true);
                       setShowAccuracyTable(true);
                     }}
                     className={`flex w-full items-center justify-between whitespace-nowrap rounded border px-1.5 py-1 text-[8px] font-black leading-none ${
@@ -8103,6 +8127,7 @@ export const OandaProChart: React.FC = () => {
               allRecords={replayVisibleAccuracyRecords}
               timeframe={granularity}
               showAllTrades={showAllAccuracyTrades}
+              historyAsOf={replayResultCutoff ?? Math.floor(Date.now() / 1000)}
               timeZone={chartTimeZone}
               marketSymbol={marketSymbol}
               entryArrowsVisible={showEntryArrows}
@@ -8117,6 +8142,9 @@ export const OandaProChart: React.FC = () => {
           {showJournal && (
             <TradeJournal
               records={visibleCanonicalTradeRecords}
+              timeframe={granularity}
+              marketSymbol={marketSymbol}
+              historyAsOf={replayResultCutoff ?? Math.floor(Date.now() / 1000)}
               timeZone={chartTimeZone}
               onClose={() => setShowJournal(false)}
             />

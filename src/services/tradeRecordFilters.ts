@@ -67,6 +67,38 @@ export const DEFAULT_TRADE_RECORD_FILTERS: TradeRecordFilters = {
   zones: 'ALL',
 };
 
+/** A rolling two-calendar-month window, clamped at the target month's last day. */
+export function twoMonthAccuracyWindow(asOf: number): { from: number; to: number } {
+  const start = new Date(asOf * 1000);
+  const day = start.getUTCDate();
+  start.setUTCDate(1);
+  start.setUTCMonth(start.getUTCMonth() - 2);
+  const lastDay = new Date(Date.UTC(start.getUTCFullYear(), start.getUTCMonth() + 1, 0)).getUTCDate();
+  start.setUTCDate(Math.min(day, lastDay));
+  return { from: start.getTime() / 1000, to: asOf };
+}
+
+/** Count outcomes by completion time; open trades and future replay results are excluded. */
+export function selectTwoMonthAccuracyRecords<T extends FilterableTradeRecord>(
+  records: readonly T[], asOf: number,
+): T[] {
+  const { from, to } = twoMonthAccuracyWindow(asOf);
+  return records.filter((record) => (
+    (record.result === 'tp' || record.result === 'sl' || record.result === 'rf')
+    && record.completedAt >= from && record.completedAt <= to
+  ));
+}
+
+/** Match completed accuracy history while retaining running positions visible at the reference time. */
+export function selectTwoMonthJournalRecords<T extends FilterableTradeRecord>(
+  records: readonly T[], asOf: number,
+): T[] {
+  const completed = new Set(selectTwoMonthAccuracyRecords(records, asOf));
+  return records.filter((record) => completed.has(record)
+    || ((record.result === 'open' || record.result === 'risk-free')
+      && (record.openedAt ?? record.signalAt ?? record.completedAt) <= asOf));
+}
+
 export function tradeRecordDateKey(time: number, timeZone: ChartTimeZone): string {
   const parts = new Intl.DateTimeFormat('en-US', {
     timeZone,
@@ -145,6 +177,20 @@ export function tradeRecordOutsideTradingTime(record: FilterableTradeRecord): bo
     : record.signalAt + tradeTimeframeSeconds(record.signalTimeframe);
   return (confirmedAt !== undefined && !isNepalTradingTime(confirmedAt))
     || (record.openedAt !== undefined && !isNepalTradingTime(record.openedAt));
+}
+
+/** Accuracy groups Gold scalps with their setup timeframe as well as their entry timeframe. */
+export function filterAccuracyTradeRecords<T extends FilterableTradeRecord & { zoneTimeframe: TradeTimeframe }>(
+  records: T[], filters: TradeRecordFilters, timeZone: ChartTimeZone, marketSymbol: string,
+): T[] {
+  return filterTradeRecords(records, { ...filters, timeframes: 'ALL' }, timeZone).filter((record) => (
+    filters.timeframes === 'ALL'
+    || filters.timeframes.includes(record.signalTimeframe)
+    || (marketSymbol === 'XAUUSD' && record.tradeStyle === 'SCALPING'
+      && (record.signalTimeframe === 'M1' || record.signalTimeframe === 'M5')
+      && (record.zoneTimeframe === 'M15' || record.zoneTimeframe === 'H1')
+      && filters.timeframes.includes(record.zoneTimeframe))
+  ));
 }
 
 /** Entry arrows represent only completed accuracy rows on the displayed candle timeframe. */
