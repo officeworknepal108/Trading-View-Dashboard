@@ -141,6 +141,8 @@ export interface Mt5AutomationConfig {
   mtfLtfFibRequired: boolean;
   symbol: string;
   brokerSymbol: string;
+  brokerSymbolAccount?: string;
+  brokerSymbolServer?: string;
   enabledTimeframes: Mt5EntryTimeframe[];
   riskPercent: number;
   maximumOpenTrades: number;
@@ -262,6 +264,9 @@ export function priorGoldMt5ZoneExecution<T extends Pick<Mt5SignalInput,
 }
 
 export interface Mt5StoredSignal extends Mt5SignalInput {
+  account?: string;
+  server?: string;
+  brokerSymbol?: string;
   status: Mt5SignalStatus;
   createdAt: number;
   updatedAt: number;
@@ -285,6 +290,16 @@ export interface Mt5StoredSignal extends Mt5SignalInput {
   message?: string;
 }
 
+/** Require the exact account, broker server and resolved contract before reusing execution data. */
+export function mt5ConnectionMatches(
+  expected: { account?: string; server?: string; brokerSymbol?: string } | undefined,
+  candidate: { account?: string; server?: string; brokerSymbol?: string },
+): boolean {
+  return !!expected?.account && !!expected.server && !!expected.brokerSymbol
+    && expected.account === candidate.account && expected.server === candidate.server
+    && expected.brokerSymbol === candidate.brokerSymbol;
+}
+
 export interface Mt5AutomationStatus {
   ok: boolean;
   config: Mt5AutomationConfig;
@@ -303,6 +318,9 @@ export interface Mt5AutomationStatus {
     freeMargin?: number;
     currency?: string;
     brokerSymbol?: string;
+    terminalConnected?: boolean;
+    symbolResolved?: boolean;
+    symbolCandidates?: string[];
     lastHeartbeatAt?: number;
     message?: string;
     logs?: string[];

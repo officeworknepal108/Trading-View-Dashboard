@@ -1598,7 +1598,7 @@ export const OandaProChart: React.FC = () => {
     DEFAULT_CHOCH_FIB_VISIBILITY,
   );
   const [showEngulfing, setShowEngulfing] = useState(true);
-  const [tradingTimeEnabled, setTradingTimeEnabled] = useState(true);
+  const [tradingTimeEnabled, setTradingTimeEnabled] = useState(false);
   const [telegramMessagesEnabled, setTelegramMessagesEnabled] = useState(true);
   const [showInvalidZones, setShowInvalidZones] = useState(false);
   const [showTradeLevels, setShowTradeLevels] = useState(true);
@@ -1868,7 +1868,7 @@ export const OandaProChart: React.FC = () => {
 
   useEffect(() => {
     if (mt5Status?.config) {
-      setTradingTimeEnabled(mt5Status.config.tradingTimeEnabled !== false);
+      setTradingTimeEnabled(mt5Status.config.tradingTimeEnabled === true);
       setTelegramMessagesEnabled(mt5Status.config.telegramMessagesEnabled !== false);
     }
   }, [mt5Status?.config?.tradingTimeEnabled, mt5Status?.config?.telegramMessagesEnabled]);
@@ -6439,7 +6439,25 @@ export const OandaProChart: React.FC = () => {
                   />
                 </label>
                 <div className="rounded bg-slate-50 p-2 leading-relaxed text-slate-600">
+                  Account: <b>{mt5Status.bridge.account || 'Waiting for MT5 login'}</b><br />
+                  Server: <b>{mt5Status.bridge.server || '—'}</b><br />
                   Symbol: <b>{mt5Status.config.brokerSymbol}</b><br />
+                  {(mt5Status.bridge.symbolCandidates?.length ?? 0) > 1 && <label className="mb-1 block">
+                    Broker Gold symbol
+                    <select
+                      aria-label="Broker Gold symbol"
+                      value={mt5Status.bridge.symbolResolved ? mt5Status.bridge.brokerSymbol : ''}
+                      onChange={(event) => {
+                        if (event.target.value) void updateMt5Config({ brokerSymbol: event.target.value,
+                          brokerSymbolAccount: mt5Status.bridge.account, brokerSymbolServer: mt5Status.bridge.server });
+                      }}
+                      className="mt-1 w-full rounded border border-slate-200 bg-white px-2 py-1"
+                    >
+                      <option value="" disabled>Choose Gold symbol</option>
+                      {mt5Status.bridge.symbolCandidates?.map((symbol) => <option key={symbol} value={symbol}>{symbol}</option>)}
+                    </select>
+                  </label>}
+                  {mt5Status.bridge.message && <div className="mb-1 text-amber-700">{mt5Status.bridge.message}</div>}
                   Execution candles: <b className={mt5Status.marketData?.fresh ? 'text-emerald-700' : 'text-amber-700'}>
                     MT5 BROKER · {mt5Status.marketData?.fresh ? 'FRESH' : 'WAITING'}
                   </b><br />

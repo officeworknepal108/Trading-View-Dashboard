@@ -19,12 +19,24 @@ import {
   isTradeStyleEnabled,
   mt5ClosedReturnR,
   mt5SignalDisabledReason,
+  mt5ConnectionMatches,
   normalizeMt5EnabledTimeframes,
   normalizeMt5RiskPercent,
   shouldRemoveOpenMt5JournalRecord,
   tradeToMt5Signal,
 } from '../src/services/mt5Automation';
 import type { TradeLevels } from '../src/services/tradeLevels';
+
+test('MT5 execution context requires the current account, server and resolved broker symbol', () => {
+  const current = { account: '123', server: 'Broker-Live', brokerSymbol: 'XAUUSD.x' };
+  assert.equal(mt5ConnectionMatches(current, { ...current }), true);
+  for (const other of [
+    { ...current, account: '456' }, { ...current, server: 'Other-Server' },
+    { ...current, brokerSymbol: 'XAUUSD' }, {}, { ...current, account: undefined },
+  ]) assert.equal(mt5ConnectionMatches(current, other), false);
+  assert.equal(mt5ConnectionMatches(undefined, current), false);
+  assert.equal(mt5ConnectionMatches({}, {}), false);
+});
 
 test('MT5 result R includes the partial scalp close and the remaining exit', () => {
   const trade = {

@@ -40,6 +40,11 @@ BRIDGE_ID = os.getenv("MT5_BRIDGE_ID", f"kalbairab-{uuid.getnode():x}")
 STATE_FILE = ROOT / ".mt5_bridge_state.json"
 CONNECTED_ACCOUNT = ""
 CONNECTED_SERVER = ""
+ACTIVE_ACCOUNT: tuple[str, str] | None = None
+SYMBOL_CANDIDATES: list[str] = []
+LAST_RECONNECT_AT = 0.0
+BROKER_TIME_OFFSET = 0
+LEGACY_STATE_CHECKED = False
 MT5_MARKET_TIMEFRAMES = {
     "M1": mt5.TIMEFRAME_M1,
     "M5": mt5.TIMEFRAME_M5,
@@ -102,12 +107,12 @@ def save_state(state: dict[str, dict[str, Any]]) -> None:
             time.sleep(0.05 * (attempt + 1))
 
 
-def initialize_mt5() -> None:
+def initialize_mt5(follow_terminal: bool = False) -> None:
     global CONNECTED_ACCOUNT, CONNECTED_SERVER
     arguments: dict[str, Any] = {}
     if MT5_PATH:
         arguments["path"] = MT5_PATH
-    if MT5_LOGIN:
+    if MT5_LOGIN and not follow_terminal:
         arguments.update(login=MT5_LOGIN, password=MT5_PASSWORD, server=MT5_SERVER)
     if not mt5.initialize(**arguments):
         raise RuntimeError(f"MT5 initialization failed: {mt5.last_error()}")
@@ -122,23 +127,86 @@ def initialize_mt5() -> None:
     print(f"Connected: account {account.login} | {account.server} | equity {account.equity:.2f}")
 
 
-def heartbeat(config: dict[str, Any], message: str = "Bridge ready") -> None:
+def account_identity(account: Any) -> tuple[str, str]:
+    return str(account.login), str(account.server)
+
+
+def ensure_mt5_connection() -> Any:
+    global ACTIVE_ACCOUNT, LAST_RECONNECT_AT, BROKER_TIME_OFFSET
+    terminal, account = mt5.terminal_info(), mt5.account_info()
+    if not terminal or not terminal.connected or not account:
+        if time.monotonic() - LAST_RECONNECT_AT < 5:
+            raise RuntimeError("Waiting for the MT5 terminal connection.")
+        LAST_RECONNECT_AT = time.monotonic()
+        mt5.shutdown()
+        # Reattach to the terminal's current login; never restore an old login after a switch.
+        initialize_mt5(follow_terminal=True)
+        terminal, account = mt5.terminal_info(), mt5.account_info()
+    if not terminal or not terminal.connected or not account:
+        raise RuntimeError("MT5 terminal is disconnected or has no logged-in account.")
+    identity = account_identity(account)
+    if ACTIVE_ACCOUNT != identity:
+        ACTIVE_ACCOUNT = identity
+        LAST_MARKET_BAR_TIME.clear()
+        LAST_BROKER_TICK.clear()
+        LAST_BROKER_TICK_SEEN_AT.clear()
+        BROKER_TIME_OFFSET = 0
+    return account
+
+
+def resolve_gold_symbol(config: dict[str, Any], account: Any) -> str:
+    global SYMBOL_CANDIDATES
+    symbols = mt5.symbols_get()
+    if symbols is None:
+        SYMBOL_CANDIDATES = []
+        raise RuntimeError(f"Unable to load broker symbols: {mt5.last_error()}")
+    # Currency metadata excludes Gold priced in another currency and disabled/close-only contracts.
+    SYMBOL_CANDIDATES = sorted({info.name for info in symbols
+        if (str(getattr(info, "currency_base", "")).upper() == "XAU"
+            or "XAUUSD" in info.name.upper() or info.name.upper() == "GOLD"
+            or info.name.upper().startswith("GOLD."))
+        and str(getattr(info, "currency_profit", "")).upper() == "USD"
+        and getattr(info, "trade_mode", None) == mt5.SYMBOL_TRADE_MODE_FULL})
+    selected = str(config.get("brokerSymbol", ""))
+    selection_account = (str(config.get("brokerSymbolAccount", "")), str(config.get("brokerSymbolServer", "")))
+    if len(SYMBOL_CANDIDATES) == 1:
+        selected = SYMBOL_CANDIDATES[0]
+    elif not (selection_account == account_identity(account) and selected in SYMBOL_CANDIDATES):
+        if not SYMBOL_CANDIDATES:
+            raise RuntimeError("No tradable Gold/USD symbol is available on this MT5 account.")
+        raise RuntimeError("Multiple Gold symbols are available. Choose the broker symbol in the dashboard MT5 panel.")
+    if not mt5.symbol_select(selected, True):
+        raise RuntimeError(f"Unable to select broker symbol {selected}: {mt5.last_error()}")
+    return selected
+
+
+def assert_execution_account() -> None:
+    terminal, account = mt5.terminal_info(), mt5.account_info()
+    if ACTIVE_ACCOUNT is None or not terminal or not terminal.connected or not account or account_identity(account) != ACTIVE_ACCOUNT:
+        raise RuntimeError("MT5 account changed or disconnected; waiting for connection synchronization.")
+
+
+def heartbeat(config: dict[str, Any], message: str = "Bridge ready") -> dict[str, Any]:
     global CONNECTED_ACCOUNT, CONNECTED_SERVER
     account = mt5.account_info()
-    if account:
+    terminal = mt5.terminal_info()
+    connected = bool(account and terminal and terminal.connected)
+    if connected:
         CONNECTED_ACCOUNT = str(account.login)
         CONNECTED_SERVER = str(account.server)
     symbol = str(config.get("brokerSymbol", "XAUUSD"))
-    positions = mt5.positions_get(symbol=symbol) or []
-    try:
-        time_offset = broker_utc_offset_seconds(symbol)
-    except RuntimeError:
-        time_offset = 0
-    api("POST", "/api/mt5/heartbeat", json={
+    if not connected or account_identity(account) != ACTIVE_ACCOUNT:
+        symbol = ""
+    positions = (mt5.positions_get(symbol=symbol) or []) if connected and symbol else []
+    time_offset = BROKER_TIME_OFFSET
+    return api("POST", "/api/mt5/heartbeat", json={
         "bridgeId": BRIDGE_ID,
         "processId": os.getpid(),
-        "account": CONNECTED_ACCOUNT,
-        "server": CONNECTED_SERVER,
+        "account": CONNECTED_ACCOUNT if connected else "",
+        "server": CONNECTED_SERVER if connected else "",
+        "terminalConnected": connected,
+        "symbolResolved": connected and bool(symbol),
+        "symbolCandidates": SYMBOL_CANDIDATES,
         "balance": float(account.balance) if account else None,
         "equity": float(account.equity) if account else None,
         "freeMargin": float(account.margin_free) if account else None,
@@ -206,12 +274,15 @@ def broker_utc_offset_seconds(symbol: str) -> int:
 
 
 def publish_mt5_market_data(config: dict[str, Any]) -> int:
+    global BROKER_TIME_OFFSET
     symbol = str(config.get("brokerSymbol", "XAUUSD"))
     if not mt5.symbol_select(symbol, True):
         raise RuntimeError(f"Broker symbol {symbol} is unavailable for candle data: {mt5.last_error()}")
     utc_offset = broker_utc_offset_seconds(symbol)
+    BROKER_TIME_OFFSET = utc_offset
     published = 0
     for label, timeframe in MT5_MARKET_TIMEFRAMES.items():
+        assert_execution_account()
         preview = mt5.copy_rates_from_pos(symbol, timeframe, 0, 2)
         if preview is None or len(preview) < 2:
             continue
@@ -222,7 +293,11 @@ def publish_mt5_market_data(config: dict[str, Any]) -> int:
         if rates is None or len(rates) < 10:
             continue
         candles = mt5_rates_to_candles(rates, utc_offset)
+        assert_execution_account()
         response = api("POST", "/api/mt5/market-data", json={
+            "bridgeId": BRIDGE_ID,
+            "account": ACTIVE_ACCOUNT[0] if ACTIVE_ACCOUNT else "",
+            "server": ACTIVE_ACCOUNT[1] if ACTIVE_ACCOUNT else "",
             "timeframe": label,
             "symbol": symbol,
             "candles": candles,
@@ -237,6 +312,8 @@ def publish_mt5_market_data(config: dict[str, Any]) -> int:
 def update_status(signal_id: str, status: str, **details: Any) -> None:
     api("POST", f"/api/mt5/signals/{quote(signal_id, safe='')}/status", json={
         "status": status,
+        "account": ACTIVE_ACCOUNT[0] if ACTIVE_ACCOUNT else "",
+        "server": ACTIVE_ACCOUNT[1] if ACTIVE_ACCOUNT else "",
         **details,
     })
 
@@ -386,10 +463,12 @@ def send_with_filling_fallback(request: dict[str, Any]) -> Any:
     result = None
     successful_send_codes = (mt5.TRADE_RETCODE_DONE, mt5.TRADE_RETCODE_DONE_PARTIAL)
     for filling in (mt5.ORDER_FILLING_IOC, mt5.ORDER_FILLING_FOK, mt5.ORDER_FILLING_RETURN):
+        assert_execution_account()
         candidate = {**request, "type_filling": filling}
         checked = mt5.order_check(candidate)
         if checked is None or checked.retcode not in (0, mt5.TRADE_RETCODE_DONE):
             continue
+        assert_execution_account()
         result = mt5.order_send(candidate)
         if result and result.retcode in successful_send_codes:
             return result
@@ -398,7 +477,7 @@ def send_with_filling_fallback(request: dict[str, Any]) -> Any:
 
 
 def place_signal(signal: dict[str, Any], config: dict[str, Any]) -> dict[str, Any]:
-    if config.get("tradingTimeEnabled", True) and not is_nepal_trading_time():
+    if config.get("tradingTimeEnabled", False) and not is_nepal_trading_time():
         update_status(signal["id"], "REJECTED", message="Outside Nepal trading time; automatic entry is blocked.")
         return {"status": "REJECTED"}
     if config.get("dryRun", True) or not ALLOW_LIVE_EXECUTION:
@@ -563,11 +642,13 @@ def manage_open_signals(
 ) -> None:
     server_by_id = {item["id"]: item for item in recent}
     for signal_id, record in list(state.items()):
+        assert_execution_account()
         server_signal = server_by_id.get(signal_id, {})
         status = server_signal.get("status", record.get("status"))
-        if status == "PLACED" and config.get("tradingTimeEnabled", True) and not is_nepal_trading_time():
+        if status == "PLACED" and config.get("tradingTimeEnabled", False) and not is_nepal_trading_time():
             ticket = int(record.get("brokerTicket") or 0)
             if ticket and (mt5.orders_get(ticket=ticket) or []):
+                assert_execution_account()
                 removal = mt5.order_send({
                     "action": mt5.TRADE_ACTION_REMOVE,
                     "order": ticket,
@@ -583,6 +664,7 @@ def manage_open_signals(
         if status in {"CANCELLED", "EXPIRED"} and record.get("status") == "PLACED":
             ticket = int(record.get("brokerTicket") or 0)
             if ticket and (mt5.orders_get(ticket=ticket) or []):
+                assert_execution_account()
                 removal = mt5.order_send({
                     "action": mt5.TRADE_ACTION_REMOVE,
                     "order": ticket,
@@ -600,6 +682,7 @@ def manage_open_signals(
             if ticket and (mt5.orders_get(ticket=ticket) or []):
                 tick = mt5.symbol_info_tick(record["symbol"])
                 if pending_order_passed_one_and_half_r(record, tick):
+                    assert_execution_account()
                     removal = mt5.order_send({
                         "action": mt5.TRADE_ACTION_REMOVE,
                         "order": ticket,
@@ -727,35 +810,79 @@ def process_bridge_cycle(
     state: dict[str, dict[str, Any]],
     last_heartbeat: float,
 ) -> float:
-    config = status_payload["config"]
+    global LEGACY_STATE_CHECKED
+    account = ensure_mt5_connection()
+    config = dict(status_payload["config"])
+    try:
+        config["brokerSymbol"] = resolve_gold_symbol(config, account)
+    except RuntimeError as error:
+        config["brokerSymbol"] = ""
+        heartbeat(config, message=str(error))
+        return time.time()
+    remote = status_payload.get("bridge", {})
+    if (remote.get("account"), remote.get("server"), remote.get("brokerSymbol")) != (*ACTIVE_ACCOUNT, config["brokerSymbol"]):
+        LAST_MARKET_BAR_TIME.clear()
+    else:
+        for label, history in status_payload.get("marketData", {}).get("timeframes", {}).items():
+            if not history.get("count"):
+                LAST_MARKET_BAR_TIME.pop(label, None)
+    # Synchronize account and symbol before publishing any candles or accepting a signal.
+    if time.time() - last_heartbeat >= 5 or status_payload.get("bridge", {}).get("account") != str(account.login):
+        heartbeat(config, message="Bridge ready")
+        last_heartbeat = time.time()
+    assert_execution_account()
     try:
         published_timeframes = publish_mt5_market_data(config)
         market_data_issue = None
-    except BrokerMarketDataUnavailable as error:
+    except RuntimeError as error:
         published_timeframes = 0
         market_data_issue = str(error)
     if published_timeframes:
         print(f"MT5 DATA: published {published_timeframes} updated timeframe snapshot(s)")
-    if time.time() - last_heartbeat >= 5:
+    if market_data_issue is not None or time.time() - last_heartbeat >= 5:
         message = f"Market data paused: {market_data_issue}" if market_data_issue else "Bridge ready"
         heartbeat(config, message=message)
         last_heartbeat = time.time()
-    recent_signals = status_payload.get("recentSignals", [])
+    recent_signals = [record for record in status_payload.get("recentSignals", [])
+                      if (record.get("account"), record.get("server")) == ACTIVE_ACCOUNT]
+    previous_bridge = status_payload.get("bridge", {})
+    # Check legacy ownership only at startup, never after publishing a different account's heartbeat.
+    if not LEGACY_STATE_CHECKED:
+        LEGACY_STATE_CHECKED = True
+        if (previous_bridge.get("account"), previous_bridge.get("server")) == ACTIVE_ACCOUNT:
+            for record in state.values():
+                if not record.get("account"):
+                    record.update(account=str(account.login), server=str(account.server))
     for server_signal in recent_signals:
         if (
             server_signal.get("bridgeId") == BRIDGE_ID
+            and (server_signal.get("account"), server_signal.get("server")) == ACTIVE_ACCOUNT
             and server_signal.get("status") in {"PLACED", "ACTIVE", "RISK_FREE"}
         ):
             state.setdefault(server_signal["id"], dict(server_signal))
     if market_data_issue is None:
-        manage_open_signals(state, recent_signals, config)
+        active_state = {key: value for key, value in state.items()
+                        if (value.get("account"), value.get("server")) == ACTIVE_ACCOUNT}
+        managed_ids = set(active_state)
+        manage_open_signals(active_state, recent_signals, config)
+        for removed_id in managed_ids - active_state.keys():
+            state.pop(removed_id, None)
     save_state(state)
     if market_data_issue is not None:
         return last_heartbeat
-    claim = api("POST", "/api/mt5/signals/claim", json={"bridgeId": BRIDGE_ID})
+    assert_execution_account()
+    claim = api("POST", "/api/mt5/signals/claim", json={
+        "bridgeId": BRIDGE_ID, "account": str(account.login), "server": str(account.server),
+        "brokerSymbol": config["brokerSymbol"],
+    })
     signal = claim.get("signal")
     if signal:
         try:
+            if (signal.get("account"), signal.get("server")) != ACTIVE_ACCOUNT:
+                raise RuntimeError("Signal belongs to a different MT5 account.")
+            if signal.get("brokerSymbol") != config["brokerSymbol"] or claim["config"].get("brokerSymbol") != config["brokerSymbol"]:
+                raise RuntimeError("Broker symbol changed while claiming the signal; waiting for synchronization.")
+            assert_execution_account()
             record = {**signal, **place_signal(signal, claim["config"])}
             if record.get("status") not in {"SIMULATED", "REJECTED"}:
                 state[signal["id"]] = record
@@ -767,7 +894,6 @@ def process_bridge_cycle(
 
 
 def run() -> None:
-    initialize_mt5()
     state = load_state()
     last_heartbeat = 0.0
     try:
@@ -779,6 +905,10 @@ def run() -> None:
                 print(f"Dashboard connection error: {error}", file=sys.stderr)
             except Exception as error:
                 print(f"Bridge loop error: {error}", file=sys.stderr)
+                try:
+                    heartbeat({"brokerSymbol": ""}, message=str(error))
+                except Exception:
+                    pass  # Keep retrying even when the terminal or dashboard is temporarily unavailable.
             time.sleep(POLL_SECONDS)
     except KeyboardInterrupt:
         print("Bridge stopped.")

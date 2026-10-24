@@ -11,6 +11,7 @@ import {
   canMt5SignalExpireBeforeExecution,
   priorGoldMt5ZoneExecution,
   mt5SignalDisabledReason,
+  mt5ConnectionMatches,
   isTradeStyleEnabled,
   normalizeMt5EnabledTimeframes,
   normalizeMt5RiskPercent,
@@ -81,7 +82,7 @@ const MT5_TERMINAL_STATUSES = new Set<Mt5SignalStatus>([
 
 const DEFAULT_MT5_CONFIG: Mt5AutomationConfig = {
   enabled: false,
-  tradingTimeEnabled: true,
+  tradingTimeEnabled: false,
   telegramMessagesEnabled: true,
   dryRun: true,
   scalpingEnabled: true,
@@ -126,6 +127,9 @@ interface Mt5BridgeHeartbeat {
   freeMargin?: number;
   currency?: string;
   brokerSymbol?: string;
+  terminalConnected?: boolean;
+  symbolResolved?: boolean;
+  symbolCandidates?: string[];
   positions?: Mt5LivePosition[];
   message?: string;
   lastHeartbeatAt: number;
@@ -322,6 +326,8 @@ function sanitizeMt5CandleSnapshot(candidate: any): {
 }
 
 function mt5ExecutionFeedIsFresh(now = Date.now()): boolean {
+  if (!mt5BridgeHeartbeat || mt5BridgeHeartbeat.terminalConnected !== true
+    || mt5BridgeHeartbeat.symbolResolved !== true || now - mt5BridgeHeartbeat.lastHeartbeatAt >= 15_000) return false;
   const m1UpdatedAt = mt5MarketDataUpdatedAt.M1;
   const latestM1 = automationCandleCache.M1?.[automationCandleCache.M1.length - 1];
   const nowSeconds = Math.floor(now / 1000);
@@ -371,7 +377,8 @@ function sanitizeMt5Config(candidate: any, current: Mt5AutomationConfig): Mt5Aut
   return {
     ...current,
     enabled: candidate?.enabled === true,
-    tradingTimeEnabled: candidate?.tradingTimeEnabled !== false,
+    tradingTimeEnabled: candidate?.tradingTimeEnabled === undefined
+      ? current.tradingTimeEnabled : candidate.tradingTimeEnabled === true,
     telegramMessagesEnabled: candidate?.telegramMessagesEnabled === undefined
       ? current.telegramMessagesEnabled : candidate.telegramMessagesEnabled !== false,
     dryRun: candidate?.dryRun !== false,
@@ -400,6 +407,7 @@ async function enqueueMt5Signal(
   candidate: Mt5SignalInput,
   config: Mt5AutomationConfig,
 ): Promise<{ signal: Mt5StoredSignal; duplicate: boolean }> {
+  const executionConnection = mt5BridgeHeartbeat ? { ...mt5BridgeHeartbeat } : undefined;
   const error = validateMt5Signal(candidate);
   if (error) throw new Error(error);
   const disabledReason = mt5SignalDisabledReason(config, candidate);
@@ -415,6 +423,9 @@ async function enqueueMt5Signal(
     throw new Error('Future-dated signals cannot be executed.');
   }
   return serializeMt5Mutation(async () => {
+    if (!mt5ExecutionFeedIsFresh() || !mt5ConnectionMatches(executionConnection, mt5BridgeHeartbeat ?? {})) {
+      throw new Error('MT5 connection changed while preparing the signal.');
+    }
     const signals = await readMt5Signals();
     // A zone is single-use across entry routes, including after a full SL.
     const consumedSetupStatuses = new Set<Mt5SignalStatus>([
@@ -450,6 +461,9 @@ async function enqueueMt5Signal(
       engulfingType: String(candidate.engulfingType || '').slice(0, 30),
       confluenceZones: candidate.confluenceZones?.map(String).slice(0, 20),
       status: 'QUEUED',
+      account: executionConnection?.account,
+      server: executionConnection?.server,
+      brokerSymbol: executionConnection?.brokerSymbol,
       createdAt: now,
       updatedAt: now,
     };
@@ -607,6 +621,7 @@ async function scanMt5AutomationSignals(): Promise<number> {
   if (!mt5ExecutionFeedIsFresh()) return 0;
   if (AUTOMATION_TIMEFRAMES.some((timeframe) => !automationCandleCache[timeframe]?.length)) return 0;
   const scanVersion = mt5MarketDataVersion;
+  const scanConnection = mt5BridgeHeartbeat ? { ...mt5BridgeHeartbeat } : undefined;
   if (scanVersion === lastScannedMt5MarketDataVersion) return 0;
   const candles = automationCandleCache as Record<TradeTimeframe, StructureCandle[]>;
   const rawStructures: Partial<Record<TradeTimeframe, ReturnType<typeof analyzeMarketStructure>>> = {};
@@ -885,6 +900,7 @@ async function scanMt5AutomationSignals(): Promise<number> {
   }
   let queued = 0;
   for (const candidate of grouped.values()) {
+    if (!mt5ConnectionMatches(scanConnection, mt5BridgeHeartbeat ?? {}) || !mt5ExecutionFeedIsFresh()) break;
     const result = await enqueueMt5Signal(candidate, config);
     if (!result.duplicate) queued += 1;
   }
@@ -1275,6 +1291,11 @@ async function startServer() {
     if (!mt5BridgeAuthorized(req)) {
       return res.status(401).json({ ok: false, error: 'Bridge authorization failed.' });
     }
+    if (mt5BridgeHeartbeat?.symbolResolved !== true
+      || req.body?.bridgeId !== mt5BridgeHeartbeat.bridgeId
+      || !mt5ConnectionMatches(mt5BridgeHeartbeat, { ...req.body, brokerSymbol: req.body?.symbol })) {
+      return res.status(409).json({ ok: false, error: 'MT5 account or symbol changed; synchronize the bridge first.' });
+    }
     const snapshot = sanitizeMt5CandleSnapshot(req.body);
     if ('error' in snapshot) return res.status(400).json({ ok: false, error: snapshot.error });
     automationCandleCache[snapshot.timeframe] = snapshot.candles;
@@ -1320,7 +1341,7 @@ async function startServer() {
       const heartbeatAge = mt5BridgeHeartbeat
         ? Date.now() - mt5BridgeHeartbeat.lastHeartbeatAt
         : Number.POSITIVE_INFINITY;
-      const connected = heartbeatAge < 15_000;
+      const connected = heartbeatAge < 15_000 && mt5BridgeHeartbeat?.terminalConnected !== false;
       const managedProcessId = managedMt5Bridge?.pid ?? managedMt5BridgeProcessId;
       const positions = (mt5BridgeHeartbeat?.positions ?? []).map((position) => {
         const signal = signals.find((candidate) => (
@@ -1383,9 +1404,18 @@ async function startServer() {
   app.put('/api/mt5/config', async (req, res) => {
     if (!isLoopbackRequest(req)) return res.status(403).json({ ok: false, error: 'MT5 settings are local-only.' });
     try {
-      const current = await readMt5Config();
-      const config = sanitizeMt5Config(req.body, current);
-      await writeMt5Config(config);
+      const config = await serializeMt5Mutation(async () => {
+        const current = await readMt5Config();
+        const config = sanitizeMt5Config(req.body, current);
+        if (req.body?.brokerSymbolAccount === mt5BridgeHeartbeat?.account
+          && req.body?.brokerSymbolServer === mt5BridgeHeartbeat?.server
+          && mt5BridgeHeartbeat?.symbolCandidates?.includes(config.brokerSymbol)) {
+          config.brokerSymbolAccount = mt5BridgeHeartbeat.account;
+          config.brokerSymbolServer = mt5BridgeHeartbeat.server;
+        }
+        await writeMt5Config(config);
+        return config;
+      });
       await rejectDisabledQueuedSignals(config);
       await rejectOutsideTradingTimeSignals(config);
       const heartbeatConnected = mt5BridgeHeartbeat !== undefined
@@ -1431,7 +1461,7 @@ async function startServer() {
     }
   });
 
-  app.post('/api/mt5/heartbeat', (req, res) => {
+  app.post('/api/mt5/heartbeat', async (req, res) => {
     if (!mt5BridgeAuthorized(req)) return res.status(401).json({ ok: false, error: 'Bridge authorization failed.' });
     const bridgeId = typeof req.body?.bridgeId === 'string' ? req.body.bridgeId.trim().slice(0, 100) : '';
     if (!bridgeId) return res.status(400).json({ ok: false, error: 'Bridge ID is required.' });
@@ -1459,6 +1489,7 @@ async function startServer() {
         } satisfies Mt5LivePosition];
       })
       : [];
+    const previousConnection = mt5BridgeHeartbeat;
     mt5BridgeHeartbeat = {
       bridgeId,
       processId: Number.isInteger(Number(req.body?.processId)) ? Number(req.body.processId) : undefined,
@@ -1469,11 +1500,54 @@ async function startServer() {
       freeMargin: req.body?.freeMargin != null && Number.isFinite(Number(req.body.freeMargin)) ? Number(req.body.freeMargin) : undefined,
       currency: String(req.body?.currency ?? '').slice(0, 12) || undefined,
       brokerSymbol: String(req.body?.brokerSymbol ?? '').slice(0, 30) || undefined,
+      terminalConnected: req.body?.terminalConnected === true,
+      symbolResolved: req.body?.symbolResolved === true,
+      symbolCandidates: Array.isArray(req.body?.symbolCandidates)
+        ? req.body.symbolCandidates.filter((value: unknown) => typeof value === 'string' && value.length <= 30).slice(0, 100) : [],
       positions,
       message: String(req.body?.message ?? '').slice(0, 300) || undefined,
       lastHeartbeatAt: Date.now(),
     };
-    return res.json({ ok: true, serverTime: Date.now() });
+    const connection = mt5BridgeHeartbeat;
+    const changed = previousConnection?.account !== connection.account
+      || previousConnection?.bridgeId !== connection.bridgeId
+      || previousConnection?.processId !== connection.processId
+      || previousConnection?.server !== connection.server
+      || previousConnection?.brokerSymbol !== connection.brokerSymbol
+      || previousConnection?.symbolResolved !== connection.symbolResolved
+      || previousConnection?.terminalConnected !== connection.terminalConnected;
+    try {
+      if (changed) {
+        for (const timeframe of AUTOMATION_TIMEFRAMES) {
+          delete automationCandleCache[timeframe];
+          delete mt5MarketDataUpdatedAt[timeframe];
+        }
+        mt5MarketDataVersion += 1;
+        await serializeMt5Mutation(async () => {
+          const signals = await readMt5Signals();
+          for (const signal of signals) {
+            if (['QUEUED', 'CLAIMED'].includes(signal.status)) {
+              signal.status = 'REJECTED';
+              signal.updatedAt = Math.floor(Date.now() / 1000);
+              signal.message = 'MT5 connection changed; waiting for fresh account-specific signals.';
+            }
+          }
+          await writeMt5Signals(signals);
+        });
+      }
+      await serializeMt5Mutation(async () => {
+        const config = await readMt5Config();
+        if (connection.terminalConnected && connection.symbolResolved && connection.brokerSymbol
+          && (config.brokerSymbol !== connection.brokerSymbol || config.brokerSymbolAccount !== connection.account
+            || config.brokerSymbolServer !== connection.server)) {
+          await writeMt5Config({ ...config, brokerSymbol: connection.brokerSymbol,
+            brokerSymbolAccount: connection.account, brokerSymbolServer: connection.server });
+        }
+      });
+      return res.json({ ok: true, serverTime: Date.now() });
+    } catch (error) {
+      return res.status(500).json({ ok: false, error: error instanceof Error ? error.message : 'Unable to synchronize MT5 connection.' });
+    }
   });
 
   app.post('/api/mt5/bridge/start', async (req, res) => {
@@ -1505,6 +1579,10 @@ async function startServer() {
       if (!bridgeId) return res.status(400).json({ ok: false, error: 'Bridge ID is required.' });
       const config = await readMt5Config();
       if (!config.enabled) return res.json({ ok: true, signal: null, config });
+      if (mt5BridgeHeartbeat?.symbolResolved !== true || mt5BridgeHeartbeat.bridgeId !== bridgeId
+        || !mt5ConnectionMatches(mt5BridgeHeartbeat, req.body)) {
+        return res.json({ ok: true, signal: null, config });
+      }
       if (config.tradingTimeEnabled && !isNepalTradingTime(Math.floor(Date.now() / 1000))) {
         await rejectOutsideTradingTimeSignals(config);
         return res.json({ ok: true, signal: null, config });
@@ -1513,6 +1591,7 @@ async function startServer() {
       const now = Math.floor(Date.now() / 1000);
       const signal = await serializeMt5Mutation(async () => {
         const signals = await readMt5Signals();
+        if (!mt5ConnectionMatches(mt5BridgeHeartbeat, req.body) || !mt5ExecutionFeedIsFresh()) return null;
         for (const item of signals) {
           if (item.status === 'CLAIMED' && item.claimedAt && item.claimedAt < now - 30) {
             item.status = 'QUEUED';
@@ -1539,6 +1618,7 @@ async function startServer() {
         }
         const next = signals.find((item) => (
           item.status === 'QUEUED'
+          && mt5ConnectionMatches(mt5BridgeHeartbeat, item)
           && !mt5SignalDisabledReason(config, item)
         ));
         if (next) {
@@ -1568,6 +1648,9 @@ async function startServer() {
         const signals = await readMt5Signals();
         const signal = signals.find((item) => item.id === req.params.id);
         if (!signal) return undefined;
+        if (signal.account && (signal.account !== req.body?.account || signal.server !== req.body?.server)) {
+          throw new Error('Cannot update a signal belonging to another MT5 account.');
+        }
         signal.status = status;
         signal.updatedAt = Math.floor(Date.now() / 1000);
         for (const field of [
