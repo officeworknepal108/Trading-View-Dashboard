@@ -1612,6 +1612,8 @@ export const OandaProChart: React.FC = () => {
   ));
   const [savedJournalTrades, setSavedJournalTrades] = useState<AccuracyTradeRecord[]>([]);
   const [mt5Status, setMt5Status] = useState<Mt5AutomationStatus | null>(null);
+  const dailyRisk = mt5Status?.bridge.dailyRisk;
+  const dailyRiskMoney = (value: number) => `${mt5Status?.bridge.currency === 'USD' ? '$' : `${mt5Status?.bridge.currency || 'USD'} `}${value.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
   const scalpingEnabled = mt5Status?.config.scalpingEnabled ?? true;
   const intradayEnabled = mt5Status?.config.intradayEnabled ?? true;
   const tradeStyleEnabled = useCallback((trade: {
@@ -6294,8 +6296,8 @@ export const OandaProChart: React.FC = () => {
                 : 'OFF'}
             </button>
             {mt5SettingsOpen && mt5Status && (
-              <div className="absolute right-0 top-full z-[70] mt-1 w-64 rounded-lg border border-slate-200 bg-white p-3 text-[10px] shadow-xl">
-                <div className="mb-2 flex items-center justify-between border-b border-slate-100 pb-2">
+              <div className="absolute right-0 top-full z-[70] mt-1 max-h-[calc(100dvh_-_96px)] w-64 overflow-y-auto overscroll-contain rounded-lg border border-slate-200 bg-white p-3 text-[10px] shadow-xl">
+                <div className="sticky top-0 z-10 mb-2 flex items-center justify-between border-b border-slate-100 bg-white pb-2">
                   <div>
                     <div className="font-black text-slate-800">MT5 AUTO EXECUTION</div>
                     <div className={mt5Status.bridge.connected ? 'text-emerald-700' : 'text-rose-700'}>
@@ -6423,6 +6425,43 @@ export const OandaProChart: React.FC = () => {
                     Lot size = cash risk ÷ (SL pips × 10)
                   </span>
                 </label>
+                <label className="mb-2 block font-bold text-slate-700">
+                  Daily loss limit (%)
+                  <input
+                    aria-label="Daily loss limit percent"
+                    type="number"
+                    min="0.1"
+                    max="5"
+                    step="0.1"
+                    value={mt5Status.config.maximumDailyLossPercent}
+                    onChange={(event) => setMt5Status((current) => current ? {
+                      ...current, config: { ...current.config, maximumDailyLossPercent: Number(event.target.value) },
+                    } : current)}
+                    onBlur={(event) => void updateMt5Config({ maximumDailyLossPercent: Number(event.target.value) })}
+                    className="mt-1 w-full rounded border border-slate-200 px-2 py-1"
+                  />
+                  <span className="mt-1 block text-[8px] font-semibold text-slate-500">Maximum 5%. Closed and floating bot losses count together.</span>
+                </label>
+                <div className="mb-2 rounded border border-indigo-100 bg-indigo-50 p-2 text-slate-700">
+                  <div className="mb-1 font-black text-indigo-800">Daily bot loss · Nepal day</div>
+                  {mt5Status.bridge.connected && dailyRisk?.available ? <>
+                    <div>Daily balance: <b>{dailyRiskMoney(dailyRisk.startingBalance)}</b></div>
+                    <div>Limit: <b>{dailyRisk.limitPercent.toFixed(2)}% · {dailyRiskMoney(dailyRisk.limitMoney)}</b></div>
+                    <div>Closed loss: <b>{(dailyRisk.realizedLossMoney / dailyRisk.startingBalance * 100).toFixed(2)}% · {dailyRiskMoney(dailyRisk.realizedLossMoney)}</b></div>
+                    <div>Floating loss: <b>{(dailyRisk.floatingLossMoney / dailyRisk.startingBalance * 100).toFixed(2)}% · {dailyRiskMoney(dailyRisk.floatingLossMoney)}</b></div>
+                    <div>Used today: <b>{dailyRisk.usedPercent.toFixed(2)}% · {dailyRiskMoney(dailyRisk.usedMoney)}</b></div>
+                    <div>Remaining: <b>{dailyRisk.remainingPercent.toFixed(2)}% · {dailyRiskMoney(dailyRisk.remainingMoney)}</b></div>
+                    <div>Reserved at SL: <b>{(dailyRisk.reservedRiskMoney / dailyRisk.startingBalance * 100).toFixed(2)}% · {dailyRiskMoney(dailyRisk.reservedRiskMoney)}</b></div>
+                    <div>Available for new trades: <b>{dailyRisk.availableRiskPercent.toFixed(2)}% · {dailyRiskMoney(dailyRisk.availableRiskMoney)}</b></div>
+                    <div className={`mt-1 font-black ${dailyRisk.limitReached || dailyRisk.riskUnbounded ? 'text-rose-700' : 'text-indigo-700'}`}>
+                      {dailyRisk.limitReached ? 'DAILY LIMIT REACHED · NEW TRADES STOPPED'
+                        : dailyRisk.riskUnbounded ? 'NEW TRADES PAUSED · AN AUTOMATED POSITION OR ORDER HAS NO SL'
+                          : dailyRisk.availableRiskMoney <= 0 ? 'DAILY ALLOWANCE FULLY RESERVED · NEW TRADES PAUSED' : 'DAILY ALLOWANCE AVAILABLE'}
+                    </div>
+                  </> : <div className="text-amber-700">
+                    {dailyRisk?.available === false ? dailyRisk.error : 'Waiting for fresh MT5 daily risk data.'}
+                  </div>}
+                </div>
                 <label className="mb-2 block font-bold text-slate-700">
                   Maximum open trades (max 10)
                   <input

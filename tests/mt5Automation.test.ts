@@ -20,12 +20,37 @@ import {
   mt5ClosedReturnR,
   mt5SignalDisabledReason,
   mt5ConnectionMatches,
+  normalizeMt5DailyLossPercent,
+  sanitizeMt5DailyRisk,
+  mt5DailyRiskAllowsEntry,
   normalizeMt5EnabledTimeframes,
   normalizeMt5RiskPercent,
   shouldRemoveOpenMt5JournalRecord,
   tradeToMt5Signal,
 } from '../src/services/mt5Automation';
 import type { TradeLevels } from '../src/services/tradeLevels';
+
+test('daily loss limit is capped at 5 percent and invalid settings preserve the current limit', () => {
+  assert.equal(normalizeMt5DailyLossPercent(2), 2);
+  assert.equal(normalizeMt5DailyLossPercent(5), 5);
+  assert.equal(normalizeMt5DailyLossPercent(10), 5);
+  assert.equal(normalizeMt5DailyLossPercent(-1), 0.1);
+  assert.equal(normalizeMt5DailyLossPercent(undefined, 3), 3);
+});
+
+test('daily loss telemetry blocks new entries at the limit or without usable risk data', () => {
+  const values = { available: true, date: '2026-10-24', startingBalance: 10000, limitPercent: 2, limitMoney: 200,
+    realizedLossMoney: 100, floatingLossMoney: 20, usedMoney: 120, usedPercent: 1.2,
+    remainingMoney: 80, remainingPercent: 0.8, reservedRiskMoney: 30, availableRiskMoney: 50,
+    availableRiskPercent: 0.5, limitReached: false, riskUnbounded: false };
+  assert.equal(mt5DailyRiskAllowsEntry(sanitizeMt5DailyRisk(values)), true);
+  for (const changed of [{ limitReached: true }, { riskUnbounded: true }, { availableRiskMoney: 0 },
+    { usedMoney: 200 }, { usedMoney: -1 }, { limitPercent: 10 }, { startingBalance: 0 }, { usedMoney: NaN }]) {
+    assert.equal(mt5DailyRiskAllowsEntry(sanitizeMt5DailyRisk({ ...values, ...changed })), false);
+  }
+  assert.equal(mt5DailyRiskAllowsEntry(undefined), false);
+  assert.equal(mt5DailyRiskAllowsEntry(sanitizeMt5DailyRisk({ available: false, error: 'MT5 history unavailable' })), false);
+});
 
 test('MT5 execution context requires the current account, server and resolved broker symbol', () => {
   const current = { account: '123', server: 'Broker-Live', brokerSymbol: 'XAUUSD.x' };

@@ -102,6 +102,19 @@ test('MT5 account handshake resets old candles and queues while preserving autom
     assert.equal((await request('/api/mt5/config', { ...status.config, tradingTimeEnabled: false }, 'PUT')).status, 200);
     status = await (await request('/api/mt5/status')).json();
     assert.equal(status.config.tradingTimeEnabled, false);
+    assert.equal((await request('/api/mt5/config', { ...status.config, maximumDailyLossPercent: 8 }, 'PUT')).status, 200);
+    status = await (await request('/api/mt5/status')).json();
+    assert.equal(status.config.maximumDailyLossPercent, 5, 'server caps the daily loss control at 5%');
+    const dailyRisk = { available: true, date: '2026-10-24', startingBalance: 10000, limitPercent: 2,
+      limitMoney: 200, realizedLossMoney: 120, floatingLossMoney: 80, usedMoney: 200, usedPercent: 2,
+      remainingMoney: 0, remainingPercent: 0, reservedRiskMoney: 120, availableRiskMoney: 0,
+      availableRiskPercent: 0, limitReached: true, riskUnbounded: false };
+    assert.equal((await request('/api/mt5/heartbeat', { ...second, dailyRisk })).status, 200);
+    status = await (await request('/api/mt5/status')).json();
+    assert.deepEqual(status.bridge.dailyRisk, dailyRisk, 'dashboard gets the bridge percentage and account-currency figures');
+    assert.equal((await request('/api/mt5/heartbeat', { ...second, dailyRisk: { ...dailyRisk, usedMoney: -1 } })).status, 200);
+    status = await (await request('/api/mt5/status')).json();
+    assert.equal(status.bridge.dailyRisk.available, false, 'invalid risk data does not become a zero-loss reading');
   } finally {
     const exited = new Promise<void>((resolve) => {
       if (child.exitCode !== null) resolve(); else child.once('exit', () => resolve());

@@ -1,4 +1,7 @@
 import unittest
+import tempfile
+from datetime import datetime, timedelta
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
 
@@ -220,6 +223,147 @@ class TradingTimeDefaultTests(BridgeTestCase):
             self.assertEqual(bridge.place_signal(signal, {"tradingTimeEnabled": True})["status"], "REJECTED")
             self.assertEqual(update.call_args.args[1], "REJECTED")
             send.assert_not_called()
+
+
+class DailyRiskTests(unittest.TestCase):
+    def setUp(self) -> None:
+        temporary = tempfile.TemporaryDirectory(prefix="mt5-daily-risk-test-")
+        self.assertEqual(Path(temporary.name).resolve().parent, Path(tempfile.gettempdir()).resolve())
+        self.addCleanup(temporary.cleanup)
+        self.account = SimpleNamespace(login=123, server="Broker", balance=10000)
+        self.deals, self.positions, self.orders = [], [], []
+        self.now = datetime(2026, 10, 24, 12, tzinfo=bridge.NEPAL_TIMEZONE)
+        for name, value in (("DAILY_RISK_FILE", Path(temporary.name) / "risk.json"), ("ACTIVE_ACCOUNT", ("123", "Broker"))):
+            mocked = patch.object(bridge, name, value)
+            mocked.start()
+            self.addCleanup(mocked.stop)
+        for name, value in (("account_info", self.account), ("terminal_info", SimpleNamespace(connected=True)),
+                            ("history_deals_get", self.deals), ("positions_get", self.positions), ("orders_get", self.orders)):
+            mocked = patch.object(bridge.mt5, name, return_value=value)
+            mocked.start()
+            self.addCleanup(mocked.stop)
+        calc = patch.object(bridge.mt5, "order_calc_profit", side_effect=lambda kind, symbol, volume, entry, stop:
+            (stop - entry) * volume * 100 * (1 if kind == bridge.mt5.ORDER_TYPE_BUY else -1))
+        calc.start()
+        self.addCleanup(calc.stop)
+
+    def deal(self, profit, magic=None, commission=0, swap=0, fee=0):
+        return SimpleNamespace(profit=profit, magic=bridge.MAGIC_NUMBER if magic is None else magic,
+            commission=commission, swap=swap, fee=fee, type=bridge.mt5.DEAL_TYPE_BUY)
+
+    def position(self, profit=0, sl=3990, magic=None):
+        return SimpleNamespace(symbol="XAUUSD.x", magic=bridge.MAGIC_NUMBER if magic is None else magic,
+            profit=profit, swap=0, type=bridge.mt5.POSITION_TYPE_BUY, volume=0.1, price_open=4000, sl=sl)
+
+    def snapshot(self, limit=2, now=None):
+        return bridge.daily_risk_snapshot({"maximumDailyLossPercent": limit}, now=now or self.now)
+
+    def test_closed_plus_floating_loss_hits_fixed_two_percent_limit(self) -> None:
+        self.deals.append(self.deal(-120))
+        self.account.balance = 9880
+        self.positions.append(self.position(profit=-80, sl=3980))
+        daily = self.snapshot()
+        self.assertEqual(daily["startingBalance"], 10000)
+        self.assertEqual(daily["realizedLossMoney"], 120)
+        self.assertEqual(daily["floatingLossMoney"], 80)
+        self.assertEqual(daily["usedPercent"], 2)
+        self.assertEqual(daily["limitMoney"], 200)
+        self.assertTrue(daily["limitReached"])
+        self.assertEqual(daily["availableRiskMoney"], 0)
+
+    def test_only_bot_losses_count_and_fees_are_included(self) -> None:
+        self.deals.extend([self.deal(-100, commission=-5, swap=-2, fee=-1), self.deal(-300, magic=0)])
+        self.account.balance = 9592
+        self.positions.append(self.position(profit=-500, magic=0))
+        daily = self.snapshot()
+        self.assertEqual(daily["startingBalance"], 10000)
+        self.assertEqual(daily["realizedLossMoney"], 108)
+        self.assertEqual(daily["floatingLossMoney"], 0)
+
+    def test_floating_winners_do_not_hide_losing_positions(self) -> None:
+        self.positions.extend([self.position(profit=500), self.position(profit=-80)])
+        self.assertEqual(self.snapshot()["floatingLossMoney"], 80)
+
+    def test_daily_stop_survives_recovery_and_restarts_but_resets_on_next_day(self) -> None:
+        self.deals.append(self.deal(-200))
+        self.account.balance = 9800
+        self.assertTrue(self.snapshot()["limitReached"])
+        self.deals.clear()
+        self.assertTrue(self.snapshot()["limitReached"], "the saved daily stop survives loss recovery")
+        self.assertFalse(self.snapshot(limit=5)["limitReached"], "an explicit higher daily limit is respected")
+        tomorrow = self.snapshot(now=self.now + timedelta(days=1))
+        self.assertFalse(tomorrow["limitReached"])
+        self.assertEqual(tomorrow["startingBalance"], 9800)
+
+    def test_account_switch_has_a_separate_daily_balance_and_stop(self) -> None:
+        self.positions.append(self.position(profit=-200))
+        self.assertTrue(self.snapshot()["limitReached"])
+        self.positions.clear()
+        self.account.login = 456
+        self.account.balance = 5000
+        with patch.object(bridge, "ACTIVE_ACCOUNT", ("456", "Broker")):
+            daily = self.snapshot()
+        self.assertFalse(daily["limitReached"])
+        self.assertEqual(daily["limitMoney"], 100)
+
+    def test_open_and_pending_sl_risk_reserve_the_remaining_allowance(self) -> None:
+        self.positions.append(self.position(profit=-80, sl=3980))
+        self.orders.append(SimpleNamespace(symbol="XAUUSD.x", magic=bridge.MAGIC_NUMBER,
+            type=bridge.mt5.ORDER_TYPE_BUY_LIMIT, volume_current=0.1, price_open=4000, sl=3990))
+        daily = self.snapshot()
+        self.assertEqual(daily["usedMoney"], 80)
+        self.assertEqual(daily["reservedRiskMoney"], 220)
+        self.assertFalse(daily["limitReached"])
+        self.assertEqual(daily["availableRiskMoney"], 0)
+
+    def test_new_trade_fits_exact_remaining_capacity_but_larger_trade_is_blocked(self) -> None:
+        self.positions.append(self.position())
+        request = {"type": bridge.mt5.ORDER_TYPE_BUY, "symbol": "XAUUSD.x", "volume": 0.1, "price": 4000, "sl": 3990}
+        bridge.check_daily_trade_budget(request, {"maximumDailyLossPercent": 2})
+        with self.assertRaisesRegex(RuntimeError, "exceeds"):
+            bridge.check_daily_trade_budget({**request, "sl": 3989}, {"maximumDailyLossPercent": 2})
+
+    def test_open_swap_is_counted_in_both_current_loss_and_remaining_sl_risk(self) -> None:
+        position = self.position(profit=-20)
+        position.swap = -10
+        self.positions.append(position)
+        daily = self.snapshot()
+        self.assertEqual(daily["floatingLossMoney"], 30)
+        self.assertEqual(daily["reservedRiskMoney"], 80)
+        self.assertEqual(daily["availableRiskMoney"], 90)
+
+    def test_invalid_floating_values_do_not_become_zero_loss(self) -> None:
+        self.positions.append(self.position(profit=float('nan')))
+        with self.assertRaisesRegex(RuntimeError, "invalid floating"):
+            self.snapshot()
+
+    def test_missing_sl_pauses_new_entries_without_closing_anything(self) -> None:
+        self.positions.append(self.position(sl=0))
+        daily = self.snapshot()
+        self.assertTrue(daily["riskUnbounded"])
+        self.assertEqual(daily["availableRiskMoney"], 0)
+
+    def test_mt5_read_failures_do_not_turn_into_zero_loss(self) -> None:
+        for name in ("history_deals_get", "positions_get", "orders_get"):
+            with self.subTest(name=name), patch.object(bridge.mt5, name, return_value=None):
+                with self.assertRaisesRegex(RuntimeError, "could not be read"):
+                    self.snapshot()
+
+    def test_daily_period_starts_at_nepal_midnight(self) -> None:
+        with patch.object(bridge.mt5, "history_deals_get", return_value=[]) as history:
+            self.snapshot()
+        self.assertEqual(history.call_args.args[0], self.now.replace(hour=0, minute=0, second=0, microsecond=0).timestamp())
+
+    def test_limit_is_rechecked_before_send_while_exit_orders_are_not_blocked(self) -> None:
+        self.positions.append(self.position(profit=-200))
+        request = {"type": bridge.mt5.ORDER_TYPE_BUY, "symbol": "XAUUSD.x", "volume": 0.1, "price": 4000, "sl": 3990}
+        with patch.object(bridge.mt5, "order_check", return_value=SimpleNamespace(retcode=0)), \
+             patch.object(bridge.mt5, "order_send", return_value=SimpleNamespace(retcode=bridge.mt5.TRADE_RETCODE_DONE)) as send:
+            with self.assertRaisesRegex(RuntimeError, "limit reached"):
+                bridge.send_with_filling_fallback(request, risk_config={"maximumDailyLossPercent": 2})
+            send.assert_not_called()
+            bridge.send_with_filling_fallback(request)
+            send.assert_called_once()
 
 
 class GoldSymbolResolutionTests(unittest.TestCase):

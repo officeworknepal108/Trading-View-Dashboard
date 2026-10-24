@@ -300,6 +300,50 @@ export function mt5ConnectionMatches(
     && expected.brokerSymbol === candidate.brokerSymbol;
 }
 
+export type Mt5DailyRisk = { available: false; error: string } | {
+  available: true;
+  date: string;
+  startingBalance: number;
+  limitPercent: number;
+  limitMoney: number;
+  realizedLossMoney: number;
+  floatingLossMoney: number;
+  usedMoney: number;
+  usedPercent: number;
+  remainingMoney: number;
+  remainingPercent: number;
+  reservedRiskMoney: number;
+  availableRiskMoney: number;
+  availableRiskPercent: number;
+  limitReached: boolean;
+  riskUnbounded: boolean;
+};
+
+export function normalizeMt5DailyLossPercent(value: unknown, fallback = 2): number {
+  const number = Number(value);
+  return Math.min(5, Math.max(0.1, Number.isFinite(number) ? number : fallback));
+}
+
+export function sanitizeMt5DailyRisk(value: any): Mt5DailyRisk | undefined {
+  if (!value || typeof value !== 'object') return undefined;
+  if (value.available !== true) return { available: false, error: String(value.error || 'Daily risk is unavailable.').slice(0, 300) };
+  const fields = ['startingBalance', 'limitPercent', 'limitMoney', 'realizedLossMoney', 'floatingLossMoney',
+    'usedMoney', 'usedPercent', 'remainingMoney', 'remainingPercent', 'reservedRiskMoney',
+    'availableRiskMoney', 'availableRiskPercent'] as const;
+  if (fields.some((key) => typeof value[key] !== 'number' || !Number.isFinite(value[key]) || value[key] < 0)
+    || value.startingBalance <= 0 || value.limitPercent < 0.1 || value.limitPercent > 5
+    || !/^\d{4}-\d{2}-\d{2}$/.test(value.date)) {
+    return { available: false, error: 'Invalid daily risk data; new automated trades are paused.' };
+  }
+  return { available: true, date: value.date, ...Object.fromEntries(fields.map((key) => [key, value[key]])),
+    limitReached: value.limitReached === true, riskUnbounded: value.riskUnbounded === true } as Mt5DailyRisk;
+}
+
+export function mt5DailyRiskAllowsEntry(risk: Mt5DailyRisk | undefined): boolean {
+  return risk?.available === true && !risk.limitReached && !risk.riskUnbounded
+    && risk.usedMoney < risk.limitMoney && risk.availableRiskMoney > 1e-8;
+}
+
 export interface Mt5AutomationStatus {
   ok: boolean;
   config: Mt5AutomationConfig;
@@ -321,6 +365,7 @@ export interface Mt5AutomationStatus {
     terminalConnected?: boolean;
     symbolResolved?: boolean;
     symbolCandidates?: string[];
+    dailyRisk?: Mt5DailyRisk;
     lastHeartbeatAt?: number;
     message?: string;
     logs?: string[];

@@ -38,6 +38,7 @@ POLL_SECONDS = max(0.5, float(os.getenv("MT5_POLL_SECONDS", "1")))
 ALLOW_LIVE_EXECUTION = os.getenv("MT5_ALLOW_LIVE_EXECUTION", "NO").upper() == "YES"
 BRIDGE_ID = os.getenv("MT5_BRIDGE_ID", f"kalbairab-{uuid.getnode():x}")
 STATE_FILE = ROOT / ".mt5_bridge_state.json"
+DAILY_RISK_FILE = ROOT / ".mt5_daily_risk_state.json"
 CONNECTED_ACCOUNT = ""
 CONNECTED_SERVER = ""
 ACTIVE_ACCOUNT: tuple[str, str] | None = None
@@ -199,6 +200,10 @@ def heartbeat(config: dict[str, Any], message: str = "Bridge ready") -> dict[str
         symbol = ""
     positions = (mt5.positions_get(symbol=symbol) or []) if connected and symbol else []
     time_offset = BROKER_TIME_OFFSET
+    try:
+        daily_risk = daily_risk_snapshot(config) if connected else {"available": False, "error": "MT5 is disconnected."}
+    except (RuntimeError, OSError, ValueError) as error:
+        daily_risk = {"available": False, "error": str(error)}
     return api("POST", "/api/mt5/heartbeat", json={
         "bridgeId": BRIDGE_ID,
         "processId": os.getpid(),
@@ -212,6 +217,7 @@ def heartbeat(config: dict[str, Any], message: str = "Bridge ready") -> dict[str
         "freeMargin": float(account.margin_free) if account else None,
         "currency": str(account.currency) if account else None,
         "brokerSymbol": symbol,
+        "dailyRisk": daily_risk,
         "positions": [{
             "ticket": int(position.ticket),
             "symbol": str(position.symbol),
@@ -405,15 +411,104 @@ def calculate_volume(signal: dict[str, Any], config: dict[str, Any], symbol_info
     return volume
 
 
-def today_realized_loss_percent() -> float:
+def daily_risk_snapshot(config: dict[str, Any], now: datetime | None = None) -> dict[str, Any]:
+    """Bot-only daily loss and committed SL risk, in the account's deposit currency."""
+    assert_execution_account()
     account = mt5.account_info()
-    if not account or account.balance <= 0:
-        return 0.0
-    start = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
-    deals = mt5.history_deals_get(start, datetime.now()) or []
-    realized = sum(float(deal.profit) + float(deal.commission) + float(deal.swap)
-                   for deal in deals if deal.magic == MAGIC_NUMBER)
-    return max(0.0, -realized / float(account.balance) * 100.0)
+    if not account or not math.isfinite(float(account.balance)):
+        raise RuntimeError("Daily risk is unavailable: unable to read account balance.")
+    instant = now.astimezone(NEPAL_TIMEZONE) if now else datetime.now(NEPAL_TIMEZONE)
+    start = instant.replace(hour=0, minute=0, second=0, microsecond=0)
+    deals = mt5.history_deals_get(start.timestamp(), instant.timestamp())
+    positions, orders = mt5.positions_get(), mt5.orders_get()
+    if deals is None or positions is None or orders is None:
+        raise RuntimeError("Daily risk is unavailable: MT5 history, positions or pending orders could not be read.")
+    def cash(deal: Any) -> float:
+        value = sum(float(getattr(deal, field, 0)) for field in ("profit", "commission", "swap", "fee"))
+        if not math.isfinite(value):
+            raise RuntimeError("Daily risk is unavailable: invalid deal values.")
+        return value
+    realized = sum(cash(deal) for deal in deals if deal.magic == MAGIC_NUMBER)
+    bots = [position for position in positions if position.magic == MAGIC_NUMBER]
+    def position_loss(position: Any) -> float:
+        value = float(position.profit) + float(position.swap)
+        if not math.isfinite(value):
+            raise RuntimeError("Daily risk is unavailable: invalid floating loss.")
+        return max(0.0, -value)
+    floating_loss = sum(position_loss(position) for position in bots)
+    try:
+        saved = json.loads(DAILY_RISK_FILE.read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        saved = {}
+    key = json.dumps([*account_identity(account), start.date().isoformat()])
+    row = saved.get(key)
+    changed = row is None
+    if row is None:
+        opening_balance = float(account.balance) - sum(cash(deal) for deal in deals)
+        # A newly funded account has no positive midnight balance; use its funded balance before trading P/L.
+        if opening_balance <= 0:
+            opening_balance = float(account.balance) - sum(cash(deal) for deal in deals
+                if deal.type in (mt5.DEAL_TYPE_BUY, mt5.DEAL_TYPE_SELL))
+        row = {"startingBalance": opening_balance, "blockedLimitPercent": 0.0}
+    base = float(row["startingBalance"])
+    if not math.isfinite(base) or base <= 0:
+        raise RuntimeError("Daily risk is unavailable: a positive daily starting balance is required.")
+    limit_percent = float(config.get("maximumDailyLossPercent", 2))
+    if not math.isfinite(limit_percent) or not math.isfinite(float(row["blockedLimitPercent"])):
+        raise RuntimeError("Daily risk is unavailable: invalid daily limit.")
+    limit_percent = min(5.0, max(0.1, limit_percent))
+    limit_money = base * limit_percent / 100
+    realized_loss = max(0.0, -realized)
+    used_money = realized_loss + floating_loss
+    if used_money >= limit_money - 1e-8 and float(row["blockedLimitPercent"]) < limit_percent:
+        row["blockedLimitPercent"] = limit_percent
+        changed = True
+    blocked = float(row["blockedLimitPercent"]) >= limit_percent
+    reserved = 0.0
+    unbounded = False
+    for item in [*bots, *(order for order in orders if order.magic == MAGIC_NUMBER)]:
+        if float(item.sl) <= 0:
+            unbounded = True
+            continue
+        buy = item.type in (mt5.ORDER_TYPE_BUY, mt5.ORDER_TYPE_BUY_LIMIT, mt5.ORDER_TYPE_BUY_STOP, mt5.ORDER_TYPE_BUY_STOP_LIMIT)
+        volume = float(item.volume if hasattr(item, "volume") else item.volume_current)
+        profit_at_sl = mt5.order_calc_profit(mt5.ORDER_TYPE_BUY if buy else mt5.ORDER_TYPE_SELL,
+            item.symbol, volume, float(item.price_open), float(item.sl))
+        if profit_at_sl is None or not math.isfinite(float(profit_at_sl)):
+            raise RuntimeError("Daily risk is unavailable: unable to calculate existing SL risk.")
+        floating = position_loss(item) if hasattr(item, "profit") else 0.0
+        loss_at_sl = max(0.0, -float(profit_at_sl) - float(getattr(item, "swap", 0)))
+        reserved += max(0.0, loss_at_sl - floating)
+    assert_execution_account()
+    if changed:
+        saved[key] = row
+        temporary = DAILY_RISK_FILE.with_name(f".{DAILY_RISK_FILE.stem}.{os.getpid()}.tmp")
+        temporary.write_text(json.dumps(saved, indent=2), encoding="utf-8")
+        temporary.replace(DAILY_RISK_FILE)
+    remaining = max(0.0, limit_money - used_money)
+    available = 0.0 if blocked or unbounded else max(0.0, remaining - reserved)
+    return {"available": True, "date": start.date().isoformat(), "startingBalance": base,
+        "limitPercent": limit_percent, "limitMoney": limit_money,
+        "realizedLossMoney": realized_loss, "floatingLossMoney": floating_loss,
+        "usedMoney": used_money, "usedPercent": used_money / base * 100,
+        "remainingMoney": remaining, "remainingPercent": remaining / base * 100,
+        "reservedRiskMoney": reserved, "availableRiskMoney": available,
+        "availableRiskPercent": available / base * 100, "limitReached": blocked, "riskUnbounded": unbounded}
+
+
+def check_daily_trade_budget(request: dict[str, Any], config: dict[str, Any]) -> None:
+    daily = daily_risk_snapshot(config)
+    if daily["limitReached"]:
+        raise RuntimeError("Daily loss limit reached; new automated trades are blocked for today.")
+    if daily["riskUnbounded"]:
+        raise RuntimeError("Cannot allocate daily risk while an automated position or pending order has no SL.")
+    buy = request["type"] in (mt5.ORDER_TYPE_BUY, mt5.ORDER_TYPE_BUY_LIMIT)
+    pnl = mt5.order_calc_profit(mt5.ORDER_TYPE_BUY if buy else mt5.ORDER_TYPE_SELL,
+        request["symbol"], request["volume"], request["price"], request["sl"])
+    if pnl is None or not math.isfinite(float(pnl)):
+        raise RuntimeError("Unable to calculate the new trade's daily SL risk.")
+    if max(0.0, -float(pnl)) > daily["availableRiskMoney"] + 1e-8:
+        raise RuntimeError("New trade's SL risk exceeds today's remaining daily risk allowance.")
 
 
 def check_safety(signal: dict[str, Any], config: dict[str, Any]) -> tuple[Any, Any]:
@@ -449,8 +544,8 @@ def check_safety(signal: dict[str, Any], config: dict[str, Any]) -> tuple[Any, A
     orders = [order for order in (mt5.orders_get() or []) if order.magic == MAGIC_NUMBER]
     if len(positions) + len(orders) >= int(config["maximumOpenTrades"]):
         raise RuntimeError("Maximum number of automated open trades has been reached.")
-    if today_realized_loss_percent() >= float(config["maximumDailyLossPercent"]):
-        raise RuntimeError("Maximum automated daily loss has been reached.")
+    if daily_risk_snapshot(config)["limitReached"]:
+        raise RuntimeError("Daily loss limit reached; new automated trades are blocked for today.")
     entry, sl, tp = map(float, (signal["entry"], signal["stopLoss"], signal["takeProfit"]))
     if signal["direction"] == "BUY" and not sl < entry < tp:
         raise RuntimeError("Invalid BUY entry/SL/TP order.")
@@ -459,7 +554,7 @@ def check_safety(signal: dict[str, Any], config: dict[str, Any]) -> tuple[Any, A
     return info, tick
 
 
-def send_with_filling_fallback(request: dict[str, Any]) -> Any:
+def send_with_filling_fallback(request: dict[str, Any], risk_config: dict[str, Any] | None = None) -> Any:
     result = None
     successful_send_codes = (mt5.TRADE_RETCODE_DONE, mt5.TRADE_RETCODE_DONE_PARTIAL)
     for filling in (mt5.ORDER_FILLING_IOC, mt5.ORDER_FILLING_FOK, mt5.ORDER_FILLING_RETURN):
@@ -469,6 +564,8 @@ def send_with_filling_fallback(request: dict[str, Any]) -> Any:
         if checked is None or checked.retcode not in (0, mt5.TRADE_RETCODE_DONE):
             continue
         assert_execution_account()
+        if risk_config is not None:
+            check_daily_trade_budget(request, risk_config)
         result = mt5.order_send(candidate)
         if result and result.retcode in successful_send_codes:
             return result
@@ -516,7 +613,7 @@ def place_signal(signal: dict[str, Any], config: dict[str, Any]) -> dict[str, An
         "comment": f"KB-{tag}",
         "type_time": mt5.ORDER_TIME_GTC,
     }
-    result = send_with_filling_fallback(request)
+    result = send_with_filling_fallback(request, risk_config=config)
     status = "PLACED" if is_limit else "ACTIVE"
     execution_price = float(result.price or price)
     initial_stop_loss = float(signal["stopLoss"])

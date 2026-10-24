@@ -15,6 +15,10 @@ import {
   isTradeStyleEnabled,
   normalizeMt5EnabledTimeframes,
   normalizeMt5RiskPercent,
+  normalizeMt5DailyLossPercent,
+  sanitizeMt5DailyRisk,
+  mt5DailyRiskAllowsEntry,
+  type Mt5DailyRisk,
   isExecutableTrade,
   mt5ClosedReturnR,
   findEarlierZoneEntry,
@@ -130,6 +134,7 @@ interface Mt5BridgeHeartbeat {
   terminalConnected?: boolean;
   symbolResolved?: boolean;
   symbolCandidates?: string[];
+  dailyRisk?: Mt5DailyRisk;
   positions?: Mt5LivePosition[];
   message?: string;
   lastHeartbeatAt: number;
@@ -268,6 +273,7 @@ async function readMt5Config(): Promise<Mt5AutomationConfig> {
         DEFAULT_MT5_CONFIG.enabledTimeframes,
       ),
       riskPercent: normalizeMt5RiskPercent(parsed?.riskPercent, DEFAULT_MT5_CONFIG.riskPercent),
+      maximumDailyLossPercent: normalizeMt5DailyLossPercent(parsed?.maximumDailyLossPercent, DEFAULT_MT5_CONFIG.maximumDailyLossPercent),
     };
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === 'ENOENT') return DEFAULT_MT5_CONFIG;
@@ -395,7 +401,7 @@ function sanitizeMt5Config(candidate: any, current: Mt5AutomationConfig): Mt5Aut
     ),
     riskPercent: normalizeMt5RiskPercent(candidate?.riskPercent, current.riskPercent),
     maximumOpenTrades: Math.round(clamp(candidate?.maximumOpenTrades, current.maximumOpenTrades, 1, 10)),
-    maximumDailyLossPercent: clamp(candidate?.maximumDailyLossPercent, current.maximumDailyLossPercent, 0.1, 10),
+    maximumDailyLossPercent: normalizeMt5DailyLossPercent(candidate?.maximumDailyLossPercent, current.maximumDailyLossPercent),
     maximumSpreadPoints: Math.round(clamp(candidate?.maximumSpreadPoints, current.maximumSpreadPoints, 1, 1000)),
     signalMaxAgeSeconds: Math.round(clamp(candidate?.signalMaxAgeSeconds, current.signalMaxAgeSeconds, 15, 3600)),
     pendingExpiryMinutes: Math.round(clamp(candidate?.pendingExpiryMinutes, current.pendingExpiryMinutes, 1, 1440)),
@@ -425,6 +431,9 @@ async function enqueueMt5Signal(
   return serializeMt5Mutation(async () => {
     if (!mt5ExecutionFeedIsFresh() || !mt5ConnectionMatches(executionConnection, mt5BridgeHeartbeat ?? {})) {
       throw new Error('MT5 connection changed while preparing the signal.');
+    }
+    if (!mt5DailyRiskAllowsEntry(mt5BridgeHeartbeat?.dailyRisk)) {
+      throw new Error('Daily risk allowance is exhausted or unavailable; new automated trades are paused.');
     }
     const signals = await readMt5Signals();
     // A zone is single-use across entry routes, including after a full SL.
@@ -619,6 +628,7 @@ async function scanMt5AutomationSignals(): Promise<number> {
     return 0;
   }
   if (!mt5ExecutionFeedIsFresh()) return 0;
+  if (!mt5DailyRiskAllowsEntry(mt5BridgeHeartbeat?.dailyRisk)) return 0;
   if (AUTOMATION_TIMEFRAMES.some((timeframe) => !automationCandleCache[timeframe]?.length)) return 0;
   const scanVersion = mt5MarketDataVersion;
   const scanConnection = mt5BridgeHeartbeat ? { ...mt5BridgeHeartbeat } : undefined;
@@ -1504,6 +1514,7 @@ async function startServer() {
       symbolResolved: req.body?.symbolResolved === true,
       symbolCandidates: Array.isArray(req.body?.symbolCandidates)
         ? req.body.symbolCandidates.filter((value: unknown) => typeof value === 'string' && value.length <= 30).slice(0, 100) : [],
+      dailyRisk: sanitizeMt5DailyRisk(req.body?.dailyRisk),
       positions,
       message: String(req.body?.message ?? '').slice(0, 300) || undefined,
       lastHeartbeatAt: Date.now(),
@@ -1588,10 +1599,12 @@ async function startServer() {
         return res.json({ ok: true, signal: null, config });
       }
       if (!mt5ExecutionFeedIsFresh()) return res.json({ ok: true, signal: null, config });
+      if (!mt5DailyRiskAllowsEntry(mt5BridgeHeartbeat?.dailyRisk)) return res.json({ ok: true, signal: null, config });
       const now = Math.floor(Date.now() / 1000);
       const signal = await serializeMt5Mutation(async () => {
         const signals = await readMt5Signals();
-        if (!mt5ConnectionMatches(mt5BridgeHeartbeat, req.body) || !mt5ExecutionFeedIsFresh()) return null;
+        if (!mt5ConnectionMatches(mt5BridgeHeartbeat, req.body) || !mt5ExecutionFeedIsFresh()
+          || !mt5DailyRiskAllowsEntry(mt5BridgeHeartbeat?.dailyRisk)) return null;
         for (const item of signals) {
           if (item.status === 'CLAIMED' && item.claimedAt && item.claimedAt < now - 30) {
             item.status = 'QUEUED';
