@@ -4,6 +4,7 @@ export interface TelegramTradeNumber {
 }
 
 export interface SentTelegramTradeState extends Partial<TelegramTradeNumber> {
+  summarySent?: boolean;
   pending?: boolean;
   cancelled?: boolean;
   entry?: boolean;
@@ -12,6 +13,35 @@ export interface SentTelegramTradeState extends Partial<TelegramTradeNumber> {
 }
 
 export type SentTelegramAlerts = Record<string, SentTelegramTradeState>;
+
+/** Signal identity stays fixed when the broker fills at a different price. */
+export function telegramSignalKey(id: string): string {
+  return id.replace(/^([A-Z0-9]{3,12}:(?:bullish|bearish):(?:M1|M5|M15|M30|H1|H4|D):\d+):\d+(?:\.\d+)?$/, '$1');
+}
+
+export function bindTelegramAlertAliases(sent: SentTelegramAlerts, id: string, tradeKey = id): string[] {
+  const key = telegramSignalKey(tradeKey);
+  const aliases = [...new Set([key, tradeKey, id, ...Object.keys(sent).filter(candidate => (
+    telegramSignalKey(candidate) === key
+  ))])];
+  const states = aliases.map(alias => Object.hasOwn(sent, alias) ? sent[alias] : undefined)
+    .filter((state): state is SentTelegramTradeState => state !== undefined);
+  const numbered = states.filter(hasTradeNumber).sort((a, b) => (
+    a.tradeDate.localeCompare(b.tradeDate) || a.tradeNumber - b.tradeNumber
+  ))[0];
+  const merged: SentTelegramTradeState = {
+    ...numbered,
+    pending: states.some(state => state.pending),
+    cancelled: states.some(state => state.cancelled),
+    entry: states.some(state => state.entry),
+    rf: states.some(state => state.rf),
+    result: states.find(state => state.result)?.result,
+  };
+  for (const alias of aliases) Object.defineProperty(sent, alias, {
+    value: merged, enumerable: true, configurable: true, writable: true,
+  });
+  return aliases;
+}
 
 export function nepalTradeDate(nowSeconds: number): string {
   return new Date((nowSeconds + 5 * 3600 + 45 * 60) * 1000).toISOString().slice(0, 10);

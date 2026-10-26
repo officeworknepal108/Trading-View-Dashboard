@@ -6,9 +6,11 @@ import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
 import { createServer as createViteServer } from 'vite';
 import { fetchTradingViewCandles } from './src/services/tradingViewDatafeed';
 import {
-  reserveTelegramTradeNumber, telegramTradeNumberLabel,
+  reserveTelegramTradeNumber, bindTelegramAlertAliases, telegramSignalKey,
   type SentTelegramAlerts, type TelegramTradeNumber,
 } from './src/services/telegramTradeNumbers';
+import { formatTelegramTradeMessage, countDailyTrades, formatDailyTradeSummary, previousNepalDay,
+  telegramDemoMessages, type TelegramTradeAlert } from './src/services/telegramMessages';
 import {
   MT5_DEFAULT_ENABLED_TIMEFRAMES,
   applySignalOppositePositionTarget,
@@ -21,8 +23,10 @@ import {
   normalizeMt5RiskPercent,
   normalizeMt5DailyLossPercent,
   sanitizeMt5DailyRisk,
+  sanitizeMt5OverallProfit,
   mt5DailyRiskAllowsEntry,
   type Mt5DailyRisk,
+  type Mt5OverallProfit,
   isExecutableTrade,
   mt5ClosedReturnR,
   findEarlierZoneEntry,
@@ -139,6 +143,7 @@ interface Mt5BridgeHeartbeat {
   symbolResolved?: boolean;
   symbolCandidates?: string[];
   dailyRisk?: Mt5DailyRisk;
+  overallProfit?: Mt5OverallProfit;
   positions?: Mt5LivePosition[];
   message?: string;
   lastHeartbeatAt: number;
@@ -879,6 +884,7 @@ async function scanMt5AutomationSignals(): Promise<number> {
     baseSignal.zoneId = row.higherTimeframeZoneId;
     const fibBand = row.engulfingFibBand;
     baseSignal.journalContext = {
+      mtfContext: row,
       biasAtEntry: journalBiasAt(candles, signalClose),
       autoReason: buildJournalAutoReason({
         direction: baseSignal.direction,
@@ -1061,6 +1067,7 @@ async function updateMt5JournalRecord(
       realizedProfit: signal.realizedProfit,
       biasAtEntry,
       autoReason: context?.autoReason,
+      mtfContext: context?.mtfContext,
       fibSource: context?.fibSource,
       fibBand: context?.fibBand,
       fibLevels: context?.fibLevels,
@@ -1080,33 +1087,6 @@ async function updateMt5JournalRecord(
   });
 }
 
-interface TelegramTradeAlert {
-  id: string;
-  tradeKey?: string;
-  kind: 'pending' | 'cancelled' | 'entry' | 'rf' | 'tp' | 'sl';
-  outsideTradingTime?: boolean;
-  symbol: string;
-  direction: 'BUY' | 'SELL';
-  zoneName: string;
-  zoneTimeframe: TradeTimeframe;
-  signalTimeframe: TradeTimeframe;
-  engulfingType: string;
-  entry: number;
-  stopLoss: number;
-  takeProfit: number;
-  riskPips: number;
-  rewardRisk: number;
-  tradeStyle?: 'SCALPING' | 'INTRADAY';
-  riskFree?: number;
-  openedAt: number;
-  rfAt?: number;
-  partialClosedVolume?: number;
-  remainingVolume?: number;
-  closedAt?: number;
-  exitPrice?: number;
-  returnR?: number;
-}
-
 function validTelegramTradeAlert(value: any): value is TelegramTradeAlert {
   const timeframes = new Set(AUTOMATION_TIMEFRAMES);
   const now = Math.floor(Date.now() / 1000);
@@ -1118,6 +1098,9 @@ function validTelegramTradeAlert(value: any): value is TelegramTradeAlert {
     && typeof value.symbol === 'string' && /^[A-Z0-9]{3,12}$/.test(value.symbol)
     && ['BUY', 'SELL'].includes(value.direction)
     && typeof value.zoneName === 'string' && value.zoneName.length > 0 && value.zoneName.length <= 100
+    && (value.source === undefined || ['MTF', 'ENGULFING'].includes(value.source))
+    && [value.higherZoneName, value.entryZoneName].every(name => name === undefined
+      || typeof name === 'string' && name.length > 0 && name.length <= 100)
     && timeframes.has(value.zoneTimeframe) && timeframes.has(value.signalTimeframe)
     && typeof value.engulfingType === 'string' && value.engulfingType.length <= 20
     && [value.entry, value.stopLoss, value.takeProfit, value.riskPips, value.rewardRisk, value.openedAt]
@@ -1144,91 +1127,31 @@ function validTelegramTradeAlert(value: any): value is TelegramTradeAlert {
         && Math.abs(value.returnR) <= 100);
 }
 
-function telegramAlertTime(seconds: number): string {
-  return `${new Intl.DateTimeFormat('en-GB', {
-    timeZone: 'Asia/Kathmandu', day: 'numeric', month: 'short', year: 'numeric',
-    hour: 'numeric', minute: '2-digit', hour12: true,
-  }).format(seconds * 1000)} Nepal time`;
-}
-
-function telegramAlertPrice(price: number): string {
-  return price.toFixed(Math.abs(price) < 10 ? 5 : 3);
-}
-
-function telegramAlertText(alert: TelegramTradeAlert): string {
-  const title = `${alert.symbol} ${alert.direction}`;
-  const setup = `${alert.zoneTimeframe} ${alert.zoneName}`;
-  const confirmation = `${alert.signalTimeframe} ${alert.direction === 'BUY' ? 'bullish' : 'bearish'} engulfing ${alert.engulfingType}`;
-  if (alert.kind === 'pending') {
-    return [
-      `PENDING LIMIT ORDER PLACED — ${title}`,
-      `Time: ${telegramAlertTime(alert.openedAt)}`,
-      `Setup: ${setup}`,
-      `Confirmation: ${confirmation}`,
-      `Limit entry: ${telegramAlertPrice(alert.entry)}`,
-      `Stop loss: ${telegramAlertPrice(alert.stopLoss)} (${alert.riskPips} pips)`,
-      `Take profit: ${telegramAlertPrice(alert.takeProfit)}`,
-      'This order has not filled yet.',
-    ].join('\n');
-  }
-  if (alert.kind === 'cancelled') {
-    const risk = Math.abs(alert.entry - alert.stopLoss);
-    const oneAndHalfR = alert.entry + (alert.direction === 'BUY' ? 1.5 : -1.5) * risk;
-    return [
-      `PENDING ORDER CANCELLED — ${title}`,
-      `Time: ${telegramAlertTime(alert.closedAt!)}`,
-      `Setup: ${setup}`,
-      `Limit entry: ${telegramAlertPrice(alert.entry)}`,
-      `1.5R level: ${telegramAlertPrice(oneAndHalfR)}`,
-      'Price moved beyond 1.5R before entry. MT5 removed the unfilled order.',
-    ].join('\n');
-  }
-  if (alert.kind === 'entry') {
-    return [
-      `${alert.direction === 'BUY' ? '🟢' : '🔴'} ${alert.tradeStyle ? `${alert.tradeStyle} ` : ''}NEW ENTRY — ${title}`,
-      ...(alert.outsideTradingTime ? ['OUTSIDE TRADING TIME'] : []),
-      `Time: ${telegramAlertTime(alert.openedAt)}`,
-      `Setup: ${setup}`,
-      `Confirmation: ${confirmation}`,
-      `Entry: ${telegramAlertPrice(alert.entry)}`,
-      `Stop loss: ${telegramAlertPrice(alert.stopLoss)} (${alert.riskPips} pips)`,
-      ...(alert.tradeStyle === 'SCALPING' ? [`RF point: ${telegramAlertPrice(alert.riskFree!)} (1R)`] : []),
-      `Take profit: ${telegramAlertPrice(alert.takeProfit)}`,
-      `Risk to reward: 1:${alert.rewardRisk}`,
-    ].join('\n');
-  }
-  if (alert.kind === 'rf') {
-    return [
-      `RF HIT (SCALPING) — ${title}`,
-      `Time: ${telegramAlertTime(alert.rfAt!)}`,
-      `Confirmation: ${confirmation}`,
-      `Setup: ${setup}`,
-      `Entry: ${telegramAlertPrice(alert.entry)}`,
-      `1R reached at ${telegramAlertPrice(alert.riskFree!)}`,
-      '50% of the lot closed.',
-      'Remaining 50% keeps the original SL and TP.',
-    ].join('\n');
-  }
-  const direction = alert.direction === 'BUY' ? 1 : -1;
-  const pipChange = (alert.exitPrice! - alert.entry) * direction
-    / Math.abs(alert.entry - alert.stopLoss) * alert.riskPips;
-  const pips = Math.round(pipChange * 10) / 10;
-  return [
-    `${alert.kind === 'tp' ? '✅' : '🛑'} ${alert.tradeStyle ? `${alert.tradeStyle} ` : ''}${alert.kind === 'tp' ? 'TP HIT' : 'SL HIT'} — ${title}`,
-    `Setup: ${setup}`,
-    `Confirmation: ${confirmation}`,
-    `Result: ${pips > 0 ? '+' : ''}${pips} pips (${alert.returnR}R)`,
-  ].join('\n');
-}
-
 async function sendTelegramTradeAlert(alert: TelegramTradeAlert, number: TelegramTradeNumber): Promise<void> {
+  const timestamp = Number(telegramSignalKey(alert.tradeKey ?? alert.id).split(':')[3]);
+  const signal = Number.isFinite(timestamp) ? (await readMt5Signals()).find(candidate => (
+    candidate.symbol === alert.symbol && candidate.signalAt === timestamp
+    && candidate.signalTimeframe === alert.signalTimeframe && candidate.direction === alert.direction
+  )) : undefined;
+  const context = signal?.journalContext?.mtfContext;
+  const message = formatTelegramTradeMessage({ ...alert,
+    source: alert.source ?? signal?.source,
+    higherZoneName: alert.higherZoneName ?? context?.higherTimeframeZone
+      ?? (signal?.source === 'MTF' ? signal.zoneId?.match(/^(.+)-\d{9,}-.+$/)?.[1] : signal?.zoneName),
+    entryZoneName: alert.entryZoneName ?? context?.entryZone?.name
+      ?? (signal?.source === 'MTF' ? signal.zoneName : undefined),
+  }, number);
+  await sendTelegramText(message);
+}
+
+async function sendTelegramText(message: string): Promise<void> {
   const token = process.env.TELEGRAM_BOT_TOKEN?.trim();
   const chatId = process.env.TELEGRAM_CHAT_ID?.trim();
   if (!token || !chatId) throw new Error('Telegram bot token and chat ID are not configured.');
   const response = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ chat_id: chatId, text: `${telegramTradeNumberLabel(number)}\n${telegramAlertText(alert)}` }),
+    body: JSON.stringify({ chat_id: chatId, text: message }),
     signal: AbortSignal.timeout(10_000),
   });
   if (!response.ok) throw new Error(`Telegram rejected the alert (${response.status}).`);
@@ -1261,7 +1184,8 @@ async function deliverTelegramAlerts(
         acknowledged.push(`${alert.id}:${alert.kind}`);
         continue;
       }
-      const state = sent[alert.id] ?? {};
+      const aliases = bindTelegramAlertAliases(sent, alert.id, alert.tradeKey);
+      const state = sent[alert.id];
       if (alert.kind === 'pending' ? state.pending
         : alert.kind === 'cancelled' ? state.cancelled
         : alert.kind === 'rf' ? state.rf
@@ -1274,7 +1198,7 @@ async function deliverTelegramAlerts(
         acknowledged.push(`${alert.id}:${alert.kind}`);
         continue;
       }
-      const number = reserveTelegramTradeNumber(sent, alert.id, alert.tradeKey);
+      const number = reserveTelegramTradeNumber(sent, alert.id, aliases[0]);
       if (number.changed) await saveSent();
       await sendTelegramTradeAlert(alert, number);
       const numberedState = sent[alert.id];
@@ -1282,10 +1206,38 @@ async function deliverTelegramAlerts(
         : alert.kind === 'cancelled' ? { ...numberedState, cancelled: true }
         : alert.kind === 'rf' ? { ...numberedState, rf: true }
         : alert.kind === 'entry' ? { ...numberedState, entry: true } : { ...numberedState, result: alert.kind };
+      for (const alias of aliases) sent[alias] = sent[alert.id];
       await saveSent();
       acknowledged.push(`${alert.id}:${alert.kind}`);
     }
     return acknowledged;
+  });
+  telegramAlertQueue = task.then(() => undefined, () => undefined);
+  return task;
+}
+
+async function deliverDailyTelegramSummary(): Promise<void> {
+  const task = telegramAlertQueue.then(async () => {
+    const connection = mt5BridgeHeartbeat;
+    const now = Date.now() / 1000;
+    if (!connection?.account || !connection.server || connection.terminalConnected === false
+      || Date.now() - connection.lastHeartbeatAt > 15_000) return;
+    const day = previousNepalDay(now);
+    // Allow the bridge to synchronize trades closed in the final seconds of the day.
+    if (now < day.end + 60 || !(await readMt5Config()).telegramMessagesEnabled) return;
+    let sent: SentTelegramAlerts = {};
+    try { sent = JSON.parse(await readFile(TELEGRAM_ALERTS_FILE, 'utf8')); }
+    catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error; }
+    const key = `DAILY:${connection.account}:${connection.server}:${day.date}`;
+    if (sent[key]?.summarySent) return;
+    const counts = countDailyTrades(await readMt5Signals(), connection.account, connection.server, now);
+    if (mt5BridgeHeartbeat?.account !== connection.account || mt5BridgeHeartbeat?.server !== connection.server) return;
+    await sendTelegramText(formatDailyTradeSummary(counts));
+    sent[key] = { summarySent: true };
+    await mkdir(path.dirname(TELEGRAM_ALERTS_FILE), { recursive: true });
+    const temporary = `${TELEGRAM_ALERTS_FILE}.${process.pid}.tmp`;
+    await writeFile(temporary, `${JSON.stringify(sent, null, 2)}\n`, 'utf8');
+    await rename(temporary, TELEGRAM_ALERTS_FILE);
   });
   telegramAlertQueue = task.then(() => undefined, () => undefined);
   return task;
@@ -1528,6 +1480,7 @@ async function startServer() {
       symbolCandidates: Array.isArray(req.body?.symbolCandidates)
         ? req.body.symbolCandidates.filter((value: unknown) => typeof value === 'string' && value.length <= 30).slice(0, 100) : [],
       dailyRisk: sanitizeMt5DailyRisk(req.body?.dailyRisk),
+      overallProfit: sanitizeMt5OverallProfit(req.body?.overallProfit),
       positions,
       message: String(req.body?.message ?? '').slice(0, 300) || undefined,
       lastHeartbeatAt: Date.now(),
@@ -1568,6 +1521,7 @@ async function startServer() {
             brokerSymbolAccount: connection.account, brokerSymbolServer: connection.server });
         }
       });
+      void deliverDailyTelegramSummary().catch(error => console.error('Daily Telegram summary failed:', error));
       return res.json({ ok: true, serverTime: Date.now() });
     } catch (error) {
       return res.status(500).json({ ok: false, error: error instanceof Error ? error.message : 'Unable to synchronize MT5 connection.' });
@@ -1736,6 +1690,11 @@ async function startServer() {
               : confirmedRf ? 'rf' : status === 'PLACED' ? 'pending'
                 : status === 'TP' ? 'tp' : status === 'SL' || status === 'RF' ? 'sl' : 'entry',
             symbol: updated.symbol,
+            source: updated.source,
+            higherZoneName: updated.journalContext?.mtfContext?.higherTimeframeZone
+              ?? (updated.source === 'MTF' ? updated.zoneId?.match(/^(.+)-\d{9,}-.+$/)?.[1] : updated.zoneName),
+            entryZoneName: updated.source === 'MTF'
+              ? updated.journalContext?.mtfContext?.entryZone?.name ?? updated.zoneName : undefined,
             direction: updated.direction,
             zoneName: updated.zoneName,
             zoneTimeframe: updated.zoneTimeframe,
@@ -1820,6 +1779,23 @@ async function startServer() {
         ok: false,
         error: error instanceof Error ? error.message : 'Unable to save the trade journal.',
       });
+    }
+  });
+
+  app.post('/api/telegram/demo', async (req, res) => {
+    if (!isLoopbackRequest(req)) return res.status(403).json({ ok: false, error: 'Demos are local-only.' });
+    if (req.body?.confirmDemo !== true) return res.status(400).json({ ok: false, error: 'Confirm demo messages explicitly.' });
+    let sent = 0;
+    try {
+      const messages = telegramDemoMessages();
+      for (let index = 0; index < messages.length; index++) {
+        if (index > 0) await new Promise(resolve => setTimeout(resolve, 1_100));
+        await sendTelegramText(messages[index]);
+        sent++;
+      }
+      return res.json({ ok: true, sent: messages.length });
+    } catch (error) {
+      return res.status(502).json({ ok: false, sent, error: error instanceof Error ? error.message : 'Demo delivery failed.' });
     }
   });
 

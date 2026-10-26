@@ -1,12 +1,28 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
-  nepalTradeDate, reserveTelegramTradeNumber, telegramTradeNumberLabel,
+  nepalTradeDate, reserveTelegramTradeNumber, telegramTradeNumberLabel, bindTelegramAlertAliases,
   type SentTelegramAlerts,
 } from '../src/services/telegramTradeNumbers';
 
 const beforeMidnight = Date.parse('2026-10-26T18:14:59Z') / 1000;
 const afterMidnight = beforeMidnight + 1;
+
+test('legacy price aliases share sent flags and preserve the first assigned number', () => {
+  const prefix = 'XAUUSD:bearish:M1:1793034120';
+  const sent: SentTelegramAlerts = {
+    [`${prefix}:4021.54000`]: { tradeNumber: 1, tradeDate: '2026-10-26', entry: true },
+    [`${prefix}:4021.48000`]: { tradeNumber: 2, tradeDate: '2026-10-26', result: 'sl' },
+  };
+  const aliases = bindTelegramAlertAliases(sent, `${prefix}:4021.49000`);
+  assert.equal(aliases[0], prefix);
+  assert.equal(sent[prefix].tradeNumber, 1);
+  assert.equal(sent[prefix].entry, true);
+  assert.equal(sent[prefix].result, 'sl');
+  assert.equal(sent[`${prefix}:4021.49000`], sent[prefix]);
+  bindTelegramAlertAliases(sent, `${prefix.replace('1793034120', '1793034180')}:4021.49000`);
+  assert.equal(sent[prefix.replace('1793034120', '1793034180')].entry, false, 'different signals stay independent');
+});
 
 test('all trade styles, routes and symbols share one daily sequence', () => {
   const sent: SentTelegramAlerts = {};

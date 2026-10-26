@@ -70,6 +70,9 @@ test('Gold H1/M1 CHOCH route needs lower-timeframe Fib on a 50 pip zone', () => 
   assert.equal(row?.lowerTimeframe, 'M1');
   assert.equal(row?.engulfingType, 'T1');
   assert.equal(row?.engulfingDeepDiscount, false);
+  const savedContext = JSON.parse(JSON.stringify(row));
+  assert.deepEqual(savedContext.higherZone, higherZone);
+  assert.deepEqual(savedContext.entryZone, qml, 'drawing must use the actual engulfing entry zone');
   const withoutLowerFibData = {
     ...data,
     M1: { ...data.M1!, structure: structure([
@@ -78,6 +81,7 @@ test('Gold H1/M1 CHOCH route needs lower-timeframe Fib on a 50 pip zone', () => 
   };
   const withoutLowerFib = buildGoldScalpingMtfRows(withoutLowerFibData, true)[0];
   assert.equal(withoutLowerFib?.engulfingType, undefined);
+  assert.equal(withoutLowerFib?.entryZone, undefined, 'no entry zone may be invented for an unconfirmed setup');
   assert.equal(buildGoldScalpingMtfRows(withoutLowerFibData)[0]?.engulfingType, 'T1',
     'Fib is optional by default while midpoint and scalp engulfing rules still apply');
   const longUpperWick = buildGoldScalpingMtfRows({

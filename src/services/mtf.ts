@@ -25,6 +25,8 @@ export interface MtfTimeframeData {
 }
 
 export interface MtfRow {
+  higherZone?: StructureZone;
+  entryZone?: StructureZone;
   id: string;
   higherTimeframe: MtfGranularity;
   lowerTimeframe: MtfGranularity;
@@ -462,6 +464,8 @@ function eventToRow(
       ? 0
       : higherCandles.length - 1 - higherTimeframeTapIndex,
     tappedZone: tappedZone?.name,
+    higherZone: higherTimeframeTouch.zone,
+    entryZone: entry?.zone,
     tapTime: tappedZone?.tapTime,
     tapBarsAgo: tappedZone?.lastTapBarsAgo ?? tappedZone?.tapBarsAgo,
     engulfingType: engulfing?.type,
@@ -596,7 +600,7 @@ export function getSavedMtfEntryQualification(
     goldIntraday?: boolean;
     requireLtfFib?: boolean;
   },
-): { fibBand?: '0.5-0.618' | '0.71-0.79' } | undefined {
+): { fibBand?: '0.5-0.618' | '0.71-0.79'; context?: MtfRow } | undefined {
   const parts = entry.id.split(':');
   if (parts.length < 4 || parts[0] !== 'MTF' || Number(parts[2]) !== entry.signalTime) {
     return undefined;
@@ -646,7 +650,17 @@ export function getSavedMtfEntryQualification(
       lower.candles, event, zone, entry.goldScalping, entry.requireLtfFib,
     );
     if (engulfing?.time === entry.signalTime && engulfing.type === entry.engulfingType) {
-      return { fibBand: displayMtfFibBand(event, zone) };
+      return {
+        fibBand: displayMtfFibBand(event, zone),
+        context: {
+          ...eventToRow(mappings.find(mapping => mapping.higher === higherTimeframe
+            && mapping.lower === lowerTimeframe)!, event, lower.candles, higher.candles,
+          higherTouch, entry.goldScalping, entry.requireLtfFib,
+          entry.goldScalping || entry.goldIntraday, matched.chochSequence),
+          entryZone: zone, tappedZone: zone.name,
+          engulfingType: engulfing.type, engulfingTime: engulfing.time,
+        },
+      };
     }
   }
   return undefined;

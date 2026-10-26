@@ -39,6 +39,7 @@ ALLOW_LIVE_EXECUTION = os.getenv("MT5_ALLOW_LIVE_EXECUTION", "NO").upper() == "Y
 BRIDGE_ID = os.getenv("MT5_BRIDGE_ID", f"kalbairab-{uuid.getnode():x}")
 STATE_FILE = ROOT / ".mt5_bridge_state.json"
 DAILY_RISK_FILE = ROOT / ".mt5_daily_risk_state.json"
+OVERALL_PROFIT_CACHE: dict[str, Any] = {}
 CONNECTED_ACCOUNT = ""
 CONNECTED_SERVER = ""
 ACTIVE_ACCOUNT: tuple[str, str] | None = None
@@ -204,6 +205,10 @@ def heartbeat(config: dict[str, Any], message: str = "Bridge ready") -> dict[str
         daily_risk = daily_risk_snapshot(config) if connected else {"available": False, "error": "MT5 is disconnected."}
     except (RuntimeError, OSError, ValueError) as error:
         daily_risk = {"available": False, "error": str(error)}
+    try:
+        overall_profit = overall_profit_snapshot() if connected else {"available": False, "error": "MT5 is disconnected."}
+    except (RuntimeError, OSError, ValueError) as error:
+        overall_profit = {"available": False, "error": str(error)}
     return api("POST", "/api/mt5/heartbeat", json={
         "bridgeId": BRIDGE_ID,
         "processId": os.getpid(),
@@ -218,6 +223,7 @@ def heartbeat(config: dict[str, Any], message: str = "Bridge ready") -> dict[str
         "currency": str(account.currency) if account else None,
         "brokerSymbol": symbol,
         "dailyRisk": daily_risk,
+        "overallProfit": overall_profit,
         "positions": [{
             "ticket": int(position.ticket),
             "symbol": str(position.symbol),
@@ -409,6 +415,53 @@ def calculate_volume(signal: dict[str, Any], config: dict[str, Any], symbol_info
     if signal.get("tradeStyle") == "SCALPING":
         calculate_partial_close_volume(volume, volume, symbol_info)
     return volume
+
+
+def overall_profit_snapshot(now: datetime | None = None) -> dict[str, Any]:
+    """Read-only bot P/L across all available history of the connected account."""
+    assert_execution_account()
+    account = mt5.account_info()
+    if not account or not math.isfinite(float(account.balance)):
+        raise RuntimeError("Overall profit/loss is unavailable: unable to read account balance.")
+    key = (*account_identity(account), float(account.balance))
+    checked_at = time.monotonic()
+    if OVERALL_PROFIT_CACHE.get("key") != key or checked_at - OVERALL_PROFIT_CACHE.get("checkedAt", 0) >= 30:
+        instant = now or datetime.now(NEPAL_TIMEZONE)
+        # History contains executed deals only. Cover server-clock timestamps
+        # ahead of UTC, including before the first fresh tick reveals its offset.
+        deals = mt5.history_deals_get(0, instant.timestamp() + 24 * 60 * 60)
+        if deals is None:
+            raise RuntimeError("Overall profit/loss is unavailable: MT5 history could not be read.")
+        trade_types = (mt5.DEAL_TYPE_BUY, mt5.DEAL_TYPE_SELL)
+        bot_ids = {int(deal.position_id) for deal in deals
+                   if deal.magic == MAGIC_NUMBER and deal.type in trade_types and deal.position_id}
+        realized_by_position: dict[int, float] = {}
+        for deal in deals:
+            if deal.type not in trade_types or (deal.magic != MAGIC_NUMBER and deal.position_id not in bot_ids):
+                continue
+            amount = math.fsum(float(getattr(deal, field, 0)) for field in ("profit", "commission", "swap", "fee"))
+            if not math.isfinite(amount):
+                raise RuntimeError("Overall profit/loss is unavailable: invalid deal values.")
+            position_id = int(deal.position_id or deal.ticket)
+            realized_by_position[position_id] = realized_by_position.get(position_id, 0) + amount
+        profit = math.fsum(max(0, value) for value in realized_by_position.values())
+        loss = math.fsum(max(0, -value) for value in realized_by_position.values())
+        assert_execution_account()
+        OVERALL_PROFIT_CACHE.update(key=key, checkedAt=checked_at, botIds=bot_ids,
+                                    profit=profit, loss=loss)
+    positions = mt5.positions_get()
+    if positions is None:
+        raise RuntimeError("Overall profit/loss is unavailable: MT5 positions could not be read.")
+    floating = math.fsum(float(position.profit) + float(position.swap) for position in positions
+                        if position.magic == MAGIC_NUMBER
+                        or getattr(position, "identifier", position.ticket) in OVERALL_PROFIT_CACHE["botIds"])
+    if not math.isfinite(floating):
+        raise RuntimeError("Overall profit/loss is unavailable: invalid floating values.")
+    assert_execution_account()
+    profit, loss = OVERALL_PROFIT_CACHE["profit"], OVERALL_PROFIT_CACHE["loss"]
+    realized = profit - loss
+    return {"available": True, "realizedProfitMoney": profit, "realizedLossMoney": loss,
+            "netRealizedMoney": realized, "floatingMoney": floating, "netMoney": realized + floating}
 
 
 def daily_risk_snapshot(config: dict[str, Any], now: datetime | None = None) -> dict[str, Any]:

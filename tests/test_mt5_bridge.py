@@ -225,6 +225,84 @@ class TradingTimeDefaultTests(BridgeTestCase):
             send.assert_not_called()
 
 
+class OverallProfitTests(BridgeTestCase):
+    def setUp(self) -> None:
+        super().setUp()
+        self.account = SimpleNamespace(login=123, server="Broker", balance=5149.62)
+        self.deals, self.positions = [], []
+        self.now = datetime(2026, 10, 26, 23, 59, tzinfo=bridge.NEPAL_TIMEZONE)
+        cached = patch.object(bridge, "OVERALL_PROFIT_CACHE", {})
+        cached.start()
+        self.addCleanup(cached.stop)
+        for name, value in (("account_info", self.account), ("history_deals_get", self.deals), ("positions_get", self.positions)):
+            mocked = patch.object(bridge.mt5, name, return_value=value)
+            mocked.start()
+            self.addCleanup(mocked.stop)
+
+    def deal(self, position_id, profit, commission=0, magic=None, kind=None, swap=0, fee=0):
+        return SimpleNamespace(position_id=position_id, ticket=position_id + len(self.deals), profit=profit,
+            commission=commission, swap=swap, fee=fee,
+            magic=bridge.MAGIC_NUMBER if magic is None else magic,
+            type=bridge.mt5.DEAL_TYPE_SELL if kind is None else kind)
+
+    def test_all_history_counts_bot_net_results_and_costs_but_not_deposits_or_manual_trades(self) -> None:
+        self.deals.extend([self.deal(1, 0, commission=-0.10), self.deal(1, -12.25),
+                           self.deal(2, 25, commission=-1, swap=-0.5, fee=-0.5),
+                           self.deal(3, -1000, magic=0), self.deal(0, 5000, kind=bridge.mt5.DEAL_TYPE_BALANCE)])
+        result = bridge.overall_profit_snapshot(now=self.now)
+        self.assertAlmostEqual(result["realizedLossMoney"], 12.35)
+        self.assertAlmostEqual(result["realizedProfitMoney"], 23)
+        self.assertAlmostEqual(result["netMoney"], 10.65)
+        bridge.mt5.history_deals_get.assert_called_once_with(0, self.now.timestamp() + 86400)
+
+    def test_recent_loss_with_broker_server_timestamp_ahead_of_utc_is_included(self) -> None:
+        recent_loss = self.deal(1, -12.35)
+        broker_timestamp = self.now.timestamp() + 3 * 3600
+        with patch.object(bridge.mt5, "history_deals_get", side_effect=lambda start, end:
+                          [recent_loss] if end >= broker_timestamp else []):
+            self.assertAlmostEqual(bridge.overall_profit_snapshot(now=self.now)["netMoney"], -12.35)
+
+    def test_manual_exit_of_a_bot_position_is_still_part_of_bot_profit(self) -> None:
+        self.deals.extend([self.deal(1, 0, commission=-1), self.deal(1, -12, magic=0)])
+        self.assertEqual(bridge.overall_profit_snapshot(now=self.now)["realizedLossMoney"], 13)
+
+    def test_floating_profit_is_live_and_only_bot_positions_count(self) -> None:
+        self.deals.append(self.deal(1, -12.35))
+        self.positions.extend([SimpleNamespace(ticket=2, magic=bridge.MAGIC_NUMBER, profit=5, swap=-1),
+                               SimpleNamespace(ticket=3, magic=0, profit=500, swap=0)])
+        result = bridge.overall_profit_snapshot(now=self.now)
+        self.assertEqual(result["floatingMoney"], 4)
+        self.assertAlmostEqual(result["netMoney"], -8.35)
+        self.positions[0].profit = 8
+        self.assertEqual(bridge.overall_profit_snapshot(now=self.now)["floatingMoney"], 7)
+        self.assertEqual(bridge.mt5.history_deals_get.call_count, 1)
+
+    def test_midnight_does_not_reset_totals_and_account_switch_does_not_reuse_them(self) -> None:
+        self.deals.append(self.deal(1, -12.35))
+        with patch.object(bridge.time, "monotonic", side_effect=[0, 31, 32]):
+            first = bridge.overall_profit_snapshot(now=self.now)
+            self.assertEqual(bridge.overall_profit_snapshot(now=self.now + timedelta(minutes=2)), first)
+            self.account.login = 456
+            self.deals.clear()
+            self.assertEqual(bridge.overall_profit_snapshot(now=self.now)["netMoney"], 0)
+        self.assertEqual(bridge.mt5.history_deals_get.call_count, 3)
+
+    def test_balance_change_refreshes_history_without_waiting_for_cache_timeout(self) -> None:
+        self.assertEqual(bridge.overall_profit_snapshot(now=self.now)["netMoney"], 0)
+        self.deals.append(self.deal(1, -12.35))
+        self.account.balance -= 12.35
+        self.assertAlmostEqual(bridge.overall_profit_snapshot(now=self.now)["netMoney"], -12.35)
+        self.assertEqual(bridge.mt5.history_deals_get.call_count, 2)
+
+    def test_missing_or_invalid_history_never_becomes_a_fake_zero(self) -> None:
+        with patch.object(bridge.mt5, "history_deals_get", return_value=None):
+            with self.assertRaisesRegex(RuntimeError, "history"):
+                bridge.overall_profit_snapshot(now=self.now)
+        self.deals.append(self.deal(1, float("nan")))
+        with self.assertRaisesRegex(RuntimeError, "invalid deal"):
+            bridge.overall_profit_snapshot(now=self.now)
+
+
 class DailyRiskTests(unittest.TestCase):
     def setUp(self) -> None:
         temporary = tempfile.TemporaryDirectory(prefix="mt5-daily-risk-test-")

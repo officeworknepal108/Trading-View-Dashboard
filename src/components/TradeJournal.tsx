@@ -32,6 +32,7 @@ import {
 import { TradeMultiSelect } from './TradeMultiSelect';
 
 export interface JournalTradeRecord {
+  mtfContext?: import('../services/mtf').MtfRow;
   id: string;
   zoneId?: string;
   setupId?: string;

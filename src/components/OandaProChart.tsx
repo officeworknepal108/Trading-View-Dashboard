@@ -991,13 +991,103 @@ type DisplayMtfRow = MtfRow & {
   tradingTimeBlocked?: boolean;
 };
 
-const MultiTimeframeEntryTable: React.FC<{
+export function isSlTpTradeDisplayFinished(trade: { result?: string; status?: string } | undefined): boolean {
+  return trade?.result === 'sl' || trade?.result === 'tp'
+    || trade?.status === 'sl-hit' || trade?.status === 'tp-hit'
+    || trade?.status === 'SL' || trade?.status === 'TP';
+}
+
+export function mtfTableHitExpired(
+  hitAt: number | undefined, candles: readonly OandaCandle[], asOf: number, timeframe: TradeTimeframe,
+): boolean {
+  if (hitAt === undefined || hitAt > asOf) return false;
+  let bars = 0;
+  for (const candle of candles) {
+    if (candle.time > hitAt && candle.complete !== false
+      && candle.time + TIMEFRAME_SECONDS[timeframe] <= asOf && ++bars >= 5) return true;
+  }
+  return false;
+}
+
+type TradeDisplayState = {
+  status?: string; result?: string; resolvedAt?: number; closedAt?: number; completedAt?: number;
+  partialClosedAt?: number; updatedAt?: number; signalTimeframe?: TradeTimeframe;
+  signal?: { timeframe: TradeTimeframe; direction: 'bullish' | 'bearish' };
+  direction?: string; filledAt?: number; openedAt?: number; calculatedAt?: number; signalAt?: number;
+  riskFree?: number; entry?: number; stopLoss?: number;
+};
+
+/** Display only: retain a hit for five completed candles of its entry timeframe. */
+export function tradeDisplayExpired(
+  trade: TradeDisplayState | undefined, candles: readonly OandaCandle[], asOf: number,
+): boolean {
+  if (!trade) return false;
+  const timeframe = trade.signal?.timeframe ?? trade.signalTimeframe;
+  if (!timeframe) return false;
+  let hitAt: number | undefined;
+  if (isSlTpTradeDisplayFinished(trade)) {
+    hitAt = trade.resolvedAt ?? trade.closedAt ?? trade.completedAt ?? trade.updatedAt;
+  } else if (trade.partialClosedAt !== undefined || trade.result === 'rf'
+    || ['risk-free', 'RISK_FREE', 'RF'].includes(trade.status ?? '') || trade.result === 'risk-free') {
+    hitAt = trade.partialClosedAt;
+    if (hitAt === undefined) {
+      const bullish = (trade.signal?.direction ?? trade.direction) === 'bullish' || trade.direction === 'BUY';
+      const level = trade.riskFree ?? (trade.entry !== undefined && trade.stopLoss !== undefined
+        ? trade.entry + (bullish ? 1 : -1) * Math.abs(trade.entry - trade.stopLoss) : undefined);
+      hitAt = level === undefined ? undefined : candles.find(candle => (
+        candle.time >= (trade.filledAt ?? trade.openedAt ?? trade.calculatedAt ?? trade.signalAt ?? Infinity)
+        && candle.time <= asOf && (trade.resolvedAt === undefined || candle.time <= trade.resolvedAt)
+        && (bullish ? candle.high >= level : candle.low <= level)
+      ))?.time;
+      hitAt ??= trade.resolvedAt ?? trade.closedAt ?? (trade.result === 'rf' ? trade.completedAt : undefined) ?? trade.updatedAt;
+    }
+  }
+  return mtfTableHitExpired(hitAt, candles, asOf, timeframe);
+}
+
+export function tradeDrawingFromRecord(record: JournalTradeRecord): TradeLevels & { partialClosedAt?: number } {
+  const bullish = record.direction === 'bullish';
+  return {
+    entry: record.entry, stopLoss: record.stopLoss, takeProfit: record.takeProfit,
+    riskFree: record.entry + (bullish ? 1 : -1) * Math.abs(record.entry - record.stopLoss),
+    riskFreeEnabled: record.tradeStyle === 'SCALPING', riskPips: record.riskPips, rewardRisk: record.rewardRisk,
+    status: record.result === 'tp' ? 'tp-hit' : record.result === 'sl' ? 'sl-hit' : 'risk-free',
+    result: ['tp', 'sl', 'rf'].includes(record.result) ? record.result as 'tp' | 'sl' | 'rf' : undefined,
+    resolvedAt: ['tp', 'sl', 'rf'].includes(record.result) ? record.closedAt ?? record.completedAt : undefined,
+    partialClosedAt: record.partialClosedAt, filledAt: record.openedAt, pendingAtCreation: false,
+    calculatedAt: (record.signalAt ?? record.openedAt ?? record.completedAt) + TIMEFRAME_SECONDS[record.signalTimeframe],
+    signal: { type: record.engulfingType as EngulfingTradeSignal['type'], direction: record.direction,
+      timeframe: record.signalTimeframe, time: record.signalAt ?? record.openedAt ?? record.completedAt,
+      candleCount: record.engulfingCandleCount ?? (record.engulfingType === 'T1' ? 2 : 3) },
+  };
+}
+
+export const MultiTimeframeEntryTable: React.FC<{
   rows: DisplayMtfRow[];
   liveTrades: LiveMt5TableTrade[];
-}> = ({ rows, liveTrades }) => {
+  records: JournalTradeRecord[];
+  timeZone: ChartTimeZone;
+  entryCandles: Partial<Record<TradeTimeframe, readonly OandaCandle[]>>;
+  asOf: number;
+}> = ({ rows, liveTrades, records, timeZone, entryCandles, asOf }) => {
   const [expanded, setExpanded] = useState(true);
-  const displayRows = rows.filter((row) => !liveTrades.some(({ position }) => (
+  const expired = (trade: TradeDisplayState | undefined) => tradeDisplayExpired(trade,
+    entryCandles[trade?.signal?.timeframe ?? trade?.signalTimeframe ?? 'M1'] ?? [], asOf);
+  const visibleLiveTrades = liveTrades.filter(({ signal, trade, position }) => {
+    const recorded = records.find(record => record.brokerTicket === position.ticket
+      || record.setupId !== undefined && record.setupId === position.setupId);
+    return !expired(recorded && ['sl', 'tp', 'rf', 'risk-free'].includes(recorded.result) ? recorded : { ...trade, ...signal,
+      status: signal?.status ?? position.signalStatus ?? trade.status });
+  });
+  const savedRows = records.filter(record => !expired(record) && !liveTrades.some(({ position }) => (
+    position.ticket === record.brokerTicket || position.setupId === record.setupId && record.setupId !== undefined
+  )));
+  const displayRows = rows.filter((row) => !expired(row.trade ?? row.previewTrade) && !liveTrades.some(({ position }) => (
     liveMtfPositionMatchesChartRow(position, row)
+  )) && !records.some(record => (
+    record.setupId === `MTF:${row.id}` || record.signalAt === row.engulfingTime
+      && record.zoneTimeframe === row.higherTimeframe
+      && record.signalTimeframe === row.lowerTimeframe && record.direction === row.direction
   )));
   return (
     <div data-journal-exclude="true" className={`pointer-events-auto absolute right-3 top-3 z-20 overflow-hidden rounded-md border border-slate-300 bg-white/95 shadow-sm ${expanded ? 'w-fit max-w-[calc(100%_-_24px)]' : 'w-auto'}`}>
@@ -1013,6 +1103,7 @@ const MultiTimeframeEntryTable: React.FC<{
         </button>
       </div>
       {expanded && (
+        <div className="max-h-[50vh] overflow-auto">
         <table className="table-auto border-collapse text-left text-[9px]">
           <thead className="bg-slate-100 text-[9px] uppercase text-slate-500">
             <tr>
@@ -1022,11 +1113,11 @@ const MultiTimeframeEntryTable: React.FC<{
               <th className="whitespace-nowrap px-2 py-1 font-bold">HTF Zone Tapped</th>
               <th className="whitespace-nowrap px-2 py-1 font-bold">LTF Zone Tapped</th>
               <th className="whitespace-nowrap px-2 py-1 font-bold">Signal</th>
-              <th className="whitespace-nowrap px-2 py-1 text-right font-bold">Bars Since Entry</th>
+              <th className="whitespace-nowrap px-2 py-1 text-right font-bold">Entry Time / Bars</th>
             </tr>
           </thead>
           <tbody>
-            {liveTrades.map(({ position, trade, signal }) => {
+            {visibleLiveTrades.map(({ position, trade, signal }) => {
               const bullish = position.direction === 'BUY';
               return (
                 <React.Fragment key={`live-mt5-${position.ticket}`}>
@@ -1043,13 +1134,18 @@ const MultiTimeframeEntryTable: React.FC<{
                     </td>
                     <td className={`whitespace-nowrap px-2 py-1 font-black ${bullish ? 'text-emerald-700' : 'text-rose-700'}`}>
                       {position.zoneTimeframe ? formatTradeTimeframe(position.zoneTimeframe) : '?'}{' '}
-                      {position.zoneName ?? 'ZONE'}
+                      {signal?.journalContext?.mtfContext?.higherTimeframeZone
+                        ?? signal?.zoneId?.replace(/-\d{9,}-.+$/, '') ?? 'Recorded HTF zone'}
                     </td>
-                    <td className="whitespace-nowrap px-2 py-1 font-bold text-slate-500">—</td>
+                    <td className="whitespace-nowrap px-2 py-1 font-bold text-slate-500">
+                      {position.signalTimeframe} {signal?.journalContext?.mtfContext?.entryZone?.name ?? position.zoneName}
+                    </td>
                     <td className={`whitespace-nowrap px-2 py-1 font-black ${bullish ? 'text-emerald-700' : 'text-rose-700'}`}>
                       {signal ? mt5SignalStatusLabel(signal) : `MT5 ACTIVE ${position.direction}`}
                     </td>
-                    <td className="whitespace-nowrap px-2 py-1 text-right font-bold text-slate-500">OPEN</td>
+                    <td className="whitespace-nowrap px-2 py-1 text-right font-bold text-slate-500">
+                      {formatChartTime(position.openedAt, timeZone)}
+                    </td>
                   </tr>
                   <TradeDetailsRow trade={trade} colSpan={7} mtf mt5Signal={signal} />
                 </React.Fragment>
@@ -1095,19 +1191,39 @@ const MultiTimeframeEntryTable: React.FC<{
                     {row.tradeBarsAgo === undefined ? '—' : `${row.tradeBarsAgo} bars`}
                   </td>
                 </tr>
-                {(row.trade ?? row.previewTrade) && !isCompletedTrade(row.trade ?? row.previewTrade)
+                {(row.trade ?? row.previewTrade)
                   && <TradeDetailsRow trade={(row.trade ?? row.previewTrade)!} colSpan={7} mtf
                     referenceOnly={row.tradingTimeBlocked} />}
                 </React.Fragment>
               );
             })}
-            {displayRows.length === 0 && liveTrades.length === 0 && (
+            {savedRows.map(record => (
+              <React.Fragment key={record.id}>
+                <tr className="border-t border-slate-200 bg-slate-50">
+                  <td className="px-2 py-1 font-bold">{record.brokerTicket ? `MT5 #${record.brokerTicket}` : 'MTF TRADE'}</td>
+                  <td className="px-2 py-1 font-bold">{formatTradeTimeframe(record.zoneTimeframe)} → {formatTradeTimeframe(record.signalTimeframe)}</td>
+                  <td className="px-2 py-1">{record.direction === 'bullish' ? 'BUY' : 'SELL'} · {record.engulfingType}</td>
+                  <td className="px-2 py-1">{record.mtfContext?.higherTimeframeZone ?? record.zoneId?.replace(/-\d{9,}-.+$/, '') ?? 'Recorded HTF zone'}</td>
+                  <td className="px-2 py-1">{record.signalTimeframe} {record.mtfContext?.entryZone?.name ?? record.zoneName}</td>
+                  <td className="px-2 py-1 font-bold">{record.result === 'sl' ? 'SL HIT' : record.result === 'tp' ? 'TP HIT' : record.result === 'rf' ? 'RISK FREE CLOSED' : record.result === 'risk-free' ? 'RISK FREE' : 'OPEN'}</td>
+                  <td className="px-2 py-1">{formatChartTime(record.openedAt ?? record.signalAt ?? record.completedAt, timeZone)}</td>
+                </tr>
+                <tr className="border-b border-slate-200 bg-white">
+                  <td colSpan={7} className="px-2 py-1">
+                    ENTRY {formatPrice(record.entry)} · SL {formatPrice(record.stopLoss)} · TP {formatPrice(record.takeProfit)}
+                    {!record.mtfContext?.entryZone && ' · Original entry-zone drawing not saved'}
+                  </td>
+                </tr>
+              </React.Fragment>
+            ))}
+            {displayRows.length === 0 && visibleLiveTrades.length === 0 && savedRows.length === 0 && (
               <tr>
                 <td colSpan={7} className="px-2 py-2 text-center text-slate-400">No active MTF setup</td>
               </tr>
             )}
           </tbody>
         </table>
+        </div>
       )}
     </div>
   );
@@ -1632,7 +1748,9 @@ export const OandaProChart: React.FC = () => {
   const [savedJournalTrades, setSavedJournalTrades] = useState<AccuracyTradeRecord[]>([]);
   const [mt5Status, setMt5Status] = useState<Mt5AutomationStatus | null>(null);
   const dailyRisk = mt5Status?.bridge.dailyRisk;
+  const overallProfit = mt5Status?.bridge.overallProfit;
   const dailyRiskMoney = (value: number) => `${mt5Status?.bridge.currency === 'USD' ? '$' : `${mt5Status?.bridge.currency || 'USD'} `}${value.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  const overallProfitMoney = (value: number) => `${value < 0 ? '-' : ''}${dailyRiskMoney(Math.abs(value))}`;
   const scalpingEnabled = mt5Status?.config.scalpingEnabled ?? true;
   const intradayEnabled = mt5Status?.config.intradayEnabled ?? true;
   const tradeStyleEnabled = useCallback((trade: {
@@ -2443,6 +2561,12 @@ export const OandaProChart: React.FC = () => {
     }
     return data;
   }, [displayCandles, granularity, replayIndex, structure, swingFibMoves, vipCandles]);
+  const tradeDisplayAsOf = replayIndex === null ? Date.now() / 1000
+    : (displayCandles.at(-1)?.time ?? 0) + (displayCandles.at(-1)?.complete ? TIMEFRAME_SECONDS[granularity] : 0);
+  const hasTradeDisplayExpired = useCallback((trade: TradeDisplayState | undefined) => {
+    const timeframe = trade?.signal?.timeframe ?? trade?.signalTimeframe;
+    return tradeDisplayExpired(trade, timeframe ? tableTimeframeData[timeframe]?.candles ?? [] : [], tradeDisplayAsOf);
+  }, [tableTimeframeData, tradeDisplayAsOf]);
   const hasRetainedDirectTradeSource = useCallback((overlay: TradeOverlay) => {
     const sourceZoneId = directTradeOverlayZoneId(overlay);
     const sourceZone = overlay.id.startsWith('DIRECT:')
@@ -2885,6 +3009,8 @@ export const OandaProChart: React.FC = () => {
         lowerTimeframeData.candles,
         {
           zoneId: row.higherTimeframeZoneId,
+          setupId: `MTF:${row.id}`,
+          mtfContext: row,
           fibSource: row.engulfingFibBand ? 'MTF FIB' : undefined,
           fibBand: row.engulfingFibBand,
           tradeStyle: marketSymbol === 'XAUUSD'
@@ -2963,12 +3089,13 @@ export const OandaProChart: React.FC = () => {
     const records: JournalTradeRecord[] = [];
     const add = (id: string, zoneId: string | undefined, zoneName: string,
       zoneTimeframe: TradeTimeframe, source: 'ENGULFING' | 'MTF',
-      trade: TradeLevels | undefined, tradeStyle?: 'SCALPING' | 'INTRADAY') => {
+      trade: TradeLevels | undefined, tradeStyle?: 'SCALPING' | 'INTRADAY', mtfContext?: MtfRow) => {
       if (!trade || trade.filledAt === undefined || isCompletedTrade(trade)) return;
       if (tradingTimeEnabled && (!isNepalTradingTime(trade.calculatedAt)
         || !isNepalTradingTime(trade.filledAt))) return;
       records.push({
         id, zoneId, symbol: marketSymbol, zoneName, zoneTimeframe, source, tradeStyle,
+        mtfContext, setupId: mtfContext ? `MTF:${mtfContext.id}` : undefined,
         result: trade.status === 'risk-free' ? 'risk-free' : 'open',
         completedAt: trade.filledAt, openedAt: trade.filledAt,
         signalAt: trade.signal.time, signalTimeframe: trade.signal.timeframe,
@@ -2991,7 +3118,7 @@ export const OandaProChart: React.FC = () => {
       if (!row.trade) continue;
       add(`MTF:${row.id}:${row.trade.signal.time}:${row.trade.entry}`, row.higherTimeframeZoneId,
         row.tappedZone ?? row.higherTimeframeZone, row.higherTimeframe, 'MTF', row.trade,
-        marketSymbol === 'XAUUSD' ? row.goldScalping ? 'SCALPING' : 'INTRADAY' : undefined);
+        marketSymbol === 'XAUUSD' ? row.goldScalping ? 'SCALPING' : 'INTRADAY' : undefined, row);
     }
     return records;
   }, [allMtfTradeRows, directZoneTrades, displayZones, goldScalpingDirectTrades, granularity,
@@ -3014,6 +3141,7 @@ export const OandaProChart: React.FC = () => {
     const facts = (record: AccuracyTradeRecord) => JSON.stringify([
       record.id, record.result, record.completedAt, record.entry, record.stopLoss,
       record.zoneId, record.setupId,
+      record.mtfContext,
       record.takeProfit, record.openedAt, record.rewardRisk, record.tradeStyle,
       record.fibSource, record.fibBand, record.volumeLogicStatus,
       record.volume1, record.volume2, record.volume3, record.engulfingCandleCount,
@@ -3343,7 +3471,7 @@ export const OandaProChart: React.FC = () => {
       const confirmedAt = signalAt !== undefined && Number.isFinite(signalAt)
         ? signalAt + TIMEFRAME_SECONDS[signalTimeframe]
         : storedSignal?.calculatedAt ?? position.openedAt;
-      const trade: TradeLevels = {
+      const trade: TradeLevels & { partialClosedAt?: number } = {
         entry: position.priceOpen,
         stopLoss: position.stopLoss,
         takeProfit: position.takeProfit,
@@ -3352,7 +3480,8 @@ export const OandaProChart: React.FC = () => {
           || storedSignal?.status === 'RISK_FREE',
         riskPips: Math.round(riskDistance / 0.1 * 100) / 100,
         rewardRisk,
-        status: 'active',
+        status: storedSignal?.status === 'RISK_FREE' || position.signalStatus === 'RISK_FREE' ? 'risk-free' : 'active',
+        partialClosedAt: storedSignal?.partialClosedAt,
         pendingAtCreation: false,
         calculatedAt: confirmedAt,
         filledAt: position.openedAt,
@@ -3378,6 +3507,8 @@ export const OandaProChart: React.FC = () => {
   const liveMtfTableTrades = useMemo<LiveMt5TableTrade[]>(() => (
     (mt5Status?.positions ?? []).flatMap((position) => {
       if (position.source !== 'MTF' && !position.setupId?.startsWith('MTF:')) return [];
+      if (marketSymbol !== 'XAUUSD' || replayIndex !== null
+        || (position.zoneTimeframe !== granularity && position.signalTimeframe !== granularity)) return [];
       const overlay = liveMt5TradeOverlays.find((candidate) => candidate.id === `MT5:${position.ticket}`);
       if (!overlay) return [];
       const signal = (mt5Status?.recentSignals ?? []).find((candidate) => (
@@ -3387,7 +3518,56 @@ export const OandaProChart: React.FC = () => {
       ));
       return [{ position, trade: overlay.trade, signal }];
     })
-  ), [liveMt5TradeOverlays, mt5Status?.positions, mt5Status?.recentSignals]);
+  ), [liveMt5TradeOverlays, mt5Status?.positions, mt5Status?.recentSignals, marketSymbol, granularity, replayIndex]);
+
+  const recordedMtfTrades = useMemo(() => {
+    const chartEnd = displayCandles[displayCandles.length - 1]?.time;
+    if (chartEnd === undefined) return [];
+    const cutoff = chartEnd + TIMEFRAME_SECONDS[granularity];
+    return deduplicateTradeRecords([...savedJournalTrades, ...openChartJournalTrades])
+      .filter(record => record.source === 'MTF'
+        && (record.symbol ?? 'XAUUSD') === marketSymbol
+        && (record.zoneTimeframe === granularity || record.signalTimeframe === granularity)
+        && tradeStyleEnabled(record)
+        && (record.openedAt ?? record.signalAt ?? Infinity) <= cutoff
+        // A completed record cannot reveal a future result while replaying.
+        && (replayIndex === null || record.completedAt <= cutoff))
+      .slice(0, 20)
+      .map(record => {
+        if (record.mtfContext || !record.setupId?.startsWith('MTF:') || !record.signalAt) return record;
+        const qualified = savedChartMtfEntryQualification({
+          id: `${record.setupId}:${record.signalAt}:${record.entry}`,
+          signalTime: record.signalAt, direction: record.direction,
+          engulfingType: record.engulfingType as EngulfingTradeSignal['type'],
+          zoneName: record.zoneName, goldScalping: record.tradeStyle === 'SCALPING',
+        });
+        return qualified?.context ? { ...record, mtfContext: qualified.context } : record;
+      });
+  }, [savedJournalTrades, openChartJournalTrades, displayCandles, granularity, marketSymbol,
+    tradeStyleEnabled, replayIndex, savedChartMtfEntryQualification]);
+
+  const mtfDrawingZones = useMemo(() => {
+    const zones = new Map<string, { zone: StructureZone; label: string; endTime: number }>();
+    const add = (context: MtfRow | undefined, endTime: number) => {
+      if (!context || !(context.higherTimeframe === granularity || context.lowerTimeframe === granularity)) return;
+      for (const [zone, timeframe, role] of [
+        [context.higherZone, context.higherTimeframe, 'SETUP'],
+        [context.entryZone, context.lowerTimeframe, 'ENTRY'],
+      ] as const) {
+        if (!zone) continue;
+        zones.set(`${timeframe}:${zone.id}`, {
+          zone, label: `${formatTradeTimeframe(timeframe)} MTF ${role} · ${zone.name}`,
+          endTime: Math.max(zone.startTime + TIMEFRAME_SECONDS[granularity], endTime),
+        });
+      }
+    };
+    const now = displayCandles[displayCandles.length - 1]?.time ?? 0;
+    for (const row of mtfRows) if (!hasTradeDisplayExpired(row.trade ?? row.previewTrade)) add(row, now);
+    for (const record of recordedMtfTrades) if (!hasTradeDisplayExpired(record)) add(record.mtfContext,
+      ['open', 'risk-free'].includes(record.result) ? now : record.completedAt);
+    for (const { signal } of liveMtfTableTrades) if (!hasTradeDisplayExpired(signal)) add(signal?.journalContext?.mtfContext, now);
+    return [...zones.values()];
+  }, [hasTradeDisplayExpired, mtfRows, recordedMtfTrades, liveMtfTableTrades, displayCandles, granularity]);
 
   const completedChartTradeKeys = useMemo(() => {
     const setupKeys = new Set<string>();
@@ -3406,25 +3586,33 @@ export const OandaProChart: React.FC = () => {
       ));
       entryEventKeys.add(tradeOverlayEntryEventKey(row.trade.signal));
     }
+    for (const record of savedJournalTrades) {
+      if ((record.symbol ?? 'XAUUSD') !== marketSymbol || !record.signalAt || record.completedAt > tradeDisplayAsOf
+        || (!['sl', 'tp', 'rf'].includes(record.result) && !hasTradeDisplayExpired(record))) continue;
+      setupKeys.add(resolveTradeOverlaySetupKey(record.id, record.setupId));
+      entryEventKeys.add(tradeOverlayEntryEventKey({
+        timeframe: record.signalTimeframe, direction: record.direction, time: record.signalAt,
+      }));
+    }
     return { setupKeys, entryEventKeys };
-  }, [directZoneTrades, mtfRows]);
+  }, [directZoneTrades, mtfRows, savedJournalTrades, marketSymbol, tradeDisplayAsOf, hasTradeDisplayExpired]);
 
   const visibleTradeOverlays = useMemo(() => {
     const overlays = new Map<string, TradeOverlay>();
     const chartSetupKeys = new Set<string>();
     const entryEventKeys = new Set<string>();
     const addOverlay = (overlay: TradeOverlay) => {
+      if (hasTradeDisplayExpired(overlay.trade)) return;
       if (!overlayStyleEnabled(overlay)) return;
       if ((overlay.symbol ?? 'XAUUSD') !== marketSymbol) return;
-      if (!overlay.referenceOnly && !hasRetainedDirectTradeSource(overlay)) return;
-      // A terminal chart result owns the visual lifecycle. This also suppresses
-      // a stale retained or MT5-active copy of the same execution immediately.
+      if (!overlay.referenceOnly && !isCompletedTrade(overlay.trade) && !hasRetainedDirectTradeSource(overlay)) return;
+      // The result owns the five-bar window; stale active copies must not reappear afterward.
       const setupKey = tradeOverlaySetupKey(overlay);
       const entryEventKey = tradeOverlayEntryEventKey(overlay.trade.signal);
-      if (overlay.referenceOnly ? isCompletedTrade(overlay.trade) : isTradeOverlayTerminated(
+      if (!isCompletedTrade(overlay.trade) && !overlay.referenceOnly && isTradeOverlayTerminated(
         setupKey,
         entryEventKey,
-        isCompletedTrade(overlay.trade),
+        false,
         completedChartTradeKeys.setupKeys,
         completedChartTradeKeys.entryEventKeys,
       )) return;
@@ -3448,8 +3636,32 @@ export const OandaProChart: React.FC = () => {
         if (!overlay.referenceOnly) entryEventKeys.add(entryEventKey);
       }
     };
-    // Broker positions take priority when a chart setup represents the same
-    // execution, but they no longer replace other unresolved chart trades.
+    // Keep an executed result drawable for the same five-bar window as its tables.
+    for (const record of deduplicateTradeRecords<JournalTradeRecord>(savedJournalTrades)) {
+      if (!['sl', 'tp', 'rf', 'risk-free'].includes(record.result)
+        || (record.symbol ?? 'XAUUSD') !== marketSymbol || record.signalTimeframe !== granularity
+        || record.completedAt > tradeDisplayAsOf || hasTradeDisplayExpired(record)
+        || !tradeStyleEnabled(record)) continue;
+      addOverlay({ id: record.id, setupId: record.setupId, symbol: marketSymbol,
+        trade: tradeDrawingFromRecord(record), chartTimeframe: record.signalTimeframe,
+        label: `${record.zoneName} · ${record.tradeStyle === 'SCALPING' ? 'SCALP · ' : ''}${record.source}` });
+    }
+    for (const [zoneId, trade] of directZoneTrades) {
+      if (!isCompletedTrade(trade)) continue;
+      addOverlay({ id: `DIRECT:${zoneId}:${trade.signal.time}:${trade.entry}`, symbol: marketSymbol,
+        trade, chartTimeframe: trade.signal.timeframe, label: 'TRADE RESULT' });
+    }
+    for (const row of mtfRows) {
+      if (!row.trade || !isCompletedTrade(row.trade)) continue;
+      addOverlay({ id: `MTF:${row.id}:${row.trade.signal.time}:${row.trade.entry}`, symbol: marketSymbol,
+        trade: row.trade, chartTimeframe: row.lowerTimeframe, label: `${row.goldScalping ? 'SCALP ' : ''}MTF RESULT` });
+    }
+    for (const { zone, zoneTimeframe, trade } of goldScalpingAccuracyTrades) {
+      if (!isCompletedTrade(trade)) continue;
+      addOverlay({ id: `GOLD_SCALP:${zoneTimeframe}:${zone.id}:${trade.signal.time}:${trade.entry}`, symbol: marketSymbol,
+        trade, chartTimeframe: trade.signal.timeframe, label: `${zone.name} · SCALP RESULT` });
+    }
+    // Broker positions take priority over unresolved recalculated chart trades.
     if (replayIndex === null) liveMt5TradeOverlays.forEach(addOverlay);
     retainedChartTradesForTimeframe.forEach(addOverlay);
     tradeOverlays.forEach(addOverlay);
@@ -3490,7 +3702,7 @@ export const OandaProChart: React.FC = () => {
     }
     return Array.from(overlays.values())
       .sort((first, second) => second.trade.calculatedAt - first.trade.calculatedAt);
-  }, [completedChartTradeKeys, directZoneEntryDecisions, goldScalpingAccuracyTrades, hasRetainedDirectTradeSource, liveMt5TradeOverlays, marketSymbol, mtfRows, overlayStyleEnabled, replayIndex, retainedChartTradesForTimeframe, tradeOverlays, tradingTimeEnabled]);
+  }, [hasTradeDisplayExpired, savedJournalTrades, directZoneTrades, granularity, tradeDisplayAsOf, tradeStyleEnabled, completedChartTradeKeys, directZoneEntryDecisions, goldScalpingAccuracyTrades, hasRetainedDirectTradeSource, liveMt5TradeOverlays, marketSymbol, mtfRows, overlayStyleEnabled, replayIndex, retainedChartTradesForTimeframe, tradeOverlays, tradingTimeEnabled]);
 
   useEffect(() => {
     if (replayIndex !== null || !mt5Status?.config
@@ -3500,6 +3712,7 @@ export const OandaProChart: React.FC = () => {
     const alerts = new Map<string, Record<string, unknown>>();
     const addEntry = (details: {
       zoneName: string; zoneTimeframe: TradeTimeframe;
+      source?: 'MTF' | 'ENGULFING'; higherZoneName?: string; entryZoneName?: string;
       tradeStyle?: 'SCALPING' | 'INTRADAY';
       trade: TradeLevels;
     }) => {
@@ -3516,6 +3729,7 @@ export const OandaProChart: React.FC = () => {
         ) || !isNepalTradingTime(trade.filledAt),
         direction: trade.signal.direction === 'bullish' ? 'BUY' : 'SELL',
         zoneName: details.zoneName, zoneTimeframe: details.zoneTimeframe,
+        source: details.source, higherZoneName: details.higherZoneName, entryZoneName: details.entryZoneName,
         signalTimeframe: trade.signal.timeframe, engulfingType: trade.signal.type,
         entry: trade.entry, stopLoss: trade.stopLoss, takeProfit: trade.takeProfit,
         riskPips: trade.riskPips, rewardRisk: trade.rewardRisk, openedAt: trade.filledAt,
@@ -3537,6 +3751,9 @@ export const OandaProChart: React.FC = () => {
         zoneName: mtfRow?.tappedZone ?? mtfRow?.higherTimeframeZone
           ?? tradeOverlayZoneLabel(overlay.label) ?? 'Chart entry',
         zoneTimeframe, trade,
+        source: mtfRow || overlay.id.startsWith('MTF:') ? 'MTF' : 'ENGULFING',
+        higherZoneName: mtfRow?.higherTimeframeZone,
+        entryZoneName: mtfRow?.entryZone?.name ?? mtfRow?.tappedZone,
         tradeStyle: marketSymbol === 'XAUUSD'
           ? mtfRow?.goldScalping || overlay.id.startsWith('GOLD_SCALP:')
             ? 'SCALPING' : 'INTRADAY' : undefined,
@@ -3556,6 +3773,8 @@ export const OandaProChart: React.FC = () => {
       if (!row.previewTrade) continue;
       addEntry({
         zoneName: row.tappedZone ?? row.higherTimeframeZone,
+        source: 'MTF', higherZoneName: row.higherTimeframeZone,
+        entryZoneName: row.entryZone?.name ?? row.tappedZone,
         zoneTimeframe: row.higherTimeframe,
         tradeStyle: marketSymbol === 'XAUUSD'
           ? row.goldScalping ? 'SCALPING' : 'INTRADAY' : undefined,
@@ -3578,6 +3797,10 @@ export const OandaProChart: React.FC = () => {
         && !alerts.has(entryKey)) {
         addEntry({
           zoneName: record.zoneName, zoneTimeframe: record.zoneTimeframe,
+          source: record.source,
+          higherZoneName: record.mtfContext?.higherTimeframeZone
+            ?? (record.source === 'MTF' ? record.zoneId?.match(/^(.+)-\d{9,}-.+$/)?.[1] : record.zoneName),
+          entryZoneName: record.source === 'MTF' ? record.mtfContext?.entryZone?.name ?? record.zoneName : undefined,
           tradeStyle: record.tradeStyle,
           trade: {
             entry: record.entry, stopLoss: record.stopLoss, takeProfit: record.takeProfit,
@@ -3696,6 +3919,8 @@ export const OandaProChart: React.FC = () => {
     if (!directTradeStyleEnabled) return [];
     const candidates = consolidatedDisplayZones
     .filter((zone) => zone.active && zone.status === 'valid'
+      && !hasTradeDisplayExpired(confluenceMapValue<TradeLevels>(zone, directZoneTrades))
+      && !displayZoneMembers(zone).some(member => hasTradeDisplayExpired(directZoneMt5Signals.get(member.id)))
       && !redundantStandaloneZoneIds.has(zone.id)
       && ((displayedTapCount(zone) ?? 0) > 1
         || !displayZoneMembers(zone).some((member) => retainedDirectTradeZoneIds.has(member.id)))
@@ -3728,7 +3953,7 @@ export const OandaProChart: React.FC = () => {
       const trade = confluenceMapValue<TradeLevels>(zone, directZoneTrades);
       return !trade || bestByTrade.get(tradeOverlayExecutionKey(trade))?.zone === zone;
     }).slice(0, 8);
-  }, [consolidatedDisplayZones, directTradeStyleEnabled, directZoneTrades, displayedTapCount, displayCandles, granularity, marketConfig.pipSize, marketSymbol, redundantStandaloneZoneIds, retainedDirectChartTradesForTimeframe, retainedDirectTradeZoneIds, showInternal]);
+  }, [hasTradeDisplayExpired, consolidatedDisplayZones, directTradeStyleEnabled, directZoneTrades, directZoneMt5Signals, displayedTapCount, displayCandles, granularity, marketConfig.pipSize, marketSymbol, redundantStandaloneZoneIds, retainedDirectChartTradesForTimeframe, retainedDirectTradeZoneIds, showInternal]);
   const scalpEntryTableRows = useMemo(() => {
     if (!scalpingEnabled) return [];
     const rows = new Map<string, {
@@ -3760,9 +3985,10 @@ export const OandaProChart: React.FC = () => {
       });
     }
     return Array.from(rows.values())
+      .filter(({ trade }) => !hasTradeDisplayExpired(trade))
       .sort((first, second) => second.trade.signal.time - first.trade.signal.time)
       .slice(0, 8);
-  }, [displayCandles, entryHovers, goldScalpingAccuracyTrades, granularity, scalpingEnabled, tradingTimeEnabled]);
+  }, [hasTradeDisplayExpired, displayCandles, entryHovers, goldScalpingAccuracyTrades, granularity, scalpingEnabled, tradingTimeEnabled]);
   const replayDirectCandidates = useMemo<EntryHover[]>(() => {
     if (!directTradeStyleEnabled || replayIndex === null || replayResultCutoff === undefined) return [];
     const entries: EntryHover[] = [];
@@ -3817,7 +4043,7 @@ export const OandaProChart: React.FC = () => {
     }
     return entries;
   }, [directTradeStyleEnabled, displayCandles, displayZones, expiredGoldZoneBeforeSignal, extremeAPlusTjl2Selection.blockedZoneIds, granularity, marketSymbol, pendingM15DbBlocksSignal, redundantStandaloneZoneIds, replayIndex, replayResultCutoff, tradingTimeEnabled]);
-  const visibleEntryHovers = entryHovers;
+  const visibleEntryHovers = entryHovers.filter(({ trade }) => !hasTradeDisplayExpired(trade));
   entryHoversRef.current = visibleEntryHovers;
   const entryMarkers = useMemo(() => visibleEntryHovers.map(({ candleTime, trade, style }) => {
     const bullish = trade.signal.direction === 'bullish';
@@ -3856,7 +4082,7 @@ export const OandaProChart: React.FC = () => {
     }>();
     for (const entry of replayDirectHistoryByZone.values()) entries.set(entry.id, entry);
     for (const entry of scalpEntryTableRows) entries.set(entry.id, entry);
-    return Array.from(entries.values()).filter(({ trade }) => !visibleTradeOverlays.some((overlay) => (
+    return Array.from(entries.values()).filter(({ trade }) => !hasTradeDisplayExpired(trade) && !visibleTradeOverlays.some((overlay) => (
       overlay.trade.signal.time === trade.signal.time && overlay.trade.entry === trade.entry
     )))
       .map(({ id, trade, tradingTimeBlocked }) => ({
@@ -3869,7 +4095,7 @@ export const OandaProChart: React.FC = () => {
         chartTimeframe: trade.signal.timeframe,
         referenceOnly: true,
       }));
-  }, [marketSymbol, replayDirectHistoryByZone, replayIndex, scalpEntryTableRows, visibleTradeOverlays]);
+  }, [hasTradeDisplayExpired, marketSymbol, replayDirectHistoryByZone, replayIndex, scalpEntryTableRows, visibleTradeOverlays]);
   const retainedTradeZoneRows = useMemo(() => {
     if (!directTradeStyleEnabled) return [];
     const activeZoneIds = new Set([
@@ -3892,7 +4118,7 @@ export const OandaProChart: React.FC = () => {
         || retainedDirectTradeZoneIds.has(setup.zone.id)
         || redundantStandaloneZoneIds.has(setup.zone.id)) continue;
       const trade = directZoneTrades.get(setup.zone.id);
-      if (!trade) continue;
+      if (!trade || hasTradeDisplayExpired(trade)) continue;
       const tradeKey = tradeOverlayExecutionKey(trade);
       if (listedTradeKeys.has(tradeKey)) continue;
       const row = displayZones.find((zone) => zone.id === setup.zone.id) ?? setup.zone;
@@ -3910,6 +4136,7 @@ export const OandaProChart: React.FC = () => {
     const completed = sorted.filter((row) => isCompletedTrade(directZoneTrades.get(row.id))).slice(0, 4);
     return [...open, ...completed];
   }, [
+    hasTradeDisplayExpired,
     directTradeStyleEnabled,
     directZoneTrades,
     displayZones,
@@ -4181,6 +4408,29 @@ export const OandaProChart: React.FC = () => {
       label.style.fontWeight = '800';
       label.style.color = zone.isBuy ? '#047857' : '#be123c';
       box.appendChild(label);
+      fragment.appendChild(box);
+    }
+    for (const { zone, label, endTime } of mtfDrawingZones) {
+      const first = displayCandles.find(candle => candle.time >= zone.startTime);
+      const last = [...displayCandles].reverse().find(candle => candle.time <= endTime);
+      if (!first || !last || first.time > last.time) continue;
+      if (visibleTimeRange && (last.time < Number(visibleTimeRange.from)
+        || first.time > Number(visibleTimeRange.to))) continue;
+      const left = Math.max(0, chart.timeScale().timeToCoordinate(first.time as UTCTimestamp) ?? 0);
+      const right = Math.min(rightEdge, chart.timeScale().timeToCoordinate(last.time as UTCTimestamp) ?? rightEdge);
+      const top = series.priceToCoordinate(zone.top);
+      const bottom = series.priceToCoordinate(zone.bottom);
+      if (top === null || bottom === null || left >= right) continue;
+      const box = document.createElement('div');
+      Object.assign(box.style, {
+        position: 'absolute', left: `${left}px`, width: `${right - left}px`,
+        top: `${Math.min(top, bottom)}px`, height: `${Math.max(2, Math.abs(bottom - top))}px`,
+        border: `2px solid ${zone.isBuy ? '#059669' : '#e11d48'}`,
+        background: zone.isBuy ? 'rgba(16,185,129,0.06)' : 'rgba(244,63,94,0.06)',
+        boxSizing: 'border-box', pointerEvents: 'none',
+        fontSize: '9px', fontWeight: '800', color: zone.isBuy ? '#047857' : '#be123c',
+      });
+      box.textContent = label;
       fragment.appendChild(box);
     }
     const occupiedZoneLabelRects: Array<{
@@ -4771,10 +5021,9 @@ export const OandaProChart: React.FC = () => {
     if (showTradeLevelsRef.current) {
       for (const overlay of tradeOverlaysRef.current) {
         const { trade } = overlay;
-        // Keep completed reference drawings only for replay entries shown in a table.
-        const completedReplayReference = replayIndex !== null
-          && overlay.referenceOnly && isCompletedTrade(trade);
-        if (isCompletedTrade(trade) && !completedReplayReference) continue;
+        if (hasTradeDisplayExpired(trade)) continue;
+        // A resolved drawing stays visible during the same five-bar window as its table row.
+        const completedReplayReference = isCompletedTrade(trade);
         const anchor = displayCandles.find((candle) => (
           trade.calculatedAt >= candle.time
           && trade.calculatedAt < marketCandleCloseTime(candle.time, granularity)
@@ -4877,7 +5126,7 @@ export const OandaProChart: React.FC = () => {
     // Swap the complete overlay in one operation so the browser does not
     // perform layout work for every individual zone, line, and label.
     layer.replaceChildren(fragment);
-  }, [comparisonTimeframe, directZoneTrades, displayCandles, extremeAPlusTjl2Selection, granularity, latestCandle?.time, ltfChochContext, marketConfig.pipSize, marketSymbol, mtfRows, oneMinuteScalpingZones, overlayCandlesByTime, repeatedLtfChochLabels, replayIndex, scalpingEnabled, visibleComparisonZones, zoneDrawingEndIndices, zoneTableRows]);
+  }, [hasTradeDisplayExpired, comparisonTimeframe, directZoneTrades, displayCandles, extremeAPlusTjl2Selection, granularity, latestCandle?.time, ltfChochContext, marketConfig.pipSize, marketSymbol, mtfRows, mtfDrawingZones, oneMinuteScalpingZones, overlayCandlesByTime, repeatedLtfChochLabels, replayIndex, scalpingEnabled, visibleComparisonZones, zoneDrawingEndIndices, zoneTableRows]);
 
   redrawZonesRef.current = redrawZones;
 
@@ -6597,6 +6846,22 @@ export const OandaProChart: React.FC = () => {
                     {dailyRisk?.available === false ? dailyRisk.error : 'Waiting for fresh MT5 daily risk data.'}
                   </div>}
                 </div>
+                <div className="mb-2 rounded border border-slate-200 bg-slate-50 p-2 leading-relaxed text-slate-600">
+                  <div className="mb-1 font-black text-slate-800">Overall bot profit / loss</div>
+                  <div className="mb-1 text-[8px]">This MT5 account · all available history · no daily reset</div>
+                  {mt5Status.bridge.connected && overallProfit?.available ? <>
+                    <div>Realized profit: <b className="text-emerald-700">{overallProfitMoney(overallProfit.realizedProfitMoney)}</b></div>
+                    <div>Realized loss: <b className="text-rose-700">{overallProfitMoney(overallProfit.realizedLossMoney)}</b></div>
+                    <div>Net realized P/L: <b className={overallProfit.netRealizedMoney < 0 ? 'text-rose-700' : 'text-emerald-700'}>{overallProfitMoney(overallProfit.netRealizedMoney)}</b></div>
+                    <div>Floating P/L: <b className={overallProfit.floatingMoney < 0 ? 'text-rose-700' : 'text-emerald-700'}>{overallProfitMoney(overallProfit.floatingMoney)}</b></div>
+                    <div className={`mt-1 font-black ${overallProfit.netMoney < 0 ? 'text-rose-700' : 'text-emerald-700'}`}>
+                      Overall P/L: {overallProfitMoney(overallProfit.netMoney)}
+                    </div>
+                    <div className="mt-1 text-[8px]">Bot trades only · commission, swap and fees included</div>
+                  </> : <div className="text-amber-700">
+                    {overallProfit?.available === false ? overallProfit.error : 'Waiting for overall MT5 profit/loss data.'}
+                  </div>}
+                </div>
                 <label className="mb-2 block font-bold text-slate-700">
                   Maximum open trades (max 10)
                   <select
@@ -7883,7 +8148,7 @@ export const OandaProChart: React.FC = () => {
                     </tr>
                   );
                 })}
-                {retainedDirectChartTradesForTimeframe.map((overlay) => {
+                {retainedDirectChartTradesForTimeframe.filter(overlay => !hasTradeDisplayExpired(overlay.trade)).map((overlay) => {
                   const bullish = overlay.trade.signal.direction === 'bullish';
                   const zoneLabel = tradeOverlayZoneLabel(overlay.label);
                   const sourceZoneId = directTradeOverlayZoneId(overlay);
@@ -7948,6 +8213,7 @@ export const OandaProChart: React.FC = () => {
                   const outsideTimePreview = !trade ? entryDecision?.previewTrade : undefined;
                   const displayedTrade = trade ?? outsideTimePreview;
                   const mt5Signal = confluenceMapValue<Mt5StoredSignal>(zone, directZoneMt5Signals);
+                  if (hasTradeDisplayExpired(displayedTrade) || hasTradeDisplayExpired(mt5Signal)) return null;
                   const measurement = confluenceFirstValue(zone, (member) => (
                     measureTradeableFibZone(member, marketConfig.pipSize)
                   ));
@@ -8067,6 +8333,7 @@ export const OandaProChart: React.FC = () => {
                   const historicalEntry = replayDirectHistoryByZone.get(zone.id);
                   const historicalTrade = !trade && !outsideTimePreview ? historicalEntry?.trade : undefined;
                   const engulfingTrade = trade ?? outsideTimePreview ?? historicalTrade;
+                  if (hasTradeDisplayExpired(engulfingTrade)) return null;
                   const scalpEngulfingTrade = scalpTrade ?? (!trade ? scalpPreview : undefined);
                   const deepDiscount = historicalEntry
                     ? isDeepDiscountTradeSignal(zone, historicalEntry.trade.signal)
@@ -8271,6 +8538,7 @@ export const OandaProChart: React.FC = () => {
                 {retainedTradeZoneRows.map((zone) => {
                   const trade = directZoneTrades.get(zone.id)!;
                   const mt5Signal = directZoneMt5Signals.get(zone.id);
+                  if (hasTradeDisplayExpired(trade) || hasTradeDisplayExpired(mt5Signal)) return null;
                   return (
                     <React.Fragment key={`retained-trade-${zone.id}`}>
                       <tr className="border-t border-slate-200 bg-slate-50 text-slate-600">
@@ -8339,7 +8607,10 @@ export const OandaProChart: React.FC = () => {
               onClose={() => setShowJournal(false)}
             />
           )}
-          <MultiTimeframeEntryTable rows={mtfRows} liveTrades={liveMtfTableTrades} />
+          <MultiTimeframeEntryTable rows={mtfRows} liveTrades={liveMtfTableTrades}
+            records={recordedMtfTrades} timeZone={chartTimeZone}
+            entryCandles={Object.fromEntries(TIMEFRAMES.map(({ value }) => [value, tableTimeframeData[value]?.candles ?? []]))}
+            asOf={tradeDisplayAsOf} />
           <MultiTimeframeTrendTable rows={trendTableRows} replayActive={replayIndex !== null} />
           {isLoading && candles.length === 0 && !error && (
             <div className="absolute inset-0 z-20 grid place-items-center bg-white/85">

@@ -179,6 +179,7 @@ export interface Mt5SignalInput {
   expiresAt: number;
   confluenceZones?: string[];
   journalContext?: {
+    mtfContext?: import('./mtf').MtfRow;
     biasAtEntry: Record<TradeTimeframe, MarketTrend>;
     autoReason: string;
     fibSource?: string;
@@ -319,6 +320,29 @@ export type Mt5DailyRisk = { available: false; error: string } | {
   riskUnbounded: boolean;
 };
 
+export type Mt5OverallProfit = { available: false; error: string } | {
+  available: true;
+  realizedProfitMoney: number;
+  realizedLossMoney: number;
+  netRealizedMoney: number;
+  floatingMoney: number;
+  netMoney: number;
+};
+
+export function sanitizeMt5OverallProfit(value: any): Mt5OverallProfit | undefined {
+  if (!value || typeof value !== 'object') return undefined;
+  if (value.available !== true) return { available: false,
+    error: String(value.error || 'Overall profit/loss is unavailable.').slice(0, 300) };
+  const fields = ['realizedProfitMoney', 'realizedLossMoney', 'netRealizedMoney', 'floatingMoney', 'netMoney'] as const;
+  if (fields.some(key => typeof value[key] !== 'number' || !Number.isFinite(value[key]))
+    || value.realizedProfitMoney < 0 || value.realizedLossMoney < 0
+    || Math.abs(value.netRealizedMoney - (value.realizedProfitMoney - value.realizedLossMoney)) > 0.01
+    || Math.abs(value.netMoney - (value.netRealizedMoney + value.floatingMoney)) > 0.01) {
+    return { available: false, error: 'Invalid overall profit/loss data.' };
+  }
+  return { available: true, ...Object.fromEntries(fields.map(key => [key, value[key]])) } as Mt5OverallProfit;
+}
+
 export function normalizeMt5DailyLossPercent(value: unknown, fallback = 2): number {
   const number = Number(value);
   return Math.min(5, Math.max(0.1, Number.isFinite(number) ? number : fallback));
@@ -366,6 +390,7 @@ export interface Mt5AutomationStatus {
     symbolResolved?: boolean;
     symbolCandidates?: string[];
     dailyRisk?: Mt5DailyRisk;
+    overallProfit?: Mt5OverallProfit;
     lastHeartbeatAt?: number;
     message?: string;
     logs?: string[];

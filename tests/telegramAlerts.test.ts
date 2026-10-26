@@ -60,7 +60,7 @@ test('Telegram numbering covers all alert kinds, shared styles, retries, restart
       fileURLToPath(new URL('../server.ts', import.meta.url))], {
       cwd: workspace, windowsHide: true,
       env: { ...process.env, PORT: String(port), NODE_ENV: 'production',
-        TELEGRAM_BOT_TOKEN: 'fake-test-token', TELEGRAM_CHAT_ID: 'fake-test-chat' },
+        TELEGRAM_BOT_TOKEN: 'fake-test-token', TELEGRAM_CHAT_ID: 'fake-test-chat', MT5_BRIDGE_TOKEN: 'fake-bridge-test' },
       stdio: ['ignore', 'pipe', 'pipe'],
     });
     let output = '';
@@ -93,7 +93,7 @@ test('Telegram numbering covers all alert kinds, shared styles, retries, restart
       entry('mtf-scalping', { tradeStyle: 'SCALPING', signalTimeframe: 'M1', riskFree: 101 })];
     await Promise.all(initial.map(alert => send([alert])));
     const first = await messages();
-    assert.deepEqual(first.map(text => text.split('\n')[0]).sort(), [1, 2, 3, 4].map(number => `Trade #${number} | 2026-10-26 (Nepal)`));
+    assert.deepEqual(first.map(text => text.split('\n')[0]).sort(), [1, 2, 3, 4].map(number => `Trade #${number} \u2014 NEW ENTRY`));
     const sentState = JSON.parse(await readFile(path.join(workspace, 'data', 'telegram-alerts.json'), 'utf8'));
     const scalpNumber = sentState.scalping.tradeNumber;
     const intradayNumber = sentState.intraday.tradeNumber;
@@ -105,33 +105,33 @@ test('Telegram numbering covers all alert kinds, shared styles, retries, restart
     await send([entry('cancel-order', { kind: 'pending' })]);
     await send([entry('cancel-order', { kind: 'cancelled', closedAt: beforeMidnight })]);
     const lifecycle = await messages();
-    assert.match(lifecycle[4], /^Trade #5 \|/);
-    assert.match(lifecycle[5], /^Trade #5 \|/);
-    assert.ok(lifecycle[6].startsWith(`Trade #${scalpNumber} |`));
-    assert.ok(lifecycle[7].startsWith(`Trade #${intradayNumber} |`));
-    assert.match(lifecycle[8], /^Trade #6 \|/);
-    assert.match(lifecycle[9], /^Trade #6 \|/);
+    assert.match(lifecycle[4], /^Trade #5 \u2014/);
+    assert.match(lifecycle[5], /^Trade #5 \u2014/);
+    assert.ok(lifecycle[6].startsWith(`Trade #${scalpNumber} \u2014`));
+    assert.ok(lifecycle[7].startsWith(`Trade #${intradayNumber} \u2014`));
+    assert.match(lifecycle[8], /^Trade #6 \u2014/);
+    assert.match(lifecycle[9], /^Trade #6 \u2014/);
     await send(initial);
     assert.equal((await messages()).length, 10, 'duplicates must not send again');
     await stop();
     await start();
     await send([entry('after-restart')]);
-    assert.match((await messages()).at(-1)!, /^Trade #7 \|/);
+    assert.match((await messages()).at(-1)!, /^Trade #7 \u2014/);
     await writeFile(clockFile, String(beforeMidnight + 1));
     await send([entry('next-day', { openedAt: beforeMidnight + 1 })]);
-    assert.match((await messages()).at(-1)!, /^Trade #1 \| 2026-10-27/);
+    assert.match((await messages()).at(-1)!, /^Trade #1 \u2014/);
     await send([entry('scalping', { kind: 'sl', tradeStyle: 'SCALPING', closedAt: beforeMidnight + 1,
       exitPrice: 99, returnR: -1 })]);
-    assert.ok((await messages()).at(-1)!.startsWith(`Trade #${scalpNumber} | 2026-10-26`));
+    assert.ok((await messages()).at(-1)!.startsWith(`Trade #${scalpNumber} \u2014 STOP LOSS HIT`));
     await send([entry('next-day-2', { openedAt: beforeMidnight + 1 })]);
-    assert.match((await messages()).at(-1)!, /^Trade #2 \| 2026-10-27/);
+    assert.match((await messages()).at(-1)!, /^Trade #2 \u2014/);
     await writeFile(failOnceFile, 'fail');
     const retry = entry('retry', { openedAt: beforeMidnight + 1 });
     const countBeforeFailure = (await messages()).length;
     await send([retry], 502);
     assert.equal((await messages()).length, countBeforeFailure);
     await send([retry]);
-    assert.match((await messages()).at(-1)!, /^Trade #3 \| 2026-10-27/);
+    assert.match((await messages()).at(-1)!, /^Trade #3 \u2014/);
     await writeFile(path.join(workspace, 'data', 'mt5-automation.json'), JSON.stringify({
       enabled: false, telegramMessagesEnabled: true, scalpingEnabled: false, intradayEnabled: true,
     }));
@@ -139,7 +139,75 @@ test('Telegram numbering covers all alert kinds, shared styles, retries, restart
     await send([entry('disabled-scalp', { openedAt: beforeMidnight + 1, tradeStyle: 'SCALPING', riskFree: 101 })]);
     assert.equal((await messages()).length, beforeDisabled);
     await send([entry('after-disabled', { openedAt: beforeMidnight + 1 })]);
-    assert.match((await messages()).at(-1)!, /^Trade #4 \| 2026-10-27/);
+    assert.match((await messages()).at(-1)!, /^Trade #4 \u2014/);
+    const signalKey = `XAUUSD:bearish:M1:${beforeMidnight + 1}`;
+    const priceAlert = entry(`${signalKey}:4021.54000`, {
+      direction: 'SELL', signalTimeframe: 'M1', openedAt: beforeMidnight + 1,
+      entry: 4021.54, stopLoss: 4024.05, takeProfit: 4014.01,
+    });
+    const beforeSlippage = (await messages()).length;
+    await send([priceAlert]);
+    await send([{ ...priceAlert, id: `${signalKey}:4021.48000`, entry: 4021.48 }]);
+    assert.equal((await messages()).length, beforeSlippage + 1, 'broker slippage must not send a second entry');
+    await stop();
+    await start();
+    await send([{ ...priceAlert, id: `${signalKey}:4021.48000`, entry: 4021.48,
+      kind: 'sl', closedAt: beforeMidnight + 1, exitPrice: 4024.05, returnR: -1 }]);
+    await send([{ ...priceAlert, kind: 'sl', closedAt: beforeMidnight + 1, exitPrice: 4024.05, returnR: -1 }]);
+    const afterSlippage = await messages();
+    assert.equal(afterSlippage.length, beforeSlippage + 2, 'one result across both prices and restart');
+    assert.equal(afterSlippage.at(-1)!.match(/^Trade #\d+/)![0], afterSlippage.at(-2)!.match(/^Trade #\d+/)![0]);
+    // The day-end report reads real terminal signals only and survives restart.
+    await writeFile(clockFile, String(beforeMidnight + 62));
+    const closedSignal = { id: 'closed', account: 'account-A', server: 'Broker', status: 'SL',
+      closedAt: beforeMidnight, updatedAt: beforeMidnight, brokerTicket: 123 };
+    await writeFile(path.join(workspace, 'data', 'mt5-signals.json'), JSON.stringify({ signals: [
+      closedSignal, { ...closedSignal, id: 'price-copy' },
+      { ...closedSignal, id: 'another-account', account: 'account-B', brokerTicket: 124 },
+      { ...closedSignal, id: 'simulated', status: 'SIMULATED', brokerTicket: 125 },
+    ] }));
+    const heartbeat = async () => {
+      const response = await fetch(`${base}/api/mt5/heartbeat`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json', authorization: 'Bearer fake-bridge-test' },
+        body: JSON.stringify({ bridgeId: 'test-summary-bridge', account: 'account-A', server: 'Broker', terminalConnected: true }),
+      });
+      assert.equal(response.status, 200, await response.text());
+      for (let attempt = 0; attempt < 100; attempt++) {
+        if ((await messages()).some(text => text.startsWith('DAILY TRADE SUMMARY'))) return;
+        await new Promise(resolve => setTimeout(resolve, 50));
+      }
+      assert.fail('Daily summary was not delivered');
+    };
+    await heartbeat();
+    assert.equal((await messages()).filter(text => text.startsWith('DAILY TRADE SUMMARY')).length, 1);
+    assert.match((await messages()).at(-1)!, /Total trades: 1/);
+    assert.match((await messages()).at(-1)!, /Losses: 1/);
+    assert.ok(!(await messages()).at(-1)!.includes('$'));
+    await stop();
+    await start();
+    await heartbeat();
+    await new Promise(resolve => setTimeout(resolve, 100));
+    assert.equal((await messages()).filter(text => text.startsWith('DAILY TRADE SUMMARY')).length, 1, 'no duplicate after restart');
+    const stateBeforeDemos = await readFile(path.join(workspace, 'data', 'telegram-alerts.json'), 'utf8');
+    const denied = await fetch(`${base}/api/telegram/demo`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}',
+    });
+    assert.equal(denied.status, 400);
+    await writeFile(failOnceFile, 'fail');
+    const failedDemo = await fetch(`${base}/api/telegram/demo`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ confirmDemo: true }),
+    });
+    assert.equal(failedDemo.status, 502);
+    assert.equal((await failedDemo.json()).sent, 0);
+    const demo = await fetch(`${base}/api/telegram/demo`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ confirmDemo: true }),
+    });
+    assert.equal(demo.status, 200, await demo.text());
+    const demos = (await messages()).filter(text => text.startsWith('DEMO '));
+    assert.equal(demos.length, 10);
+    assert.ok(demos.every(text => text.includes('NOT A LIVE TRADE')));
+    assert.equal(await readFile(path.join(workspace, 'data', 'telegram-alerts.json'), 'utf8'), stateBeforeDemos,
+      'demos must not consume live numbers or change live delivery/report state');
   } finally {
     await stop();
     assert.ok(path.resolve(workspace).startsWith(path.join(path.resolve(tmpdir()), 'telegram-numbering-test-')));

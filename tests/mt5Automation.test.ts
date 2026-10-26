@@ -22,6 +22,7 @@ import {
   mt5ConnectionMatches,
   normalizeMt5DailyLossPercent,
   sanitizeMt5DailyRisk,
+  sanitizeMt5OverallProfit,
   mt5DailyRiskAllowsEntry,
   normalizeMt5EnabledTimeframes,
   normalizeMt5RiskPercent,
@@ -29,6 +30,18 @@ import {
   tradeToMt5Signal,
 } from '../src/services/mt5Automation';
 import type { TradeLevels } from '../src/services/tradeLevels';
+
+test('overall P/L accepts signed broker totals and rejects invalid or inconsistent snapshots', () => {
+  const summary = { available: true, realizedProfitMoney: 0, realizedLossMoney: 12.35,
+    netRealizedMoney: -12.35, floatingMoney: -2, netMoney: -14.35 };
+  assert.deepEqual(sanitizeMt5OverallProfit(summary), summary);
+  assert.equal(sanitizeMt5OverallProfit(undefined), undefined);
+  assert.deepEqual(sanitizeMt5OverallProfit({ available: false, error: 'Disconnected' }), { available: false, error: 'Disconnected' });
+  for (const changes of [{ realizedLossMoney: -1 }, { netMoney: 100 }, { netRealizedMoney: 5 },
+    { floatingMoney: Number.NaN }, { netMoney: Number.POSITIVE_INFINITY }]) {
+    assert.equal(sanitizeMt5OverallProfit({ ...summary, ...changes })?.available, false);
+  }
+});
 
 test('daily loss limit is capped at 5 percent and invalid settings preserve the current limit', () => {
   assert.equal(normalizeMt5DailyLossPercent(2), 2);
