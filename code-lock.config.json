@@ -10,7 +10,10 @@
     {
       "paths": [
         "src/components/OandaProChart.tsx",
-        "server.ts"
+        "server.ts",
+        "src/services/telegramTradeNumbers.ts",
+        "tests/telegramTradeNumbers.test.ts",
+        "tests/telegramAlerts.test.ts"
       ],
       "owners": ["gold", "forex", "shared"]
     },
@@ -21,6 +24,8 @@
         "src/services/dayFibConfluence.ts",
         "src/services/indicatorFib.ts",
         "src/services/marketStructure.ts",
+        "src/services/structureAnalysis.ts",
+        "src/services/structureAnalysis.worker.ts",
         "src/services/marketSymbols.ts",
         "src/services/mtf.ts",
         "src/services/oneMinuteGenesis.ts",
@@ -36,6 +41,7 @@
         "tests/dayFibConfluence.test.ts",
         "tests/indicatorFib.test.ts",
         "tests/marketStructure.test.ts",
+        "tests/structureAnalysis.test.ts",
         "tests/marketSymbols.test.ts",
         "tests/mtf.test.ts",
         "tests/oneMinuteGenesis.test.ts",

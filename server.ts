@@ -2,9 +2,13 @@ import 'dotenv/config';
 import express from 'express';
 import path from 'path';
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
 import { createServer as createViteServer } from 'vite';
 import { fetchTradingViewCandles } from './src/services/tradingViewDatafeed';
+import {
+  reserveTelegramTradeNumber, telegramTradeNumberLabel,
+  type SentTelegramAlerts, type TelegramTradeNumber,
+} from './src/services/telegramTradeNumbers';
 import {
   MT5_DEFAULT_ENABLED_TIMEFRAMES,
   applySignalOppositePositionTarget,
@@ -1078,6 +1082,7 @@ async function updateMt5JournalRecord(
 
 interface TelegramTradeAlert {
   id: string;
+  tradeKey?: string;
   kind: 'pending' | 'cancelled' | 'entry' | 'rf' | 'tp' | 'sl';
   outsideTradingTime?: boolean;
   symbol: string;
@@ -1102,12 +1107,12 @@ interface TelegramTradeAlert {
   returnR?: number;
 }
 
-type SentTelegramAlerts = Record<string, { pending?: boolean; cancelled?: boolean; entry?: boolean; rf?: boolean; result?: 'tp' | 'sl' }>;
-
 function validTelegramTradeAlert(value: any): value is TelegramTradeAlert {
   const timeframes = new Set(AUTOMATION_TIMEFRAMES);
   const now = Math.floor(Date.now() / 1000);
   return value && typeof value.id === 'string' && value.id.length > 0 && value.id.length <= 300
+    && (value.tradeKey === undefined || typeof value.tradeKey === 'string'
+      && value.tradeKey.length > 0 && value.tradeKey.length <= 300)
     && ['pending', 'cancelled', 'entry', 'rf', 'tp', 'sl'].includes(value.kind)
     && (value.outsideTradingTime === undefined || typeof value.outsideTradingTime === 'boolean')
     && typeof value.symbol === 'string' && /^[A-Z0-9]{3,12}$/.test(value.symbol)
@@ -1216,14 +1221,14 @@ function telegramAlertText(alert: TelegramTradeAlert): string {
   ].join('\n');
 }
 
-async function sendTelegramTradeAlert(alert: TelegramTradeAlert): Promise<void> {
+async function sendTelegramTradeAlert(alert: TelegramTradeAlert, number: TelegramTradeNumber): Promise<void> {
   const token = process.env.TELEGRAM_BOT_TOKEN?.trim();
   const chatId = process.env.TELEGRAM_CHAT_ID?.trim();
   if (!token || !chatId) throw new Error('Telegram bot token and chat ID are not configured.');
   const response = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ chat_id: chatId, text: telegramAlertText(alert) }),
+    body: JSON.stringify({ chat_id: chatId, text: `${telegramTradeNumberLabel(number)}\n${telegramAlertText(alert)}` }),
     signal: AbortSignal.timeout(10_000),
   });
   if (!response.ok) throw new Error(`Telegram rejected the alert (${response.status}).`);
@@ -1244,6 +1249,12 @@ async function deliverTelegramAlerts(
       if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
       sent = {};
     }
+    const saveSent = async () => {
+      await mkdir(path.dirname(TELEGRAM_ALERTS_FILE), { recursive: true });
+      const temporaryFile = `${TELEGRAM_ALERTS_FILE}.${process.pid}.tmp`;
+      await writeFile(temporaryFile, `${JSON.stringify(sent, null, 2)}\n`, 'utf8');
+      await rename(temporaryFile, TELEGRAM_ALERTS_FILE);
+    };
     const acknowledged: string[] = [];
     for (const alert of alerts) {
       if (!config.telegramMessagesEnabled || !isTradeStyleEnabled(config, alert)) {
@@ -1263,13 +1274,15 @@ async function deliverTelegramAlerts(
         acknowledged.push(`${alert.id}:${alert.kind}`);
         continue;
       }
-      await sendTelegramTradeAlert(alert);
-      sent[alert.id] = alert.kind === 'pending' ? { ...state, pending: true }
-        : alert.kind === 'cancelled' ? { ...state, cancelled: true }
-        : alert.kind === 'rf' ? { ...state, rf: true }
-        : alert.kind === 'entry' ? { ...state, entry: true } : { ...state, result: alert.kind };
-      await mkdir(path.dirname(TELEGRAM_ALERTS_FILE), { recursive: true });
-      await writeFile(TELEGRAM_ALERTS_FILE, `${JSON.stringify(sent, null, 2)}\n`, 'utf8');
+      const number = reserveTelegramTradeNumber(sent, alert.id, alert.tradeKey);
+      if (number.changed) await saveSent();
+      await sendTelegramTradeAlert(alert, number);
+      const numberedState = sent[alert.id];
+      sent[alert.id] = alert.kind === 'pending' ? { ...numberedState, pending: true }
+        : alert.kind === 'cancelled' ? { ...numberedState, cancelled: true }
+        : alert.kind === 'rf' ? { ...numberedState, rf: true }
+        : alert.kind === 'entry' ? { ...numberedState, entry: true } : { ...numberedState, result: alert.kind };
+      await saveSent();
       acknowledged.push(`${alert.id}:${alert.kind}`);
     }
     return acknowledged;
@@ -1710,6 +1723,8 @@ async function startServer() {
           || confirmedRf || confirmedResult)
           && (await readMt5Config()).telegramMessagesEnabled) {
           const telegramAlert: TelegramTradeAlert = {
+            tradeKey: [updated.symbol, updated.direction === 'BUY' ? 'bullish' : 'bearish',
+              updated.signalTimeframe, updated.signalAt, updated.entry.toFixed(5)].join(':'),
             id: status === 'PLACED' || cancelledBeyondOneAndHalfR || confirmedRf ? updated.id : [
               updated.symbol,
               updated.direction === 'BUY' ? 'bullish' : 'bearish',

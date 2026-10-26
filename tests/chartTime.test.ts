@@ -17,3 +17,25 @@ test('chart tick formatter applies the selected timezone', () => {
   assert.equal(formatChartTick(timestamp, TickMarkType.Time, 'Asia/Kolkata'), '01:30');
   assert.equal(formatChartTick(timestamp, TickMarkType.DayOfMonth, 'Asia/Kathmandu'), '03 Oct');
 });
+
+test('repeated chart movement keeps labels correct across tick types, dates and timezone switches', () => {
+  const tickOptions = [
+    [TickMarkType.Year, { year: 'numeric' }],
+    [TickMarkType.Month, { month: 'short' }],
+    [TickMarkType.DayOfMonth, { day: '2-digit', month: 'short' }],
+    [TickMarkType.Time, { hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }],
+    [TickMarkType.TimeWithSeconds, { hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23' }],
+  ] as const;
+  for (const offset of [0, 61, 86400, 86400 * 100, 0]) {
+    const time = (timestamp + offset) as UTCTimestamp;
+    for (const timeZone of ['UTC', 'Asia/Kathmandu', 'Asia/Kolkata', 'UTC'] as const) {
+      for (const [tickType, options] of tickOptions) {
+        assert.equal(formatChartTick(time, tickType, timeZone),
+          new Intl.DateTimeFormat('en-GB', { timeZone, ...options }).format(new Date(time * 1000)));
+      }
+    }
+  }
+  const nextDay = (timestamp + 86400) as UTCTimestamp;
+  assert.equal(formatChartTime(nextDay, 'Asia/Kathmandu'), "Sun 04 Oct '26 01:45 AM");
+  assert.equal(formatChartTime(timestamp, 'UTC'), "Fri 02 Oct '26 08:00 PM");
+});

@@ -34,6 +34,7 @@ import {
 import { findReplayIndexAtOrBefore } from '../services/replay';
 import { buildAlternatingSwingFibs, SwingFibMove } from '../services/swingFib';
 import { ChartTimeZone, formatChartTick, formatChartTime } from '../services/chartTime';
+import { structureSnapshotsMatch, type PreparedStructureAnalysis, type StructureAnalysisTask } from '../services/structureAnalysis';
 import { buildDayFibs, DayFibMove } from '../services/dayFib';
 import { applySwingFibConfluence } from '../services/swingFibConfluence';
 import { applyDayFibConfluence } from '../services/dayFibConfluence';
@@ -154,11 +155,8 @@ type ChochFibVisibility = [boolean, boolean, boolean, boolean];
 type ChartDrawingTool = 'rectangle' | 'fib' | 'measure' | 'note' | 'path' | 'trend';
 type ChartDrawingVisibility = 'all' | 'current-only' | 'current-and-above' | 'current-and-below';
 
-// Custom zones and drawings sit above lightweight-charts. Rebuilding those
-// layers on every pointer-driven range event can monopolize the main thread,
-// so keep their refresh rate below the native canvas refresh rate. The last
-// scheduled frame always reads the newest chart coordinates.
-const OVERLAY_REDRAW_INTERVAL_MS = 100;
+// Coalesce zone movement into one animation frame. User drawing redraws also
+// render React controls, so keep those separately throttled.
 const DRAWING_REDRAW_INTERVAL_MS = 80;
 
 interface ChartDrawingPoint {
@@ -518,12 +516,17 @@ const TJL1_CONFIRMATION_LABELS: Record<OandaGranularity, string> = {
   M1: '5m', M5: '15m', M15: '1h', M30: '1h', H1: '4h', H4: '1D', D: '1W',
 };
 
+// Number#toLocaleString constructs an ICU formatter on every call. These
+// labels are redrawn during every drag frame, so keep the formatters alive.
+const priceFormatters = {
+  3: new Intl.NumberFormat(undefined, { minimumFractionDigits: 3, maximumFractionDigits: 3 }),
+  5: new Intl.NumberFormat(undefined, { minimumFractionDigits: 5, maximumFractionDigits: 5 }),
+};
+const zonePipsFormatter = new Intl.NumberFormat(undefined, { maximumFractionDigits: 2 });
+
 function formatPrice(value: number | undefined): string {
   const precision = Number.isFinite(value) && Math.abs(Number(value)) < 10 ? 5 : 3;
-  return Number.isFinite(value) ? Number(value).toLocaleString(undefined, {
-    minimumFractionDigits: precision,
-    maximumFractionDigits: precision,
-  }) : '—';
+  return Number.isFinite(value) ? priceFormatters[precision].format(Number(value)) : '—';
 }
 
 function candleSnapshotsMatch(first: OandaCandle[], second: OandaCandle[]): boolean {
@@ -793,7 +796,7 @@ function tradeZoneFibLabels(zone: StructureZone): string[] {
 }
 
 function formatZonePips(pips: number): string {
-  return pips.toLocaleString(undefined, { maximumFractionDigits: 2 });
+  return zonePipsFormatter.format(pips);
 }
 
 function measureListedZone(zone: StructureZone, pipSize: number) {
@@ -1550,8 +1553,6 @@ export const OandaProChart: React.FC = () => {
   const [hoveredEntry, setHoveredEntry] = useState<{ entry: EntryHover; x: number; y: number } | null>(null);
   const redrawZonesRef = useRef<() => void>(() => undefined);
   const overlayRedrawFrameRef = useRef<number | null>(null);
-  const overlayRedrawTimerRef = useRef<number | null>(null);
-  const lastOverlayRedrawAtRef = useRef(0);
   const drawingRedrawFrameRef = useRef<number | null>(null);
   const drawingRedrawTimerRef = useRef<number | null>(null);
   const lastDrawingRedrawAtRef = useRef(0);
@@ -1565,6 +1566,22 @@ export const OandaProChart: React.FC = () => {
   const loadedDataSourceRef = useRef<LiveChartDataSource>('OANDA');
   const loadedMarketSymbolRef = useRef<OandaMarketSymbol>('XAUUSD');
   const candlesRef = useRef<OandaCandle[]>([]);
+  const analysisWorkerRef = useRef<Worker | null>(null);
+  const analysisRequestIdRef = useRef(0);
+  const analysisRequestsRef = useRef(new Map<number, {
+    resolve: (updates: PreparedStructureAnalysis[]) => void;
+    reject: (error: Error) => void;
+  }>());
+  const preparedAnalysesRef = useRef(new Map<string, PreparedStructureAnalysis>());
+  const supportAnalysisCacheRef = useRef<Partial<Record<MarketGranularity, {
+    candles: OandaCandle[];
+    structure: ReturnType<typeof analyzeMarketStructure>;
+  }>>>({});
+  const supportContextsRef = useRef<Array<{ timeframe: string; zones: StructureZone[] }>>([]);
+  const tableAnalysisCacheRef = useRef<Partial<Record<OandaGranularity, {
+    candles: OandaCandle[];
+    structure: ReturnType<typeof analyzeMarketStructure>;
+  }>>>({});
   const replaySelectingRef = useRef(false);
   const replaySelectionIndexRef = useRef<number | null>(null);
   const syncReplaySelectionLineRef = useRef<() => void>(() => undefined);
@@ -1573,6 +1590,8 @@ export const OandaProChart: React.FC = () => {
   const [liveChartDataSource, setLiveChartDataSource] = useState<LiveChartDataSource>('OANDA');
   const [candles, setCandles] = useState<OandaCandle[]>([]);
   const [vipCandles, setVipCandles] = useState<Partial<Record<MarketGranularity, OandaCandle[]>>>({});
+  const vipCandlesRef = useRef(vipCandles);
+  vipCandlesRef.current = vipCandles;
   const [source, setSource] = useState('Loading TradingView OANDA candles');
   const [lastUpdated, setLastUpdated] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -1934,31 +1953,63 @@ export const OandaProChart: React.FC = () => {
     mtfLowerGranularities,
     vipSupportGranularities,
   ]);
+  const analyzeChartStructure = useCallback((
+    key: string,
+    sourceCandles: OandaCandle[],
+    options: Parameters<typeof analyzeMarketStructure>[1],
+  ) => {
+    const prepared = preparedAnalysesRef.current.get(key);
+    const { vipSupport: _vipSupport, ...baseOptions } = options;
+    if (prepared && prepared.optionsKey === JSON.stringify(baseOptions)
+      && prepared.dependencies.every(({ key: dependencyKey, revision }) => (
+        preparedAnalysesRef.current.get(dependencyKey)?.revision === revision
+      )) && structureSnapshotsMatch(prepared.candles, sourceCandles)) return prepared.result;
+    // Replay edits and browsers without Workers retain the original calculation.
+    return analyzeMarketStructure(sourceCandles, options);
+  }, []);
+
+  useEffect(() => () => {
+    analysisWorkerRef.current?.terminate();
+    analysisWorkerRef.current = null;
+    for (const request of analysisRequestsRef.current.values()) request.reject(new Error('Chart closed'));
+    analysisRequestsRef.current.clear();
+    preparedAnalysesRef.current.clear();
+  }, []);
+
   const vipSupportContexts = useMemo(() => {
     if (displayCandles.length === 0) return [];
     const lastSourceCandle = displayCandles[displayCandles.length - 1];
     const cutoff = lastSourceCandle.time
       + (lastSourceCandle.complete ? TIMEFRAME_SECONDS[granularity] : 0);
-    return vipSupportGranularities.map((supportGranularity) => {
+    const contexts = vipSupportGranularities.map((supportGranularity) => {
       const completedCandles = (vipCandles[supportGranularity] || []).filter((candle) => (
         candle.complete
         && marketCandleCloseTime(candle.time, supportGranularity) <= cutoff
       ));
-      const supportStructure = analyzeMarketStructure(completedCandles, {
+      const cached = supportAnalysisCacheRef.current[supportGranularity];
+      const supportStructure = cached && structureSnapshotsMatch(cached.candles, completedCandles)
+        ? cached.structure : analyzeChartStructure(`support:${supportGranularity}`, completedCandles, {
         allowSupplyDemand: ['H1', 'H4', 'D', 'W', 'MO'].includes(supportGranularity),
         sourceBarSeconds: TIMEFRAME_SECONDS[supportGranularity],
         confirmationBarSeconds: TJL1_CONFIRMATION_SECONDS[supportGranularity],
         zoneVisualBars: 30,
       });
+      supportAnalysisCacheRef.current[supportGranularity] = { candles: completedCandles, structure: supportStructure };
       return {
         timeframe: GRANULARITY_LABELS[supportGranularity],
         zones: supportStructure.zones,
       };
     });
+    const previous = supportContextsRef.current;
+    if (previous.length === contexts.length && contexts.every((context, index) => (
+      context.timeframe === previous[index].timeframe && context.zones === previous[index].zones
+    ))) return previous;
+    supportContextsRef.current = contexts;
+    return contexts;
   }, [displayCandles, granularity, vipCandles, vipSupportGranularities]);
 
   const structure = useMemo(
-    () => analyzeMarketStructure(displayCandles, {
+    () => analyzeChartStructure('chart', displayCandles, {
       allowSupplyDemand: ['H1', 'H4', 'D'].includes(granularity),
       sourceBarSeconds: TIMEFRAME_SECONDS[granularity],
       confirmationBarSeconds: TJL1_CONFIRMATION_SECONDS[granularity],
@@ -1973,7 +2024,7 @@ export const OandaProChart: React.FC = () => {
     if (granularity === 'H4') return { candles: displayCandles, lines: structure.lines };
     const h4Candles = vipCandles.H4 || [];
     if (h4Candles.length === 0) return { candles: h4Candles, lines: [] as StructureLine[] };
-    const h4Structure = analyzeMarketStructure(h4Candles, {
+    const h4Structure = analyzeChartStructure('h4', h4Candles, {
       allowSupplyDemand: true,
       sourceBarSeconds: TIMEFRAME_SECONDS.H4,
       confirmationBarSeconds: TJL1_CONFIRMATION_SECONDS.H4,
@@ -2362,16 +2413,23 @@ export const OandaProChart: React.FC = () => {
         ? availableCandles
         : availableCandles.filter((candle) => candle.time <= replayCutoff);
       if (timeframeCandles.length === 0) continue;
-      data[tableGranularity] = {
-        candles: timeframeCandles,
-        structure: tableGranularity === granularity
+      const cached = tableAnalysisCacheRef.current[tableGranularity];
+      const timeframeStructure = tableGranularity === granularity
           ? structure
-          : analyzeMarketStructure(timeframeCandles, {
+          : cached && structureSnapshotsMatch(cached.candles, timeframeCandles)
+            ? cached.structure : analyzeChartStructure(`table:${tableGranularity}`, timeframeCandles, {
           allowSupplyDemand: ['H1', 'H4', 'D'].includes(tableGranularity),
           sourceBarSeconds: TIMEFRAME_SECONDS[tableGranularity],
           confirmationBarSeconds: TJL1_CONFIRMATION_SECONDS[tableGranularity],
           zoneVisualBars: 30,
-          }),
+          });
+      tableAnalysisCacheRef.current[tableGranularity] = {
+        candles: timeframeCandles,
+        structure: timeframeStructure,
+      };
+      data[tableGranularity] = {
+        candles: timeframeCandles,
+        structure: timeframeStructure,
       };
       const context = data[tableGranularity]!;
       const supplyDemandFibZones = new Map(applySwingFibConfluence(
@@ -3906,6 +3964,18 @@ export const OandaProChart: React.FC = () => {
     updateHeaderCandleRef.current();
   }, [displayCandles]);
 
+  // Zone endpoints scan candle history. They depend on market data, never on
+  // the viewport, so dragging must only project the already computed result.
+  const zoneDrawingEndIndices = useMemo(() => new Map(consolidatedDisplayZones.map((zone) => [
+    zone.id,
+    marketSymbol === 'XAUUSD'
+      ? tappedZoneDrawingEndIndex(zone, displayCandles, granularity, marketConfig.pipSize)
+      : undefined,
+  ])), [consolidatedDisplayZones, displayCandles, granularity, marketConfig.pipSize, marketSymbol]);
+  const overlayCandlesByTime = useMemo(() => new Map<number, OandaCandle>(
+    displayCandles.map((candle) => [Number(candle.time), candle]),
+  ), [displayCandles]);
+
   const redrawZones = useCallback(() => {
     const layer = zoneLayerRef.current;
     const host = hostRef.current;
@@ -3918,9 +3988,7 @@ export const OandaProChart: React.FC = () => {
     }
 
     const fragment = document.createDocumentFragment();
-    const candleByTime = new Map<number, OandaCandle>(displayCandles.map((candle) => (
-      [Number(candle.time), candle] as [number, OandaCandle]
-    )));
+    const candleByTime = overlayCandlesByTime;
     const mtfBadgesByZone = new Map<string, Set<string>>();
     for (const row of mtfRows) {
       if (!row.higherTimeframeZoneId) continue;
@@ -4124,9 +4192,7 @@ export const OandaProChart: React.FC = () => {
     for (const zone of visualZonesRef.current) {
       if (!isVisualZoneVisible(zone)) continue;
       const listedInTable = displayZoneMembers(zone).some((member) => listedZoneIds.has(member.id));
-      const extendedEndIndex = marketSymbol === 'XAUUSD'
-        ? tappedZoneDrawingEndIndex(zone, displayCandles, granularity, marketConfig.pipSize)
-        : undefined;
+      const extendedEndIndex = zoneDrawingEndIndices.get(zone.id);
       if (visibleTimeRange && ((extendedEndIndex === undefined && zone.endTime < Number(visibleTimeRange.from))
         || zone.startTime > Number(visibleTimeRange.to))) continue;
       const rawLeft = chart.timeScale().timeToCoordinate(zone.startTime as UTCTimestamp);
@@ -4811,24 +4877,16 @@ export const OandaProChart: React.FC = () => {
     // Swap the complete overlay in one operation so the browser does not
     // perform layout work for every individual zone, line, and label.
     layer.replaceChildren(fragment);
-  }, [comparisonTimeframe, directZoneTrades, displayCandles, extremeAPlusTjl2Selection, granularity, latestCandle?.time, ltfChochContext, marketConfig.pipSize, marketSymbol, mtfRows, oneMinuteScalpingZones, repeatedLtfChochLabels, replayIndex, scalpingEnabled, visibleComparisonZones, zoneTableRows]);
+  }, [comparisonTimeframe, directZoneTrades, displayCandles, extremeAPlusTjl2Selection, granularity, latestCandle?.time, ltfChochContext, marketConfig.pipSize, marketSymbol, mtfRows, oneMinuteScalpingZones, overlayCandlesByTime, repeatedLtfChochLabels, replayIndex, scalpingEnabled, visibleComparisonZones, zoneDrawingEndIndices, zoneTableRows]);
 
   redrawZonesRef.current = redrawZones;
 
   const scheduleOverlayRedraw = useCallback(() => {
-    if (overlayRedrawFrameRef.current !== null || overlayRedrawTimerRef.current !== null) return;
-    const elapsed = performance.now() - lastOverlayRedrawAtRef.current;
-    const scheduleFrame = () => {
-      overlayRedrawTimerRef.current = null;
-      overlayRedrawFrameRef.current = window.requestAnimationFrame(() => {
-        overlayRedrawFrameRef.current = null;
-        lastOverlayRedrawAtRef.current = performance.now();
-        redrawZonesRef.current();
-      });
-    };
-    const delay = Math.max(0, OVERLAY_REDRAW_INTERVAL_MS - elapsed);
-    if (delay > 0) overlayRedrawTimerRef.current = window.setTimeout(scheduleFrame, delay);
-    else scheduleFrame();
+    if (overlayRedrawFrameRef.current !== null) return;
+    overlayRedrawFrameRef.current = window.requestAnimationFrame(() => {
+      overlayRedrawFrameRef.current = null;
+      redrawZonesRef.current();
+    });
   }, []);
 
   const scheduleDrawingRedraw = useCallback(() => {
@@ -4958,6 +5016,84 @@ export const OandaProChart: React.FC = () => {
     if (replayCandle) replayTimeRef.current = replayCandle.time;
   }, [candles, replayIndex]);
 
+  const prepareChartAnalysis = useCallback(async (
+    nextCandles: OandaCandle[],
+    auxiliary: Partial<Record<MarketGranularity, OandaCandle[]>>,
+    nextReplayIndex: number | null,
+  ) => {
+    if (typeof Worker === 'undefined') return;
+    const visibleCandles = nextReplayIndex === null ? nextCandles : nextCandles.slice(0, nextReplayIndex + 1);
+    const last = visibleCandles[visibleCandles.length - 1];
+    if (!last) return;
+    const cutoff = last.time + (last.complete ? TIMEFRAME_SECONDS[granularity] : 0);
+    const tasks: StructureAnalysisTask[] = vipSupportGranularities.map((timeframe) => ({
+      key: `support:${timeframe}`,
+      candles: (auxiliary[timeframe] ?? []).filter((candle) => (
+        candle.complete && marketCandleCloseTime(candle.time, timeframe) <= cutoff
+      )),
+      options: {
+        allowSupplyDemand: ['H1', 'H4', 'D', 'W', 'MO'].includes(timeframe),
+        sourceBarSeconds: TIMEFRAME_SECONDS[timeframe],
+        confirmationBarSeconds: TJL1_CONFIRMATION_SECONDS[timeframe],
+        zoneVisualBars: 30,
+      },
+    }));
+    tasks.push({
+      key: 'chart', candles: visibleCandles,
+      options: {
+        allowSupplyDemand: ['H1', 'H4', 'D'].includes(granularity),
+        sourceBarSeconds: TIMEFRAME_SECONDS[granularity],
+        confirmationBarSeconds: TJL1_CONFIRMATION_SECONDS[granularity], zoneVisualBars: 30,
+      },
+      support: vipSupportGranularities.map((timeframe) => ({ key: `support:${timeframe}`, timeframe: GRANULARITY_LABELS[timeframe] })),
+    });
+    if (granularity !== 'D' && granularity !== 'H4') tasks.push({
+      key: 'h4', candles: auxiliary.H4 ?? [],
+      options: { allowSupplyDemand: true, sourceBarSeconds: TIMEFRAME_SECONDS.H4,
+        confirmationBarSeconds: TJL1_CONFIRMATION_SECONDS.H4, zoneVisualBars: 30 },
+    });
+    for (const timeframe of new Set([...TREND_TABLE_GRANULARITIES, ...AUTOMATION_GRANULARITIES])) {
+      if (timeframe === granularity) continue;
+      const available = auxiliary[timeframe] ?? [];
+      tasks.push({ key: `table:${timeframe}`,
+        candles: nextReplayIndex === null ? available : available.filter((candle) => candle.time <= cutoff),
+        options: { allowSupplyDemand: ['H1', 'H4', 'D'].includes(timeframe),
+          sourceBarSeconds: TIMEFRAME_SECONDS[timeframe],
+          confirmationBarSeconds: TJL1_CONFIRMATION_SECONDS[timeframe], zoneVisualBars: 30 },
+      });
+    }
+    try {
+      let worker = analysisWorkerRef.current;
+      if (!worker) {
+        worker = new Worker(new URL('../services/structureAnalysis.worker.ts', import.meta.url), { type: 'module' });
+        worker.onmessage = (event: MessageEvent<{ id: number; updates?: PreparedStructureAnalysis[]; error?: string }>) => {
+          const request = analysisRequestsRef.current.get(event.data.id);
+          analysisRequestsRef.current.delete(event.data.id);
+          if (event.data.error) request?.reject(new Error(event.data.error));
+          else {
+            const updates = event.data.updates ?? [];
+            for (const prepared of updates) preparedAnalysesRef.current.set(prepared.key, prepared);
+            request?.resolve(updates);
+          }
+        };
+        worker.onerror = () => {
+          for (const request of analysisRequestsRef.current.values()) request.reject(new Error('Background analysis failed'));
+          analysisRequestsRef.current.clear();
+          worker?.terminate();
+          analysisWorkerRef.current = null;
+        };
+        analysisWorkerRef.current = worker;
+      }
+      const id = ++analysisRequestIdRef.current;
+      await new Promise<PreparedStructureAnalysis[]>((resolve, reject) => {
+        analysisRequestsRef.current.set(id, { resolve, reject });
+        worker!.postMessage({ id, tasks });
+      });
+    } catch {
+      // Keep the existing synchronous result as a fallback if Worker startup fails.
+    }
+  }, [granularity, vipSupportGranularities]);
+
   const loadCandles = useCallback(async (signal?: AbortSignal) => {
     const requestId = ++loadRequestIdRef.current;
       const replayTime = replayTimeRef.current;
@@ -5010,6 +5146,8 @@ export const OandaProChart: React.FC = () => {
       if (replayTime !== null && nextReplayIndex === null) {
         throw new Error(`The selected replay date is not available on ${GRANULARITY_LABELS[granularity]}.`);
       }
+      await prepareChartAnalysis(payload.candles, vipCandlesRef.current, nextReplayIndex);
+      if (requestId !== loadRequestIdRef.current || signal?.aborted) return;
       loadedGranularityRef.current = granularity;
       loadedDataSourceRef.current = liveChartDataSource;
       loadedMarketSymbolRef.current = marketSymbol;
@@ -5045,7 +5183,7 @@ export const OandaProChart: React.FC = () => {
             : [];
         });
         if (loadedEntries.length === 0) return true;
-        setVipCandles((current) => {
+          const current = vipCandlesRef.current;
           let changed = false;
           const next = { ...current };
           for (const [supportGranularity, nextCandles] of loadedEntries) {
@@ -5053,8 +5191,12 @@ export const OandaProChart: React.FC = () => {
             next[supportGranularity] = nextCandles;
             changed = true;
           }
-          return changed ? next : current;
-        });
+          if (changed) {
+            await prepareChartAnalysis(payload.candles, next, nextReplayIndex);
+            if (requestId !== loadRequestIdRef.current || signal?.aborted) return false;
+            vipCandlesRef.current = next;
+            setVipCandles(next);
+          }
         return true;
       };
       if (!await loadAuxiliaryBatch(priorityGranularities)) return;
@@ -5072,7 +5214,7 @@ export const OandaProChart: React.FC = () => {
         setIsLoading(false);
       }
     }
-  }, [auxiliaryGranularities, granularity, liveChartDataSource, marketConfig.mt5AutomationEnabled, marketSymbol, mtfLowerGranularities]);
+  }, [auxiliaryGranularities, granularity, liveChartDataSource, marketConfig.mt5AutomationEnabled, marketSymbol, mtfLowerGranularities, prepareChartAnalysis]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -5206,10 +5348,6 @@ export const OandaProChart: React.FC = () => {
       if (overlayRedrawFrameRef.current !== null) {
         window.cancelAnimationFrame(overlayRedrawFrameRef.current);
         overlayRedrawFrameRef.current = null;
-      }
-      if (overlayRedrawTimerRef.current !== null) {
-        window.clearTimeout(overlayRedrawTimerRef.current);
-        overlayRedrawTimerRef.current = null;
       }
       if (drawingRedrawFrameRef.current !== null) {
         window.cancelAnimationFrame(drawingRedrawFrameRef.current);
@@ -6427,19 +6565,16 @@ export const OandaProChart: React.FC = () => {
                 </label>
                 <label className="mb-2 block font-bold text-slate-700">
                   Daily loss limit (%)
-                  <input
+                  <select
                     aria-label="Daily loss limit percent"
-                    type="number"
-                    min="0.1"
-                    max="5"
-                    step="0.1"
                     value={mt5Status.config.maximumDailyLossPercent}
-                    onChange={(event) => setMt5Status((current) => current ? {
-                      ...current, config: { ...current.config, maximumDailyLossPercent: Number(event.target.value) },
-                    } : current)}
-                    onBlur={(event) => void updateMt5Config({ maximumDailyLossPercent: Number(event.target.value) })}
-                    className="mt-1 w-full rounded border border-slate-200 px-2 py-1"
-                  />
+                    onChange={(event) => void updateMt5Config({ maximumDailyLossPercent: Number(event.target.value) })}
+                    className="mt-1 w-full rounded border border-slate-200 bg-white px-2 py-1"
+                  >
+                    {[1, 2, 3, 4, 5].map((lossPercent) => (
+                      <option key={lossPercent} value={lossPercent}>{lossPercent}%</option>
+                    ))}
+                  </select>
                   <span className="mt-1 block text-[8px] font-semibold text-slate-500">Maximum 5%. Closed and floating bot losses count together.</span>
                 </label>
                 <div className="mb-2 rounded border border-indigo-100 bg-indigo-50 p-2 text-slate-700">
@@ -6464,18 +6599,16 @@ export const OandaProChart: React.FC = () => {
                 </div>
                 <label className="mb-2 block font-bold text-slate-700">
                   Maximum open trades (max 10)
-                  <input
-                    type="number"
-                    min="1"
-                    max="10"
+                  <select
+                    aria-label="Maximum open trades"
                     value={mt5Status.config.maximumOpenTrades}
-                    onChange={(event) => setMt5Status((current) => current ? {
-                      ...current,
-                      config: { ...current.config, maximumOpenTrades: Number(event.target.value) },
-                    } : current)}
-                    onBlur={(event) => void updateMt5Config({ maximumOpenTrades: Number(event.target.value) })}
-                    className="mt-1 w-full rounded border border-slate-200 px-2 py-1"
-                  />
+                    onChange={(event) => void updateMt5Config({ maximumOpenTrades: Number(event.target.value) })}
+                    className="mt-1 w-full rounded border border-slate-200 bg-white px-2 py-1"
+                  >
+                    {Array.from({ length: 10 }, (_, index) => index + 1).map((tradeCount) => (
+                      <option key={tradeCount} value={tradeCount}>{tradeCount}</option>
+                    ))}
+                  </select>
                 </label>
                 <div className="rounded bg-slate-50 p-2 leading-relaxed text-slate-600">
                   Account: <b>{mt5Status.bridge.account || 'Waiting for MT5 login'}</b><br />

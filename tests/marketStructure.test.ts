@@ -420,6 +420,29 @@ test('TJL1 FIB uses its current paired TJL2 even when the TJL2 pivot is newer', 
   );
 });
 
+test('FIB history lookup keeps the earliest equal extreme and excludes the live candle', () => {
+  for (const isBuy of [true, false]) {
+    const source = zone({ id: 'source', name: 'TJL2', isBuy, startTime: 100,
+      bottom: 100, top: 120, tjlPairTime: 300 });
+    const target = zone({ id: 'target', name: 'TJL1', isBuy, startTime: 200,
+      bottom: 108, top: 112, tjlPairTime: 300 });
+    const candles = [
+      { time: 100, open: 110, close: 111, high: 115, low: 105 },
+      { time: 200, open: 110, close: 111, high: 120, low: 100 },
+      { time: 300, open: 110, close: 111, high: 120, low: 100 },
+      { time: 400, open: 110, close: 111, high: 200, low: 50, complete: false },
+    ];
+    applyFibConfluence(candles, [source, target]);
+    assert.equal(target.fibSourceTime, 100);
+    assert.equal(target.fibZeroTime, 200);
+    assert.equal(target.fibZeroPrice, isBuy ? 120 : 100);
+    candles[3].complete = true;
+    applyFibConfluence(candles, [source, target]);
+    assert.equal(target.fibZeroTime, 400, 'the next completed update must invalidate the old lookup');
+    assert.equal(target.fibZeroPrice, isBuy ? 200 : 50);
+  }
+});
+
 test('DBD and DTD are Major Liquidity while ordinary TJL2 is not', () => {
   const dbd = zone({ id: 'dbd-major', name: 'DBD', isBuy: true });
   const dtd = zone({ id: 'dtd-major', name: 'DTD', isBuy: false });

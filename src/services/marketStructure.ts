@@ -361,14 +361,40 @@ function findOrderBlock(candles: StructureCandle[], from: number, to: number, bu
   return Math.max(start, to - 1);
 }
 
-export function resolveTjl1Confirmation(candles: StructureCandle[], options: {
+interface Tjl1ConfirmationOptions {
   confirmationDirection: 'up' | 'down';
   bottom: number;
   top: number;
   formationTime: number;
   sourceBarSeconds: number;
   confirmationBarSeconds?: number;
-}): Pick<StructureZone, 'status' | 'tjl1ConfirmationAttempts' | 'confirmationTime' | 'confirmationWindowCloseTime'> {
+}
+
+interface ConfirmationBar {
+  time: number;
+  closeTime: number;
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+}
+
+export function resolveTjl1Confirmation(candles: StructureCandle[], options: Tjl1ConfirmationOptions) {
+  return resolveTjl1ConfirmationWithCache(candles, options);
+}
+
+// Only reuse aggregates inside one synchronous analysis. A later live-candle
+// update (including an in-place edit) must always build fresh aggregates.
+function createTjl1ConfirmationResolver(candles: StructureCandle[]) {
+  const cache = new Map<number, ConfirmationBar[]>();
+  return (options: Tjl1ConfirmationOptions) => resolveTjl1ConfirmationWithCache(candles, options, cache);
+}
+
+function resolveTjl1ConfirmationWithCache(
+  candles: StructureCandle[],
+  options: Tjl1ConfirmationOptions,
+  cache?: Map<number, ConfirmationBar[]>,
+): Pick<StructureZone, 'status' | 'tjl1ConfirmationAttempts' | 'confirmationTime' | 'confirmationWindowCloseTime'> {
   const confirmationSeconds = options.confirmationBarSeconds;
   if (confirmationSeconds === DISABLED_HIGHER_TIMEFRAME_CONFIRMATION) {
     return { status: 'pending', tjl1ConfirmationAttempts: 0 };
@@ -382,23 +408,27 @@ export function resolveTjl1Confirmation(candles: StructureCandle[], options: {
     };
   }
 
-  const grouped = new Map<number, StructureCandle[]>();
-  for (const candle of candles) {
-    const bucket = getConfirmationBucketStart(candle.time, confirmationSeconds);
-    const list = grouped.get(bucket) || [];
-    list.push(candle);
-    grouped.set(bucket, list);
+  let bars = cache?.get(confirmationSeconds);
+  if (!bars) {
+    const grouped = new Map<number, StructureCandle[]>();
+    for (const candle of candles) {
+      const bucket = getConfirmationBucketStart(candle.time, confirmationSeconds);
+      const list = grouped.get(bucket) || [];
+      list.push(candle);
+      grouped.set(bucket, list);
+    }
+    bars = [...grouped.entries()]
+      .sort(([a], [b]) => a - b)
+      .map(([time, list]) => ({
+        time,
+        closeTime: getConfirmationBucketEnd(time, confirmationSeconds),
+        open: list[0].open,
+        high: Math.max(...list.map((candle) => candle.high)),
+        low: Math.min(...list.map((candle) => candle.low)),
+        close: list[list.length - 1].close,
+      }));
+    cache?.set(confirmationSeconds, bars);
   }
-  const bars = [...grouped.entries()]
-    .sort(([a], [b]) => a - b)
-    .map(([time, list]) => ({
-      time,
-      closeTime: getConfirmationBucketEnd(time, confirmationSeconds),
-      open: list[0].open,
-      high: Math.max(...list.map((candle) => candle.high)),
-      low: Math.min(...list.map((candle) => candle.low)),
-      close: list[list.length - 1].close,
-    }));
 
   // Ignore the still-forming aggregate candle. A BUY TJL1 confirms only on a
   // completed higher-timeframe close through the structure-confirmation side.
@@ -921,6 +951,7 @@ export function findZoneEngulfingPattern(
   candles: StructureCandle[],
   zone: StructureZone,
   type4MaxCandles = 10,
+  patternAt = (endIndex: number) => detectEngulfingPatternAt(candles, endIndex, type4MaxCandles),
 ): EngulfingPattern | undefined {
   if (zone.m15H1ChochClosePending) return undefined;
   const fibIndependentMajorLiquidity = usesMajorLiquidityTradingRules(zone);
@@ -944,7 +975,7 @@ export function findZoneEngulfingPattern(
   for (let endIndex = 1; endIndex < candles.length; endIndex += 1) {
     const finalCandle = candles[endIndex];
     if (finalCandle.complete === false || finalCandle.time < validFrom) continue;
-    const pattern = detectEngulfingPatternAt(candles, endIndex, type4MaxCandles);
+    const pattern = patternAt(endIndex);
     if (!pattern || pattern.direction !== requiredDirection) continue;
     const patternCandles = candles.slice(pattern.startIndex, pattern.endIndex + 1);
     if (!fibIndependentEntry && !isDeepFib) {
@@ -1044,6 +1075,11 @@ function applyEngulfingConfluence(
 ): SeriesMarker<UTCTimestamp>[] {
   const markerKeys = new Set<string>();
   const markers: SeriesMarker<UTCTimestamp>[] = [];
+  const patterns = new Map<number, EngulfingPattern | undefined>();
+  const patternAt = (endIndex: number) => {
+    if (!patterns.has(endIndex)) patterns.set(endIndex, detectEngulfingPatternAt(candles, endIndex));
+    return patterns.get(endIndex);
+  };
   for (const zone of zones) {
     const majorLiquidity = usesMajorLiquidityTradingRules(zone);
     // A Major Liquidity tap is only an opportunity. It becomes a direct trade
@@ -1053,7 +1089,7 @@ function applyEngulfingConfluence(
     zone.engulfingDirection = undefined;
     zone.engulfingTime = undefined;
     zone.engulfingCandleCount = undefined;
-    const pattern = findZoneEngulfingPattern(candles, zone);
+    const pattern = findZoneEngulfingPattern(candles, zone, 10, patternAt);
     if (!pattern) continue;
     const finalCandle = candles[pattern.endIndex];
     zone.engulfingType = pattern.type;
@@ -1081,6 +1117,21 @@ export const RECENT_CHOCH_FIB_COUNT = 4;
 
 export function applyFibConfluence(candles: StructureCandle[], zones: StructureZone[]): void {
   const completed = candles.filter((candle) => candle.complete !== false);
+  // Every zone queries a suffix of the same completed history. Build its
+  // extrema once instead of allocating and rescanning that suffix per zone.
+  const ordered = completed.every((candle, index) => index === 0 || candle.time >= completed[index - 1].time);
+  const suffixLows: StructureCandle[] = [];
+  const suffixHighs: StructureCandle[] = [];
+  if (ordered) {
+    for (let index = completed.length - 1; index >= 0; index -= 1) {
+      const candle = completed[index];
+      const nextLow = suffixLows[index + 1];
+      const nextHigh = suffixHighs[index + 1];
+      // Equal extrema keep the earliest candle, matching the original reduce.
+      suffixLows[index] = !nextLow || candle.low <= nextLow.low ? candle : nextLow;
+      suffixHighs[index] = !nextHigh || candle.high >= nextHigh.high ? candle : nextHigh;
+    }
+  }
   const zoneNames = (names: StructureZone['name'][]) => new Set<StructureZone['name']>(names);
   const tjl1Names = zoneNames(['TJL1', 'Internal TJL1']);
   const tjl2Names = zoneNames(['TJL2', 'Internal TJL2']);
@@ -1097,13 +1148,26 @@ export function applyFibConfluence(candles: StructureCandle[], zones: StructureZ
     isSell: boolean,
     acceptDeep: boolean,
   ) => {
-    const moveCandles = completed.filter((candle) => candle.time >= sourceTime);
-    if (moveCandles.length === 0) return;
-    const zeroCandle = moveCandles.reduce((selected, candle) => (
-      isSell
-        ? candle.low < selected.low ? candle : selected
-        : candle.high > selected.high ? candle : selected
-    ));
+    let zeroCandle: StructureCandle;
+    if (ordered) {
+      let low = 0;
+      let high = completed.length;
+      while (low < high) {
+        const middle = Math.floor((low + high) / 2);
+        if (completed[middle].time < sourceTime) low = middle + 1;
+        else high = middle;
+      }
+      if (low === completed.length) return;
+      zeroCandle = isSell ? suffixLows[low] : suffixHighs[low];
+    } else {
+      const moveCandles = completed.filter((candle) => candle.time >= sourceTime);
+      if (moveCandles.length === 0) return;
+      zeroCandle = moveCandles.reduce((selected, candle) => (
+        isSell
+          ? candle.low < selected.low ? candle : selected
+          : candle.high > selected.high ? candle : selected
+      ));
+    }
     const zeroPrice = isSell ? zeroCandle.low : zeroCandle.high;
     const validMove = isSell ? sourcePrice > zeroPrice : zeroPrice > sourcePrice;
     zone.fibRelevant = true;
@@ -1491,6 +1555,50 @@ export function selectFreshVipSupportTap<T extends { tapTime: number }>(
     : undefined;
 }
 
+function createVipSupportTapResolver(candles: StructureCandle[], contexts: VipSupportContext[]) {
+  const tapTimesByZone = new Map<StructureZone, number[]>();
+  const ordered = candles.every((candle, index) => index === 0 || candle.time >= candles[index - 1].time);
+  return (chochTime: number, requiredIsBuy: boolean) => {
+    if (!ordered) return findVipSupportTapAcrossContexts(candles, contexts, chochTime, requiredIsBuy);
+    let selected: ReturnType<typeof findVipSupportTapAcrossContexts>;
+    for (const context of contexts) {
+      for (const zone of context.zones) {
+        const activeFromTime = zone.activeFromTime ?? zone.startTime;
+        if (zone.isBuy !== requiredIsBuy || zone.status === 'rejected'
+          || activeFromTime > chochTime || zone.startTime >= chochTime
+          || (zone.invalidatedAt && zone.invalidatedAt <= chochTime)
+          || (requiresMappedConfirmation(zone) && (zone.confirmationTime === undefined
+            || zone.confirmationTime > chochTime))) continue;
+        let tapTimes = tapTimesByZone.get(zone);
+        if (!tapTimes) {
+          tapTimes = [];
+          let insideZone = false;
+          for (const candle of candles) {
+            const overlaps = candle.time > zone.startTime && candle.time >= activeFromTime
+              && (!zone.invalidatedAt || candle.time < zone.invalidatedAt)
+              && candle.high >= zone.bottom && candle.low <= zone.top;
+            if (overlaps && !insideZone) tapTimes.push(candle.time);
+            insideZone = overlaps;
+          }
+          tapTimesByZone.set(zone, tapTimes);
+        }
+        let low = 0;
+        let high = tapTimes.length;
+        while (low < high) {
+          const middle = Math.floor((low + high) / 2);
+          if (tapTimes[middle] <= chochTime) low = middle + 1;
+          else high = middle;
+        }
+        const tapTime = tapTimes[low - 1];
+        if (tapTime !== undefined && (!selected || tapTime > selected.tapTime)) {
+          selected = { zone, tapTime, timeframe: context.timeframe };
+        }
+      }
+    }
+    return selected;
+  };
+}
+
 export function analyzeMarketStructure(candles: StructureCandle[], options: {
   allowSupplyDemand?: boolean;
   sourceBarSeconds?: number;
@@ -1540,6 +1648,10 @@ export function analyzeMarketStructure(candles: StructureCandle[], options: {
 
   const sourceBarSeconds = options.sourceBarSeconds || 60;
   const zoneVisualBars = options.zoneVisualBars || 30;
+  const resolveConfirmation = createTjl1ConfirmationResolver(candles);
+  const vipSupportContexts = !options.vipSupport
+    ? [] : Array.isArray(options.vipSupport) ? options.vipSupport : [options.vipSupport];
+  const resolveVipSupportTap = createVipSupportTapResolver(candles, vipSupportContexts);
   const addZone = (zone: Omit<StructureZone, 'id' | 'active' | 'endTime' | 'status'> & Partial<Pick<StructureZone, 'endTime' | 'status'>>) => {
     const status = zone.status || 'valid';
     const created: StructureZone = {
@@ -1563,7 +1675,7 @@ export function analyzeMarketStructure(candles: StructureCandle[], options: {
     const formationTime = sourceChochTime + sourceBarSeconds;
     const tjl1Confirmed = wasTjl1ConfirmedBy(tjl1, formationTime);
     const tjl2Confirmation = tjl2
-      ? resolveTjl1Confirmation(candles, {
+      ? resolveConfirmation({
         confirmationDirection: direction === 'bullish' ? 'up' : 'down',
         bottom: tjl2.bottom,
         top: tjl2.top,
@@ -1572,13 +1684,8 @@ export function analyzeMarketStructure(candles: StructureCandle[], options: {
         confirmationBarSeconds: options.confirmationBarSeconds,
       })
       : { status: 'pending' as const };
-    const vipSupportContexts = !options.vipSupport
-      ? []
-      : Array.isArray(options.vipSupport) ? options.vipSupport : [options.vipSupport];
     const candidateVipTap = tjl2
-      ? findVipSupportTapAcrossContexts(
-        candles,
-        vipSupportContexts,
+      ? resolveVipSupportTap(
         sourceChochTime,
         direction === 'bullish',
       )
@@ -1625,7 +1732,7 @@ export function analyzeMarketStructure(candles: StructureCandle[], options: {
     sourceDoubleChochTime: number,
   ): DoubleChochMetadata | undefined => {
     const confirmationDirection = direction === 'bullish' ? 'up' : 'down';
-    const confirmation = resolveTjl1Confirmation(candles, {
+    const confirmation = resolveConfirmation({
       confirmationDirection,
       bottom: brokenZone.bottom,
       top: brokenZone.top,
@@ -1720,7 +1827,7 @@ export function analyzeMarketStructure(candles: StructureCandle[], options: {
     const bottom = highPivot ? point.price - (topWick + buffer) : point.price;
     const top = highPivot ? point.price : point.price + (bottomWick + buffer);
     const confirmation = name === 'TJL1'
-      ? resolveTjl1Confirmation(candles, {
+      ? resolveConfirmation({
         confirmationDirection: isBuy ? 'up' : 'down', bottom, top, formationTime,
         sourceBarSeconds,
         confirmationBarSeconds: options.confirmationBarSeconds,
@@ -2218,9 +2325,13 @@ export function analyzeMarketStructure(candles: StructureCandle[], options: {
   // MG Bhai's getRightTime first uses the real timestamp at barIndex + width.
   // Using seconds alone crosses weekend/session gaps and can make a box render
   // to the chart edge, so every zone is capped at the actual 30th source bar.
+  const candleIndicesByTime = new Map<number, number>();
+  candles.forEach((candle, index) => {
+    if (!candleIndicesByTime.has(candle.time)) candleIndicesByTime.set(candle.time, index);
+  });
   const endTimeForZone = (startTime: number) => {
-    const startIndex = candles.findIndex((candle) => candle.time === startTime);
-    if (startIndex < 0) return startTime;
+    const startIndex = candleIndicesByTime.get(startTime);
+    if (startIndex === undefined) return startTime;
     return candles[Math.min(candles.length - 1, startIndex + zoneVisualBars)].time;
   };
 
@@ -2273,6 +2384,7 @@ export function findIssFiveWaves(
 } {
   // ISS uses only the current chart timeframe. Point 0 is an external SL/SH,
   // and the five internal points must remain inside its PH/PL boundary.
+  const resolveConfirmation = createTjl1ConfirmationResolver(candles);
   const markers: IssMarker[] = [];
   const internalMarkers: SeriesMarker<UTCTimestamp>[] = [];
   const lines: StructureLine[] = [];
@@ -2323,7 +2435,7 @@ export function findIssFiveWaves(
     // creates it, then the mapped higher timeframe must close through its
     // confirmation side before it becomes valid/tradeable.
     const wave3FormationTime = confirmedAt + sourceBarSeconds;
-    const wave3Confirmation = resolveTjl1Confirmation(candles, {
+    const wave3Confirmation = resolveConfirmation({
       confirmationDirection: isBullish ? 'up' : 'down',
       bottom: wave3Bottom,
       top: wave3Top,
@@ -2530,7 +2642,7 @@ export function findIssFiveWaves(
     const bottom = highPivot ? point.price - (topWick + buffer) : point.price;
     const top = highPivot ? point.price : point.price + (bottomWick + buffer);
     const confirmation = name === 'Internal TJL1'
-      ? resolveTjl1Confirmation(candles, {
+      ? resolveConfirmation({
         confirmationDirection: isBuy ? 'up' : 'down',
         bottom,
         top,
@@ -2591,6 +2703,7 @@ export function findIssFiveWaves(
   const internalVipSupportContexts = !vipSupport
     ? []
     : Array.isArray(vipSupport) ? vipSupport : [vipSupport];
+  const resolveInternalVipSupportTap = createVipSupportTapResolver(candles, internalVipSupportContexts);
   let lastInternalVipSupportTapTimeUsed: number | undefined;
   const buildInternalChochContext = (
     direction: 'bullish' | 'bearish',
@@ -2601,7 +2714,7 @@ export function findIssFiveWaves(
     const formationTime = sourceChochTime + sourceBarSeconds;
     const tjl1Confirmed = wasTjl1ConfirmedBy(tjl1, formationTime);
     const tjl2Confirmation = tjl2
-      ? resolveTjl1Confirmation(candles, {
+      ? resolveConfirmation({
         confirmationDirection: direction === 'bullish' ? 'up' : 'down',
         bottom: tjl2.bottom,
         top: tjl2.top,
@@ -2611,9 +2724,7 @@ export function findIssFiveWaves(
       })
       : { status: 'pending' as const };
     const candidateVipTap = tjl2
-      ? findVipSupportTapAcrossContexts(
-        candles,
-        internalVipSupportContexts,
+      ? resolveInternalVipSupportTap(
         sourceChochTime,
         direction === 'bullish',
       )
