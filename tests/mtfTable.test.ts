@@ -199,3 +199,80 @@ test('the display filter recognizes chart and broker SL/TP without hiding open o
   assert.equal(isSlTpTradeDisplayFinished({ result: 'rf' }), false);
   assert.equal(isSlTpTradeDisplayFinished(undefined), false);
 });
+
+
+function reloadMtfRecord(result: JournalTradeRecord['result'] = 'tp'): JournalTradeRecord {
+  return { id: 'reload-record', brokerTicket: 12345, setupId: 'MTF:reload', source: 'MTF',
+    zoneName: 'QML', zoneTimeframe: 'M15', signalTimeframe: 'M1', direction: 'bullish',
+    engulfingType: 'T1', signalAt: 800, openedAt: 900, completedAt: 1000,
+    partialClosedAt: result === 'rf' ? 1000 : undefined,
+    result, entry: 100, stopLoss: 99, takeProfit: 103, rewardRisk: 3, riskPips: 10 };
+}
+
+function reloadMtfProps(): React.ComponentProps<typeof MultiTimeframeEntryTable> {
+  return { rows: [], liveTrades: [], records: [], timeZone: 'UTC', entryCandles: {}, asOf: 1360 };
+}
+
+const renderReloadTable = (props: React.ComponentProps<typeof MultiTimeframeEntryTable>) =>
+  renderToStaticMarkup(React.createElement(MultiTimeframeEntryTable, props));
+
+test('reload with delayed entry candles never flashes old SL, TP or RF records', () => {
+  for (const result of ['sl', 'tp', 'rf'] as const) {
+    const record = reloadMtfRecord(result);
+    const original = structuredClone(record);
+    const props = { ...reloadMtfProps(), records: [record] };
+    const loading = renderReloadTable(props);
+    assert.ok(loading.includes('Loading MTF data'));
+    assert.ok(!loading.includes('ENTRY 100.000'), 'closed trade prices stay hidden during loading');
+    assert.ok(!loading.includes('No active MTF setup'), 'missing data is not an empty table');
+    const loaded = renderReloadTable({ ...props,
+      entryCandles: { M1: [1060,1120,1180,1240,1300].map(time => bar(time)) } });
+    assert.ok(loaded.includes('No active MTF setup'));
+    assert.ok(!loaded.includes('ENTRY 100.000'), 'expired trades never flash back after loading');
+    assert.deepEqual(record, original, 'table loading must not rewrite saved trades');
+  }
+});
+
+test('loaded recent results retain exactly five completed candles and ignore other timeframes', () => {
+  const props = { ...reloadMtfProps(), records: [reloadMtfRecord()] };
+  assert.ok(renderReloadTable({ ...props, entryCandles: { M15: [bar(1000)] } }).includes('Loading MTF data'));
+  const candles = [1060,1120,1180,1240,1300].map(time => bar(time));
+  const retained = renderReloadTable({ ...props, asOf: 1300, entryCandles: { M1: candles } });
+  assert.ok(retained.includes('TP HIT'));
+  assert.ok(retained.includes('ENTRY 100.000'));
+  assert.ok(!retained.includes('Loading MTF data'));
+  assert.ok(renderReloadTable({ ...props, asOf: 1360, entryCandles: { M1: candles } }).includes('No active MTF setup'));
+});
+
+test('initial MTF loading and failed feeds show status with retry instead of a false empty table', () => {
+  let retries = 0;
+  const props = { ...reloadMtfProps(), requiredTimeframes: ['M1'] as const, onRetry: () => { retries++; } };
+  assert.ok(renderReloadTable(props).includes('Loading MTF data'));
+  const failed = renderReloadTable({ ...props, records: [reloadMtfRecord()], candleErrors: { M1: 'Feed unavailable' } });
+  assert.ok(failed.includes('Unable to load MTF candle data (M1)'));
+  assert.ok(failed.includes('Retry'));
+  assert.ok(!failed.includes('ENTRY 100.000'));
+  assert.equal(retries, 0, 'rendering an error must not trigger reload loops');
+  const recovered = renderReloadTable({ ...props, records: [reloadMtfRecord()],
+    entryCandles: { M1: [1060,1120,1180,1240,1300].map(time => bar(time)) } });
+  assert.ok(!recovered.includes('Unable to load'));
+  assert.ok(!recovered.includes('Loading MTF data'));
+});
+
+test('open and risk-free positions remain visible alongside loading or failure status', () => {
+  for (const result of ['open','risk-free'] as const) {
+    const record = reloadMtfRecord(result);
+    const props = { ...reloadMtfProps(), records: [record], requiredTimeframes: ['M1'] as const };
+    assert.ok(renderReloadTable(props).includes('ENTRY 100.000'), result);
+    assert.ok(renderReloadTable({ ...props, candleErrors: { M1: 'Missing feed' } }).includes('ENTRY 100.000'), result);
+    const trade = { ...tradeDrawingFromRecord(record), status: result === 'open' ? 'active' as const : 'risk-free' as const };
+    const live: React.ComponentProps<typeof MultiTimeframeEntryTable>['liveTrades'] = [{ trade,
+      position: { ticket: 12345, symbol: 'XAUUSD', direction: 'BUY', volume: 1,
+        priceOpen: 100, priceCurrent: 102, stopLoss: 99, takeProfit: 103, profit: 2, swap: 0,
+        openedAt: 900, source: 'MTF', zoneTimeframe: 'M15', signalTimeframe: 'M1',
+        signalStatus: result === 'open' ? 'ACTIVE' : 'RISK_FREE' } }];
+    const liveMarkup = renderReloadTable({ ...props, liveTrades: live });
+    assert.ok(liveMarkup.includes('MT5 #12345'));
+    assert.ok(liveMarkup.includes('Loading MTF data'));
+  }
+});

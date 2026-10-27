@@ -1130,8 +1130,28 @@ export const MultiTimeframeEntryTable: React.FC<{
   timeZone: ChartTimeZone;
   entryCandles: Partial<Record<TradeTimeframe, readonly OandaCandle[]>>;
   asOf: number;
-}> = ({ rows, liveTrades, records, timeZone, entryCandles, asOf }) => {
+  requiredTimeframes?: readonly TradeTimeframe[];
+  candleErrors?: Partial<Record<TradeTimeframe, string>>;
+  onRetry?: () => void;
+}> = ({ rows, liveTrades, records, timeZone, entryCandles, asOf,
+  requiredTimeframes = [], candleErrors = {}, onRetry }) => {
   const [expanded, setExpanded] = useState(true);
+  const needsExpiryData = (trade: TradeDisplayState | undefined) => (
+    isSlTpTradeDisplayFinished(trade) || trade?.result === 'rf' || trade?.status === 'RF'
+  );
+  const hasExpiryData = (trade: TradeDisplayState | undefined) => {
+    if (!needsExpiryData(trade)) return true;
+    const timeframe = trade?.signal?.timeframe ?? trade?.signalTimeframe;
+    return timeframe !== undefined && (entryCandles[timeframe]?.length ?? 0) > 0;
+  };
+  const missingTimeframes = new Set(requiredTimeframes.filter(timeframe => !entryCandles[timeframe]?.length));
+  for (const trade of [...records, ...rows.map(row => row.trade ?? row.previewTrade)]) {
+    if (hasExpiryData(trade)) continue;
+    const timeframe = trade?.signal?.timeframe ?? trade?.signalTimeframe;
+    if (timeframe) missingTimeframes.add(timeframe);
+  }
+  const waitingForExpiryData = missingTimeframes.size > 0;
+  const failedTimeframes = [...missingTimeframes].filter(timeframe => candleErrors[timeframe]);
   const expired = (trade: TradeDisplayState | undefined) => tradeDisplayExpired(trade,
     entryCandles[trade?.signal?.timeframe ?? trade?.signalTimeframe ?? 'M1'] ?? [], asOf);
   const visibleLiveTrades = liveTrades.filter(({ signal, trade, position }) => {
@@ -1140,10 +1160,11 @@ export const MultiTimeframeEntryTable: React.FC<{
     return !expired(recorded && ['sl', 'tp', 'rf', 'risk-free'].includes(recorded.result) ? recorded : { ...trade, ...signal,
       status: signal?.status ?? position.signalStatus ?? trade.status });
   });
-  const savedRows = records.filter(record => !expired(record) && !liveTrades.some(({ position }) => (
+  const savedRows = records.filter(record => hasExpiryData(record) && !expired(record) && !liveTrades.some(({ position }) => (
     position.ticket === record.brokerTicket || position.setupId === record.setupId && record.setupId !== undefined
   )));
-  const displayRows = rows.filter((row) => !expired(row.trade ?? row.previewTrade) && !liveTrades.some(({ position }) => (
+  const displayRows = rows.filter((row) => hasExpiryData(row.trade ?? row.previewTrade)
+    && !expired(row.trade ?? row.previewTrade) && !liveTrades.some(({ position }) => (
     liveMtfPositionMatchesChartRow(position, row)
   )) && !records.some(record => (
     record.setupId === `MTF:${row.id}` || record.signalAt === row.engulfingTime
@@ -1277,7 +1298,20 @@ export const MultiTimeframeEntryTable: React.FC<{
                 </tr>
               </React.Fragment>
             ))}
-            {displayRows.length === 0 && visibleLiveTrades.length === 0 && savedRows.length === 0 && (
+            {waitingForExpiryData && (
+              <tr>
+                <td colSpan={7} className="px-2 py-2 text-center text-slate-500" role="status">
+                  {failedTimeframes.length > 0
+                    ? `Unable to load MTF candle data (${failedTimeframes.join(', ')}).`
+                    : 'Loading MTF data…'}
+                  {failedTimeframes.length > 0 && onRetry && (
+                    <button type="button" onClick={onRetry}
+                      className="ml-2 rounded border border-slate-300 px-2 py-0.5 font-bold text-indigo-700">Retry</button>
+                  )}
+                </td>
+              </tr>
+            )}
+            {!waitingForExpiryData && displayRows.length === 0 && visibleLiveTrades.length === 0 && savedRows.length === 0 && (
               <tr>
                 <td colSpan={7} className="px-2 py-2 text-center text-slate-400">No active MTF setup</td>
               </tr>
@@ -1788,6 +1822,7 @@ export const OandaProChart: React.FC<{
   const [lastUpdated, setLastUpdated] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [mtfCandleErrors, setMtfCandleErrors] = useState<Partial<Record<MarketGranularity, string>>>({});
   const [refreshKey, setRefreshKey] = useState(0);
   const [chartTimeZone, setChartTimeZone] = useState<ChartTimeZone>('Asia/Kathmandu');
   const [showStructure, setShowStructure] = useState(true);
@@ -5483,6 +5518,7 @@ export const OandaProChart: React.FC<{
 
   const loadCandles = useCallback(async (signal?: AbortSignal) => {
     const requestId = ++loadRequestIdRef.current;
+    setMtfCandleErrors({});
       const replayTime = replayTimeRef.current;
       const shouldShowLoading = candlesRef.current.length === 0
         || loadedGranularityRef.current !== granularity
@@ -5563,6 +5599,15 @@ export const OandaProChart: React.FC<{
         if (batch.length === 0) return true;
         const batchPayloads = await Promise.allSettled(batch.map(requestCandles));
         if (requestId !== loadRequestIdRef.current || signal?.aborted) return false;
+        setMtfCandleErrors(current => {
+          const next = { ...current };
+          batch.forEach((timeframe, index) => {
+            const result = batchPayloads[index];
+            if (result.status === 'fulfilled') delete next[timeframe];
+            else next[timeframe] = result.reason instanceof Error ? result.reason.message : 'Unable to load candles.';
+          });
+          return next;
+        });
         const loadedEntries = batch.flatMap((supportGranularity, index) => {
           const result = batchPayloads[index];
           return result.status === 'fulfilled'
@@ -8803,6 +8848,9 @@ export const OandaProChart: React.FC<{
           <MultiTimeframeEntryTable rows={mtfRows} liveTrades={liveMtfTableTrades}
             records={recordedMtfTrades} timeZone={chartTimeZone}
             entryCandles={Object.fromEntries(TIMEFRAMES.map(({ value }) => [value, tableTimeframeData[value]?.candles ?? []]))}
+            requiredTimeframes={[granularity, ...mtfLowerGranularities]}
+            candleErrors={{ ...mtfCandleErrors, ...(error ? { [granularity]: error } : {}) }}
+            onRetry={() => setRefreshKey(value => value + 1)}
             asOf={tradeDisplayAsOf} />
           <MultiTimeframeTrendTable rows={trendTableRows} replayActive={replayIndex !== null} />
           {isLoading && candles.length === 0 && !error && (
