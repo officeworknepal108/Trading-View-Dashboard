@@ -1932,7 +1932,7 @@ export const OandaProChart: React.FC = () => {
 
   useEffect(() => {
     let cancelled = false;
-    void fetch('/api/journal/trades', { cache: 'no-store' })
+    void fetch('/api/journal/trades?view=dashboard', { cache: 'no-store' })
       .then(async (response) => {
         const payload = await response.json() as { ok?: boolean; trades?: AccuracyTradeRecord[] };
         if (!cancelled && response.ok && payload.ok && Array.isArray(payload.trades)) {
@@ -1982,7 +1982,7 @@ export const OandaProChart: React.FC = () => {
     let cancelled = false;
     const prepareMt5JournalImages = async () => {
       try {
-        const response = await fetch('/api/journal/trades', { cache: 'no-store' });
+        const response = await fetch('/api/journal/trades?view=pending-images', { cache: 'no-store' });
         const payload = await response.json() as { ok?: boolean; trades?: JournalTradeRecord[] };
         if (!response.ok || !payload.ok || !Array.isArray(payload.trades)) return;
         const signalIds = new Set(lifecycleSignals.map((signal) => signal.id));
@@ -1991,7 +1991,7 @@ export const OandaProChart: React.FC = () => {
           && (!trade.entryScreenshotDataUrl
             || (trade.lifecycleStatus === 'closed' && !trade.exitScreenshotDataUrl))
         ));
-        let savedTrades = payload.trades;
+        let savedTrades: JournalTradeRecord[] | undefined;
         for (const trade of candidates) {
           if (cancelled) return;
           const entryScreenshotDataUrl = trade.entryScreenshotDataUrl
@@ -2013,7 +2013,7 @@ export const OandaProChart: React.FC = () => {
             screenshotDataUrl: trade.screenshotDataUrl
               || exitScreenshotDataUrl || entryScreenshotDataUrl,
           };
-          const saveResponse = await fetch('/api/journal/trades', {
+          const saveResponse = await fetch('/api/journal/trades?view=dashboard', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ trades: [updated] }),
@@ -2026,7 +2026,7 @@ export const OandaProChart: React.FC = () => {
             savedTrades = savePayload.trades;
           }
         }
-        if (!cancelled) setSavedJournalTrades(savedTrades);
+        if (!cancelled && savedTrades) setSavedJournalTrades(savedTrades);
       } catch {
         mt5JournalImageSignatureRef.current = '';
       }
@@ -3206,7 +3206,7 @@ export const OandaProChart: React.FC = () => {
       let saved: AccuracyTradeRecord[] | undefined;
       for (let offset = 0; offset < changed.length; offset += 2000) {
         const batch = changed.slice(offset, offset + 2000);
-        const response = await fetch('/api/journal/trades', {
+        const response = await fetch('/api/journal/trades?view=dashboard', {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ trades: batch }),
         });
@@ -5451,7 +5451,7 @@ export const OandaProChart: React.FC = () => {
       // sockets at once made the main timeframe wait behind slower auxiliary
       // requests even though those are only needed for VIP/trend context.
       const payload = await requestCandles(granularity);
-      if (requestId !== loadRequestIdRef.current) return;
+      if (requestId !== loadRequestIdRef.current || signal?.aborted) return;
       if (payload.candles.length === 0) throw new Error(`The market feed returned no ${marketSymbol} candles.`);
       const nextReplayIndex = replayTime === null
         ? null
@@ -5488,7 +5488,7 @@ export const OandaProChart: React.FC = () => {
       const loadAuxiliaryBatch = async (batch: MarketGranularity[]) => {
         if (batch.length === 0) return true;
         const batchPayloads = await Promise.allSettled(batch.map(requestCandles));
-        if (requestId !== loadRequestIdRef.current) return false;
+        if (requestId !== loadRequestIdRef.current || signal?.aborted) return false;
         const loadedEntries = batch.flatMap((supportGranularity, index) => {
           const result = batchPayloads[index];
           return result.status === 'fulfilled'
@@ -5532,13 +5532,23 @@ export const OandaProChart: React.FC = () => {
   useEffect(() => {
     const controller = new AbortController();
     hasFittedRef.current = false;
-    void loadCandles(controller.signal);
-    const interval = window.setInterval(() => {
-      if (replayTimeRef.current === null) void loadCandles();
-    }, 15_000);
+    let timer: number | undefined;
+    // Schedule after completion so slow feeds/analysis cannot build a backlog
+    // of fetches, cloned candle snapshots, and worker messages.
+    const refresh = async () => {
+      try {
+        if (!controller.signal.aborted) await loadCandles(controller.signal);
+      } finally {
+        if (!controller.signal.aborted) timer = window.setTimeout(() => {
+          if (replayTimeRef.current === null) void refresh();
+        }, 15_000);
+      }
+    };
+    void refresh();
     return () => {
       controller.abort();
-      window.clearInterval(interval);
+      loadRequestIdRef.current += 1;
+      window.clearTimeout(timer);
     };
   }, [loadCandles, refreshKey]);
 

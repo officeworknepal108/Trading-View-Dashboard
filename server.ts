@@ -1,4 +1,5 @@
 import 'dotenv/config';
+import { journalDashboardTrades, journalPendingImageTrades } from './src/services/journalPayload';
 import express from 'express';
 import path from 'path';
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
@@ -1739,11 +1740,13 @@ async function startServer() {
     }
   });
 
-  app.get('/api/journal/trades', async (_req, res) => {
+  app.get('/api/journal/trades', async (req, res) => {
     try {
       const trades = deduplicateTradeRecords(await readJournalTrades());
       res.setHeader('Cache-Control', 'no-store');
-      return res.json({ ok: true, trades });
+      return res.json({ ok: true, trades: req.query.view === 'dashboard'
+        ? journalDashboardTrades(trades)
+        : req.query.view === 'pending-images' ? journalPendingImageTrades(trades) : trades });
     } catch (error) {
       return res.status(500).json({
         ok: false,
@@ -1773,7 +1776,9 @@ async function startServer() {
         await writeJournalTrades(mergedTrades);
         return mergedTrades;
       });
-      return res.json({ ok: true, trades: deduplicateTradeRecords(trades) });
+      const records = deduplicateTradeRecords(trades);
+      return res.json({ ok: true, trades: req.query.view === 'dashboard'
+        ? journalDashboardTrades(records) : records });
     } catch (error) {
       return res.status(500).json({
         ok: false,
