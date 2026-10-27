@@ -178,16 +178,43 @@ test('Telegram numbering covers all alert kinds, shared styles, retries, restart
       }
       assert.fail('Daily summary was not delivered');
     };
+    const secondaryHeartbeat = async () => {
+      const response = await fetch(`${base}/api/mt5/heartbeat?terminal=secondary`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json', authorization: 'Bearer fake-bridge-test' },
+        body: JSON.stringify({ bridgeId: 'second-summary-bridge', account: 'account-B', server: 'Broker', terminalConnected: true }),
+      });
+      assert.equal(response.status, 200, await response.text());
+      await new Promise(resolve => setTimeout(resolve, 200));
+    };
+    await secondaryHeartbeat();
+    assert.equal((await messages()).filter(text => text.startsWith('DAILY TRADE SUMMARY')).length, 0,
+      'Account 2 must not send a report even if it connects before Account 1');
     await heartbeat();
     assert.equal((await messages()).filter(text => text.startsWith('DAILY TRADE SUMMARY')).length, 1);
     assert.match((await messages()).at(-1)!, /Total trades: 1/);
     assert.match((await messages()).at(-1)!, /Losses: 1/);
     assert.ok(!(await messages()).at(-1)!.includes('$'));
+    const reportFile = path.join(workspace, 'data', 'telegram-alerts.json');
+    const reportState = JSON.parse(await readFile(reportFile, 'utf8'));
+    const reportKey = Object.keys(reportState).find(key => key.startsWith('DAILY:') && reportState[key].summarySent)!;
+    reportState[`DAILY:account-A:Broker:${reportKey.slice('DAILY:'.length)}`] = reportState[reportKey];
+    delete reportState[reportKey];
+    await writeFile(reportFile, JSON.stringify(reportState));
     await stop();
     await start();
     await heartbeat();
+    await secondaryHeartbeat();
     await new Promise(resolve => setTimeout(resolve, 100));
-    assert.equal((await messages()).filter(text => text.startsWith('DAILY TRADE SUMMARY')).length, 1, 'no duplicate after restart');
+    assert.equal((await messages()).filter(text => text.startsWith('DAILY TRADE SUMMARY')).length, 1,
+      'both terminal heartbeats and a restart still produce only one daily summary');
+    const switched = await fetch(`${base}/api/mt5/heartbeat`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json', authorization: 'Bearer fake-bridge-test' },
+      body: JSON.stringify({ bridgeId: 'test-summary-bridge', account: 'account-C', server: 'Broker', terminalConnected: true }),
+    });
+    assert.equal(switched.status, 200);
+    await new Promise(resolve => setTimeout(resolve, 200));
+    assert.equal((await messages()).filter(text => text.startsWith('DAILY TRADE SUMMARY')).length, 1,
+      'switching the primary login cannot send a second report for the same day');
     const stateBeforeDemos = await readFile(path.join(workspace, 'data', 'telegram-alerts.json'), 'utf8');
     const denied = await fetch(`${base}/api/telegram/demo`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}',

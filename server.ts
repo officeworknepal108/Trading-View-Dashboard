@@ -1266,6 +1266,8 @@ async function deliverTelegramAlerts(
 }
 
 async function deliverDailyTelegramSummary(): Promise<void> {
+  // Account 1 owns the group's single daily report; Account 2 must not send another.
+  if (terminalId() !== 'primary') return;
   const task = mt5Context().telegramAlertQueue.then(async () => {
     const connection = mt5Context().mt5BridgeHeartbeat;
     const now = Date.now() / 1000;
@@ -1277,8 +1279,10 @@ async function deliverDailyTelegramSummary(): Promise<void> {
     let sent: SentTelegramAlerts = {};
     try { sent = JSON.parse(await readFile(terminalFile(TELEGRAM_ALERTS_FILE), 'utf8')); }
     catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error; }
-    const key = `DAILY:${connection.account}:${connection.server}:${day.date}`;
-    if (sent[key]?.summarySent) return;
+    const key = `DAILY:${day.date}`;
+    // Honor reports already sent by earlier versions, including account-specific keys.
+    if (Object.entries(sent).some(([savedKey, state]) => savedKey.startsWith('DAILY:')
+      && savedKey.endsWith(`:${day.date}`) && state?.summarySent)) return;
     const counts = countDailyTrades(await readMt5Signals(), connection.account, connection.server, now);
     if (mt5Context().mt5BridgeHeartbeat?.account !== connection.account || mt5Context().mt5BridgeHeartbeat?.server !== connection.server) return;
     await sendTelegramText(formatDailyTradeSummary(counts));
