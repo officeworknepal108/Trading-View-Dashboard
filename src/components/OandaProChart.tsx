@@ -1088,6 +1088,20 @@ export function tradeDisplayExpired(
   return mtfTableHitExpired(hitAt, candles, asOf, timeframe);
 }
 
+/** Drawings stay through partial RF; count five candles only after the final exit. */
+export function tradeDrawingExpired(
+  trade: TradeDisplayState | undefined, candles: readonly OandaCandle[], asOf: number,
+): boolean {
+  const timeframe = trade?.signal?.timeframe ?? trade?.signalTimeframe;
+  if (!trade || !timeframe) return false;
+  // A final RF result means the remaining position closed at its stop after RF.
+  // RISK_FREE/risk-free without a final result is still an open position.
+  const closed = isSlTpTradeDisplayFinished(trade) || trade.result === 'rf' || trade.status === 'RF';
+  if (!closed) return false;
+  return mtfTableHitExpired(trade.resolvedAt ?? trade.closedAt ?? trade.completedAt ?? trade.updatedAt,
+    candles, asOf, timeframe);
+}
+
 export function tradeDrawingFromRecord(record: JournalTradeRecord): TradeLevels & { partialClosedAt?: number } {
   const bullish = record.direction === 'bullish';
   return {
@@ -2610,6 +2624,10 @@ export const OandaProChart: React.FC = () => {
     const timeframe = trade?.signal?.timeframe ?? trade?.signalTimeframe;
     return tradeDisplayExpired(trade, timeframe ? tableTimeframeData[timeframe]?.candles ?? [] : [], tradeDisplayAsOf);
   }, [tableTimeframeData, tradeDisplayAsOf]);
+  const hasTradeDrawingExpired = useCallback((trade: TradeDisplayState | undefined) => {
+    const timeframe = trade?.signal?.timeframe ?? trade?.signalTimeframe;
+    return tradeDrawingExpired(trade, timeframe ? tableTimeframeData[timeframe]?.candles ?? [] : [], tradeDisplayAsOf);
+  }, [tableTimeframeData, tradeDisplayAsOf]);
   const hasRetainedDirectTradeSource = useCallback((overlay: TradeOverlay) => {
     const sourceZoneId = directTradeOverlayZoneId(overlay);
     const sourceZone = overlay.id.startsWith('DIRECT:')
@@ -3631,28 +3649,30 @@ export const OandaProChart: React.FC = () => {
     }
     for (const record of savedJournalTrades) {
       if ((record.symbol ?? 'XAUUSD') !== marketSymbol || !record.signalAt || record.completedAt > tradeDisplayAsOf
-        || (!['sl', 'tp', 'rf'].includes(record.result) && !hasTradeDisplayExpired(record))) continue;
+        || (!['sl', 'tp', 'rf'].includes(record.result) && !hasTradeDrawingExpired(record))) continue;
       setupKeys.add(resolveTradeOverlaySetupKey(record.id, record.setupId));
       entryEventKeys.add(tradeOverlayEntryEventKey({
         timeframe: record.signalTimeframe, direction: record.direction, time: record.signalAt,
       }));
     }
     return { setupKeys, entryEventKeys };
-  }, [directZoneTrades, mtfRows, savedJournalTrades, marketSymbol, tradeDisplayAsOf, hasTradeDisplayExpired]);
+  }, [directZoneTrades, mtfRows, savedJournalTrades, marketSymbol, tradeDisplayAsOf, hasTradeDrawingExpired]);
 
   const visibleTradeOverlays = useMemo(() => {
     const overlays = new Map<string, TradeOverlay>();
     const chartSetupKeys = new Set<string>();
     const entryEventKeys = new Set<string>();
     const addOverlay = (overlay: TradeOverlay) => {
-      if (hasTradeDisplayExpired(overlay.trade)) return;
+      if (hasTradeDrawingExpired(overlay.trade)) return;
       if (!overlayStyleEnabled(overlay)) return;
       if ((overlay.symbol ?? 'XAUUSD') !== marketSymbol) return;
       if (!overlay.referenceOnly && !isCompletedTrade(overlay.trade) && !hasRetainedDirectTradeSource(overlay)) return;
       // The result owns the five-bar window; stale active copies must not reappear afterward.
       const setupKey = tradeOverlaySetupKey(overlay);
       const entryEventKey = tradeOverlayEntryEventKey(overlay.trade.signal);
-      if (!isCompletedTrade(overlay.trade) && !overlay.referenceOnly && isTradeOverlayTerminated(
+      const liveBrokerPosition = replayIndex === null
+        && liveMt5TradeOverlays.some((live) => live.id === overlay.id);
+      if (!liveBrokerPosition && !isCompletedTrade(overlay.trade) && !overlay.referenceOnly && isTradeOverlayTerminated(
         setupKey,
         entryEventKey,
         false,
@@ -3679,11 +3699,13 @@ export const OandaProChart: React.FC = () => {
         if (!overlay.referenceOnly) entryEventKeys.add(entryEventKey);
       }
     };
-    // Keep an executed result drawable for the same five-bar window as its tables.
+    // An open broker position owns its drawing, including after partial RF.
+    if (replayIndex === null) liveMt5TradeOverlays.forEach(addOverlay);
+    // A final exit starts the drawing's five-completed-candle retention window.
     for (const record of deduplicateTradeRecords<JournalTradeRecord>(savedJournalTrades)) {
       if (!['sl', 'tp', 'rf', 'risk-free'].includes(record.result)
         || (record.symbol ?? 'XAUUSD') !== marketSymbol || record.signalTimeframe !== granularity
-        || record.completedAt > tradeDisplayAsOf || hasTradeDisplayExpired(record)
+        || record.completedAt > tradeDisplayAsOf || hasTradeDrawingExpired(record)
         || !tradeStyleEnabled(record)) continue;
       addOverlay({ id: record.id, setupId: record.setupId, symbol: marketSymbol,
         trade: tradeDrawingFromRecord(record), chartTimeframe: record.signalTimeframe,
@@ -3704,8 +3726,6 @@ export const OandaProChart: React.FC = () => {
       addOverlay({ id: `GOLD_SCALP:${zoneTimeframe}:${zone.id}:${trade.signal.time}:${trade.entry}`, symbol: marketSymbol,
         trade, chartTimeframe: trade.signal.timeframe, label: `${zone.name} · SCALP RESULT` });
     }
-    // Broker positions take priority over unresolved recalculated chart trades.
-    if (replayIndex === null) liveMt5TradeOverlays.forEach(addOverlay);
     retainedChartTradesForTimeframe.forEach(addOverlay);
     tradeOverlays.forEach(addOverlay);
     for (const [zoneId, decision] of directZoneEntryDecisions) {
@@ -3745,7 +3765,7 @@ export const OandaProChart: React.FC = () => {
     }
     return Array.from(overlays.values())
       .sort((first, second) => second.trade.calculatedAt - first.trade.calculatedAt);
-  }, [hasTradeDisplayExpired, savedJournalTrades, directZoneTrades, granularity, tradeDisplayAsOf, tradeStyleEnabled, completedChartTradeKeys, directZoneEntryDecisions, goldScalpingAccuracyTrades, hasRetainedDirectTradeSource, liveMt5TradeOverlays, marketSymbol, mtfRows, overlayStyleEnabled, replayIndex, retainedChartTradesForTimeframe, tradeOverlays, tradingTimeEnabled]);
+  }, [hasTradeDrawingExpired, savedJournalTrades, directZoneTrades, granularity, tradeDisplayAsOf, tradeStyleEnabled, completedChartTradeKeys, directZoneEntryDecisions, goldScalpingAccuracyTrades, hasRetainedDirectTradeSource, liveMt5TradeOverlays, marketSymbol, mtfRows, overlayStyleEnabled, replayIndex, retainedChartTradesForTimeframe, tradeOverlays, tradingTimeEnabled]);
 
   useEffect(() => {
     if (replayIndex !== null || !mt5Status?.config
@@ -5085,8 +5105,8 @@ export const OandaProChart: React.FC = () => {
     if (showTradeLevelsRef.current) {
       for (const overlay of tradeOverlaysRef.current) {
         const { trade } = overlay;
-        if (hasTradeDisplayExpired(trade)) continue;
-        // A resolved drawing stays visible during the same five-bar window as its table row.
+        if (hasTradeDrawingExpired(trade)) continue;
+        // A final exit keeps its drawing for five completed entry-timeframe candles.
         const completedReplayReference = isCompletedTrade(trade);
         const anchor = displayCandles.find((candle) => (
           trade.calculatedAt >= candle.time
@@ -5190,7 +5210,7 @@ export const OandaProChart: React.FC = () => {
     // Swap the complete overlay in one operation so the browser does not
     // perform layout work for every individual zone, line, and label.
     layer.replaceChildren(fragment);
-  }, [hasTradeDisplayExpired, comparisonTimeframe, directZoneTrades, displayCandles, extremeAPlusTjl2Selection, granularity, latestCandle?.time, ltfChochContext, marketConfig.pipSize, marketSymbol, mtfRows, mtfDrawingZones, oneMinuteScalpingZones, overlayCandlesByTime, repeatedLtfChochLabels, replayIndex, scalpingEnabled, visibleComparisonZones, zoneDrawingEndIndices, zoneTableRows]);
+  }, [hasTradeDrawingExpired, comparisonTimeframe, directZoneTrades, displayCandles, extremeAPlusTjl2Selection, granularity, latestCandle?.time, ltfChochContext, marketConfig.pipSize, marketSymbol, mtfRows, mtfDrawingZones, oneMinuteScalpingZones, overlayCandlesByTime, repeatedLtfChochLabels, replayIndex, scalpingEnabled, visibleComparisonZones, zoneDrawingEndIndices, zoneTableRows]);
 
   redrawZonesRef.current = redrawZones;
 

@@ -3,7 +3,7 @@ import test from 'node:test';
 import React from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { MultiTimeframeEntryTable, mtfTableHitExpired, isSlTpTradeDisplayFinished,
-  tradeDisplayExpired, tradeDrawingFromRecord, resolveArrowTradeZones } from '../src/components/OandaProChart';
+  tradeDisplayExpired, tradeDrawingExpired, tradeDrawingFromRecord, resolveArrowTradeZones } from '../src/components/OandaProChart';
 import type { JournalTradeRecord } from '../src/components/TradeJournal';
 import type { MtfRow } from '../src/services/mtf';
 
@@ -116,6 +116,49 @@ test('a live risk-free position hides after five bars while an ordinary open pos
   props.asOf = 1360;
   props.liveTrades[0].position.signalStatus = 'ACTIVE';
   assert.ok(!render().includes('No active MTF setup'), 'an active trade without an RF event has no expiry');
+});
+
+test('entry/SL/TP drawings stay visible through RF while the position remains open', () => {
+  const candles = Array.from({ length: 31 }, (_, index) => bar(1000 + index * 60));
+  for (const direction of ['bullish', 'bearish'] as const) {
+    for (const status of ['active', 'risk-free', 'RISK_FREE'] as const) {
+      const trade = { status, partialClosedAt: 1000, updatedAt: 1000,
+        signal: { timeframe: 'M1' as const, direction } };
+      assert.equal(tradeDrawingExpired(trade, candles, 2860), false, `${direction} ${status}`);
+    }
+  }
+  const record: JournalTradeRecord = {
+    id: 'MT5:rf-open', source: 'MTF', zoneName: 'QML', zoneTimeframe: 'M15', signalTimeframe: 'M1',
+    direction: 'bullish', engulfingType: 'T1', signalAt: 800, openedAt: 900,
+    completedAt: 1000, partialClosedAt: 1000, result: 'risk-free',
+    entry: 100, stopLoss: 99, takeProfit: 103, rewardRisk: 3, riskPips: 10,
+  };
+  assert.equal(tradeDrawingExpired(record, candles, 2860), false, 'reload retains an open RF record');
+  assert.equal(tradeDrawingExpired(tradeDrawingFromRecord(record), candles, 2860), false);
+});
+
+test('RF followed by SL or TP starts drawing expiry at the final hit, not the partial close', () => {
+  const candles = Array.from({ length: 16 }, (_, index) => bar(1000 + index * 60));
+  for (const result of ['sl', 'tp', 'rf'] as const) {
+    const record: JournalTradeRecord = {
+      id: `MT5:rf-${result}`, source: 'MTF', zoneName: 'QML', zoneTimeframe: 'M15', signalTimeframe: 'M1',
+      direction: 'bullish', engulfingType: 'T1', signalAt: 800, openedAt: 900,
+      partialClosedAt: 1000, completedAt: 1600, closedAt: 1600, result,
+      entry: 100, stopLoss: 99, takeProfit: 103, rewardRisk: 3, riskPips: 10,
+    };
+    const drawing = tradeDrawingFromRecord(record);
+    assert.equal(tradeDrawingExpired(record, candles, 1900), false, `${result}: four completed bars`);
+    assert.equal(tradeDrawingExpired(drawing, candles, 1900), false);
+    assert.equal(tradeDrawingExpired(record, candles, 1960), true, `${result}: fifth completed bar`);
+    assert.equal(tradeDrawingExpired(drawing, candles, 1960), true);
+    assert.equal(tradeDrawingExpired(drawing, [...candles.slice(0, -1), bar(1900, false)], 1960), false);
+    assert.equal(tradeDrawingExpired(drawing, candles, 1900), false, 'rewinding restores the retention window');
+  }
+  const brokerRf = { status: 'RF', signalTimeframe: 'M1' as const, partialClosedAt: 1000, updatedAt: 1600 };
+  assert.equal(tradeDrawingExpired(brokerRf, candles, 1900), false);
+  assert.equal(tradeDrawingExpired(brokerRf, candles, 1960), true);
+  assert.equal(tradeDrawingExpired({ status: 'sl-hit', signalTimeframe: 'M1' }, candles, 9999), false,
+    'an unknown final hit time cannot start a countdown');
 });
 
 test('an unresolved MTF execution retains its source and prices without an active setup', () => {
