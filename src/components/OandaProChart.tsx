@@ -398,10 +398,10 @@ interface EntryHover {
 
 const RETAINED_CHART_TRADES_STORAGE_KEY = 'oanda-dashboard-retained-chart-trades-v1';
 
-function loadStoredRetainedChartTrades(): Map<string, TradeOverlay> {
+function loadStoredRetainedChartTrades(storageKey = RETAINED_CHART_TRADES_STORAGE_KEY): Map<string, TradeOverlay> {
   try {
     const parsed = JSON.parse(
-      window.localStorage.getItem(RETAINED_CHART_TRADES_STORAGE_KEY) || '[]',
+      window.localStorage.getItem(storageKey) || '[]',
     );
     if (!Array.isArray(parsed)) return new Map();
     const entries = parsed.filter((overlay): overlay is TradeOverlay => (
@@ -1673,7 +1673,22 @@ const EngulfingAccuracyTable: React.FC<{
   );
 };
 
-export const OandaProChart: React.FC = () => {
+export const OandaProChart: React.FC<{
+  terminalId?: 'primary' | 'secondary';
+  onTerminalChange?: (id: 'primary' | 'secondary') => void;
+}> = ({ terminalId = 'primary', onTerminalChange }) => {
+  const terminalFetch = useCallback((url: string, options?: RequestInit) => {
+    const scoped = url.startsWith('/api/mt5/') || url.startsWith('/api/journal/') || url.startsWith('/api/telegram/');
+    return fetch(scoped ? `${url}${url.includes('?') ? '&' : '?'}terminal=${terminalId}` : url, options);
+  }, [terminalId]);
+  const retainedStorageKey = terminalId === 'primary' ? RETAINED_CHART_TRADES_STORAGE_KEY
+    : `${RETAINED_CHART_TRADES_STORAGE_KEY}:secondary`;
+  const [terminalAccounts, setTerminalAccounts] = useState<Array<{
+    id: 'primary' | 'secondary'; label: string; connected: boolean; account?: string;
+    server?: string; equity?: number; enabled: boolean; dryRun: boolean;
+    riskPercent: number; maximumDailyLossPercent: number;
+  }>>([]);
+
   const hostRef = useRef<HTMLDivElement | null>(null);
   const chartPaneRef = useRef<HTMLDivElement | null>(null);
   const drawingToolbarDragRef = useRef<{
@@ -1866,7 +1881,7 @@ export const OandaProChart: React.FC = () => {
   >(new Map());
   const [retainedChartTradeOverlays, setRetainedChartTradeOverlays] = useState<
   Map<string, TradeOverlay>
-  >(loadStoredRetainedChartTrades);
+  >(() => loadStoredRetainedChartTrades(retainedStorageKey));
   const hasAnyFibMarking = Object.values(fibVisibility).some(Boolean)
     || Object.values(fibPreviousVisibility).some(Boolean)
     || chochFibVisibility.some(Boolean);
@@ -1890,10 +1905,10 @@ export const OandaProChart: React.FC = () => {
 
   useEffect(() => {
     window.localStorage.setItem(
-      RETAINED_CHART_TRADES_STORAGE_KEY,
+      retainedStorageKey,
       JSON.stringify([...retainedChartTradeOverlays.values()]),
     );
-  }, [retainedChartTradeOverlays]);
+  }, [retainedChartTradeOverlays, retainedStorageKey]);
 
   useEffect(() => {
     setDrawingDraft(null);
@@ -1947,7 +1962,7 @@ export const OandaProChart: React.FC = () => {
 
   useEffect(() => {
     let cancelled = false;
-    void fetch('/api/journal/trades?view=dashboard', { cache: 'no-store' })
+    void terminalFetch('/api/journal/trades?view=dashboard', { cache: 'no-store' })
       .then(async (response) => {
         const payload = await response.json() as { ok?: boolean; trades?: AccuracyTradeRecord[] };
         if (!cancelled && response.ok && payload.ok && Array.isArray(payload.trades)) {
@@ -1960,7 +1975,14 @@ export const OandaProChart: React.FC = () => {
 
   const refreshMt5Status = useCallback(async () => {
     try {
-      const response = await fetch('/api/mt5/status', { cache: 'no-store' });
+      const [response, accountsResponse] = await Promise.all([
+        terminalFetch('/api/mt5/status', { cache: 'no-store' }),
+        terminalFetch('/api/mt5/accounts', { cache: 'no-store' }),
+      ]);
+      if (accountsResponse.ok) {
+        const accountsPayload = await accountsResponse.json();
+        if (accountsPayload.ok && Array.isArray(accountsPayload.accounts)) setTerminalAccounts(accountsPayload.accounts);
+      }
       const payload = await response.json() as Mt5AutomationStatus;
       if (response.ok && payload.ok) {
         setMt5Status((current) => current
@@ -1997,7 +2019,7 @@ export const OandaProChart: React.FC = () => {
     let cancelled = false;
     const prepareMt5JournalImages = async () => {
       try {
-        const response = await fetch('/api/journal/trades?view=pending-images', { cache: 'no-store' });
+        const response = await terminalFetch('/api/journal/trades?view=pending-images', { cache: 'no-store' });
         const payload = await response.json() as { ok?: boolean; trades?: JournalTradeRecord[] };
         if (!response.ok || !payload.ok || !Array.isArray(payload.trades)) return;
         const signalIds = new Set(lifecycleSignals.map((signal) => signal.id));
@@ -2028,7 +2050,7 @@ export const OandaProChart: React.FC = () => {
             screenshotDataUrl: trade.screenshotDataUrl
               || exitScreenshotDataUrl || entryScreenshotDataUrl,
           };
-          const saveResponse = await fetch('/api/journal/trades?view=dashboard', {
+          const saveResponse = await terminalFetch('/api/journal/trades?view=dashboard', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ trades: [updated] }),
@@ -2052,7 +2074,7 @@ export const OandaProChart: React.FC = () => {
 
   const updateMt5Config = useCallback(async (changes: Record<string, unknown>) => {
     if (!mt5Status) return;
-    const response = await fetch('/api/mt5/config', {
+    const response = await terminalFetch('/api/mt5/config', {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ ...mt5Status.config, ...changes }),
@@ -2073,7 +2095,7 @@ export const OandaProChart: React.FC = () => {
   const controlMt5Bridge = useCallback(async (action: 'start' | 'stop') => {
     setMt5BridgeControlError(null);
     try {
-      const response = await fetch(`/api/mt5/bridge/${action}`, { method: 'POST' });
+      const response = await terminalFetch(`/api/mt5/bridge/${action}`, { method: 'POST' });
       const payload = await response.json() as { ok?: boolean; error?: string };
       if (!response.ok || !payload.ok) throw new Error(payload.error || `Unable to ${action} bridge.`);
       window.setTimeout(() => void refreshMt5Status(), 500);
@@ -3225,7 +3247,7 @@ export const OandaProChart: React.FC = () => {
       let saved: AccuracyTradeRecord[] | undefined;
       for (let offset = 0; offset < changed.length; offset += 2000) {
         const batch = changed.slice(offset, offset + 2000);
-        const response = await fetch('/api/journal/trades?view=dashboard', {
+        const response = await terminalFetch('/api/journal/trades?view=dashboard', {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ trades: batch }),
         });
@@ -3901,7 +3923,7 @@ export const OandaProChart: React.FC = () => {
     if (alerts.size === 0) return;
     telegramAlertSendingRef.current = true;
     const batch = Array.from(alerts.entries()).slice(0, 40);
-    void fetch('/api/telegram/alerts', {
+    void terminalFetch('/api/telegram/alerts', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ alerts: batch.map(([, alert]) => alert) }),
     }).then(async (response) => {
@@ -5478,7 +5500,7 @@ export const OandaProChart: React.FC = () => {
           const requestUrl = useMt5BrokerFeed
             ? `/api/mt5/market-data?timeframe=${requestedGranularity}`
             : `/api/tradingview/market-data?${query}`;
-          const response = await fetch(requestUrl, {
+          const response = await terminalFetch(requestUrl, {
             signal,
             cache: 'no-store',
           });
@@ -6780,6 +6802,15 @@ export const OandaProChart: React.FC = () => {
             ))}
           </div>
 
+          <select
+            aria-label="MT5 account"
+            value={terminalId}
+            onChange={(event) => onTerminalChange?.(event.target.value as 'primary' | 'secondary')}
+            className="rounded-full border border-slate-300 bg-white px-2 py-0.5 text-[9px] font-black"
+          >
+            <option value="primary">ACCOUNT 1</option>
+            <option value="secondary">ACCOUNT 2</option>
+          </select>
           <div className="relative">
             <button
               type="button"
@@ -6807,13 +6838,27 @@ export const OandaProChart: React.FC = () => {
               <div className="absolute right-0 top-full z-[70] mt-1 max-h-[calc(100dvh_-_96px)] w-64 overflow-y-auto overscroll-contain rounded-lg border border-slate-200 bg-white p-3 text-[10px] shadow-xl">
                 <div className="sticky top-0 z-10 mb-2 flex items-center justify-between border-b border-slate-100 bg-white pb-2">
                   <div>
-                    <div className="font-black text-slate-800">MT5 AUTO EXECUTION</div>
+                    <div className="font-black text-slate-800">MT5 AUTO EXECUTION ? ACCOUNT {terminalId === 'primary' ? '1' : '2'}</div>
                     <div className={mt5Status.bridge.connected ? 'text-emerald-700' : 'text-rose-700'}>
                       Bridge {mt5Status.bridge.connected ? 'connected' : 'disconnected'}
                       {mt5Status.bridge.managedByServer ? ' · local server' : ''}
                     </div>
                   </div>
                   <button type="button" onClick={() => setMt5SettingsOpen(false)} className="text-slate-400">✕</button>
+                </div>
+                <div className="mb-2 space-y-1">
+                  <div className="text-[9px] text-slate-500">Shared strategy ? separate account risk limits</div>
+                  {terminalAccounts.map((account) => (
+                    <button key={account.id} type="button" onClick={() => onTerminalChange?.(account.id)}
+                      className={`w-full rounded border p-2 text-left ${account.id === terminalId ? 'border-indigo-300 bg-indigo-50' : 'border-slate-200'}`}>
+                      <div className="flex justify-between font-bold">
+                        <span>{account.label} ? {account.account ?? 'Not connected'}</span>
+                        <span className={account.connected ? 'text-emerald-700' : 'text-rose-700'}>{account.connected ? 'Connected' : 'Offline'}</span>
+                      </div>
+                      <div>{account.server} ? {account.enabled ? account.dryRun ? 'Dry Run' : 'Auto ON' : 'Auto OFF'}</div>
+                      <div>Risk {account.riskPercent}% ? Daily limit {account.maximumDailyLossPercent}%</div>
+                    </button>
+                  ))}
                 </div>
                 <div className="mb-2 flex gap-1.5">
                   <button
@@ -8741,6 +8786,7 @@ export const OandaProChart: React.FC = () => {
           )}
           {showJournal && (
             <TradeJournal
+              terminalId={terminalId}
               records={visibleCanonicalTradeRecords}
               timeframe={granularity}
               marketSymbol={marketSymbol}

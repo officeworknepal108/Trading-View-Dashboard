@@ -1,6 +1,7 @@
 import 'dotenv/config';
 import { journalDashboardTrades, journalPendingImageTrades } from './src/services/journalPayload';
 import express from 'express';
+import { AsyncLocalStorage } from 'node:async_hooks';
 import path from 'path';
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
 import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
@@ -166,52 +167,69 @@ interface Mt5LivePosition {
   magic?: number;
 }
 
-let mt5BridgeHeartbeat: Mt5BridgeHeartbeat | undefined;
-let mt5MutationQueue: Promise<unknown> = Promise.resolve();
-let journalMutationQueue: Promise<unknown> = Promise.resolve();
-let telegramAlertQueue: Promise<unknown> = Promise.resolve();
-const automationCandleCache: Partial<Record<TradeTimeframe, StructureCandle[]>> = {};
-const mt5MarketDataUpdatedAt: Partial<Record<TradeTimeframe, number>> = {};
-let mt5MarketDataVersion = 0;
-let lastScannedMt5MarketDataVersion = -1;
-let managedMt5Bridge: ChildProcessWithoutNullStreams | undefined;
-let managedMt5BridgeProcessId: number | undefined;
-let managedMt5BridgeStartedAt: number | undefined;
-let managedMt5BridgeExitCode: number | null | undefined;
-const managedMt5BridgeLogs: string[] = [];
+const terminalScope = new AsyncLocalStorage<'primary' | 'secondary'>();
+const terminalId = () => terminalScope.getStore() ?? 'primary';
+const terminalPaths = {
+  primary: process.env.MT5_PRIMARY_PATH || 'C:\\Program Files\\MetaTrader 5\\terminal64.exe',
+  secondary: process.env.MT5_SECONDARY_PATH || 'C:\\Program Files\\MetaTrader 5- Account 2\\terminal64.exe',
+};
+const createTerminalState = () => ({
+  mt5BridgeHeartbeat: undefined as Mt5BridgeHeartbeat | undefined,
+  mt5MutationQueue: Promise.resolve() as Promise<unknown>,
+  journalMutationQueue: Promise.resolve() as Promise<unknown>,
+  telegramAlertQueue: Promise.resolve() as Promise<unknown>,
+  automationCandleCache: {} as Partial<Record<TradeTimeframe, StructureCandle[]>>,
+  mt5MarketDataUpdatedAt: {} as Partial<Record<TradeTimeframe, number>>,
+  mt5MarketDataVersion: 0,
+  lastScannedMt5MarketDataVersion: -1,
+  managedMt5Bridge: undefined as ChildProcessWithoutNullStreams | undefined,
+  managedMt5BridgeProcessId: undefined as number | undefined,
+  managedMt5BridgeStartedAt: undefined as number | undefined,
+  managedMt5BridgeExitCode: undefined as number | null | undefined,
+  managedMt5BridgeLogs: [] as string[],
+});
+const terminalStates = { primary: createTerminalState(), secondary: createTerminalState() };
+const mt5Context = () => terminalStates[terminalId()];
+const terminalFile = (file: string) => terminalId() === 'primary' ? file
+  : file.replace(/\.json$/, '.secondary.json');
+let configWriteQueue: Promise<unknown> = Promise.resolve();
+const sharedStrategyFields = ['tradingTimeEnabled', 'telegramMessagesEnabled', 'scalpingEnabled',
+  'intradayEnabled', 'mtfLtfFibRequired', 'enabledTimeframes', 'maximumSpreadPoints',
+  'signalMaxAgeSeconds', 'pendingExpiryMinutes', 'moveStopToBreakEvenAtR'] as const;
 
 function appendManagedBridgeLog(chunk: string, channel: 'OUT' | 'ERR'): void {
   for (const line of chunk.split(/\r?\n/).map((value) => value.trim()).filter(Boolean)) {
-    managedMt5BridgeLogs.push(`${new Date().toLocaleTimeString()} ${channel} ${line}`);
+    mt5Context().managedMt5BridgeLogs.push(`${new Date().toLocaleTimeString()} ${channel} ${line}`);
   }
-  if (managedMt5BridgeLogs.length > 100) {
-    managedMt5BridgeLogs.splice(0, managedMt5BridgeLogs.length - 100);
+  if (mt5Context().managedMt5BridgeLogs.length > 100) {
+    mt5Context().managedMt5BridgeLogs.splice(0, mt5Context().managedMt5BridgeLogs.length - 100);
   }
 }
 
 function managedBridgeIsRunning(): boolean {
-  return managedMt5Bridge !== undefined && managedMt5Bridge.exitCode === null
-    && !managedMt5Bridge.killed;
+  return mt5Context().managedMt5Bridge !== undefined && mt5Context().managedMt5Bridge.exitCode === null
+    && !mt5Context().managedMt5Bridge.killed;
 }
 
 function startManagedMt5Bridge(): { started: boolean; processId?: number; error?: string } {
   if (managedBridgeIsRunning()) {
-    return { started: false, processId: managedMt5Bridge?.pid };
+    return { started: false, processId: mt5Context().managedMt5Bridge?.pid };
   }
   const scriptPath = path.resolve(process.cwd(), 'mt5_bridge.py');
   const pythonCommand = process.env.MT5_PYTHON?.trim() || 'python';
   try {
-    managedMt5BridgeExitCode = undefined;
+    mt5Context().managedMt5BridgeExitCode = undefined;
     appendManagedBridgeLog(`Starting ${path.basename(scriptPath)} with ${pythonCommand}.`, 'OUT');
     const child = spawn(pythonCommand, ['-u', scriptPath], {
       cwd: process.cwd(),
-      env: process.env,
+      env: { ...process.env, MT5_TERMINAL_ID: terminalId(), MT5_PATH: terminalPaths[terminalId()],
+        ...(terminalId() === 'secondary' ? { MT5_LOGIN: '0', MT5_PASSWORD: '', MT5_SERVER: '' } : {}) },
       windowsHide: true,
       stdio: ['pipe', 'pipe', 'pipe'],
     });
-    managedMt5Bridge = child;
-    managedMt5BridgeProcessId = child.pid;
-    managedMt5BridgeStartedAt = Date.now();
+    mt5Context().managedMt5Bridge = child;
+    mt5Context().managedMt5BridgeProcessId = child.pid;
+    mt5Context().managedMt5BridgeStartedAt = Date.now();
     child.stdout.setEncoding('utf8');
     child.stderr.setEncoding('utf8');
     child.stdout.on('data', (chunk: string) => appendManagedBridgeLog(chunk, 'OUT'));
@@ -220,9 +238,9 @@ function startManagedMt5Bridge(): { started: boolean; processId?: number; error?
       appendManagedBridgeLog(`Bridge process error: ${error.message}`, 'ERR');
     });
     child.on('exit', (code, signal) => {
-      managedMt5BridgeExitCode = code;
+      mt5Context().managedMt5BridgeExitCode = code;
       appendManagedBridgeLog(`Bridge stopped (${signal || `exit ${code ?? 'unknown'}`}).`, code ? 'ERR' : 'OUT');
-      if (managedMt5Bridge === child) managedMt5Bridge = undefined;
+      if (mt5Context().managedMt5Bridge === child) mt5Context().managedMt5Bridge = undefined;
     });
     return { started: true, processId: child.pid };
   } catch (error) {
@@ -233,27 +251,27 @@ function startManagedMt5Bridge(): { started: boolean; processId?: number; error?
 }
 
 function stopManagedMt5Bridge(): boolean {
-  if (!managedBridgeIsRunning() || !managedMt5Bridge) return false;
+  if (!managedBridgeIsRunning() || !mt5Context().managedMt5Bridge) return false;
   appendManagedBridgeLog('Stop requested from the dashboard.', 'OUT');
-  managedMt5Bridge.kill();
+  mt5Context().managedMt5Bridge.kill();
   return true;
 }
 
 function serializeMt5Mutation<T>(operation: () => Promise<T>): Promise<T> {
-  const queued = mt5MutationQueue.then(operation, operation);
-  mt5MutationQueue = queued.then(() => undefined, () => undefined);
+  const queued = mt5Context().mt5MutationQueue.then(operation, operation);
+  mt5Context().mt5MutationQueue = queued.then(() => undefined, () => undefined);
   return queued;
 }
 
 function serializeJournalMutation<T>(operation: () => Promise<T>): Promise<T> {
-  const queued = journalMutationQueue.then(operation, operation);
-  journalMutationQueue = queued.then(() => undefined, () => undefined);
+  const queued = mt5Context().journalMutationQueue.then(operation, operation);
+  mt5Context().journalMutationQueue = queued.then(() => undefined, () => undefined);
   return queued;
 }
 
 async function readMt5Signals(): Promise<Mt5StoredSignal[]> {
   try {
-    const content = await readFile(MT5_SIGNALS_FILE, 'utf8');
+    const content = await readFile(terminalFile(MT5_SIGNALS_FILE), 'utf8');
     const parsed = JSON.parse(content);
     return Array.isArray(parsed?.signals) ? parsed.signals : [];
   } catch (error) {
@@ -263,14 +281,18 @@ async function readMt5Signals(): Promise<Mt5StoredSignal[]> {
 }
 
 async function writeMt5Signals(signals: Mt5StoredSignal[]): Promise<void> {
-  await mkdir(path.dirname(MT5_SIGNALS_FILE), { recursive: true });
-  await writeFile(MT5_SIGNALS_FILE, `${JSON.stringify({ signals }, null, 2)}\n`, 'utf8');
+  await mkdir(path.dirname(terminalFile(MT5_SIGNALS_FILE)), { recursive: true });
+  await writeFile(terminalFile(MT5_SIGNALS_FILE), `${JSON.stringify({ signals }, null, 2)}\n`, 'utf8');
 }
 
 async function readMt5Config(): Promise<Mt5AutomationConfig> {
   try {
-    const content = await readFile(MT5_CONFIG_FILE, 'utf8');
-    const parsed = JSON.parse(content);
+    const content = await readFile(terminalFile(MT5_CONFIG_FILE), 'utf8');
+    let parsed = JSON.parse(content);
+    if (terminalId() === 'secondary') {
+      const common = await terminalScope.run('primary', readMt5Config);
+      parsed = { ...parsed, ...Object.fromEntries(sharedStrategyFields.map(key => [key, common[key]])) };
+    }
     return {
       ...DEFAULT_MT5_CONFIG,
       ...parsed,
@@ -286,14 +308,37 @@ async function readMt5Config(): Promise<Mt5AutomationConfig> {
       maximumDailyLossPercent: normalizeMt5DailyLossPercent(parsed?.maximumDailyLossPercent, DEFAULT_MT5_CONFIG.maximumDailyLossPercent),
     };
   } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return DEFAULT_MT5_CONFIG;
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+      if (terminalId() === 'secondary') {
+        const common = await terminalScope.run('primary', readMt5Config);
+        return { ...common, ...DEFAULT_MT5_CONFIG,
+          ...Object.fromEntries(sharedStrategyFields.map(key => [key, common[key]])),
+          enabled: false, dryRun: true, brokerSymbolAccount: undefined, brokerSymbolServer: undefined };
+      }
+      return DEFAULT_MT5_CONFIG;
+    }
     throw error;
   }
 }
 
-async function writeMt5Config(config: Mt5AutomationConfig): Promise<void> {
-  await mkdir(path.dirname(MT5_CONFIG_FILE), { recursive: true });
-  await writeFile(MT5_CONFIG_FILE, `${JSON.stringify(config, null, 2)}\n`, 'utf8');
+async function writeMt5Config(
+  config: Mt5AutomationConfig, sharedChanges: Partial<Mt5AutomationConfig> = {},
+): Promise<void> {
+  const write = async () => {
+    await mkdir(path.dirname(MT5_CONFIG_FILE), { recursive: true });
+    const primary = await terminalScope.run('primary', readMt5Config);
+    const shared = { ...Object.fromEntries(sharedStrategyFields.map(key => [key, primary[key]])), ...sharedChanges };
+    const save = async (file: string, value: object) => {
+      const temporary = `${file}.${process.pid}.tmp`;
+      await writeFile(temporary, `${JSON.stringify(value, null, 2)}\n`, 'utf8');
+      await rename(temporary, file);
+    };
+    if (terminalId() === 'secondary') await save(MT5_CONFIG_FILE, { ...primary, ...shared });
+    await save(terminalFile(MT5_CONFIG_FILE), { ...config, ...shared });
+  };
+  const queued = configWriteQueue.then(write, write);
+  configWriteQueue = queued.catch(() => undefined);
+  await queued;
 }
 
 function isLoopbackRequest(req: express.Request): boolean {
@@ -342,10 +387,10 @@ function sanitizeMt5CandleSnapshot(candidate: any): {
 }
 
 function mt5ExecutionFeedIsFresh(now = Date.now()): boolean {
-  if (!mt5BridgeHeartbeat || mt5BridgeHeartbeat.terminalConnected !== true
-    || mt5BridgeHeartbeat.symbolResolved !== true || now - mt5BridgeHeartbeat.lastHeartbeatAt >= 15_000) return false;
-  const m1UpdatedAt = mt5MarketDataUpdatedAt.M1;
-  const latestM1 = automationCandleCache.M1?.[automationCandleCache.M1.length - 1];
+  if (!mt5Context().mt5BridgeHeartbeat || mt5Context().mt5BridgeHeartbeat.terminalConnected !== true
+    || mt5Context().mt5BridgeHeartbeat.symbolResolved !== true || now - mt5Context().mt5BridgeHeartbeat.lastHeartbeatAt >= 15_000) return false;
+  const m1UpdatedAt = mt5Context().mt5MarketDataUpdatedAt.M1;
+  const latestM1 = mt5Context().automationCandleCache.M1?.[mt5Context().automationCandleCache.M1.length - 1];
   const nowSeconds = Math.floor(now / 1000);
   return m1UpdatedAt !== undefined
     && now - m1UpdatedAt < 90_000
@@ -423,7 +468,10 @@ async function enqueueMt5Signal(
   candidate: Mt5SignalInput,
   config: Mt5AutomationConfig,
 ): Promise<{ signal: Mt5StoredSignal; duplicate: boolean }> {
-  const executionConnection = mt5BridgeHeartbeat ? { ...mt5BridgeHeartbeat } : undefined;
+  if (terminalId() === 'secondary' && !candidate.id.endsWith(':secondary')) {
+    candidate = { ...candidate, id: `${candidate.id}:secondary` };
+  }
+  const executionConnection = mt5Context().mt5BridgeHeartbeat ? { ...mt5Context().mt5BridgeHeartbeat } : undefined;
   const error = validateMt5Signal(candidate);
   if (error) throw new Error(error);
   const disabledReason = mt5SignalDisabledReason(config, candidate);
@@ -439,10 +487,10 @@ async function enqueueMt5Signal(
     throw new Error('Future-dated signals cannot be executed.');
   }
   return serializeMt5Mutation(async () => {
-    if (!mt5ExecutionFeedIsFresh() || !mt5ConnectionMatches(executionConnection, mt5BridgeHeartbeat ?? {})) {
+    if (!mt5ExecutionFeedIsFresh() || !mt5ConnectionMatches(executionConnection, mt5Context().mt5BridgeHeartbeat ?? {})) {
       throw new Error('MT5 connection changed while preparing the signal.');
     }
-    if (!mt5DailyRiskAllowsEntry(mt5BridgeHeartbeat?.dailyRisk)) {
+    if (!mt5DailyRiskAllowsEntry(mt5Context().mt5BridgeHeartbeat?.dailyRisk)) {
       throw new Error('Daily risk allowance is exhausted or unavailable; new automated trades are paused.');
     }
     const signals = await readMt5Signals();
@@ -638,12 +686,12 @@ async function scanMt5AutomationSignals(): Promise<number> {
     return 0;
   }
   if (!mt5ExecutionFeedIsFresh()) return 0;
-  if (!mt5DailyRiskAllowsEntry(mt5BridgeHeartbeat?.dailyRisk)) return 0;
-  if (AUTOMATION_TIMEFRAMES.some((timeframe) => !automationCandleCache[timeframe]?.length)) return 0;
-  const scanVersion = mt5MarketDataVersion;
-  const scanConnection = mt5BridgeHeartbeat ? { ...mt5BridgeHeartbeat } : undefined;
-  if (scanVersion === lastScannedMt5MarketDataVersion) return 0;
-  const candles = automationCandleCache as Record<TradeTimeframe, StructureCandle[]>;
+  if (!mt5DailyRiskAllowsEntry(mt5Context().mt5BridgeHeartbeat?.dailyRisk)) return 0;
+  if (AUTOMATION_TIMEFRAMES.some((timeframe) => !mt5Context().automationCandleCache[timeframe]?.length)) return 0;
+  const scanVersion = mt5Context().mt5MarketDataVersion;
+  const scanConnection = mt5Context().mt5BridgeHeartbeat ? { ...mt5Context().mt5BridgeHeartbeat } : undefined;
+  if (scanVersion === mt5Context().lastScannedMt5MarketDataVersion) return 0;
+  const candles = mt5Context().automationCandleCache as Record<TradeTimeframe, StructureCandle[]>;
   const rawStructures: Partial<Record<TradeTimeframe, ReturnType<typeof analyzeMarketStructure>>> = {};
   for (const timeframe of AUTOMATION_TIMEFRAMES) {
     rawStructures[timeframe] = analyzeMarketStructure(candles[timeframe], {
@@ -749,7 +797,7 @@ async function scanMt5AutomationSignals(): Promise<number> {
               ),
             };
             candidates.push(applySignalOppositePositionTarget(
-              scalpCandidate, mt5BridgeHeartbeat?.positions,
+              scalpCandidate, mt5Context().mt5BridgeHeartbeat?.positions,
             ));
           }
         }
@@ -820,7 +868,7 @@ async function scanMt5AutomationSignals(): Promise<number> {
           candles[signal.timeframe], signal.time, signalClose,
         ),
       };
-      candidates.push(applySignalOppositePositionTarget(baseSignal, mt5BridgeHeartbeat?.positions));
+      candidates.push(applySignalOppositePositionTarget(baseSignal, mt5Context().mt5BridgeHeartbeat?.positions));
     }
   }
 
@@ -904,7 +952,7 @@ async function scanMt5AutomationSignals(): Promise<number> {
         candles[row.lowerTimeframe], signal.time, signalClose,
       ),
     };
-    candidates.push(applySignalOppositePositionTarget(baseSignal, mt5BridgeHeartbeat?.positions));
+    candidates.push(applySignalOppositePositionTarget(baseSignal, mt5Context().mt5BridgeHeartbeat?.positions));
   }
 
   const grouped = new Map<string, Mt5SignalInput>();
@@ -921,11 +969,11 @@ async function scanMt5AutomationSignals(): Promise<number> {
   }
   let queued = 0;
   for (const candidate of grouped.values()) {
-    if (!mt5ConnectionMatches(scanConnection, mt5BridgeHeartbeat ?? {}) || !mt5ExecutionFeedIsFresh()) break;
+    if (!mt5ConnectionMatches(scanConnection, mt5Context().mt5BridgeHeartbeat ?? {}) || !mt5ExecutionFeedIsFresh()) break;
     const result = await enqueueMt5Signal(candidate, config);
     if (!result.duplicate) queued += 1;
   }
-  lastScannedMt5MarketDataVersion = scanVersion;
+  mt5Context().lastScannedMt5MarketDataVersion = scanVersion;
   return queued;
 }
 
@@ -937,7 +985,7 @@ interface StoredJournalTrade {
 
 async function readJournalTrades(): Promise<StoredJournalTrade[]> {
   try {
-    const content = await readFile(JOURNAL_FILE, 'utf8');
+    const content = await readFile(terminalFile(JOURNAL_FILE), 'utf8');
     const parsed = JSON.parse(content);
     const trades = Array.isArray(parsed?.trades)
       ? parsed.trades.filter((trade: unknown): trade is StoredJournalTrade => (
@@ -967,8 +1015,8 @@ async function readJournalTrades(): Promise<StoredJournalTrade[]> {
 }
 
 async function writeJournalTrades(trades: StoredJournalTrade[]): Promise<void> {
-  await mkdir(path.dirname(JOURNAL_FILE), { recursive: true });
-  await writeFile(JOURNAL_FILE, `${JSON.stringify({ trades }, null, 2)}\n`, 'utf8');
+  await mkdir(path.dirname(terminalFile(JOURNAL_FILE)), { recursive: true });
+  await writeFile(terminalFile(JOURNAL_FILE), `${JSON.stringify({ trades }, null, 2)}\n`, 'utf8');
 }
 
 function lifecycleEvent(status: string, at: number, details: Record<string, unknown>) {
@@ -1022,13 +1070,13 @@ async function updateMt5JournalRecord(
     const final = ['TP', 'SL', 'RF'].includes(status);
     const exitCandles = final
       ? journalExitSnapshotCandles(
-        automationCandleCache[signal.signalTimeframe] ?? [], Number(signal.closedAt) || updatedAt,
+        mt5Context().automationCandleCache[signal.signalTimeframe] ?? [], Number(signal.closedAt) || updatedAt,
       )
       : undefined;
     const biasAtEntry = (existing as any)?.biasAtEntry || (
       status === 'ACTIVE'
         ? journalBiasAt(
-          automationCandleCache as Record<TradeTimeframe, StructureCandle[]>, openedAt,
+          mt5Context().automationCandleCache as Record<TradeTimeframe, StructureCandle[]>, openedAt,
         )
         : context?.biasAtEntry
     );
@@ -1164,20 +1212,20 @@ async function deliverTelegramAlerts(
   alerts: TelegramTradeAlert[],
   allowResultWithoutEntry = false,
 ): Promise<string[]> {
-  const task = telegramAlertQueue.then(async () => {
+  const task = mt5Context().telegramAlertQueue.then(async () => {
     const config = await readMt5Config();
     let sent: SentTelegramAlerts;
     try {
-      sent = JSON.parse(await readFile(TELEGRAM_ALERTS_FILE, 'utf8')) as SentTelegramAlerts;
+      sent = JSON.parse(await readFile(terminalFile(TELEGRAM_ALERTS_FILE), 'utf8')) as SentTelegramAlerts;
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
       sent = {};
     }
     const saveSent = async () => {
-      await mkdir(path.dirname(TELEGRAM_ALERTS_FILE), { recursive: true });
-      const temporaryFile = `${TELEGRAM_ALERTS_FILE}.${process.pid}.tmp`;
+      await mkdir(path.dirname(terminalFile(TELEGRAM_ALERTS_FILE)), { recursive: true });
+      const temporaryFile = `${terminalFile(TELEGRAM_ALERTS_FILE)}.${process.pid}.tmp`;
       await writeFile(temporaryFile, `${JSON.stringify(sent, null, 2)}\n`, 'utf8');
-      await rename(temporaryFile, TELEGRAM_ALERTS_FILE);
+      await rename(temporaryFile, terminalFile(TELEGRAM_ALERTS_FILE));
     };
     const acknowledged: string[] = [];
     for (const alert of alerts) {
@@ -1213,13 +1261,13 @@ async function deliverTelegramAlerts(
     }
     return acknowledged;
   });
-  telegramAlertQueue = task.then(() => undefined, () => undefined);
+  mt5Context().telegramAlertQueue = task.then(() => undefined, () => undefined);
   return task;
 }
 
 async function deliverDailyTelegramSummary(): Promise<void> {
-  const task = telegramAlertQueue.then(async () => {
-    const connection = mt5BridgeHeartbeat;
+  const task = mt5Context().telegramAlertQueue.then(async () => {
+    const connection = mt5Context().mt5BridgeHeartbeat;
     const now = Date.now() / 1000;
     if (!connection?.account || !connection.server || connection.terminalConnected === false
       || Date.now() - connection.lastHeartbeatAt > 15_000) return;
@@ -1227,20 +1275,20 @@ async function deliverDailyTelegramSummary(): Promise<void> {
     // Allow the bridge to synchronize trades closed in the final seconds of the day.
     if (now < day.end + 60 || !(await readMt5Config()).telegramMessagesEnabled) return;
     let sent: SentTelegramAlerts = {};
-    try { sent = JSON.parse(await readFile(TELEGRAM_ALERTS_FILE, 'utf8')); }
+    try { sent = JSON.parse(await readFile(terminalFile(TELEGRAM_ALERTS_FILE), 'utf8')); }
     catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error; }
     const key = `DAILY:${connection.account}:${connection.server}:${day.date}`;
     if (sent[key]?.summarySent) return;
     const counts = countDailyTrades(await readMt5Signals(), connection.account, connection.server, now);
-    if (mt5BridgeHeartbeat?.account !== connection.account || mt5BridgeHeartbeat?.server !== connection.server) return;
+    if (mt5Context().mt5BridgeHeartbeat?.account !== connection.account || mt5Context().mt5BridgeHeartbeat?.server !== connection.server) return;
     await sendTelegramText(formatDailyTradeSummary(counts));
     sent[key] = { summarySent: true };
-    await mkdir(path.dirname(TELEGRAM_ALERTS_FILE), { recursive: true });
-    const temporary = `${TELEGRAM_ALERTS_FILE}.${process.pid}.tmp`;
+    await mkdir(path.dirname(terminalFile(TELEGRAM_ALERTS_FILE)), { recursive: true });
+    const temporary = `${terminalFile(TELEGRAM_ALERTS_FILE)}.${process.pid}.tmp`;
     await writeFile(temporary, `${JSON.stringify(sent, null, 2)}\n`, 'utf8');
-    await rename(temporary, TELEGRAM_ALERTS_FILE);
+    await rename(temporary, terminalFile(TELEGRAM_ALERTS_FILE));
   });
-  telegramAlertQueue = task.then(() => undefined, () => undefined);
+  mt5Context().telegramAlertQueue = task.then(() => undefined, () => undefined);
   return task;
 }
 
@@ -1249,6 +1297,27 @@ async function startServer() {
   const port = Number(process.env.PORT || 3000);
   app.disable('x-powered-by');
   app.use(express.json({ limit: '12mb' }));
+  app.use('/api', (req, res, next) => {
+    const selected = req.get('x-mt5-terminal') ?? req.query.terminal ?? 'primary';
+    if (selected !== 'primary' && selected !== 'secondary') {
+      return res.status(400).json({ ok: false, error: 'Unknown MT5 terminal.' });
+    }
+    terminalScope.run(selected, next);
+  });
+  app.get('/api/mt5/accounts', async (_req, res) => {
+    const accounts = await Promise.all((['primary', 'secondary'] as const).map(id => terminalScope.run(id, async () => {
+      const heartbeat = mt5Context().mt5BridgeHeartbeat;
+      const config = await readMt5Config();
+      return { id, label: id === 'primary' ? 'Account 1' : 'Account 2', terminalPath: terminalPaths[id],
+        connected: !!heartbeat?.terminalConnected && Date.now() - heartbeat.lastHeartbeatAt < 15_000,
+        account: heartbeat?.account, server: heartbeat?.server, equity: heartbeat?.equity,
+        enabled: config.enabled, dryRun: config.dryRun, riskPercent: config.riskPercent,
+        maximumDailyLossPercent: config.maximumDailyLossPercent };
+    })));
+    res.setHeader('Cache-Control', 'no-store');
+    res.json({ ok: true, accounts });
+  });
+
 
   app.get('/api/health', (_req, res) => {
     res.setHeader('Cache-Control', 'no-store');
@@ -1267,16 +1336,16 @@ async function startServer() {
     if (!mt5BridgeAuthorized(req)) {
       return res.status(401).json({ ok: false, error: 'Bridge authorization failed.' });
     }
-    if (mt5BridgeHeartbeat?.symbolResolved !== true
-      || req.body?.bridgeId !== mt5BridgeHeartbeat.bridgeId
-      || !mt5ConnectionMatches(mt5BridgeHeartbeat, { ...req.body, brokerSymbol: req.body?.symbol })) {
+    if (mt5Context().mt5BridgeHeartbeat?.symbolResolved !== true
+      || req.body?.bridgeId !== mt5Context().mt5BridgeHeartbeat.bridgeId
+      || !mt5ConnectionMatches(mt5Context().mt5BridgeHeartbeat, { ...req.body, brokerSymbol: req.body?.symbol })) {
       return res.status(409).json({ ok: false, error: 'MT5 account or symbol changed; synchronize the bridge first.' });
     }
     const snapshot = sanitizeMt5CandleSnapshot(req.body);
     if ('error' in snapshot) return res.status(400).json({ ok: false, error: snapshot.error });
-    automationCandleCache[snapshot.timeframe] = snapshot.candles;
-    mt5MarketDataUpdatedAt[snapshot.timeframe] = Date.now();
-    mt5MarketDataVersion += 1;
+    mt5Context().automationCandleCache[snapshot.timeframe] = snapshot.candles;
+    mt5Context().mt5MarketDataUpdatedAt[snapshot.timeframe] = Date.now();
+    mt5Context().mt5MarketDataVersion += 1;
     const latest = snapshot.candles[snapshot.candles.length - 1];
     const latestCompleted = [...snapshot.candles].reverse().find((candle) => candle.complete !== false);
     return res.status(202).json({
@@ -1293,16 +1362,16 @@ async function startServer() {
     if (!AUTOMATION_TIMEFRAMES.includes(timeframe)) {
       return res.status(400).json({ ok: false, error: 'Unsupported MT5 candle timeframe.' });
     }
-    const candles = automationCandleCache[timeframe] ?? [];
+    const candles = mt5Context().automationCandleCache[timeframe] ?? [];
     if (candles.length === 0) {
       return res.status(503).json({ ok: false, error: `Waiting for MT5 ${timeframe} broker candles.` });
     }
     res.setHeader('Cache-Control', 'no-store');
     return res.json({
       ok: true,
-      source: `MetaTrader 5 · ${mt5BridgeHeartbeat?.server || 'broker'} · ${mt5BridgeHeartbeat?.brokerSymbol || 'XAUUSD'}`,
+      source: `MetaTrader 5 · ${mt5Context().mt5BridgeHeartbeat?.server || 'broker'} · ${mt5Context().mt5BridgeHeartbeat?.brokerSymbol || 'XAUUSD'}`,
       granularity: timeframe,
-      fetchedAt: new Date(mt5MarketDataUpdatedAt[timeframe] ?? Date.now()).toISOString(),
+      fetchedAt: new Date(mt5Context().mt5MarketDataUpdatedAt[timeframe] ?? Date.now()).toISOString(),
       candles,
     });
   });
@@ -1314,12 +1383,12 @@ async function startServer() {
         summary[signal.status] = (summary[signal.status] ?? 0) + 1;
         return summary;
       }, {});
-      const heartbeatAge = mt5BridgeHeartbeat
-        ? Date.now() - mt5BridgeHeartbeat.lastHeartbeatAt
+      const heartbeatAge = mt5Context().mt5BridgeHeartbeat
+        ? Date.now() - mt5Context().mt5BridgeHeartbeat.lastHeartbeatAt
         : Number.POSITIVE_INFINITY;
-      const connected = heartbeatAge < 15_000 && mt5BridgeHeartbeat?.terminalConnected !== false;
-      const managedProcessId = managedMt5Bridge?.pid ?? managedMt5BridgeProcessId;
-      const positions = (mt5BridgeHeartbeat?.positions ?? []).map((position) => {
+      const connected = heartbeatAge < 15_000 && mt5Context().mt5BridgeHeartbeat?.terminalConnected !== false;
+      const managedProcessId = mt5Context().managedMt5Bridge?.pid ?? mt5Context().managedMt5BridgeProcessId;
+      const positions = (mt5Context().mt5BridgeHeartbeat?.positions ?? []).map((position) => {
         const signal = signals.find((candidate) => (
           candidate.brokerPosition === position.ticket || candidate.brokerTicket === position.ticket
         ));
@@ -1341,28 +1410,28 @@ async function startServer() {
         ok: true,
         config,
         bridge: {
-          ...(mt5BridgeHeartbeat ?? {}),
+          ...(mt5Context().mt5BridgeHeartbeat ?? {}),
           connected,
-          processId: mt5BridgeHeartbeat?.processId ?? managedProcessId,
+          processId: mt5Context().mt5BridgeHeartbeat?.processId ?? managedProcessId,
           managedByServer: connected && managedProcessId !== undefined
-            && mt5BridgeHeartbeat?.processId === managedProcessId,
+            && mt5Context().mt5BridgeHeartbeat?.processId === managedProcessId,
           processRunning: managedBridgeIsRunning(),
-          processStartedAt: managedMt5BridgeStartedAt,
-          processExitCode: managedMt5BridgeExitCode,
-          logs: managedMt5BridgeLogs.slice(-30),
+          processStartedAt: mt5Context().managedMt5BridgeStartedAt,
+          processExitCode: mt5Context().managedMt5BridgeExitCode,
+          logs: mt5Context().managedMt5BridgeLogs.slice(-30),
         },
         positions,
         marketData: {
           source: 'MT5_BROKER',
           fresh: connected && mt5ExecutionFeedIsFresh(),
-          lastUpdateAt: Math.max(0, ...Object.values(mt5MarketDataUpdatedAt)),
+          lastUpdateAt: Math.max(0, ...Object.values(mt5Context().mt5MarketDataUpdatedAt)),
           timeframes: Object.fromEntries(AUTOMATION_TIMEFRAMES.map((timeframe) => {
-            const timeframeCandles = automationCandleCache[timeframe] ?? [];
+            const timeframeCandles = mt5Context().automationCandleCache[timeframe] ?? [];
             const latest = timeframeCandles[timeframeCandles.length - 1];
             const latestCompleted = [...timeframeCandles].reverse()
               .find((candle) => candle.complete !== false);
             return [timeframe, {
-              updatedAt: mt5MarketDataUpdatedAt[timeframe],
+              updatedAt: mt5Context().mt5MarketDataUpdatedAt[timeframe],
               count: timeframeCandles.length,
               latestCandleTime: latest?.time,
               latestCompletedTime: latestCompleted?.time,
@@ -1383,25 +1452,24 @@ async function startServer() {
       const config = await serializeMt5Mutation(async () => {
         const current = await readMt5Config();
         const config = sanitizeMt5Config(req.body, current);
-        if (req.body?.brokerSymbolAccount === mt5BridgeHeartbeat?.account
-          && req.body?.brokerSymbolServer === mt5BridgeHeartbeat?.server
-          && mt5BridgeHeartbeat?.symbolCandidates?.includes(config.brokerSymbol)) {
-          config.brokerSymbolAccount = mt5BridgeHeartbeat.account;
-          config.brokerSymbolServer = mt5BridgeHeartbeat.server;
+        if (req.body?.brokerSymbolAccount === mt5Context().mt5BridgeHeartbeat?.account
+          && req.body?.brokerSymbolServer === mt5Context().mt5BridgeHeartbeat?.server
+          && mt5Context().mt5BridgeHeartbeat?.symbolCandidates?.includes(config.brokerSymbol)) {
+          config.brokerSymbolAccount = mt5Context().mt5BridgeHeartbeat.account;
+          config.brokerSymbolServer = mt5Context().mt5BridgeHeartbeat.server;
         }
-        await writeMt5Config(config);
-        return config;
+        await writeMt5Config(config, Object.fromEntries(sharedStrategyFields
+          .filter(key => req.body?.[key] !== undefined).map(key => [key, config[key]])));
+        return readMt5Config();
       });
       await rejectDisabledQueuedSignals(config);
       await rejectOutsideTradingTimeSignals(config);
-      const heartbeatConnected = mt5BridgeHeartbeat !== undefined
-        && Date.now() - mt5BridgeHeartbeat.lastHeartbeatAt < 15_000;
+      const heartbeatConnected = mt5Context().mt5BridgeHeartbeat !== undefined
+        && Date.now() - mt5Context().mt5BridgeHeartbeat.lastHeartbeatAt < 15_000;
       const externalHeartbeatConnected = heartbeatConnected
-        && mt5BridgeHeartbeat?.processId !== managedMt5BridgeProcessId;
+        && mt5Context().mt5BridgeHeartbeat?.processId !== mt5Context().managedMt5BridgeProcessId;
       if (config.enabled && !managedBridgeIsRunning() && !externalHeartbeatConnected) {
         startManagedMt5Bridge();
-      } else if (!config.enabled) {
-        stopManagedMt5Bridge();
       }
       return res.json({ ok: true, config });
     } catch (error) {
@@ -1441,6 +1509,12 @@ async function startServer() {
     if (!mt5BridgeAuthorized(req)) return res.status(401).json({ ok: false, error: 'Bridge authorization failed.' });
     const bridgeId = typeof req.body?.bridgeId === 'string' ? req.body.bridgeId.trim().slice(0, 100) : '';
     if (!bridgeId) return res.status(400).json({ ok: false, error: 'Bridge ID is required.' });
+    const other = terminalStates[terminalId() === 'primary' ? 'secondary' : 'primary'].mt5BridgeHeartbeat;
+    if (req.body?.terminalConnected === true && other?.terminalConnected === true
+      && Date.now() - other.lastHeartbeatAt < 15_000
+      && other.account === String(req.body?.account ?? '') && other.server === String(req.body?.server ?? '')) {
+      return res.status(409).json({ ok: false, error: 'This MT5 account is already connected through the other terminal. Log into a different account.' });
+    }
     const positions: Mt5LivePosition[] = Array.isArray(req.body?.positions)
       ? req.body.positions.slice(0, 100).flatMap((raw: any) => {
         const ticket = Number(raw?.ticket);
@@ -1465,8 +1539,8 @@ async function startServer() {
         } satisfies Mt5LivePosition];
       })
       : [];
-    const previousConnection = mt5BridgeHeartbeat;
-    mt5BridgeHeartbeat = {
+    const previousConnection = mt5Context().mt5BridgeHeartbeat;
+    mt5Context().mt5BridgeHeartbeat = {
       bridgeId,
       processId: Number.isInteger(Number(req.body?.processId)) ? Number(req.body.processId) : undefined,
       account: String(req.body?.account ?? '').slice(0, 40) || undefined,
@@ -1486,7 +1560,7 @@ async function startServer() {
       message: String(req.body?.message ?? '').slice(0, 300) || undefined,
       lastHeartbeatAt: Date.now(),
     };
-    const connection = mt5BridgeHeartbeat;
+    const connection = mt5Context().mt5BridgeHeartbeat;
     const changed = previousConnection?.account !== connection.account
       || previousConnection?.bridgeId !== connection.bridgeId
       || previousConnection?.processId !== connection.processId
@@ -1497,10 +1571,10 @@ async function startServer() {
     try {
       if (changed) {
         for (const timeframe of AUTOMATION_TIMEFRAMES) {
-          delete automationCandleCache[timeframe];
-          delete mt5MarketDataUpdatedAt[timeframe];
+          delete mt5Context().automationCandleCache[timeframe];
+          delete mt5Context().mt5MarketDataUpdatedAt[timeframe];
         }
-        mt5MarketDataVersion += 1;
+        mt5Context().mt5MarketDataVersion += 1;
         await serializeMt5Mutation(async () => {
           const signals = await readMt5Signals();
           for (const signal of signals) {
@@ -1531,9 +1605,9 @@ async function startServer() {
 
   app.post('/api/mt5/bridge/start', async (req, res) => {
     if (!isLoopbackRequest(req)) return res.status(403).json({ ok: false, error: 'MT5 bridge controls are local-only.' });
-    const heartbeatConnected = mt5BridgeHeartbeat !== undefined
-      && Date.now() - mt5BridgeHeartbeat.lastHeartbeatAt < 15_000;
-    if (heartbeatConnected && mt5BridgeHeartbeat?.processId !== managedMt5BridgeProcessId) {
+    const heartbeatConnected = mt5Context().mt5BridgeHeartbeat !== undefined
+      && Date.now() - mt5Context().mt5BridgeHeartbeat.lastHeartbeatAt < 15_000;
+    if (heartbeatConnected && mt5Context().mt5BridgeHeartbeat?.processId !== mt5Context().managedMt5BridgeProcessId) {
       return res.status(409).json({
         ok: false,
         error: 'A manually started MT5 bridge is already connected. Close it before starting the server-managed bridge.',
@@ -1558,8 +1632,8 @@ async function startServer() {
       if (!bridgeId) return res.status(400).json({ ok: false, error: 'Bridge ID is required.' });
       const config = await readMt5Config();
       if (!config.enabled) return res.json({ ok: true, signal: null, config });
-      if (mt5BridgeHeartbeat?.symbolResolved !== true || mt5BridgeHeartbeat.bridgeId !== bridgeId
-        || !mt5ConnectionMatches(mt5BridgeHeartbeat, req.body)) {
+      if (mt5Context().mt5BridgeHeartbeat?.symbolResolved !== true || mt5Context().mt5BridgeHeartbeat.bridgeId !== bridgeId
+        || !mt5ConnectionMatches(mt5Context().mt5BridgeHeartbeat, req.body)) {
         return res.json({ ok: true, signal: null, config });
       }
       if (config.tradingTimeEnabled && !isNepalTradingTime(Math.floor(Date.now() / 1000))) {
@@ -1567,12 +1641,12 @@ async function startServer() {
         return res.json({ ok: true, signal: null, config });
       }
       if (!mt5ExecutionFeedIsFresh()) return res.json({ ok: true, signal: null, config });
-      if (!mt5DailyRiskAllowsEntry(mt5BridgeHeartbeat?.dailyRisk)) return res.json({ ok: true, signal: null, config });
+      if (!mt5DailyRiskAllowsEntry(mt5Context().mt5BridgeHeartbeat?.dailyRisk)) return res.json({ ok: true, signal: null, config });
       const now = Math.floor(Date.now() / 1000);
       const signal = await serializeMt5Mutation(async () => {
         const signals = await readMt5Signals();
-        if (!mt5ConnectionMatches(mt5BridgeHeartbeat, req.body) || !mt5ExecutionFeedIsFresh()
-          || !mt5DailyRiskAllowsEntry(mt5BridgeHeartbeat?.dailyRisk)) return null;
+        if (!mt5ConnectionMatches(mt5Context().mt5BridgeHeartbeat, req.body) || !mt5ExecutionFeedIsFresh()
+          || !mt5DailyRiskAllowsEntry(mt5Context().mt5BridgeHeartbeat?.dailyRisk)) return null;
         for (const item of signals) {
           if (item.status === 'CLAIMED' && item.claimedAt && item.claimedAt < now - 30) {
             item.status = 'QUEUED';
@@ -1593,13 +1667,13 @@ async function startServer() {
           if (item.status === 'QUEUED') {
             Object.assign(item, applySignalOppositePositionTarget(
               item,
-              mt5BridgeHeartbeat?.positions,
+              mt5Context().mt5BridgeHeartbeat?.positions,
             ));
           }
         }
         const next = signals.find((item) => (
           item.status === 'QUEUED'
-          && mt5ConnectionMatches(mt5BridgeHeartbeat, item)
+          && mt5ConnectionMatches(mt5Context().mt5BridgeHeartbeat, item)
           && !mt5SignalDisabledReason(config, item)
         ));
         if (next) {
@@ -2071,18 +2145,17 @@ async function startServer() {
   });
 
   setTimeout(() => {
-    void readMt5Config().then((config) => {
-      const heartbeatConnected = mt5BridgeHeartbeat !== undefined
-        && Date.now() - mt5BridgeHeartbeat.lastHeartbeatAt < 15_000;
-      if (config.enabled && !managedBridgeIsRunning() && !heartbeatConnected) startManagedMt5Bridge();
-    }).catch((error) => appendManagedBridgeLog(
-      `Unable to read auto-start settings: ${error instanceof Error ? error.message : error}`,
-      'ERR',
-    ));
-  }, 1_000).unref();
+    for (const id of ['primary', 'secondary'] as const) terminalScope.run(id, () => {
+      void readMt5Config().then((config) => {
+        const heartbeat = mt5Context().mt5BridgeHeartbeat;
+        const connected = heartbeat && Date.now() - heartbeat.lastHeartbeatAt < 15_000;
+        if ((config.enabled || id === 'secondary') && !managedBridgeIsRunning() && !connected) startManagedMt5Bridge();
+      }).catch(error => appendManagedBridgeLog(String(error), 'ERR'));
+    });
+  }, 3_000).unref();
 
   const stopBridgeOnShutdown = () => {
-    stopManagedMt5Bridge();
+    for (const id of ['primary', 'secondary'] as const) terminalScope.run(id, stopManagedMt5Bridge);
   };
   process.once('SIGINT', stopBridgeOnShutdown);
   process.once('SIGTERM', stopBridgeOnShutdown);
@@ -2092,7 +2165,10 @@ async function startServer() {
     if (automationScanRunning) return;
     automationScanRunning = true;
     try {
-      const queued = await scanMt5AutomationSignals();
+      let queued = 0;
+      for (const id of ['primary', 'secondary'] as const) {
+        queued += await terminalScope.run(id, scanMt5AutomationSignals);
+      }
       if (queued > 0) console.log(`MT5 automation queued ${queued} fresh signal${queued === 1 ? '' : 's'}.`);
     } catch (error) {
       console.error('MT5 automation scan failed:', error instanceof Error ? error.message : error);

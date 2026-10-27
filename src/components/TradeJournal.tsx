@@ -110,6 +110,7 @@ interface JournalResponse {
 }
 
 interface TradeJournalProps {
+  terminalId?: 'primary' | 'secondary';
   records: JournalTradeRecord[];
   timeframe: TradeTimeframe;
   marketSymbol: OandaMarketSymbol;
@@ -422,7 +423,10 @@ export function renderHistoricalTradeSnapshot(
   return canvas.toDataURL('image/jpeg', 0.78);
 }
 
-export const TradeJournal: React.FC<TradeJournalProps> = ({ records, timeframe, marketSymbol, historyAsOf, timeZone, onClose }) => {
+export const TradeJournal: React.FC<TradeJournalProps> = ({ records, timeframe, marketSymbol, historyAsOf, timeZone, onClose, terminalId = 'primary' }) => {
+  const terminalFetch = (url: string, options?: RequestInit) => fetch(
+    url.startsWith('/api/journal/') ? `${url}${url.includes('?') ? '&' : '?'}terminal=${terminalId}` : url, options);
+
   const screenshotBackfillAttemptedRef = React.useRef(new Set<string>());
   const screenshotBackfillRunningRef = React.useRef(false);
   const calendarInitializedRef = React.useRef(false);
@@ -463,7 +467,7 @@ export const TradeJournal: React.FC<TradeJournalProps> = ({ records, timeframe, 
     let cancelled = false;
     const loadAndMerge = async () => {
       try {
-        const storedResponse = await fetch('/api/journal/trades', { cache: 'no-store' });
+        const storedResponse = await terminalFetch('/api/journal/trades', { cache: 'no-store' });
         const storedPayload = await storedResponse.json() as JournalResponse;
         if (!storedResponse.ok || !storedPayload.ok) throw new Error(storedPayload.error || 'Unable to load journal.');
         const saved = storedPayload.trades ?? [];
@@ -472,7 +476,7 @@ export const TradeJournal: React.FC<TradeJournalProps> = ({ records, timeframe, 
         const missingRecords = records.filter((record) => !storedById.has(record.id));
         let finalTrades = mergedRecords;
         if (missingRecords.length > 0) {
-          const saveResponse = await fetch('/api/journal/trades', {
+          const saveResponse = await terminalFetch('/api/journal/trades', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ trades: missingRecords }),
@@ -551,7 +555,7 @@ export const TradeJournal: React.FC<TradeJournalProps> = ({ records, timeframe, 
             count: '5000',
             endTime: String(latestCompletion + timeframeSeconds[timeframe] * 20),
           });
-          const response = await fetch(`/api/tradingview/market-data?${query}`, { cache: 'no-store' });
+          const response = await terminalFetch(`/api/tradingview/market-data?${query}`, { cache: 'no-store' });
           const payload = await response.json() as { ok?: boolean; candles?: SnapshotCandle[] };
           if (!response.ok || !payload.ok || !Array.isArray(payload.candles)) continue;
           for (const trade of needingHistory) {
@@ -579,7 +583,7 @@ export const TradeJournal: React.FC<TradeJournalProps> = ({ records, timeframe, 
       }
       let savedTrades = trades;
       for (let index = 0; index < generated.length; index += 5) {
-        const response = await fetch('/api/journal/trades', {
+        const response = await terminalFetch('/api/journal/trades', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ trades: generated.slice(index, index + 5) }),
@@ -606,7 +610,7 @@ export const TradeJournal: React.FC<TradeJournalProps> = ({ records, timeframe, 
     if (!journalLoaded) return undefined;
     const refresh = async () => {
       try {
-        const response = await fetch('/api/journal/trades', { cache: 'no-store' });
+        const response = await terminalFetch('/api/journal/trades', { cache: 'no-store' });
         const payload = await response.json() as JournalResponse;
         if (response.ok && payload.ok && Array.isArray(payload.trades)) {
           setTrades(mergeTradeRecordAnnotations(records, payload.trades));
@@ -727,7 +731,7 @@ export const TradeJournal: React.FC<TradeJournalProps> = ({ records, timeframe, 
     setSaving(true);
     try {
       const updated = { ...selectedTrade, ...draft };
-      const response = await fetch('/api/journal/trades', {
+      const response = await terminalFetch('/api/journal/trades', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ trades: [updated] }),
@@ -861,7 +865,7 @@ export const TradeJournal: React.FC<TradeJournalProps> = ({ records, timeframe, 
         );
         if (trade.screenshotDataUrl) {
           try {
-            const imageResponse = await fetch(trade.screenshotDataUrl);
+            const imageResponse = await terminalFetch(trade.screenshotDataUrl);
             const imageData = new Uint8Array(await imageResponse.arrayBuffer());
             const imageType = trade.screenshotDataUrl.startsWith('data:image/png') ? 'png' : 'jpg';
             children.push(new Paragraph({

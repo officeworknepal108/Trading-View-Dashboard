@@ -36,9 +36,12 @@ MT5_SERVER = os.getenv("MT5_SERVER", "")
 MAGIC_NUMBER = int(os.getenv("MT5_MAGIC_NUMBER", "998877"))
 POLL_SECONDS = max(0.5, float(os.getenv("MT5_POLL_SECONDS", "1")))
 ALLOW_LIVE_EXECUTION = os.getenv("MT5_ALLOW_LIVE_EXECUTION", "NO").upper() == "YES"
-BRIDGE_ID = os.getenv("MT5_BRIDGE_ID", f"kalbairab-{uuid.getnode():x}")
-STATE_FILE = ROOT / ".mt5_bridge_state.json"
-DAILY_RISK_FILE = ROOT / ".mt5_daily_risk_state.json"
+TERMINAL_ID = os.getenv("MT5_TERMINAL_ID", "primary")
+if TERMINAL_ID not in {"primary", "secondary"}:
+    raise RuntimeError("Unknown MT5 terminal profile")
+BRIDGE_ID = os.getenv("MT5_BRIDGE_ID", f"kalbairab-{uuid.getnode():x}") + ("-secondary" if TERMINAL_ID == "secondary" else "")
+STATE_FILE = ROOT / (".mt5_bridge_state.secondary.json" if TERMINAL_ID == "secondary" else ".mt5_bridge_state.json")
+DAILY_RISK_FILE = ROOT / (".mt5_daily_risk_state.secondary.json" if TERMINAL_ID == "secondary" else ".mt5_daily_risk_state.json")
 OVERALL_PROFIT_CACHE: dict[str, Any] = {}
 CONNECTED_ACCOUNT = ""
 CONNECTED_SERVER = ""
@@ -70,6 +73,7 @@ NEPAL_TIMEZONE = timezone(timedelta(hours=5, minutes=45))
 NEPAL_TRADING_SESSIONS = ((345, 495), (705, 885), (1065, 1245))
 
 SESSION = requests.Session()
+SESSION.headers.update({"X-MT5-Terminal": TERMINAL_ID})
 if BRIDGE_TOKEN:
     SESSION.headers.update({"Authorization": f"Bearer {BRIDGE_TOKEN}"})
 

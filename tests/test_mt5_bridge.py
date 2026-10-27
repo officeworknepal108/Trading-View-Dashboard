@@ -578,5 +578,30 @@ class AccountCycleTests(BridgeTestCase):
             self.assertNotIn("foreign", state)
 
 
+class TerminalProfileTests(unittest.TestCase):
+    def load_profile(self, terminal_id):
+        import importlib.util
+        import os
+        spec = importlib.util.spec_from_file_location("isolated_terminal_profile", bridge.__file__)
+        module = importlib.util.module_from_spec(spec)
+        with patch.dict(os.environ, {"MT5_TERMINAL_ID": terminal_id, "MT5_BRIDGE_ID": "test-bridge"}):
+            spec.loader.exec_module(module)
+        return module
+
+    def test_profiles_keep_distinct_state_risk_and_bridge_identity(self):
+        first = self.load_profile("primary")
+        second = self.load_profile("secondary")
+        self.assertNotEqual(first.STATE_FILE, second.STATE_FILE)
+        self.assertNotEqual(first.DAILY_RISK_FILE, second.DAILY_RISK_FILE)
+        self.assertNotEqual(first.BRIDGE_ID, second.BRIDGE_ID)
+        self.assertEqual(first.STATE_FILE.name, ".mt5_bridge_state.json")
+        self.assertEqual(second.SESSION.headers["X-MT5-Terminal"], "secondary")
+        self.assertEqual(first.SESSION.headers["X-MT5-Terminal"], "primary")
+
+    def test_unknown_profile_never_falls_back_to_primary(self):
+        with self.assertRaisesRegex(RuntimeError, "Unknown MT5 terminal"):
+            self.load_profile("invalid")
+
+
 if __name__ == "__main__":
     unittest.main()
