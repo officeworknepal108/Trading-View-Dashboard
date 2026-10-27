@@ -492,6 +492,35 @@ test('chart entry arrows match only visible completed rows on their confirmation
   );
 });
 
+test('entry arrows retain old results and include filled active trades without changing accuracy', () => {
+  const { scalp } = synchronizedFixture();
+  const old = { ...scalp, id: 'old', result: 'tp' as const, completedAt: 180 };
+  const active = { ...scalp, id: 'active', result: 'open' as const };
+  const riskFree = { ...scalp, id: 'risk-free', result: 'risk-free' as const };
+  const unfilled = { ...active, id: 'unfilled', openedAt: undefined };
+  const rows = [old, active, riskFree, unfilled];
+  const candles = [{ time: 60 }, ...Array.from({ length: 20 }, (_, i) => ({ time: 120 + i * 60 }))];
+  const before = JSON.stringify(rows);
+  assert.deepEqual(new Set(selectTradeChartRecords(rows, 'M1', candles, true,
+    { includeActive: true, asOf: 10000 }).map(row => row.id)), new Set(['old', 'active', 'risk-free']));
+  assert.deepEqual(selectTradeChartRecords(rows, 'M1', candles), [old], 'accuracy remains completed only');
+  assert.equal(JSON.stringify(rows), before, 'arrow display leaves trade records intact');
+});
+
+test('active entry arrows wait for the fill in replay and project onto Gold parent candles', () => {
+  const { scalp } = synchronizedFixture();
+  const active = { ...scalp, id: 'active', result: 'open' as const };
+  const options = { includeActive: true, asOf: active.openedAt! - 1 };
+  assert.deepEqual(selectTradeChartRecords([active], 'M1', [{ time: active.signalAt! }], true, options), []);
+  options.asOf = active.openedAt!;
+  assert.deepEqual(selectTradeChartRecords([active], 'M1', [{ time: active.signalAt! }], true, options), [active]);
+  for (const timeframe of ['M15', 'H1'] as const) {
+    assert.deepEqual(selectTradeChartRecords([active], timeframe, [{ time: 0 }], true, options), [active]);
+  }
+  assert.deepEqual(selectTradeChartRecords([scalp], 'M1', [{ time: scalp.signalAt! }], true, options), [],
+    'a future result is not drawn early');
+});
+
 test('replay entry arrows wait until the trade result has occurred', () => {
   const rows = [
     { ...records[0], id: 'resolved', signalAt: 100, completedAt: 200, signalTimeframe: 'M15' as const },

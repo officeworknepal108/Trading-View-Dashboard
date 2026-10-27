@@ -240,22 +240,35 @@ export function selectGoldIntradayAfterScalp<T extends FilterableTradeRecord & {
   });
 }
 
-/** One completed-record selection drives both chart arrows and its accuracy rows. */
+/** Accuracy uses completed rows; entry arrows can also include filled active trades. */
 export function selectTradeChartRecords<T extends FilterableTradeRecord & {
   id: string; zoneTimeframe: TradeTimeframe; tradeStyle?: string;
   signalAt?: number; openedAt?: number;
 }>(records: readonly T[], chartTimeframe: TradeTimeframe,
-  candles: readonly { time: number }[], projectGoldEntries = false): T[] {
-  const selected = selectAccuracyChartEntries(records, null, chartTimeframe);
+  candles: readonly { time: number }[], projectGoldEntries = false,
+  options: { includeActive?: boolean; asOf?: number } = {}): T[] {
+  const eligible = records.filter((record) => {
+    const active = record.result === 'open' || record.result === 'risk-free';
+    if (active && (!options.includeActive || !Number.isFinite(record.signalAt)
+      || !Number.isFinite(record.openedAt) || record.openedAt! < record.signalAt!)) return false;
+    return options.asOf === undefined
+      || (active ? record.openedAt! : record.completedAt) <= options.asOf;
+  });
+  const selected = selectAccuracyChartEntries(eligible, null, chartTimeframe);
+  if (options.includeActive) selected.push(...eligible.filter((record) => (
+    (record.result === 'open' || record.result === 'risk-free')
+    && record.signalTimeframe === chartTimeframe
+  )));
   if (projectGoldEntries && chartTimeframe === 'M1') {
-    selected.push(...selectGoldIntradayAfterScalp(records));
+    selected.push(...selectGoldIntradayAfterScalp(eligible));
   }
   if (projectGoldEntries && (chartTimeframe === 'M15' || chartTimeframe === 'H1')) {
-    selected.push(...records.filter((record) => ((record.tradeStyle === 'SCALPING'
+    selected.push(...eligible.filter((record) => ((record.tradeStyle === 'SCALPING'
       && (record.signalTimeframe === 'M1' || record.signalTimeframe === 'M5'))
       || (chartTimeframe === 'H1' && record.tradeStyle === 'INTRADAY'
         && record.signalTimeframe !== 'H1'))
-      && (record.result === 'tp' || record.result === 'sl' || record.result === 'rf')
+      && (record.result === 'tp' || record.result === 'sl' || record.result === 'rf'
+        || (options.includeActive && (record.result === 'open' || record.result === 'risk-free')))
       && typeof record.openedAt === 'number' && Number.isFinite(record.openedAt)));
   }
   const byId = new Map(selected.filter((record) => candles.some((candle) => (

@@ -3,10 +3,53 @@ import test from 'node:test';
 import React from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { MultiTimeframeEntryTable, mtfTableHitExpired, isSlTpTradeDisplayFinished,
-  tradeDisplayExpired, tradeDrawingFromRecord } from '../src/components/OandaProChart';
+  tradeDisplayExpired, tradeDrawingFromRecord, resolveArrowTradeZones } from '../src/components/OandaProChart';
 import type { JournalTradeRecord } from '../src/components/TradeJournal';
+import type { MtfRow } from '../src/services/mtf';
 
 const bar = (time: number, complete = true) => ({ time, open: 100, high: 102, low: 99, close: 101, volume: 1, complete });
+
+test('arrow details recover a missing journal main zone from its original broker signal', () => {
+  const record: JournalTradeRecord = {
+    id: 'MT5:original', symbol: 'XAUUSD', source: 'MTF', zoneName: 'SBR',
+    zoneTimeframe: 'H1', signalTimeframe: 'M1', signalAt: 1000, direction: 'bearish',
+    engulfingType: 'T3', entry: 100, stopLoss: 101, takeProfit: 97,
+    riskPips: 10, rewardRisk: 3, completedAt: 1200, result: 'sl',
+  };
+  const original = { id: 'original', symbol: 'XAUUSD', signalAt: 1000,
+    direction: 'SELL' as const, zoneTimeframe: 'H1' as const, signalTimeframe: 'M1' as const,
+    zoneId: 'SUPPLY-1792659600-4090.14' };
+  const before = JSON.stringify(record);
+  assert.deepEqual(resolveArrowTradeZones(record, [original], () => undefined),
+    { mainZone: 'SUPPLY', entryZone: 'SBR' });
+  assert.equal(resolveArrowTradeZones(record, [{ ...original, symbol: 'EURUSD' }], () => undefined).mainZone,
+    undefined, 'another market must not supply the main zone');
+  assert.equal(resolveArrowTradeZones(record, [original, { ...original, id: 'other', zoneId: 'DB-1792659600-4090' }],
+    () => undefined).mainZone, 'SUPPLY', 'the original execution wins over a same-candle candidate');
+  assert.equal(JSON.stringify(record), before, 'display lookup must not rewrite history');
+});
+
+test('arrow details reconstruct modern and legacy MTF setup IDs and reject ambiguous zones', () => {
+  const record: JournalTradeRecord = {
+    id: 'MTF:M15-M1-external-choch-900:1000:100', symbol: 'XAUUSD', source: 'MTF',
+    zoneName: 'QML', zoneTimeframe: 'M15', signalTimeframe: 'M1', signalAt: 1000,
+    direction: 'bullish', engulfingType: 'T1', entry: 100, stopLoss: 99, takeProfit: 103,
+    riskPips: 10, rewardRisk: 3, completedAt: 1200, result: 'tp',
+  };
+  const context = { higherTimeframe: 'M15', lowerTimeframe: 'M1', direction: 'bullish',
+    engulfingTime: 1000, engulfingType: 'T1', higherTimeframeZone: 'DB',
+    higherTimeframeZoneId: 'DB-original', tappedZone: 'QML' } as MtfRow;
+  assert.deepEqual(resolveArrowTradeZones(record, [], id => id === record.id ? context : undefined),
+    { mainZone: 'DB', entryZone: 'QML' });
+  const legacy = { ...record, id: 'MTF:M15-M1-choch-900:1000:100' };
+  assert.equal(resolveArrowTradeZones(legacy, [], id => id === record.id ? context : undefined).mainZone, 'DB');
+  assert.equal(resolveArrowTradeZones(legacy, [], id => id.includes('-internal-')
+    ? { ...context, higherTimeframeZone: 'DT', higherTimeframeZoneId: 'DT-other' } : context).mainZone,
+    undefined, 'conflicting historical matches must not produce a guessed zone');
+  assert.equal(resolveArrowTradeZones(record, [], () => undefined).mainZone, undefined);
+  assert.equal(resolveArrowTradeZones({ ...record, zoneId: 'TJL1-1791983700-4088.8021' }, [],
+    () => { throw new Error('saved names do not require reconstruction'); }).mainZone, 'TJL1');
+});
 
 test('MTF display expires after five complete entry-timeframe bars, excluding the hit candle', () => {
   const candles = [1000, 1060, 1120, 1180, 1240, 1300].map(time => bar(time));

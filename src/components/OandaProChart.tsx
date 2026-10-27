@@ -340,6 +340,49 @@ interface TradeOverlay {
   referenceOnly?: boolean;
 }
 
+/** Resolve display labels without changing saved trades or their execution rules. */
+export function resolveArrowTradeZones(
+  record: JournalTradeRecord,
+  signals: readonly Partial<Mt5StoredSignal>[],
+  recover: (id: string) => MtfRow | undefined,
+): { mainZone?: string; entryZone: string } {
+  if (record.source !== 'MTF') return { mainZone: record.zoneName, entryZone: record.zoneName };
+  const matches = signals.filter((signal) => (
+    signal.symbol === (record.symbol ?? 'XAUUSD')
+    && signal.signalAt === record.signalAt && signal.signalTimeframe === record.signalTimeframe
+    && signal.zoneTimeframe === record.zoneTimeframe
+    && signal.direction === (record.direction === 'bullish' ? 'BUY' : 'SELL')
+  ));
+  const exact = matches.filter((signal) => record.id === `MT5:${signal.id}`
+    || (record.brokerTicket !== undefined
+      && (record.brokerTicket === signal.brokerTicket || record.brokerTicket === signal.brokerPosition)));
+  const signal = exact.length === 1 ? exact[0] : matches.length === 1 ? matches[0] : undefined;
+  let context = record.mtfContext ?? signal?.journalContext?.mtfContext;
+  const savedZone = record.zoneId?.match(/^(.+)-\d{9,}-.+$/)?.[1]
+    ?? signal?.zoneId?.match(/^(.+)-\d{9,}-.+$/)?.[1];
+  if (!context && !savedZone && record.signalAt !== undefined) {
+    const ids = new Set<string>();
+    for (const id of [record.id, record.setupId, signal?.setupId]) {
+      if (!id?.startsWith('MTF:')) continue;
+      const rowId = id.split(':')[1];
+      const candidates = /^\w+-\w+-choch-\d+$/.test(rowId)
+        ? [rowId.replace('-choch-', '-external-choch-'), rowId.replace('-choch-', '-internal-choch-')]
+        : [rowId];
+      for (const candidate of candidates) ids.add(`MTF:${candidate}:${record.signalAt}:${record.entry}`);
+    }
+    const recovered = [...ids].map(recover).filter((row): row is MtfRow => (
+      row !== undefined && row.higherTimeframe === record.zoneTimeframe
+      && row.lowerTimeframe === record.signalTimeframe && row.direction === record.direction
+      && row.engulfingTime === record.signalAt && row.engulfingType === record.engulfingType
+    ));
+    if (new Set(recovered.map((row) => row.higherTimeframeZoneId)).size === 1) context = recovered[0];
+  }
+  return {
+    mainZone: context?.higherTimeframeZone ?? savedZone,
+    entryZone: context?.entryZone?.name ?? context?.tappedZone ?? record.zoneName,
+  };
+}
+
 interface EntryHover {
   id: string;
   candleTime: number;
@@ -3849,6 +3892,25 @@ export const OandaProChart: React.FC = () => {
     });
   }, [allSavedAccuracyRecords, directZoneEntryDecisions, displayZones, goldScalpingAccuracyTrades, granularity, marketSymbol, mt5Status?.config?.telegramMessagesEnabled, mtfRows, replayIndex, telegramMessagesEnabled, tradeOverlays, tradeStyleEnabled]);
 
+  const chartEntryRecords = useMemo(() => selectTradeChartRecords(
+    deduplicateTradeRecords([
+      ...openChartJournalTrades.filter(tradeStyleEnabled),
+      ...visibleCanonicalTradeRecords,
+    ]), granularity, displayCandles, marketSymbol === 'XAUUSD',
+    { includeActive: true, asOf: replayResultCutoff },
+  ), [openChartJournalTrades, tradeStyleEnabled, visibleCanonicalTradeRecords,
+    granularity, displayCandles, marketSymbol, replayResultCutoff]);
+  const hoveredTradeZones = useMemo(() => {
+    const record = chartEntryRecords.find((candidate) => candidate.id === hoveredEntry?.entry.id);
+    if (!record) return undefined;
+    return resolveArrowTradeZones(record, mt5Status?.recentSignals ?? [], (id) => (
+      savedChartMtfEntryQualification({
+        id, signalTime: record.signalAt!, direction: record.direction,
+        engulfingType: record.engulfingType as EngulfingTradeSignal['type'],
+        zoneName: record.zoneName, goldScalping: record.tradeStyle === 'SCALPING',
+      })?.context
+    ));
+  }, [chartEntryRecords, hoveredEntry?.entry.id, mt5Status?.recentSignals, savedChartMtfEntryQualification]);
   const entryHovers = useMemo<EntryHover[]>(() => {
     const entries = new Map<string, EntryHover>();
     const add = (id: string, trade: TradeLevels, source: string, zone: string, fib: string, style: string, tradingTimeBlocked: boolean, chartEntryTime = trade.signal.time) => {
@@ -3864,8 +3926,9 @@ export const OandaProChart: React.FC = () => {
     };
     const visibleIds = visibleAccuracyRecordIds === null
       ? null : new Set<string>(visibleAccuracyRecordIds);
-    for (const record of timeframeAccuracyRecords) {
-      if (visibleIds !== null && !visibleIds.has(record.id)) continue;
+    for (const record of chartEntryRecords) {
+      const active = record.result === 'open' || record.result === 'risk-free';
+      if (!active && visibleIds !== null && !visibleIds.has(record.id)) continue;
       const signalAt = record.signalAt!;
       const projected = record.signalTimeframe !== granularity;
       const risk = Math.abs(record.entry - record.stopLoss);
@@ -3878,12 +3941,13 @@ export const OandaProChart: React.FC = () => {
         riskFreeEnabled: record.tradeStyle === 'SCALPING' || marketSymbol !== 'XAUUSD',
         riskPips: record.riskPips,
         rewardRisk: record.rewardRisk,
-        status: record.result === 'tp' ? 'tp-hit' : record.result === 'sl' ? 'sl-hit' : 'risk-free',
+        status: record.result === 'tp' ? 'tp-hit' : record.result === 'sl' ? 'sl-hit'
+          : record.result === 'open' ? 'active' : 'risk-free',
         pendingAtCreation: false,
         calculatedAt: signalAt,
         filledAt: record.openedAt,
-        result: record.result as 'tp' | 'sl' | 'rf',
-        resolvedAt: record.completedAt,
+        result: active ? undefined : record.result as 'tp' | 'sl' | 'rf',
+        resolvedAt: active ? undefined : record.completedAt,
         signal: {
           type: record.engulfingType as EngulfingTradeSignal['type'],
           direction: record.direction,
@@ -3904,7 +3968,7 @@ export const OandaProChart: React.FC = () => {
           : signalAt);
     }
     return Array.from(entries.values());
-  }, [allSavedAccuracyRecords, displayCandles, granularity, marketSymbol, mtfRows, timeframeAccuracyRecords, tradingTimeEnabled, visibleAccuracyRecordIds, visibleTradeOverlays]);
+  }, [chartEntryRecords, displayCandles, granularity, marketSymbol, tradingTimeEnabled, visibleAccuracyRecordIds]);
   const latestCandle = displayCandles[displayCandles.length - 1] || null;
   const previousCandle = displayCandles.length > 1 ? displayCandles[displayCandles.length - 2] : null;
   const headerCandlesByTime = useMemo(() => new Map(displayCandles.map((candle, index) => (
@@ -4043,9 +4107,9 @@ export const OandaProChart: React.FC = () => {
     }
     return entries;
   }, [directTradeStyleEnabled, displayCandles, displayZones, expiredGoldZoneBeforeSignal, extremeAPlusTjl2Selection.blockedZoneIds, granularity, marketSymbol, pendingM15DbBlocksSignal, redundantStandaloneZoneIds, replayIndex, replayResultCutoff, tradingTimeEnabled]);
-  const visibleEntryHovers = entryHovers.filter(({ trade }) => !hasTradeDisplayExpired(trade));
-  entryHoversRef.current = visibleEntryHovers;
-  const entryMarkers = useMemo(() => visibleEntryHovers.map(({ candleTime, trade, style }) => {
+  // Visible arrows and their hover details share the same history, without drawing expiry.
+  entryHoversRef.current = showEntryArrows ? entryHovers : [];
+  const entryMarkers = useMemo(() => entryHovers.map(({ candleTime, trade, style }) => {
     const bullish = trade.signal.direction === 'bullish';
     const projectedScalp = (granularity === 'M15' || granularity === 'H1') && style === 'SCALPING'
       && (trade.signal.timeframe === 'M1' || trade.signal.timeframe === 'M5');
@@ -4058,7 +4122,7 @@ export const OandaProChart: React.FC = () => {
       size: projectedScalp ? 1 : 2,
     };
   }).sort((first, second) => Number(first.time) - Number(second.time) || second.size - first.size),
-  [granularity, visibleEntryHovers]);
+  [granularity, entryHovers]);
   const replayDirectHistoryByZone = useMemo(() => {
     const entries = new Map<string, EntryHover>();
     if (replayIndex === null) return entries;
@@ -5556,7 +5620,7 @@ export const OandaProChart: React.FC = () => {
       const timestamp = typeof parameter.time === 'number' ? parameter.time : 0;
       updateHeaderCandleRef.current(timestamp);
       const cursor = parameter.point;
-      const entry = showTradeLevelsRef.current && cursor && entryHoversRef.current.find((candidate) => {
+      const entry = cursor && entryHoversRef.current.find((candidate) => {
         if (candidate.candleTime !== timestamp) return false;
         const wickY = candleSeries.priceToCoordinate(candidate.trade.signal.direction === 'bullish'
           ? candidate.low : candidate.high);
@@ -7763,44 +7827,62 @@ export const OandaProChart: React.FC = () => {
           }}
         >
           <div ref={hostRef} className="absolute inset-0" />
-          {hoveredEntry && showTradeLevels && (
+          {hoveredEntry && showEntryArrows && (() => {
+            const { entry, x, y } = hoveredEntry;
+            const { trade } = entry;
+            const record = chartEntryRecords.find((candidate) => candidate.id === entry.id);
+            const bullish = trade.signal.direction === 'bullish';
+            const mtf = record?.source === 'MTF';
+            const timeframeName = (timeframe: TradeTimeframe) => timeframe === 'D'
+              ? '1-day' : `${timeframe.slice(1)}-${timeframe.startsWith('H') ? 'hour' : 'minute'}`;
+            const zoneName = (name: string) => name.replace(/^Int\.?\s+/i, 'Internal ');
+            const mainZone = hoveredTradeZones?.mainZone
+              ?? (mtf ? 'Name unavailable in saved history' : entry.zone);
+            const entryZone = hoveredTradeZones?.entryZone ?? entry.zone;
+            const status = trade.status === 'tp-hit' ? '✅ TAKE PROFIT HIT'
+              : trade.status === 'sl-hit' ? '🔴 STOP LOSS HIT'
+              : trade.status === 'risk-free' ? '🛡️ RISK-FREE HIT'
+              : trade.status === 'pending' ? '⏳ WAITING FOR ENTRY' : '⏳ TRADE OPEN';
+            const timeZoneLabel = chartTimeZone === 'Asia/Kathmandu' ? 'Nepal' : chartTimeZone;
+            return (
             <div
-              className="pointer-events-none absolute z-40 w-64 rounded-lg border border-slate-300 bg-white/95 p-3 text-[11px] text-slate-700 shadow-xl"
+              className="pointer-events-none absolute z-40 w-80 max-w-[calc(100%_-_16px)] rounded-xl border border-slate-200 bg-white/95 p-3 text-[11px] leading-relaxed text-slate-700 shadow-xl"
               style={{
-                left: Math.max(8, Math.min(hoveredEntry.x + 16, (chartPaneRef.current?.clientWidth ?? 300) - 264)),
-                top: Math.max(8, Math.min(hoveredEntry.y + 16, (chartPaneRef.current?.clientHeight ?? 340) - 310)),
+                left: Math.max(8, Math.min(x + 16, (chartPaneRef.current?.clientWidth ?? 340) - 328)),
+                top: Math.max(8, Math.min(y + 16, (chartPaneRef.current?.clientHeight ?? 440) - 420)),
               }}
             >
-              <div className={`mb-2 font-black ${hoveredEntry.entry.trade.signal.direction === 'bullish' ? 'text-emerald-700' : 'text-rose-700'}`}>
-                {hoveredEntry.entry.trade.signal.direction === 'bullish' ? '▲ BUY ENTRY' : '▼ SELL ENTRY'} · {hoveredEntry.entry.source}
+              <div className={`text-xs font-black ${bullish ? 'text-emerald-700' : 'text-rose-700'}`}>
+                {bullish ? '🟢' : '🔴'} {marketSymbol} {bullish ? 'BUY' : 'SELL'} · {entry.style}
               </div>
-              <div className="mb-2 text-[10px] text-slate-500">
-                {marketSymbol} · {formatTradeTimeframe(hoveredEntry.entry.trade.signal.timeframe)} · {formatChartTime(hoveredEntry.entry.candleTime as UTCTimestamp, chartTimeZone)}
+              <div className="mt-1 font-bold text-slate-800">{status}</div>
+              {entry.tradingTimeBlocked && <div className="mt-1 text-amber-700">⚠️ Outside trading hours</div>}
+              <div className="mt-3 border-t border-slate-100 pt-2">
+                <div className="mb-1 font-bold text-slate-900">📍 Trade setup</div>
+                <div>Main zone: <b>{record ? `${timeframeName(record.zoneTimeframe)} ` : ''}{zoneName(mainZone)}</b></div>
+                {mtf && <div>Entry zone: <b>{timeframeName(trade.signal.timeframe)} {zoneName(entryZone)}</b></div>}
+                <div>Confirmation: <b>{timeframeName(trade.signal.timeframe)} {bullish ? 'bullish' : 'bearish'} engulfing {trade.signal.type}</b></div>
+                {!mtf && <div>Entry method: <b>Candle confirmation at the main zone</b></div>}
+                {entry.fib !== 'Not recorded' && <div>Fibonacci: <b>{entry.fib}</b></div>}
               </div>
-              <div className="mb-2 break-all text-[9px] text-slate-500">Trade ID: {hoveredEntry.entry.id}</div>
-              <div className="grid grid-cols-[82px_1fr] gap-x-2 gap-y-1">
-                <span>Style</span><b>{hoveredEntry.entry.style}</b>
-                <span>Zone</span><b>{hoveredEntry.entry.zone}</b>
-                <span>FIB</span><b>{hoveredEntry.entry.fib}</b>
-                <span>Engulfing</span><b>{hoveredEntry.entry.trade.signal.direction === 'bullish' ? 'Bullish' : 'Bearish'} {hoveredEntry.entry.trade.signal.type}</b>
-                <span>Confirmed</span><b>{formatChartTime((
-                  hoveredEntry.entry.trade.signal.time
-                  + TIMEFRAME_SECONDS[hoveredEntry.entry.trade.signal.timeframe]
-                ) as UTCTimestamp, chartTimeZone)}</b>
-                {hoveredEntry.entry.trade.filledAt !== undefined && <><span>Filled</span><b>{formatChartTime(hoveredEntry.entry.trade.filledAt as UTCTimestamp, chartTimeZone)}</b></>}
-                <span>Entry</span><b>{formatPrice(hoveredEntry.entry.trade.entry)}</b>
-                <span>TP</span><b>{formatPrice(hoveredEntry.entry.trade.takeProfit)}</b>
-                <span>SL</span><b>{formatPrice(hoveredEntry.entry.trade.stopLoss)}</b>
-                <span>RF</span><b>{hoveredEntry.entry.trade.riskFreeEnabled === false ? 'Not used' : formatPrice(hoveredEntry.entry.trade.riskFree)}</b>
-                <span>Risk/reward</span><b>1:{hoveredEntry.entry.trade.rewardRisk}</b>
-                {hoveredEntry.entry.tradingTimeBlocked
-                  ? hoveredEntry.entry.trade.result
-                    ? <><span>Accuracy</span><b>{hoveredEntry.entry.trade.result.toUpperCase()}</b></>
-                    : <><span>Status</span><b>OUTSIDE TRADING TIME · REFERENCE ENTRY</b></>
-                  : <><span>Status</span><b>{tradeStatusLabel(hoveredEntry.entry.trade)}</b></>}
+              <div className="mt-3 border-t border-slate-100 pt-2">
+                <div className="mb-1 font-bold text-slate-900">💰 Trade levels</div>
+                <div className="grid grid-cols-[1fr_auto] gap-x-3 gap-y-1 tabular-nums">
+                  <span>Entry</span><b>{formatPrice(trade.entry)}</b>
+                  <span>Stop loss</span><b>{formatPrice(trade.stopLoss)}</b>
+                  {trade.riskFreeEnabled !== false && <><span>Risk-free at 1R</span><b>{formatPrice(trade.riskFree)}</b></>}
+                  <span>Take profit</span><b>{formatPrice(trade.takeProfit)}</b>
+                  <span>Risk/reward</span><b>1:{trade.rewardRisk}</b>
+                </div>
+              </div>
+              <div className="mt-3 border-t border-slate-100 pt-2">
+                <div className="font-bold text-slate-900">🕒 {trade.filledAt !== undefined ? 'Entry time' : 'Confirmation time'}</div>
+                <div>{formatChartTime((trade.filledAt ?? trade.signal.time
+                  + TIMEFRAME_SECONDS[trade.signal.timeframe]) as UTCTimestamp, chartTimeZone)} {timeZoneLabel}</div>
               </div>
             </div>
-          )}
+            );
+          })()}
           <div
             ref={zoneLayerRef}
             className="pointer-events-none absolute inset-0 z-10 overflow-hidden"
