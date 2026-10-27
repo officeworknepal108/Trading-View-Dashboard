@@ -43,7 +43,7 @@ export interface VipSupportContext {
 
 export interface StructureZone {
   id: string;
-  name: 'TJL1' | 'TJL2' | 'QML' | 'QML A+' | 'QML A++' | 'SBR' | 'RBS' | 'DT' | 'DB' | 'DBD' | 'DTD' | 'ISS L3' | 'ISS L4' | 'Internal QML' | 'Internal SBR' | 'Internal RBS' | 'Internal DT' | 'Internal DB' | 'Internal TJL1' | 'Internal TJL2' | 'SUPPLY' | 'DEMAND';
+  name: 'TJL1' | 'TJL2' | 'QML' | 'QML A+' | 'QML A++' | 'SBR' | 'RBS' | 'DT' | 'DB' | 'DBD' | 'DTD' | 'ISS L3' | 'ISS L4' | 'Internal QML' | 'Internal QML A+' | 'Internal QML A++' | 'Internal DBD' | 'Internal DTD' | 'Internal SBR' | 'Internal RBS' | 'Internal DT' | 'Internal DB' | 'Internal TJL1' | 'Internal TJL2' | 'SUPPLY' | 'DEMAND';
   category: 'mg' | 'iss' | 'internal' | 'supplyDemand';
   isBuy: boolean;
   startTime: number;
@@ -576,7 +576,7 @@ export function applyIssLevel3Lifecycle(
 }
 
 export function markMajorLiquidityZone(zone: StructureZone, bosTime: number): boolean {
-  if (zone.name !== 'DBD' && zone.name !== 'DTD') return false;
+  if (!['DBD', 'DTD', 'Internal DBD', 'Internal DTD'].includes(zone.name)) return false;
   zone.majorLiquidity = true;
   zone.majorLiquidityBosTime = bosTime;
   return true;
@@ -628,7 +628,7 @@ export function promoteTjl2ToMajorLiquidity(
 
 function usesMajorLiquidityTradingRules(zone: StructureZone): boolean {
   return zone.majorLiquidity === true
-    && (zone.name === 'TJL2' || zone.name === 'DBD' || zone.name === 'DTD');
+    && (zone.name === 'TJL2' || ['DBD', 'DTD', 'Internal DBD', 'Internal DTD'].includes(zone.name));
 }
 
 export function findFirstZoneTapIndex(candles: StructureCandle[], zone: StructureZone): number {
@@ -1139,7 +1139,8 @@ export function applyFibConfluence(candles: StructureCandle[], zones: StructureZ
     'QML', 'SBR', 'RBS', 'DT', 'DB',
     'Internal QML', 'Internal SBR', 'Internal RBS', 'Internal DT', 'Internal DB',
   ]);
-  const doubleChochNames = zoneNames(['QML A+', 'QML A++', 'SBR', 'RBS', 'DTD', 'DBD']);
+  const doubleChochNames = zoneNames(['QML A+', 'QML A++', 'SBR', 'RBS', 'DTD', 'DBD',
+    'Internal QML A+', 'Internal QML A++', 'Internal SBR', 'Internal RBS', 'Internal DTD', 'Internal DBD']);
 
   const classifyFromMove = (
     zone: StructureZone,
@@ -1241,7 +1242,7 @@ export function applyFibConfluence(candles: StructureCandle[], zones: StructureZ
     const eligible = isDouble ? doubleChochNames : singleChochNames;
     const anchor = group.find((zone) => (
       isDouble
-        ? zone.name === 'DTD' || zone.name === 'DBD'
+        ? ['DTD', 'DBD', 'Internal DTD', 'Internal DBD'].includes(zone.name)
         : zone.name === 'DT' || zone.name === 'DB'
           || zone.name === 'Internal DT' || zone.name === 'Internal DB'
     ));
@@ -1347,11 +1348,14 @@ export function applyFibConfluence(candles: StructureCandle[], zones: StructureZ
     }
   }
 
-  const doubleTimes = new Set(zones
+  const doubleKeys = new Set(zones
     .filter((zone) => zone.doubleChochTime !== undefined)
-    .map((zone) => zone.doubleChochTime!));
-  for (const eventTime of doubleTimes) {
-    applyChochGroup(zones.filter((zone) => zone.doubleChochTime === eventTime), true);
+    .map((zone) => `${zone.category}:${zone.doubleChochTime}`));
+  for (const key of doubleKeys) {
+    const [category, timeText] = key.split(':');
+    applyChochGroup(zones.filter((zone) => (
+      zone.category === category && zone.doubleChochTime === Number(timeText)
+    )), true);
   }
   invalidateTjlFibBeforeLatestStructureReset(zones);
   applyIssFibAnchors(candles, zones);
@@ -1393,7 +1397,10 @@ export function findTjlFibSource(
 ): StructureZone | undefined {
   const internal = zone.category === 'internal';
   const structureTime = zone.tjlPairTime ?? zone.startTime;
-  const resetTime = Math.max(-Infinity, ...zones
+  const doubleReset = internal ? Math.max(-Infinity, ...zones
+    .filter(candidate => candidate.category === 'internal' && candidate.doubleChochTime !== undefined
+      && candidate.doubleChochTime < structureTime).map(candidate => candidate.doubleChochTime!)) : -Infinity;
+  const resetTime = Math.max(doubleReset, ...zones
     .filter((candidate) => candidate.category === zone.category
       && candidate.chochTime !== undefined
       && candidate.chochTime < structureTime)
@@ -1420,13 +1427,17 @@ export function invalidateTjlFibBeforeLatestStructureReset(zones: StructureZone[
     .filter((zone) => zone.category === 'mg')
     .flatMap((zone) => [zone.chochTime, zone.doubleChochTime])
     .filter((time): time is number => time !== undefined);
-  if (resetTimes.length === 0) return;
+  const internalDoubleTimes = zones.filter(zone => zone.category === 'internal')
+    .map(zone => zone.doubleChochTime).filter((time): time is number => time !== undefined);
+  if (resetTimes.length === 0 && internalDoubleTimes.length === 0) return;
 
-  const latestResetTime = Math.max(...resetTimes);
+  const externalResetTime = Math.max(-Infinity, ...resetTimes);
+  const internalResetTime = Math.max(-Infinity, ...internalDoubleTimes);
   for (const zone of zones) {
-    if (zone.category !== 'mg'
-      || (zone.name !== 'TJL1' && zone.name !== 'TJL2')
-      || (zone.tjlPairTime ?? zone.startTime) > latestResetTime) continue;
+    const latestResetTime = zone.category === 'mg' ? externalResetTime
+      : zone.category === 'internal' ? internalResetTime : -Infinity;
+    if (!['TJL1', 'TJL2', 'Internal TJL1', 'Internal TJL2'].includes(zone.name)
+      || latestResetTime === -Infinity || (zone.tjlPairTime ?? zone.startTime) > latestResetTime) continue;
     zone.fibRelevant = false;
     zone.fibBand = undefined;
     zone.fibStatus = undefined;
@@ -1461,15 +1472,16 @@ export function isDoubleChochZoneTradeable(
   zoneName: StructureZone['name'],
 ): boolean {
   if (status !== 'valid') return false;
+  const name = zoneName.replace(/^Internal /, '');
   // When the first CHoCH never received its mapped confirmation, the reversal
   // is still a structural Double CHoCH. Once the Double CHoCH receives its own
   // mapped confirmation, QML A+, QML A++, and its new Major Liquidity origin
   // (DTD/DBD) may produce a trade. Converted SBR/RBS zones remain context.
   return originClass !== 'pending'
-    || zoneName === 'QML A+'
-    || zoneName === 'QML A++'
-    || zoneName === 'DTD'
-    || zoneName === 'DBD';
+    || name === 'QML A+'
+    || name === 'QML A++'
+    || name === 'DTD'
+    || name === 'DBD';
 }
 
 export function wasTjl1ConfirmedBy(
@@ -2576,7 +2588,7 @@ export function findIssFiveWaves(
 
   const activateInternalZone = (
     zone: StructureZone,
-    name: Extract<StructureZone['name'], 'Internal QML' | 'Internal SBR' | 'Internal RBS'>,
+    name: Extract<StructureZone['name'], 'Internal QML' | 'Internal QML A+' | 'Internal QML A++' | 'Internal SBR' | 'Internal RBS'>,
     isBuy: boolean,
     activeFromTime: number,
   ) => {
@@ -2770,6 +2782,10 @@ export function findIssFiveWaves(
     // ISS L3/L4 remain the only visible zones at completion. Internal TJL1/2
     // begin only after price confirms continuation beyond Point 5. Point 3/4
     // are retained as a hidden seed pair solely for a direct Point-5 CHoCH.
+    let pendingInternalDouble: {
+      direction: 'bullish' | 'bearish'; qml: StructureZone; secondary: StructureZone;
+      extreme: StructureZone; startedAt: number; context: ChochMetadata;
+    } | null = null;
     let internalTrend: 'bullish' | 'bearish' = pattern.direction;
     let protectedPoint = point4;
     let pathStart = point5;
@@ -2817,6 +2833,87 @@ export function findIssFiveWaves(
         && previous.close > previous.open
         && candle.close > previous.high;
 
+      if (pendingInternalDouble && candle.time > pendingInternalDouble.startedAt) {
+        const pending = pendingInternalDouble;
+        const isBuy = pending.direction === 'bearish';
+        const direction = isBuy ? 'bullish' : 'bearish';
+        const boundary = isBuy ? pending.extreme.top : pending.extreme.bottom;
+        if (hasFullBodyClosedBeyond(candle, boundary, isBuy ? 'up' : 'down')) {
+          const confirmation = resolveConfirmation({
+            confirmationDirection: isBuy ? 'up' : 'down', bottom: pending.extreme.bottom,
+            top: pending.extreme.top, formationTime: candle.time + sourceBarSeconds,
+            sourceBarSeconds, confirmationBarSeconds,
+          });
+          const classification = classifyDoubleChoch(pending.context.chochClass, confirmation.status === 'valid');
+          const startIndex = candles.findIndex(item => item.time === pending.startedAt);
+          const newProtected = extreme(candles, Math.max(0, startIndex), index, isBuy ? 'low' : 'high');
+          addInternalLine('internal-choch', direction, protectedPoint,
+            { index, time: candle.time, price: protectedPoint.price }, 'INT DOUBLE CHoCH');
+          activateInternalZone(pending.qml, 'Internal QML A+', isBuy, candle.time);
+          activateInternalZone(pending.secondary, 'Internal QML A++', isBuy, candle.time);
+          activateInternalZone(pending.extreme, isBuy ? 'Internal RBS' : 'Internal SBR', isBuy, candle.time);
+          const liquidity = addInternalExtremeZone(newProtected,
+            isBuy ? 'Internal DB' : 'Internal DT', isBuy, candle.time + sourceBarSeconds);
+          liquidity.name = isBuy ? 'Internal DBD' : 'Internal DTD';
+          markMajorLiquidityZone(liquidity, candle.time);
+          for (const zone of [pending.qml, pending.secondary, pending.extreme, liquidity]) {
+            Object.assign(zone, classification, {
+              doubleChochTime: candle.time,
+              doubleChochConfirmationTime: confirmation.confirmationTime,
+              doubleChochConfirmationDirection: isBuy ? 'up' : 'down',
+              confirmationRouteDisabled: confirmationBarSeconds === DISABLED_HIGHER_TIMEFRAME_CONFIRMATION,
+            });
+            zone.tradeable = isDoubleChochZoneTradeable(zone.doubleChochOriginClass, zone.doubleChochStatus, zone.name);
+            activateZoneAfterChoch(zone, candle.time, sourceBarSeconds);
+          }
+          internalMarkers.push(makeMarker(candles[newProtected.index], isBuy ? 'I PL' : 'I PH',
+            isBuy ? 'belowBar' : 'aboveBar', isBuy ? '#047857' : '#be123c'));
+          pendingInternalDouble = null;
+          internalTrend = direction;
+          protectedPoint = newProtected;
+          pathStart = newProtected;
+          currentTjl1 = null;
+          currentTjl2 = null;
+          activeHigh = null;
+          activeLow = null;
+          lastBullishConfirmIndex = null;
+          lastBearishConfirmIndex = null;
+          hasPostIssInternalBos = false;
+          initialIssPairAvailable = false;
+          continue;
+        }
+        // A close across PH/PL without a full-body break is a fresh BOS,
+        // exactly as in the external engine; it cannot remain a Double candidate.
+        if (candle.complete !== false && (isBuy ? candle.close > protectedPoint.price : candle.close < protectedPoint.price)) {
+          const boundaryPoint = protectedPoint;
+          const oppositePoint = (isBuy ? activeLow : activeHigh)
+            ?? extreme(candles, boundaryPoint.index, index, isBuy ? 'low' : 'high');
+          addInternalLine('internal-swing', direction, pathStart, boundaryPoint);
+          addInternalLine('internal-swing', direction, boundaryPoint, oppositePoint);
+          addInternalLine('internal-bos', direction, boundaryPoint,
+            { index, time: candle.time, price: boundaryPoint.price }, 'INT BOS');
+          internalMarkers.push(
+            makeMarker(candles[boundaryPoint.index], isBuy ? 'I HH' : 'I LL', isBuy ? 'aboveBar' : 'belowBar', isBuy ? '#0d9488' : '#e11d48'),
+            makeMarker(candles[oppositePoint.index], isBuy ? 'I HL' : 'I LH', isBuy ? 'belowBar' : 'aboveBar', isBuy ? '#0d9488' : '#e11d48'),
+          );
+          const oldExtremeIndex = zones.indexOf(pending.extreme);
+          if (oldExtremeIndex >= 0) zones.splice(oldExtremeIndex, 1);
+          currentTjl1 = addInternalTjlZone(boundaryPoint, 'Internal TJL1', isBuy, isBuy ? 'high' : 'low', candle.time + sourceBarSeconds);
+          currentTjl2 = addInternalTjlZone(oppositePoint, 'Internal TJL2', isBuy, isBuy ? 'low' : 'high', candle.time + sourceBarSeconds);
+          linkInternalTjlPair(currentTjl1, currentTjl2);
+          pendingInternalDouble = null;
+          internalTrend = direction;
+          protectedPoint = oppositePoint;
+          pathStart = oppositePoint;
+          activeHigh = null;
+          activeLow = null;
+          if (isBuy) lastBullishConfirmIndex = index; else lastBearishConfirmIndex = index;
+          hasPostIssInternalBos = true;
+          initialIssPairAvailable = false;
+          continue;
+        }
+      }
+
       if (internalTrend === 'bullish') {
         if (twoRed && activeHigh === null) {
           const from = lastBullishConfirmIndex ?? protectedPoint.index;
@@ -2854,6 +2951,7 @@ export function findIssFiveWaves(
           pathStart = confirmedLow;
           activeHigh = null;
           lastBullishConfirmIndex = index;
+          pendingInternalDouble = null;
           hasPostIssInternalBos = true;
           initialIssPairAvailable = false;
         }
@@ -2877,6 +2975,9 @@ export function findIssFiveWaves(
             newProtectedHigh, 'Internal DT', false, candle.time + sourceBarSeconds,
           );
           applyInternalChochContext(chochContext, lastTjl1, lastTjl2, dt);
+          pendingInternalDouble = lastTjl1 && lastTjl2
+            ? { direction: 'bearish', qml: lastTjl1, secondary: lastTjl2, extreme: dt, startedAt: candle.time, context: chochContext }
+            : null;
           internalTrend = 'bearish';
           protectedPoint = newProtectedHigh;
           pathStart = newProtectedHigh;
@@ -2923,6 +3024,7 @@ export function findIssFiveWaves(
           pathStart = confirmedHigh;
           activeLow = null;
           lastBearishConfirmIndex = index;
+          pendingInternalDouble = null;
           hasPostIssInternalBos = true;
           initialIssPairAvailable = false;
         }
@@ -2944,6 +3046,9 @@ export function findIssFiveWaves(
             newProtectedLow, 'Internal DB', true, candle.time + sourceBarSeconds,
           );
           applyInternalChochContext(chochContext, lastTjl1, lastTjl2, db);
+          pendingInternalDouble = lastTjl1 && lastTjl2
+            ? { direction: 'bullish', qml: lastTjl1, secondary: lastTjl2, extreme: db, startedAt: candle.time, context: chochContext }
+            : null;
           internalTrend = 'bullish';
           protectedPoint = newProtectedLow;
           pathStart = newProtectedLow;

@@ -86,7 +86,7 @@ export function measureTradeableFibZone(
 ): TradeableFibZoneMeasurement | undefined {
   const inherentlyTradeableDbDt = zone.name === 'DB' || zone.name === 'DT';
   const measurableMajorLiquidity = zone.majorLiquidity === true
-    && (zone.name === 'TJL2' || zone.name === 'DBD' || zone.name === 'DTD')
+    && (zone.name === 'TJL2' || ['DBD', 'DTD', 'Internal DBD', 'Internal DTD'].includes(zone.name))
     && zone.active && zone.status === 'valid' && !zone.confirmationRouteDisabled;
   const fibAligned = inherentlyTradeableDbDt
     || (zone.fibStatus === 'a-plus' && zone.fibBand !== undefined)
@@ -300,7 +300,7 @@ export function isZoneEngulfingFibQualified(
       && (zone.dayFibBand === '0.5-0.618' || zone.dayFibBand === '0.71-0.79');
   }
   const designatedMajorLiquidity = zone.majorLiquidity === true
-    && (zone.name === 'TJL2' || zone.name === 'DBD' || zone.name === 'DTD');
+    && (zone.name === 'TJL2' || ['DBD', 'DTD', 'Internal DBD', 'Internal DTD'].includes(zone.name));
   const inherentDbDtDeepDiscount = zone.name === 'DB' || zone.name === 'DT';
   if (designatedMajorLiquidity || inherentDbDtDeepDiscount) return true;
   return zone.fibStatus === 'a-plus'

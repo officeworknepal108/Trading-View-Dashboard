@@ -150,7 +150,7 @@ type OandaGranularity = 'M1' | 'M5' | 'M15' | 'M30' | 'H1' | 'H4' | 'D';
 type MarketGranularity = OandaGranularity | 'W' | 'MO';
 type LiveChartDataSource = 'MT5' | 'OANDA';
 type FibVisibilityKey = 'tjl1' | 'tjl2' | 'choch' | 'intChoch' | 'intTjl1' | 'intTjl2'
-  | 'doubleChoch' | 'iss' | 'swing' | 'day';
+  | 'doubleChoch' | 'intDoubleChoch' | 'iss' | 'swing' | 'day';
 type ChochFibVisibility = [boolean, boolean, boolean, boolean];
 type ChartDrawingTool = 'rectangle' | 'fib' | 'measure' | 'note' | 'path' | 'trend';
 type ChartDrawingVisibility = 'all' | 'current-only' | 'current-and-above' | 'current-and-below';
@@ -255,11 +255,12 @@ function loadStoredMarketSymbol(): OandaMarketSymbol {
 
 const DEFAULT_CHOCH_FIB_VISIBILITY: ChochFibVisibility = [false, false, false, false];
 
-const DEFAULT_FIB_VISIBILITY: Record<FibVisibilityKey, boolean> = {
+export const DEFAULT_FIB_VISIBILITY: Record<FibVisibilityKey, boolean> = {
   tjl1: false,
   tjl2: false,
   choch: false,
   intChoch: false,
+  intDoubleChoch: false,
   intTjl1: false,
   intTjl2: false,
   doubleChoch: false,
@@ -278,8 +279,9 @@ const FIB_VISIBILITY_OPTIONS: Array<{ key: FibVisibilityKey; label: string }> = 
   { key: 'day', label: 'DAY FIB' },
 ];
 
-const INTERNAL_FIB_VISIBILITY_OPTIONS: Array<{ key: FibVisibilityKey; label: string }> = [
+export const INTERNAL_FIB_VISIBILITY_OPTIONS: Array<{ key: FibVisibilityKey; label: string }> = [
   { key: 'intChoch', label: 'Int CHoCH MARKING' },
+  { key: 'intDoubleChoch', label: 'Int DOUBLE CHoCH MARKING' },
   { key: 'intTjl1', label: 'Int TJL1 MARKING' },
   { key: 'intTjl2', label: 'Int TJL2 MARKING' },
 ];
@@ -291,7 +293,7 @@ const ALL_FIB_VISIBILITY_OPTIONS = [
 
 function isSingleFibMarkingKey(key: FibVisibilityKey): boolean {
   return key === 'tjl1' || key === 'tjl2' || key === 'intTjl1' || key === 'intTjl2'
-    || key === 'doubleChoch' || key === 'iss' || key === 'day';
+    || key === 'doubleChoch' || key === 'intDoubleChoch' || key === 'iss' || key === 'day';
 }
 
 interface OandaCandle {
@@ -484,6 +486,7 @@ const MT5_CHART_GRANULARITIES: OandaGranularity[] = ['M1', 'M5', 'M15', 'M30', '
 
 const ACCURACY_ZONE_ROWS = [
   'TJL1', 'TJL2', 'QML', 'QML(A+)', 'QML(A++)', 'SBR', 'RBS', 'DB', 'DT', 'DBD', 'DTD',
+  'Internal QML A+', 'Internal QML A++', 'Internal DBD', 'Internal DTD',
   'Internal QML', 'Internal SBR', 'Internal RBS', 'ISS L3', 'ISS L4',
 ];
 
@@ -870,9 +873,10 @@ function displayEngulfingLabel(zone: StructureZone): string | undefined {
     : undefined;
 }
 
-function fibVisibilityKey(zone: StructureZone): FibVisibilityKey {
+export function fibVisibilityKey(zone: StructureZone): FibVisibilityKey {
   if (zone.category === 'iss') return 'iss';
   if (zone.category === 'internal') {
+    if (zone.doubleChochTime !== undefined || zone.doubleChochStatus !== undefined) return 'intDoubleChoch';
     if (zone.name === 'Internal TJL1') return 'intTjl1';
     if (zone.name === 'Internal TJL2') return 'intTjl2';
     return 'intChoch';
@@ -884,7 +888,7 @@ function fibVisibilityKey(zone: StructureZone): FibVisibilityKey {
   return 'swing';
 }
 
-function isFibMarkingVisible(
+export function isFibMarkingVisible(
   zone: StructureZone,
   showFib: boolean,
   visibility: Record<FibVisibilityKey, boolean>,
@@ -894,7 +898,7 @@ function isFibMarkingVisible(
   const key = fibVisibilityKey(zone);
   if (key === 'choch') return showFib && chochVisibility.some(Boolean);
   if (key === 'tjl1' || key === 'tjl2' || key === 'intTjl1' || key === 'intTjl2'
-    || key === 'doubleChoch' || key === 'iss') {
+    || key === 'doubleChoch' || key === 'intDoubleChoch' || key === 'iss') {
     return showFib && visibility[key];
   }
   return showFib && (visibility[key] || previousVisibility[key]);
@@ -4259,11 +4263,12 @@ export const OandaProChart: React.FC<{
   const doubleChochRows = useMemo(() => consolidatedDisplayZones
     .filter((zone) => directTradeStyleEnabled && zone.active && zone.status === 'valid'
       && zone.doubleChochStatus !== undefined
+      && (showInternal || zone.category !== 'internal')
       && (zone.tapTime !== undefined
         ? (zone.lastTapBarsAgo ?? zone.tapBarsAgo ?? Infinity) <= 50
         : zone.doubleChochStatus === 'pending'
-          ? zone.name === 'SBR' || zone.name === 'RBS'
-          : (zone.name === 'SBR' || zone.name === 'RBS')
+          ? ['SBR', 'RBS', 'Internal SBR', 'Internal RBS'].includes(zone.name)
+          : (['SBR', 'RBS', 'Internal SBR', 'Internal RBS'].includes(zone.name))
             && zone.doubleChochConfirmationTime !== undefined
             && latestDisplayCandleTime !== undefined
             && latestDisplayCandleTime + TIMEFRAME_SECONDS[granularity]
@@ -4271,7 +4276,7 @@ export const OandaProChart: React.FC<{
     .sort((a, b) => (b.tapTime ?? b.doubleChochTime ?? b.startTime)
       - (a.tapTime ?? a.doubleChochTime ?? a.startTime)
       || b.startTime - a.startTime)
-    .slice(0, 8), [consolidatedDisplayZones, directTradeStyleEnabled, granularity, latestDisplayCandleTime]);
+    .slice(0, 8), [consolidatedDisplayZones, directTradeStyleEnabled, granularity, latestDisplayCandleTime, showInternal]);
   const pendingConfirmationRows = useMemo(() => consolidatedDisplayZones
     .filter((zone) => directTradeStyleEnabled && (zone.name === 'TJL1' || zone.name === 'ISS L3' || zone.name === 'Internal TJL1')
       && zone.active && zone.status === 'pending'
@@ -4573,7 +4578,7 @@ export const OandaProChart: React.FC<{
       // Like TJL1, show HTF confirmation state only on the zone whose break
       // actually confirmed Double CHoCH (SBR for bearish, RBS for bullish).
       const showsDoubleChochStatus = zone.doubleChochStatus !== undefined
-        && (zone.name === 'SBR' || zone.name === 'RBS');
+        && (['SBR', 'RBS', 'Internal SBR', 'Internal RBS'].includes(zone.name));
       const pending = zone.status === 'pending'
         || (showsDoubleChochStatus && zone.doubleChochStatus === 'pending');
       const confirmationLabel = TJL1_CONFIRMATION_LABELS[granularity];
@@ -4895,7 +4900,7 @@ export const OandaProChart: React.FC<{
           }
           const previousMoves = type !== 'tjl1' && type !== 'tjl2'
             && type !== 'intTjl1' && type !== 'intTjl2'
-            && type !== 'doubleChoch' && type !== 'iss'
+            && type !== 'doubleChoch' && type !== 'intDoubleChoch' && type !== 'iss'
             && fibPreviousVisibilityRef.current[type]
             ? orderedMoves.slice(1, 2)
             : [];

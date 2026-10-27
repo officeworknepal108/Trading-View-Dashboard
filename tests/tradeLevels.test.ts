@@ -570,3 +570,20 @@ test('MTF entry uses the actual engulfing timeframe rule when the pair has no di
   assert.equal(rule?.stopBufferPips, 10);
   assert.equal(rule?.maximumRiskPips, 100);
 });
+
+
+test('internal Double CHoCH keeps external Fib requirements and Major Liquidity exceptions', () => {
+  const base: StructureZone = { id: 'internal-double-fib', name: 'Internal QML A+', category: 'internal',
+    isBuy: true, top: 110, bottom: 100, startTime: 0, endTime: 1000, active: true, status: 'valid',
+    doubleChochStatus: 'valid', tradeable: true };
+  assert.equal(isZoneEngulfingFibQualified(base, 'structure'), false, 'QML A+ cannot enter without Fib');
+  assert.equal(isZoneEngulfingFibQualified({ ...base, fibStatus: 'a-plus', fibBand: '0.5-0.618' }, 'structure'), true);
+  assert.equal(isZoneEngulfingFibQualified({ ...base, fibStatus: 'a-plus', fibBand: '0.71-0.79' }, 'structure'), true);
+  for (const name of ['Internal DBD', 'Internal DTD'] as const) {
+    const liquidity = { ...base, name, majorLiquidity: true, tapTime: 100 };
+    assert.equal(isZoneEngulfingFibQualified(liquidity, 'structure'), true,
+      'designated liquidity has the same numerical Fib exception as external DBD/DTD');
+    assert.ok(measureTradeableFibZone(liquidity));
+    assert.equal(measureTradeableFibZone({ ...liquidity, active: false }), undefined);
+  }
+});

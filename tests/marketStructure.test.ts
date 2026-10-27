@@ -2007,3 +2007,117 @@ test('daily and weekly bucket closes follow New York daylight-saving changes', (
   assert.equal(result.status, 'valid');
   assert.equal(result.confirmationTime, afterDstSunday21Utc);
 });
+
+
+function internalDoubleFixture(mirror = false): StructureCandle[] {
+  const bars = [
+    [101,102,100,101], [101,112,101,110], [110,111,107,108], [108,109,104,105],
+    [105,110,105,109], [109,115,108,114], [114,120,114,118], [118,119,115,116],
+    [116,117,112,113], [113,120,113,119], [119,123,118,122], [122,125,121,124],
+    [124,125,120,121], [121,122,117,118], [118,119,114,115], [115,119,114,118],
+    [118,127,117,126], [113,118,108,110], [128,131,126,130], [130,145,129,144], [144,145,142,143],
+  ];
+  return bars.map(([open,high,low,close], index) => mirror
+    ? { time: index * 100, open: 300-open, high: 300-low, low: 300-high, close: 300-close }
+    : { time: index * 100, open, high, low, close });
+}
+
+function internalDoubleResult(candles: StructureCandle[], mirror = false, resets: number[] = []) {
+  return findIssFiveWaves(candles, [{ direction: mirror ? 'bearish' : 'bullish',
+    start: { index: 0, time: 0, price: mirror ? 200 : 100 },
+    boundary: { index: 0, time: 0, price: mirror ? 100 : 200 },
+  }], 100, 30, 400, resets);
+}
+
+test('internal Double CHoCH mirrors bullish and bearish external conversions and its own HTF confirmation', () => {
+  for (const mirror of [false, true]) {
+    const candles = internalDoubleFixture(mirror);
+    const before = internalDoubleResult(candles.slice(0, 18), mirror);
+    assert.ok(before.lines.some(line => line.label?.startsWith('INT CHoCH')));
+    assert.ok(!before.zones.some(zone => zone.doubleChochTime !== undefined));
+    const pending = internalDoubleResult(candles.slice(0, 19), mirror);
+    const expectedNames = ['Internal QML A+', 'Internal QML A++',
+      mirror ? 'Internal SBR' : 'Internal RBS', mirror ? 'Internal DTD' : 'Internal DBD'];
+    const pendingZones = pending.zones.filter(zone => zone.doubleChochTime === 1800);
+    assert.deepEqual(pendingZones.map(zone => zone.name), expectedNames);
+    assert.ok(pending.lines.some(line => line.label === 'INT DOUBLE CHoCH'
+      && line.direction === (mirror ? 'bearish' : 'bullish') && line.toTime === 1800));
+    for (const zone of pendingZones) {
+      assert.equal(zone.category, 'internal');
+      assert.equal(zone.doubleChochStatus, 'pending');
+      assert.equal(zone.tradeable, false);
+      assert.equal(isZoneEligibleForEngulfingEntry(zone), false);
+    }
+    const confirmed = internalDoubleResult(candles, mirror);
+    const confirmedZones = confirmed.zones.filter(zone => zone.doubleChochTime === 1800);
+    for (const zone of confirmedZones) {
+      assert.equal(zone.doubleChochStatus, 'valid');
+      assert.equal(zone.doubleChochConfirmationTime, 2000);
+      assert.equal(zone.doubleChochOriginClass, 'pending');
+      assert.equal(zone.tradeable, zone.name !== (mirror ? 'Internal SBR' : 'Internal RBS'),
+        'the Pending-origin SBR/RBS exception matches external Double CHoCH');
+    }
+    assert.equal(confirmedZones.at(-1)?.majorLiquidity, true);
+    applyFibConfluence(candles, confirmed.zones);
+    const qml = confirmedZones.find(zone => zone.name === 'Internal QML A+')!;
+    assert.equal(qml.fibSourcePrice, mirror ? 192 : 108);
+    assert.equal(qml.fibZeroPrice, mirror ? 155 : 145);
+    assert.equal(qml.fibStatus, 'a-plus');
+  }
+});
+
+test('internal Double CHoCH rejects wicks and live bars, and a close-only break becomes BOS', () => {
+  const candles = internalDoubleFixture();
+  for (const replacement of [
+    { time: 1800, open: 125, high: 131, low: 124, close: 126 },
+    { ...candles[18], complete: false },
+  ]) {
+    const result = internalDoubleResult([...candles.slice(0,18), replacement]);
+    assert.ok(!result.lines.some(line => line.label === 'INT DOUBLE CHoCH'));
+  }
+  const crossed = internalDoubleResult([...candles.slice(0,18),
+    { time: 1800, open: 126, high: 131, low: 125, close: 130 }, candles[19]]);
+  assert.ok(crossed.lines.some(line => line.type === 'internal-bos' && line.toTime === 1800));
+  assert.ok(!crossed.lines.some(line => line.label === 'INT DOUBLE CHoCH'),
+    'a later full-body break cannot revive a candidate already replaced by BOS');
+  const reset = internalDoubleResult(candles, false, [1800]);
+  assert.ok(!reset.lines.some(line => line.label === 'INT DOUBLE CHoCH'),
+    'an internal Double CHoCH cannot continue beyond its parent external reset');
+});
+
+test('internal and external Double CHoCH on one candle keep independent Fib anchors', () => {
+  const candles = internalDoubleFixture();
+  const internal = internalDoubleResult(candles).zones;
+  const external = zone({ id: 'external-double', name: 'DBD', isBuy: true, bottom: 50, top: 51,
+    startTime: 1700, doubleChochTime: 1800 });
+  applyFibConfluence(candles, [external, ...internal]);
+  assert.equal(external.fibSourcePrice, 50);
+  assert.equal(internal.find(zone => zone.name === 'Internal QML A+')?.fibSourcePrice, 108);
+});
+
+test('internal Double CHoCH resets only its older internal TJL Fib and keeps external Fib intact', () => {
+  const internalTjl = zone({ id: 'internal-old', category: 'internal', name: 'Internal TJL2',
+    fibRelevant: true, fibStatus: 'a-plus', fibSourcePrice: 100 });
+  const externalTjl = zone({ id: 'external-kept', fibRelevant: true, fibStatus: 'a-plus' });
+  const reset = zone({ id: 'internal-reset', category: 'internal', name: 'Internal QML A+', doubleChochTime: 400 });
+  invalidateTjlFibBeforeLatestStructureReset([internalTjl, externalTjl, reset]);
+  assert.equal(internalTjl.fibRelevant, false);
+  assert.equal(internalTjl.fibSourcePrice, undefined);
+  assert.equal(externalTjl.fibStatus, 'a-plus');
+  const freshTjl = zone({ id: 'internal-new', category: 'internal', name: 'Internal TJL1',
+    startTime: 500, tjlPairTime: 600 });
+  assert.equal(findTjlFibSource(freshTjl, [internalTjl, reset, freshTjl]), undefined);
+});
+
+
+test('all internal Double CHoCH origin classes and converted zones follow external eligibility', () => {
+  for (const origin of ['valid', 'air', 'vip', 'pending'] as const) {
+    for (const status of ['pending', 'valid'] as const) {
+      for (const name of ['QML A+', 'QML A++', 'SBR', 'RBS', 'DTD', 'DBD'] as const) {
+        const internalName = `Internal ${name}` as StructureZone['name'];
+        assert.equal(isDoubleChochZoneTradeable(origin, status, internalName),
+          isDoubleChochZoneTradeable(origin, status, name), `${origin} ${status} ${name}`);
+      }
+    }
+  }
+});
