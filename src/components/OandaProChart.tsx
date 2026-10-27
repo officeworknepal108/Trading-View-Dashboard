@@ -1844,6 +1844,7 @@ export const OandaProChart: React.FC = () => {
   const [showLtfChoch, setShowLtfChoch] = useState(false);
   const [comparisonTimeframe, setComparisonTimeframe] = useState<OandaGranularity | null>(null);
   const [hiddenComparisonZoneKeys, setHiddenComparisonZoneKeys] = useState<string[]>([]);
+  const [hiddenCompletedTradeDrawings, setHiddenCompletedTradeDrawings] = useState<Set<string>>(() => new Set());
   const [showDrawingTools, setShowDrawingTools] = useState(false);
   const [activeDrawingTool, setActiveDrawingTool] = useState<ChartDrawingTool | null>(null);
   const [chartDrawings, setChartDrawings] = useState<ChartDrawing[]>(loadStoredChartDrawings);
@@ -5108,6 +5109,8 @@ export const OandaProChart: React.FC = () => {
         if (hasTradeDrawingExpired(trade)) continue;
         // A final exit keeps its drawing for five completed entry-timeframe candles.
         const completedReplayReference = isCompletedTrade(trade);
+        const drawingKey = `${marketSymbol}:${tradeOverlayEntryEventKey(trade.signal)}:${tradeOverlayExecutionKey(trade)}`;
+        if (completedReplayReference && hiddenCompletedTradeDrawings.has(drawingKey)) continue;
         const anchor = displayCandles.find((candle) => (
           trade.calculatedAt >= candle.time
           && trade.calculatedAt < marketCandleCloseTime(candle.time, granularity)
@@ -5190,6 +5193,30 @@ export const OandaProChart: React.FC = () => {
           makeLevelLine(riskFreeY, '#a16207', `1R / BE ${formatPrice(trade.riskFree)}`, true);
         }
 
+        if (completedReplayReference && !overlay.referenceOnly) {
+          const closeButton = document.createElement('button');
+          closeButton.type = 'button';
+          closeButton.textContent = '×';
+          closeButton.title = 'Hide completed trade drawing';
+          closeButton.setAttribute('aria-label', closeButton.title);
+          closeButton.dataset.journalExclude = 'true';
+          Object.assign(closeButton.style, {
+            position: 'absolute',
+            left: `${Math.max(left, drawingRight - 12)}px`,
+            top: `${Math.max(0, Math.min(host.clientHeight - 12, Math.min(entryY, stopY, targetY) - 24))}px`,
+            width: '12px', height: '12px', padding: '0',
+            border: '1px solid #cbd5e1', borderRadius: '2px',
+            background: 'rgba(255, 255, 255, 0.95)', color: '#64748b',
+            fontSize: '10px', lineHeight: '10px', cursor: 'pointer', pointerEvents: 'auto',
+          });
+          closeButton.addEventListener('pointerdown', (event) => event.stopPropagation());
+          closeButton.addEventListener('click', (event) => {
+            event.stopPropagation();
+            setHiddenCompletedTradeDrawings((current) => new Set([...current, drawingKey]));
+          });
+          fragment.appendChild(closeButton);
+        }
+
         if (!(overlay.referenceOnly && overlay.label === 'OUTSIDE TRADING TIME · REFERENCE')) {
           const badge = document.createElement('div');
           badge.style.position = 'absolute';
@@ -5210,7 +5237,7 @@ export const OandaProChart: React.FC = () => {
     // Swap the complete overlay in one operation so the browser does not
     // perform layout work for every individual zone, line, and label.
     layer.replaceChildren(fragment);
-  }, [hasTradeDrawingExpired, comparisonTimeframe, directZoneTrades, displayCandles, extremeAPlusTjl2Selection, granularity, latestCandle?.time, ltfChochContext, marketConfig.pipSize, marketSymbol, mtfRows, mtfDrawingZones, oneMinuteScalpingZones, overlayCandlesByTime, repeatedLtfChochLabels, replayIndex, scalpingEnabled, visibleComparisonZones, zoneDrawingEndIndices, zoneTableRows]);
+  }, [hasTradeDrawingExpired, hiddenCompletedTradeDrawings, comparisonTimeframe, directZoneTrades, displayCandles, extremeAPlusTjl2Selection, granularity, latestCandle?.time, ltfChochContext, marketConfig.pipSize, marketSymbol, mtfRows, mtfDrawingZones, oneMinuteScalpingZones, overlayCandlesByTime, repeatedLtfChochLabels, replayIndex, scalpingEnabled, visibleComparisonZones, zoneDrawingEndIndices, zoneTableRows]);
 
   redrawZonesRef.current = redrawZones;
 
@@ -8417,6 +8444,7 @@ export const OandaProChart: React.FC = () => {
                       </td>
                     </tr>
                     {displayedTrade && !isCompletedTrade(displayedTrade)
+                      && (marketSymbol !== 'XAUUSD' || (displayedTapCount(zone) ?? 0) <= 1)
                       && <TradeDetailsRow trade={displayedTrade} colSpan={5}
                         mt5Signal={mt5Signal} referenceOnly={outsideTimePreview !== undefined}
                         hideReferenceStatus={outsideTimePreview !== undefined} />}
@@ -8457,6 +8485,7 @@ export const OandaProChart: React.FC = () => {
                   const tapBarsAgo = confluenceTapBarsAgo(zone);
                   const latestTap = confluenceLatestTap(zone);
                   const tapCount = displayedTapCount(zone);
+                  const repeatedTap = marketSymbol === 'XAUUSD' && (tapCount ?? 0) > 1;
                   const opportunityExpired = marketSymbol === 'XAUUSD'
                     && displayZoneMembers(zone).every((member) => isGoldZoneOpportunityExpired(
                       member, displayCandles, granularity, marketConfig.pipSize,
@@ -8575,6 +8604,8 @@ export const OandaProChart: React.FC = () => {
                     }`}>
                       {extremeAPlusBlocked ? (
                         <span className="text-rose-700">EXTREME A+ HIGHER · NO TRADE</span>
+                      ) : repeatedTap ? (
+                        <span className="text-rose-700">TAP {tapCount} · NO NEW ENTRY</span>
                       ) : outsideTimePreview ? (
                         <span className={isCompletedTrade(outsideTimePreview)
                           ? outsideTimePreview.status === 'sl-hit' ? 'text-rose-700' : 'text-emerald-700'
@@ -8604,8 +8635,6 @@ export const OandaProChart: React.FC = () => {
                         </span>
                       ) : opportunityExpired ? (
                         <span className="text-rose-700">DISTANCE REACHED · NO NEW ENTRY</span>
-                      ) : marketSymbol === 'XAUUSD' && (tapCount ?? 0) > 1 ? (
-                        <span className="text-rose-700">TAP {tapCount} · NO NEW ENTRY</span>
                       ) : entryDecision && !entryDecision.policy.allowed ? (
                         <span className="text-rose-700">
                           {directEntryPolicyLabel(entryDecision.policy)} · NO TRADE
@@ -8631,6 +8660,7 @@ export const OandaProChart: React.FC = () => {
                     </td>
                   </tr>
                   {(trade ?? outsideTimePreview)
+                    && !repeatedTap
                     && !isCompletedTrade(trade ?? outsideTimePreview)
                     && <TradeDetailsRow
                       trade={(trade ?? outsideTimePreview)!}
@@ -8639,7 +8669,7 @@ export const OandaProChart: React.FC = () => {
                       mt5Signal={mt5Signal}
                       referenceOnly={outsideTimePreview !== undefined}
                     />}
-                  {historicalTrade && (
+                  {historicalTrade && !repeatedTap && (
                     <TradeDetailsRow trade={historicalTrade} colSpan={5}
                       referenceOnly={historicalEntry?.tradingTimeBlocked}
                       hideReferenceStatus={historicalEntry?.tradingTimeBlocked} />
