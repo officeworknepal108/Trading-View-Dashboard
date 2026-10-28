@@ -14,6 +14,29 @@ export interface SentTelegramTradeState extends Partial<TelegramTradeNumber> {
 
 export type SentTelegramAlerts = Record<string, SentTelegramTradeState>;
 
+/** Preserve delivery evidence from the old account-specific histories. */
+export function mergeTelegramAlertHistories(histories: SentTelegramAlerts[]): SentTelegramAlerts {
+  const merged: SentTelegramAlerts = Object.create(null);
+  for (const history of histories) {
+    for (const [key, state] of Object.entries(history)) {
+      const previous = merged[key];
+      const numbered = [previous, state].filter(hasTradeNumber).sort((a, b) => (
+        a.tradeDate.localeCompare(b.tradeDate) || a.tradeNumber - b.tradeNumber
+      ))[0];
+      merged[key] = {
+        ...previous, ...state, ...numbered,
+        summarySent: previous?.summarySent || state.summarySent,
+        pending: previous?.pending || state.pending,
+        cancelled: previous?.cancelled || state.cancelled,
+        entry: previous?.entry || state.entry,
+        rf: previous?.rf || state.rf,
+        result: previous?.result ?? state.result,
+      };
+    }
+  }
+  return merged;
+}
+
 /** Signal identity stays fixed when the broker fills at a different price. */
 export function telegramSignalKey(id: string): string {
   return id.replace(/^([A-Z0-9]{3,12}:(?:bullish|bearish):(?:M1|M5|M15|M30|H1|H4|D):\d+):\d+(?:\.\d+)?$/, '$1');

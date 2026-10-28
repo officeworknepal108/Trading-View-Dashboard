@@ -8,7 +8,7 @@ import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
 import { createServer as createViteServer } from 'vite';
 import { fetchTradingViewCandles } from './src/services/tradingViewDatafeed';
 import {
-  reserveTelegramTradeNumber, bindTelegramAlertAliases, telegramSignalKey,
+  reserveTelegramTradeNumber, bindTelegramAlertAliases, telegramSignalKey, mergeTelegramAlertHistories,
   type SentTelegramAlerts, type TelegramTradeNumber,
 } from './src/services/telegramTradeNumbers';
 import { formatTelegramTradeMessage, countDailyTrades, formatDailyTradeSummary, previousNepalDay,
@@ -1212,20 +1212,24 @@ async function deliverTelegramAlerts(
   alerts: TelegramTradeAlert[],
   allowResultWithoutEntry = false,
 ): Promise<string[]> {
-  const task = mt5Context().telegramAlertQueue.then(async () => {
+  // Both accounts deliver into one group: serialize against the same history.
+  const task = terminalStates.primary.telegramAlertQueue.then(async () => {
     const config = await readMt5Config();
-    let sent: SentTelegramAlerts;
-    try {
-      sent = JSON.parse(await readFile(terminalFile(TELEGRAM_ALERTS_FILE), 'utf8')) as SentTelegramAlerts;
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
-      sent = {};
-    }
+    const histories = await Promise.all([
+      TELEGRAM_ALERTS_FILE, TELEGRAM_ALERTS_FILE.replace(/\.json$/, '.secondary.json'),
+    ].map(async (file): Promise<SentTelegramAlerts> => {
+      try { return JSON.parse(await readFile(file, 'utf8')); }
+      catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+        return {};
+      }
+    }));
+    const sent = mergeTelegramAlertHistories(histories);
     const saveSent = async () => {
-      await mkdir(path.dirname(terminalFile(TELEGRAM_ALERTS_FILE)), { recursive: true });
-      const temporaryFile = `${terminalFile(TELEGRAM_ALERTS_FILE)}.${process.pid}.tmp`;
+      await mkdir(path.dirname(TELEGRAM_ALERTS_FILE), { recursive: true });
+      const temporaryFile = `${TELEGRAM_ALERTS_FILE}.${process.pid}.tmp`;
       await writeFile(temporaryFile, `${JSON.stringify(sent, null, 2)}\n`, 'utf8');
-      await rename(temporaryFile, terminalFile(TELEGRAM_ALERTS_FILE));
+      await rename(temporaryFile, TELEGRAM_ALERTS_FILE);
     };
     const acknowledged: string[] = [];
     for (const alert of alerts) {
@@ -1261,7 +1265,7 @@ async function deliverTelegramAlerts(
     }
     return acknowledged;
   });
-  mt5Context().telegramAlertQueue = task.then(() => undefined, () => undefined);
+  terminalStates.primary.telegramAlertQueue = task.then(() => undefined, () => undefined);
   return task;
 }
 

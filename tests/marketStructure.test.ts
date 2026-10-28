@@ -1322,6 +1322,88 @@ test('partial-body breaks after pending CHoCH start fresh normal structures', ()
     && item.startTime === 4 * 900), false, 'the PH zone becomes TJL1, not a remaining DT');
 });
 
+test('Double CHoCH retains its original boundary through intermediate TJL structures in both directions', () => {
+  const prices = [
+    [100, 101, 102, 90], [107, 110, 112, 106], [110, 108, 111, 107],
+    [108, 106, 109, 105], [106, 113, 114, 106], [113, 110, 114, 109],
+    [110, 107, 111, 106], [107, 104, 108, 103], [104, 102, 105, 101],
+    [102, 108, 109, 101], [108, 111, 112, 107], [111, 100, 112, 99],
+    [100, 106, 107, 99], [106, 109, 110, 105], [109, 114, 116, 108],
+    [114, 117, 120, 113], [117, 112, 118, 110], [112, 108, 113, 106],
+    [108, 98, 110, 97],
+  ];
+  const options = { sourceBarSeconds: 900, confirmationBarSeconds: 3600 };
+  for (const isBuy of [false, true]) {
+    const sequence = isBuy
+      ? [...prices.slice(0, 11), [111, 115, 116, 110]]
+      : prices;
+    const candles = sequence.map(([open, close, high, low], index) => ({
+      time: index * 900, open, close, high, low,
+    }));
+    const before = analyzeMarketStructure(candles, options);
+    const formationTime = candles.length * 900;
+    const pair = before.zones.filter((item) => item.tjlPairTime === formationTime
+      && (item.name === 'TJL1' || item.name === 'TJL2') && item.isBuy === isBuy);
+    assert.equal(pair.length, 2, 'the partial-body break first shows the usual TJL pair');
+    const tjl1 = pair.find((item) => item.name === 'TJL1')!;
+    const closing = isBuy
+      ? { time: formationTime, open: 115, close: 117, high: 118, low: 114.5 }
+      : { time: formationTime, open: 98, close: 96, high: 99, low: 95 };
+
+    const forming = analyzeMarketStructure([...candles, { ...closing, complete: false }], options);
+    assert.equal(forming.lines.some((line) => line.label === 'DOUBLE CHoCH'
+      && line.toTime === closing.time), false, 'an unfinished full body cannot confirm');
+    assert.ok(pair.every((item) => forming.zones.some((zone) => zone.id === item.id)));
+
+    const wickOnly = analyzeMarketStructure([...candles, {
+      ...closing, open: isBuy ? 113 : 101,
+    }], options);
+    assert.equal(wickOnly.lines.some((line) => line.label === 'DOUBLE CHoCH'
+      && line.toTime === closing.time), false, 'a crossing body still cannot confirm');
+
+    // An intervening overlapping candle must not discard the original level.
+    const overlap = isBuy
+      ? { time: formationTime, open: 113, close: 115, high: 116, low: 112 }
+      : { time: formationTime, open: 101, close: 98, high: 102, low: 97 };
+    const finalCandle = { ...closing, time: formationTime + 900 };
+    const after = analyzeMarketStructure([...candles, overlap, finalCandle], options);
+    const double = after.lines.find((line) => line.label === 'DOUBLE CHoCH'
+      && line.toTime === finalCandle.time);
+    assert.ok(double);
+    assert.equal(double.direction, isBuy ? 'bullish' : 'bearish');
+    assert.equal(double.fromTime, tjl1.startTime, 'draw from point 1, not the newer protected pivot');
+    assert.equal(double.fromPrice, isBuy ? tjl1.top : tjl1.bottom);
+    assert.ok(pair.every((item) => !after.zones.some((zone) => zone.id === item.id)),
+      'the intermediate TJL pair is replaced');
+    for (const name of ['QML A+', 'QML A++', isBuy ? 'RBS' : 'SBR', isBuy ? 'DBD' : 'DTD']) {
+      assert.ok(after.zones.some((zone) => zone.name === name && zone.isBuy === isBuy
+        && zone.doubleChochTime === finalCandle.time), `${name} uses the original Double CHoCH context`);
+    }
+    const unrelated = before.zones.filter((item) => (item.name === 'TJL1' || item.name === 'TJL2')
+      && !pair.some((member) => member.id === item.id));
+    assert.ok(unrelated.every((item) => after.zones.some((zone) => zone.id === item.id
+      && zone.name === item.name)), 'unrelated TJL zones are preserved');
+
+    const continuationPrices = isBuy
+      ? [[115, 111, 116, 110], [111, 107, 112, 106], [107, 117, 119, 106]]
+      : [[98, 102, 103, 97], [102, 106, 107, 101], [106, 96, 107, 95]];
+    const continuation = continuationPrices.map(([open, close, high, low], index) => ({
+      time: formationTime + index * 900, open, close, high, low,
+    }));
+    const beforeLaterBreak = analyzeMarketStructure([...candles, ...continuation], options);
+    const intermediate = beforeLaterBreak.zones.filter((zone) => zone.isBuy === isBuy
+      && (zone.name === 'TJL1' || zone.name === 'TJL2')
+      && zone.tjlPairTime! >= formationTime);
+    assert.equal(intermediate.length, 4, 'a second BOS may form another pair before Double CHoCH');
+    const laterBreak = { ...closing, time: formationTime + continuation.length * 900 };
+    const later = analyzeMarketStructure([...candles, ...continuation, laterBreak], options);
+    assert.ok(later.lines.some((line) => line.label === 'DOUBLE CHoCH'
+      && line.toTime === laterBreak.time && line.fromTime === tjl1.startTime));
+    assert.ok(intermediate.every((item) => !later.zones.some((zone) => zone.id === item.id)),
+      'all TJL pairs within this sequence are replaced together');
+  }
+});
+
 test('VIP support requires a mapped HTF zone tap before CHoCH while that zone is valid', () => {
   const sourceCandles = [
     candle(100, 120, 121, 119),
@@ -2078,11 +2160,66 @@ test('internal Double CHoCH rejects wicks and live bars, and a close-only break 
   const crossed = internalDoubleResult([...candles.slice(0,18),
     { time: 1800, open: 126, high: 131, low: 125, close: 130 }, candles[19]]);
   assert.ok(crossed.lines.some(line => line.type === 'internal-bos' && line.toTime === 1800));
-  assert.ok(!crossed.lines.some(line => line.label === 'INT DOUBLE CHoCH'),
-    'a later full-body break cannot revive a candidate already replaced by BOS');
+  assert.ok(crossed.lines.some(line => line.label === 'INT DOUBLE CHoCH' && line.toTime === 1900),
+    'the original candidate survives BOS until the later full-body break');
   const reset = internalDoubleResult(candles, false, [1800]);
   assert.ok(!reset.lines.some(line => line.label === 'INT DOUBLE CHoCH'),
     'an internal Double CHoCH cannot continue beyond its parent external reset');
+});
+
+test('internal Double CHoCH tracks the original point through multiple TJL pairs in both directions', () => {
+  for (const mirror of [false, true]) {
+    const transform = (bars: number[][], startIndex: number) => bars.map(([open, high, low, close], index) => (
+      mirror
+        ? { time: (startIndex + index) * 100, open: 300 - open, high: 300 - low,
+          low: 300 - high, close: 300 - close }
+        : { time: (startIndex + index) * 100, open, high, low, close }
+    ));
+    const start = internalDoubleFixture(mirror).slice(0, 18);
+    const original = internalDoubleResult(start, mirror).zones.find(zone => zone.name === (
+      mirror ? 'Internal DB' : 'Internal DT'
+    ))!;
+    assert.ok(original);
+    const intermediate = transform([
+      [126, 131, 125, 130], // Close across PH, body still crosses the original boundary.
+      [130, 131, 126, 127],
+      [127, 128, 122, 123], // Retracement confirms a newer swing candidate.
+      [123, 134, 122, 133], // Another BOS, still without a full body beyond original PH.
+    ], 18);
+    const before = internalDoubleResult([...start, ...intermediate], mirror);
+    const pairs = before.zones.filter(zone => (zone.name === 'Internal TJL1' || zone.name === 'Internal TJL2')
+      && zone.tjlPairTime! >= 1900);
+    assert.equal(pairs.length, 4);
+    assert.ok(!before.lines.some(line => line.label === 'INT DOUBLE CHoCH'));
+    const closing = transform([[128, 133, 127, 132]], 22)[0];
+    const forming = internalDoubleResult([...start, ...intermediate, { ...closing, complete: false }], mirror);
+    assert.ok(!forming.lines.some(line => line.label === 'INT DOUBLE CHoCH'));
+    assert.ok(pairs.every(pair => forming.zones.some(zone => zone.id === pair.id)));
+
+    const after = internalDoubleResult([...start, ...intermediate, closing], mirror);
+    const line = after.lines.find(item => item.label === 'INT DOUBLE CHoCH');
+    assert.ok(line);
+    assert.equal(line.fromTime, original.startTime, 'point 1 stays anchored to the original CHoCH');
+    assert.equal(line.fromPrice, mirror ? original.bottom : original.top);
+    assert.equal(line.toTime, closing.time);
+    assert.equal(line.direction, mirror ? 'bearish' : 'bullish');
+    assert.ok(pairs.every(pair => !after.zones.some(zone => zone.id === pair.id)),
+      'only the intermediate pairs are replaced by Double CHoCH zones');
+    const doubleZones = after.zones.filter(zone => zone.doubleChochTime === closing.time);
+    assert.deepEqual(doubleZones.map(zone => zone.name), [
+      'Internal QML A+', 'Internal QML A++', mirror ? 'Internal SBR' : 'Internal RBS',
+      mirror ? 'Internal DTD' : 'Internal DBD',
+    ]);
+    assert.ok(doubleZones.every(zone => zone.doubleChochOriginClass === 'pending'
+      && zone.doubleChochStatus === 'pending' && zone.tradeable === false),
+    'the existing mapped HTF confirmation is still required');
+    const reset = internalDoubleResult([...start, ...intermediate, closing], mirror, [closing.time]);
+    assert.ok(!reset.lines.some(item => item.label === 'INT DOUBLE CHoCH'),
+      'the parent external reset still ends internal tracking');
+    const unrelated = before.zones.filter(zone => !pairs.some(pair => pair.id === zone.id)
+      && !['Internal QML', 'Internal RBS', 'Internal SBR'].includes(zone.name));
+    assert.ok(unrelated.every(item => after.zones.some(zone => zone.id === item.id && zone.name === item.name)));
+  }
 });
 
 test('internal and external Double CHoCH on one candle keep independent Fib anchors', () => {

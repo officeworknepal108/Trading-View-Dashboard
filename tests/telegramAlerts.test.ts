@@ -73,8 +73,8 @@ test('Telegram numbering covers all alert kinds, shared styles, retries, restart
     }
     throw new Error(`Isolated server did not become ready: ${output}`);
   };
-  const send = async (alerts: unknown[], expectedStatus = 200) => {
-    const response = await fetch(`${base}/api/telegram/alerts`, {
+  const send = async (alerts: unknown[], expectedStatus = 200, terminal = 'primary') => {
+    const response = await fetch(`${base}/api/telegram/alerts?terminal=${terminal}`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ alerts }),
     });
     assert.equal(response.status, expectedStatus, await response.text());
@@ -157,6 +157,57 @@ test('Telegram numbering covers all alert kinds, shared styles, retries, restart
     const afterSlippage = await messages();
     assert.equal(afterSlippage.length, beforeSlippage + 2, 'one result across both prices and restart');
     assert.equal(afterSlippage.at(-1)!.match(/^Trade #\d+/)![0], afterSlippage.at(-2)!.match(/^Trade #\d+/)![0]);
+    // Both accounts may report the same event concurrently, with different IDs/prices.
+    const sharedKey = `XAUUSD:bullish:M15:${beforeMidnight + 1}`;
+    const shared = entry(`${sharedKey}:100.00000`, { tradeKey: sharedKey, openedAt: beforeMidnight + 1,
+      tradeStyle: 'SCALPING', riskFree: 101 });
+    await writeFile(path.join(workspace, 'data', 'mt5-automation.json'), JSON.stringify({
+      enabled: false, telegramMessagesEnabled: true, scalpingEnabled: true, intradayEnabled: true,
+    }));
+    const beforeShared = (await messages()).length;
+    for (const kind of ['pending', 'entry', 'rf', 'tp']) {
+      const event = { ...shared, kind, rfAt: beforeMidnight + 1, partialClosedVolume: 0.5,
+        remainingVolume: 0.5, closedAt: beforeMidnight + 1, exitPrice: 102, returnR: 2 };
+      await Promise.all([
+        send([event]), send([{ ...event, id: `${sharedKey}:100.01000`, entry: 100.01 }], 200, 'secondary'),
+      ]);
+    }
+    const sharedMessages = (await messages()).slice(beforeShared);
+    assert.equal(sharedMessages.length, 4, 'one pending, entry, RF and result across both accounts');
+    assert.equal(new Set(sharedMessages.map(message => message.match(/^Trade #\d+/)![0])).size, 1);
+    await stop();
+    await start();
+    await send([{ ...shared, kind: 'entry' }], 200, 'secondary');
+    await send([{ ...shared, kind: 'tp', closedAt: beforeMidnight + 1, exitPrice: 102, returnR: 2 }]);
+    assert.equal((await messages()).length, beforeShared + 4, 'shared delivery survives restart');
+    const secondaryOnly = entry('secondary-only', { openedAt: beforeMidnight + 1 });
+    await send([secondaryOnly], 200, 'secondary');
+    await send([secondaryOnly]);
+    assert.equal((await messages()).length, beforeShared + 5, 'a secondary-first signal is sent once');
+    const legacyKey = `EURUSD:bullish:M15:${beforeMidnight + 1}`;
+    await writeFile(path.join(workspace, 'data', 'telegram-alerts.secondary.json'), JSON.stringify({
+      [legacyKey]: { tradeNumber: 40, tradeDate: '2026-10-27', entry: true },
+    }));
+    await send([entry(`${legacyKey}:100.00000`, { symbol: 'EURUSD', openedAt: beforeMidnight + 1 })]);
+    assert.equal((await messages()).length, beforeShared + 5, 'old secondary delivery history prevents replay');
+    await send([entry('after-history-merge', { openedAt: beforeMidnight + 1 })]);
+    assert.match((await messages()).at(-1)!, /^Trade #41 \u2014/);
+    const crossAccountRetry = entry('cross-account-retry', { openedAt: beforeMidnight + 1 });
+    const beforeCrossAccountRetry = (await messages()).length;
+    await writeFile(failOnceFile, 'fail');
+    await send([crossAccountRetry], 502);
+    await send([crossAccountRetry], 200, 'secondary');
+    await send([crossAccountRetry]);
+    assert.equal((await messages()).length, beforeCrossAccountRetry + 1,
+      'Account 2 can retry a failed Account 1 delivery without a later duplicate');
+    assert.match((await messages()).at(-1)!, /^Trade #42 \u2014/);
+    for (const kind of ['pending', 'cancelled']) {
+      const cancellation = entry('shared-cancellation', { kind, openedAt: beforeMidnight + 1,
+        closedAt: beforeMidnight + 1 });
+      await Promise.all([send([cancellation]), send([cancellation], 200, 'secondary')]);
+    }
+    assert.equal((await messages()).length, beforeCrossAccountRetry + 3,
+      'the pending order and its cancellation each send once across both accounts');
     // The day-end report reads real terminal signals only and survives restart.
     await writeFile(clockFile, String(beforeMidnight + 62));
     const closedSignal = { id: 'closed', account: 'account-A', server: 'Broker', status: 'SL',

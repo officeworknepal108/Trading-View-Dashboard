@@ -3,10 +3,30 @@ import test from 'node:test';
 import {
   nepalTradeDate, reserveTelegramTradeNumber, telegramTradeNumberLabel, bindTelegramAlertAliases,
   type SentTelegramAlerts,
+  mergeTelegramAlertHistories,
 } from '../src/services/telegramTradeNumbers';
 
 const beforeMidnight = Date.parse('2026-10-26T18:14:59Z') / 1000;
 const afterMidnight = beforeMidnight + 1;
+
+test('shared Telegram history retains delivery flags and numbering from both accounts', () => {
+  const key = 'XAUUSD:bullish:M15:1793034120';
+  const primary = { [key]: { tradeNumber: 2, tradeDate: '2026-10-26', pending: true, entry: true } };
+  const secondary = { [key]: { tradeNumber: 4, tradeDate: '2026-10-26', entry: false, rf: true, result: 'tp' as const },
+    secondaryOnly: { tradeNumber: 5, tradeDate: '2026-10-26', entry: true },
+    'DAILY:2026-10-26': { summarySent: true } };
+  const merged = mergeTelegramAlertHistories([primary, secondary]);
+  assert.equal(merged[key].tradeNumber, 2);
+  assert.equal(merged[key].pending, true);
+  assert.equal(merged[key].entry, true);
+  assert.equal(merged[key].rf, true);
+  assert.equal(merged[key].result, 'tp');
+  assert.equal(merged.secondaryOnly.entry, true);
+  assert.equal(merged['DAILY:2026-10-26'].summarySent, true);
+  assert.equal(reserveTelegramTradeNumber(merged, 'next', undefined, beforeMidnight).tradeNumber, 6);
+  assert.equal(primary[key].tradeNumber, 2);
+  assert.equal(secondary[key].entry, false, 'merging does not alter saved source objects');
+});
 
 test('legacy price aliases share sent flags and preserve the first assigned number', () => {
   const prefix = 'XAUUSD:bearish:M1:1793034120';

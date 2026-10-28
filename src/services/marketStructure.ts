@@ -1656,6 +1656,8 @@ export function analyzeMarketStructure(candles: StructureCandle[], options: {
     extreme: StructureZone;
     startedAt: number;
     context: ChochMetadata;
+    originalPoint: StructurePoint;
+    intermediateZones: StructureZone[];
   } | null = null;
 
   const sourceBarSeconds = options.sourceBarSeconds || 60;
@@ -1865,6 +1867,20 @@ export function analyzeMarketStructure(candles: StructureCandle[], options: {
     const tjl1Midpoint = (tjl1.top + tjl1.bottom) / 2;
     const tjl2Midpoint = (tjl2.top + tjl2.bottom) / 2;
     tjl1.invalidationDirection = tjl2Midpoint > tjl1Midpoint ? 'up' : 'down';
+    if (pendingDouble && tjl1.isBuy !== (pendingDouble.direction === 'bullish')) {
+      pendingDouble.intermediateZones.push(tjl1, tjl2);
+    }
+  };
+
+  const replaceIntermediateTjlZones = () => {
+    if (!pendingDouble) return;
+    for (const zone of pendingDouble.intermediateZones) {
+      const zoneIndex = zones.indexOf(zone);
+      if (zoneIndex >= 0) zones.splice(zoneIndex, 1);
+    }
+    // The original DB/DT was hidden when the first TJL pair formed. Restore
+    // that same zone for the existing Double CHoCH conversion rules.
+    if (!zones.includes(pendingDouble.extreme)) zones.push(pendingDouble.extreme);
   };
 
   const addDbDtZone = (point: StructurePoint, name: 'DB' | 'DT', isBuy: boolean) => {
@@ -1952,43 +1968,81 @@ export function analyzeMarketStructure(candles: StructureCandle[], options: {
       && previous.close > previous.open
       && candle.close > previous.high;
 
+    if (pendingDouble?.direction === 'bullish'
+      && candle.time > pendingDouble.startedAt
+      && hasFullBodyClosedBeyond(candle, pendingDouble.extreme.bottom, 'down')) {
+      const originContext = pendingDouble.context;
+      const doubleContext = buildDoubleChochContext(
+        originContext,
+        pendingDouble.extreme,
+        'bearish',
+        candle.time,
+      );
+      const startIndex = candles.findIndex((item) => item.time === pendingDouble!.startedAt);
+      const doubleHigh = extreme(candles, Math.max(0, startIndex), index, 'high');
+      addLevel('choch', 'bearish', pendingDouble.originalPoint, index, 'DOUBLE CHoCH');
+      removeStandaloneSwingMarker(doubleHigh);
+      markers.push(makeMarker(candles[doubleHigh.index], 'PH', 'aboveBar', '#b91c1c'));
+      replaceIntermediateTjlZones();
+      const qmlA = convertZone(pendingDouble.qml, 'QML A+', false, candle.time);
+      const qmlAA = convertZone(pendingDouble.secondary, 'QML A++', false, candle.time);
+      const sbr = convertZone(pendingDouble.extreme, 'SBR', false, candle.time);
+      const dtd = addDbDtZone(doubleHigh, 'DT', false);
+      dtd.name = 'DTD';
+      markMajorLiquidityZone(dtd, candle.time);
+      if (doubleContext) applyDoubleChochContext(doubleContext, qmlA, qmlAA, sbr, dtd);
+      pendingDouble = null;
+      trend = 'bearish';
+      protectedPoint = doubleHigh;
+      currentTrendTjl1 = null;
+      currentTrendTjl2 = null;
+      currentTrendTjl2SweepTime = undefined;
+      currentTrendTjl2CoverageTime = undefined;
+      pathStart = doubleHigh;
+      activeHigh = null;
+      activeLow = null;
+      bearishBreakCount = 0;
+      lastLHConfirmIndex = null;
+      continue;
+    }
+    if (pendingDouble?.direction === 'bearish'
+      && candle.time > pendingDouble.startedAt
+      && hasFullBodyClosedBeyond(candle, pendingDouble.extreme.top, 'up')) {
+      const originContext = pendingDouble.context;
+      const doubleContext = buildDoubleChochContext(
+        originContext,
+        pendingDouble.extreme,
+        'bullish',
+        candle.time,
+      );
+      const startIndex = candles.findIndex((item) => item.time === pendingDouble!.startedAt);
+      const doubleLow = extreme(candles, Math.max(0, startIndex), index, 'low');
+      addLevel('choch', 'bullish', pendingDouble.originalPoint, index, 'DOUBLE CHoCH');
+      removeStandaloneSwingMarker(doubleLow);
+      markers.push(makeMarker(candles[doubleLow.index], 'PL', 'belowBar', '#047857'));
+      replaceIntermediateTjlZones();
+      const qmlA = convertZone(pendingDouble.qml, 'QML A+', true, candle.time);
+      const qmlAA = convertZone(pendingDouble.secondary, 'QML A++', true, candle.time);
+      const rbs = convertZone(pendingDouble.extreme, 'RBS', true, candle.time);
+      const dbd = addDbDtZone(doubleLow, 'DB', true);
+      dbd.name = 'DBD';
+      markMajorLiquidityZone(dbd, candle.time);
+      if (doubleContext) applyDoubleChochContext(doubleContext, qmlA, qmlAA, rbs, dbd);
+      pendingDouble = null;
+      trend = 'bullish';
+      protectedPoint = doubleLow;
+      currentTrendTjl1 = null;
+      currentTrendTjl2 = null;
+      currentTrendTjl2SweepTime = undefined;
+      currentTrendTjl2CoverageTime = undefined;
+      pathStart = doubleLow;
+      activeHigh = null;
+      activeLow = null;
+      bullishBreakCount = 0;
+      lastHLConfirmIndex = null;
+      continue;
+    }
     if (trend === 'bullish') {
-      if (pendingDouble?.direction === 'bullish'
-        && candle.time > pendingDouble.startedAt
-        && hasFullBodyClosedBeyond(candle, pendingDouble.extreme.bottom, 'down')) {
-        const originContext = pendingDouble.context;
-        const doubleContext = buildDoubleChochContext(
-          originContext,
-          pendingDouble.extreme,
-          'bearish',
-          candle.time,
-        );
-        const startIndex = candles.findIndex((item) => item.time === pendingDouble!.startedAt);
-        const doubleHigh = extreme(candles, Math.max(0, startIndex), index, 'high');
-        addLevel('choch', 'bearish', protectedPoint, index, 'DOUBLE CHoCH');
-        removeStandaloneSwingMarker(doubleHigh);
-        markers.push(makeMarker(candles[doubleHigh.index], 'PH', 'aboveBar', '#b91c1c'));
-        const qmlA = convertZone(pendingDouble.qml, 'QML A+', false, candle.time);
-        const qmlAA = convertZone(pendingDouble.secondary, 'QML A++', false, candle.time);
-        const sbr = convertZone(pendingDouble.extreme, 'SBR', false, candle.time);
-        const dtd = addDbDtZone(doubleHigh, 'DT', false);
-        dtd.name = 'DTD';
-        markMajorLiquidityZone(dtd, candle.time);
-        if (doubleContext) applyDoubleChochContext(doubleContext, qmlA, qmlAA, sbr, dtd);
-        pendingDouble = null;
-        trend = 'bearish';
-        protectedPoint = doubleHigh;
-        currentTrendTjl1 = null;
-        currentTrendTjl2 = null;
-        currentTrendTjl2SweepTime = undefined;
-        currentTrendTjl2CoverageTime = undefined;
-        pathStart = doubleHigh;
-        activeHigh = null;
-        activeLow = null;
-        bearishBreakCount = 0;
-        lastLHConfirmIndex = null;
-        continue;
-      }
       // A close through PL without the full-body Double CHoCH break starts
       // a fresh bearish BOS using the usual TJL pair.
       if (pendingDouble?.direction === 'bullish'
@@ -2019,7 +2073,7 @@ export function analyzeMarketStructure(candles: StructureCandle[], options: {
             activeFromTime: candle.time + sourceBarSeconds,
             top: origin.high, bottom: Math.min(origin.open, origin.close) });
         }
-        pendingDouble = null;
+        // Keep the original CHoCH through this provisional TJL structure.
         trend = 'bearish';
         protectedPoint = confirmedHigh;
         activeHigh = null;
@@ -2111,7 +2165,7 @@ export function analyzeMarketStructure(candles: StructureCandle[], options: {
         const dt = addDbDtZone(newProtectedHigh, 'DT', false);
         applyChochContext(chochContext, qml, sbr, dt);
         pendingDouble = qml && sbr && classifyDoubleChoch(chochContext.chochClass, false)
-          ? { direction: 'bearish', qml, secondary: sbr, extreme: dt, startedAt: candle.time, context: chochContext }
+          ? { direction: 'bearish', qml, secondary: sbr, extreme: dt, startedAt: candle.time, context: chochContext, originalPoint: newProtectedHigh, intermediateZones: [] }
           : null;
         trend = 'bearish';
         protectedPoint = newProtectedHigh;
@@ -2126,42 +2180,6 @@ export function analyzeMarketStructure(candles: StructureCandle[], options: {
         lastLHConfirmIndex = null;
       }
     } else {
-      if (pendingDouble?.direction === 'bearish'
-        && candle.time > pendingDouble.startedAt
-        && hasFullBodyClosedBeyond(candle, pendingDouble.extreme.top, 'up')) {
-        const originContext = pendingDouble.context;
-        const doubleContext = buildDoubleChochContext(
-          originContext,
-          pendingDouble.extreme,
-          'bullish',
-          candle.time,
-        );
-        const startIndex = candles.findIndex((item) => item.time === pendingDouble!.startedAt);
-        const doubleLow = extreme(candles, Math.max(0, startIndex), index, 'low');
-        addLevel('choch', 'bullish', protectedPoint, index, 'DOUBLE CHoCH');
-        removeStandaloneSwingMarker(doubleLow);
-        markers.push(makeMarker(candles[doubleLow.index], 'PL', 'belowBar', '#047857'));
-        const qmlA = convertZone(pendingDouble.qml, 'QML A+', true, candle.time);
-        const qmlAA = convertZone(pendingDouble.secondary, 'QML A++', true, candle.time);
-        const rbs = convertZone(pendingDouble.extreme, 'RBS', true, candle.time);
-        const dbd = addDbDtZone(doubleLow, 'DB', true);
-        dbd.name = 'DBD';
-        markMajorLiquidityZone(dbd, candle.time);
-        if (doubleContext) applyDoubleChochContext(doubleContext, qmlA, qmlAA, rbs, dbd);
-        pendingDouble = null;
-        trend = 'bullish';
-        protectedPoint = doubleLow;
-        currentTrendTjl1 = null;
-        currentTrendTjl2 = null;
-        currentTrendTjl2SweepTime = undefined;
-        currentTrendTjl2CoverageTime = undefined;
-        pathStart = doubleLow;
-        activeHigh = null;
-        activeLow = null;
-        bullishBreakCount = 0;
-        lastHLConfirmIndex = null;
-        continue;
-      }
       // A close through PH without the full-body Double CHoCH break starts
       // a fresh bullish BOS using the usual TJL pair.
       if (pendingDouble?.direction === 'bearish'
@@ -2192,7 +2210,7 @@ export function analyzeMarketStructure(candles: StructureCandle[], options: {
             activeFromTime: candle.time + sourceBarSeconds,
             top: Math.max(origin.open, origin.close), bottom: origin.low });
         }
-        pendingDouble = null;
+        // Keep the original CHoCH through this provisional TJL structure.
         trend = 'bullish';
         protectedPoint = confirmedLow;
         activeHigh = null;
@@ -2283,7 +2301,7 @@ export function analyzeMarketStructure(candles: StructureCandle[], options: {
         const db = addDbDtZone(newProtectedLow, 'DB', true);
         applyChochContext(chochContext, qml, rbs, db);
         pendingDouble = qml && rbs && classifyDoubleChoch(chochContext.chochClass, false)
-          ? { direction: 'bullish', qml, secondary: rbs, extreme: db, startedAt: candle.time, context: chochContext }
+          ? { direction: 'bullish', qml, secondary: rbs, extreme: db, startedAt: candle.time, context: chochContext, originalPoint: newProtectedLow, intermediateZones: [] }
           : null;
         trend = 'bullish';
         protectedPoint = newProtectedLow;
@@ -2785,6 +2803,7 @@ export function findIssFiveWaves(
     let pendingInternalDouble: {
       direction: 'bullish' | 'bearish'; qml: StructureZone; secondary: StructureZone;
       extreme: StructureZone; startedAt: number; context: ChochMetadata;
+      originalPoint: StructurePoint; intermediateZones: StructureZone[];
     } | null = null;
     let internalTrend: 'bullish' | 'bearish' = pattern.direction;
     let protectedPoint = point4;
@@ -2794,6 +2813,12 @@ export function findIssFiveWaves(
     let currentTjl1: StructureZone | null = null;
     let currentTjl2: StructureZone | null = null;
     let initialIssPairAvailable = true;
+    const linkTrackedInternalTjlPair = (tjl1: StructureZone, tjl2: StructureZone) => {
+      linkInternalTjlPair(tjl1, tjl2);
+      if (pendingInternalDouble && tjl1.isBuy !== (pendingInternalDouble.direction === 'bullish')) {
+        pendingInternalDouble.intermediateZones.push(tjl1, tjl2);
+      }
+    };
     const seedDirectChochPair = () => {
       if (!initialIssPairAvailable || currentTjl1 || currentTjl2) return;
       currentTjl1 = addInternalTjlZone(
@@ -2847,8 +2872,14 @@ export function findIssFiveWaves(
           const classification = classifyDoubleChoch(pending.context.chochClass, confirmation.status === 'valid');
           const startIndex = candles.findIndex(item => item.time === pending.startedAt);
           const newProtected = extreme(candles, Math.max(0, startIndex), index, isBuy ? 'low' : 'high');
-          addInternalLine('internal-choch', direction, protectedPoint,
-            { index, time: candle.time, price: protectedPoint.price }, 'INT DOUBLE CHoCH');
+          addInternalLine('internal-choch', direction, pending.originalPoint,
+            { index, time: candle.time, price: pending.originalPoint.price }, 'INT DOUBLE CHoCH');
+          for (const zone of pending.intermediateZones) {
+            const zoneIndex = zones.indexOf(zone);
+            if (zoneIndex >= 0) zones.splice(zoneIndex, 1);
+          }
+          // Restore the original DB/DT hidden by the intermediate TJL pair.
+          if (!zones.includes(pending.extreme)) zones.push(pending.extreme);
           activateInternalZone(pending.qml, 'Internal QML A+', isBuy, candle.time);
           activateInternalZone(pending.secondary, 'Internal QML A++', isBuy, candle.time);
           activateInternalZone(pending.extreme, isBuy ? 'Internal RBS' : 'Internal SBR', isBuy, candle.time);
@@ -2882,9 +2913,10 @@ export function findIssFiveWaves(
           initialIssPairAvailable = false;
           continue;
         }
-        // A close across PH/PL without a full-body break is a fresh BOS,
-        // exactly as in the external engine; it cannot remain a Double candidate.
-        if (candle.complete !== false && (isBuy ? candle.close > protectedPoint.price : candle.close < protectedPoint.price)) {
+        // A partial-body close creates a TJL pair while the original CHoCH
+        // boundary stays available for a later full-body Double CHoCH.
+        if (internalTrend === pending.direction && candle.complete !== false
+          && (isBuy ? candle.close > protectedPoint.price : candle.close < protectedPoint.price)) {
           const boundaryPoint = protectedPoint;
           const oppositePoint = (isBuy ? activeLow : activeHigh)
             ?? extreme(candles, boundaryPoint.index, index, isBuy ? 'low' : 'high');
@@ -2900,8 +2932,7 @@ export function findIssFiveWaves(
           if (oldExtremeIndex >= 0) zones.splice(oldExtremeIndex, 1);
           currentTjl1 = addInternalTjlZone(boundaryPoint, 'Internal TJL1', isBuy, isBuy ? 'high' : 'low', candle.time + sourceBarSeconds);
           currentTjl2 = addInternalTjlZone(oppositePoint, 'Internal TJL2', isBuy, isBuy ? 'low' : 'high', candle.time + sourceBarSeconds);
-          linkInternalTjlPair(currentTjl1, currentTjl2);
-          pendingInternalDouble = null;
+          linkTrackedInternalTjlPair(currentTjl1, currentTjl2);
           internalTrend = direction;
           protectedPoint = oppositePoint;
           pathStart = oppositePoint;
@@ -2946,12 +2977,12 @@ export function findIssFiveWaves(
           currentTjl2 = addInternalTjlZone(
             confirmedLow, 'Internal TJL2', true, 'low', candle.time + sourceBarSeconds,
           );
-          linkInternalTjlPair(currentTjl1, currentTjl2);
+          linkTrackedInternalTjlPair(currentTjl1, currentTjl2);
           protectedPoint = confirmedLow;
           pathStart = confirmedLow;
           activeHigh = null;
           lastBullishConfirmIndex = index;
-          pendingInternalDouble = null;
+          if (pendingInternalDouble?.direction === 'bullish') pendingInternalDouble = null;
           hasPostIssInternalBos = true;
           initialIssPairAvailable = false;
         }
@@ -2976,7 +3007,8 @@ export function findIssFiveWaves(
           );
           applyInternalChochContext(chochContext, lastTjl1, lastTjl2, dt);
           pendingInternalDouble = lastTjl1 && lastTjl2
-            ? { direction: 'bearish', qml: lastTjl1, secondary: lastTjl2, extreme: dt, startedAt: candle.time, context: chochContext }
+            ? { direction: 'bearish', qml: lastTjl1, secondary: lastTjl2, extreme: dt, startedAt: candle.time, context: chochContext,
+              originalPoint: newProtectedHigh, intermediateZones: [] }
             : null;
           internalTrend = 'bearish';
           protectedPoint = newProtectedHigh;
@@ -3019,12 +3051,12 @@ export function findIssFiveWaves(
           currentTjl2 = addInternalTjlZone(
             confirmedHigh, 'Internal TJL2', false, 'high', candle.time + sourceBarSeconds,
           );
-          linkInternalTjlPair(currentTjl1, currentTjl2);
+          linkTrackedInternalTjlPair(currentTjl1, currentTjl2);
           protectedPoint = confirmedHigh;
           pathStart = confirmedHigh;
           activeLow = null;
           lastBearishConfirmIndex = index;
-          pendingInternalDouble = null;
+          if (pendingInternalDouble?.direction === 'bearish') pendingInternalDouble = null;
           hasPostIssInternalBos = true;
           initialIssPairAvailable = false;
         }
@@ -3047,7 +3079,8 @@ export function findIssFiveWaves(
           );
           applyInternalChochContext(chochContext, lastTjl1, lastTjl2, db);
           pendingInternalDouble = lastTjl1 && lastTjl2
-            ? { direction: 'bullish', qml: lastTjl1, secondary: lastTjl2, extreme: db, startedAt: candle.time, context: chochContext }
+            ? { direction: 'bullish', qml: lastTjl1, secondary: lastTjl2, extreme: db, startedAt: candle.time, context: chochContext,
+              originalPoint: newProtectedLow, intermediateZones: [] }
             : null;
           internalTrend = 'bullish';
           protectedPoint = newProtectedLow;
