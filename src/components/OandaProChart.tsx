@@ -1238,6 +1238,42 @@ export function tradeDrawingFromRecord(record: JournalTradeRecord): TradeLevels 
   };
 }
 
+export function reconcileSavedMtfTrade(
+  record: JournalTradeRecord, candles: readonly OandaCandle[], asOf: number,
+): { record: JournalTradeRecord; verified: boolean } {
+  if (record.source !== 'MTF' || !['open', 'risk-free'].includes(record.result)) {
+    return { record, verified: true };
+  }
+  // Broker executions are resolved by the existing MT5 journal lifecycle, never by chart prices.
+  if (record.mt5Managed || record.brokerTicket !== undefined || record.mt5SignalId
+    || record.id.startsWith('MT5:')) return { record, verified: false };
+  const seconds = TIMEFRAME_SECONDS[record.signalTimeframe];
+  const openedAt = record.openedAt;
+  if (openedAt === undefined || openedAt > asOf) return { record, verified: false };
+  const completed = candles.filter(candle => candle.complete !== false
+    && candle.time + seconds <= asOf).sort((a, b) => a.time - b.time);
+  const start = completed.findIndex(candle => candle.time <= openedAt && openedAt < candle.time + seconds);
+  // An entry inside a candle needs finer data to separate pre-entry and post-entry extremes.
+  if (start < 0 || completed[start].time !== openedAt) return { record, verified: false };
+  const execution = completed.slice(start);
+  // Missing history cannot establish the first exit or prove that a trade remained open.
+  for (let i = 1; i < execution.length; i++) {
+    if (execution[i].time !== execution[i - 1].time + seconds) {
+      execution.length = i;
+      break;
+    }
+  }
+  const trade = resolveRetainedTrade({ ...tradeDrawingFromRecord(record),
+    filledAt: execution[0].time }, execution);
+  if (trade.result && trade.resolvedAt !== undefined) {
+    const closedAt = trade.resolvedAt + seconds;
+    return { verified: true, record: { ...record, result: trade.result,
+      completedAt: closedAt, closedAt, lifecycleStatus: 'closed' } };
+  }
+  const fresh = execution[execution.length - 1].time + seconds >= asOf - seconds;
+  return { record, verified: fresh };
+}
+
 export const MultiTimeframeEntryTable: React.FC<{
   rows: DisplayMtfRow[];
   liveTrades: LiveMt5TableTrade[];
@@ -1251,6 +1287,9 @@ export const MultiTimeframeEntryTable: React.FC<{
 }> = ({ rows, liveTrades, records, timeZone, entryCandles, asOf,
   requiredTimeframes = [], candleErrors = {}, onRetry }) => {
   const [expanded, setExpanded] = useState(true);
+  const reconciledRecords = records.map(record => reconcileSavedMtfTrade(
+    record, entryCandles[record.signalTimeframe] ?? [], asOf));
+  records = reconciledRecords.map(resolved => resolved.record);
   const needsExpiryData = (trade: TradeDisplayState | undefined) => (
     isSlTpTradeDisplayFinished(trade) || trade?.result === 'rf' || trade?.status === 'RF'
   );
@@ -1409,7 +1448,9 @@ export const MultiTimeframeEntryTable: React.FC<{
                   <td className="px-2 py-1">{record.direction === 'bullish' ? 'BUY' : 'SELL'} · {record.engulfingType}</td>
                   <td className="px-2 py-1">{record.mtfContext?.higherTimeframeZone ?? record.zoneId?.replace(/-\d{9,}-.+$/, '') ?? 'Recorded HTF zone'}</td>
                   <td className="px-2 py-1">{record.signalTimeframe} {record.mtfContext?.entryZone?.name ?? record.zoneName}</td>
-                  <td className="px-2 py-1 font-bold">{record.result === 'sl' ? 'SL HIT' : record.result === 'tp' ? 'TP HIT' : record.result === 'rf' ? 'RISK FREE CLOSED' : record.result === 'risk-free' ? 'RISK FREE' : 'OPEN'}</td>
+                  <td className="px-2 py-1 font-bold">{reconciledRecords.find(resolved => resolved.record.id === record.id)?.verified === false
+                    ? 'STATUS UNKNOWN'
+                    : record.result === 'sl' ? 'SL HIT' : record.result === 'tp' ? 'TP HIT' : record.result === 'rf' ? 'RISK FREE CLOSED' : record.result === 'risk-free' ? 'RISK FREE' : 'OPEN'}</td>
                   <td className="px-2 py-1">{formatChartTime(record.openedAt ?? record.signalAt ?? record.completedAt, timeZone)}</td>
                 </tr>
                 <tr className="border-b border-slate-200 bg-white">
@@ -3379,13 +3420,18 @@ export const OandaProChart: React.FC<{
   }, [allMtfTradeRows, directZoneTrades, displayZones, goldScalpingDirectTrades, granularity,
     marketSymbol, replayIndex, tradingTimeEnabled]);
 
+  const reconciledMtfJournalTrades = useMemo(() => savedJournalTrades.map(record => (
+    replayIndex === null && record.source === 'MTF' && (record.symbol ?? 'XAUUSD') === marketSymbol
+      ? reconcileSavedMtfTrade(record, tableTimeframeData[record.signalTimeframe]?.candles ?? [], tradeDisplayAsOf).record
+      : record
+  )), [savedJournalTrades, replayIndex, marketSymbol, tableTimeframeData, tradeDisplayAsOf]);
   const canonicalTradeRecords = useMemo(() => buildCanonicalTradeRecords(
-    savedJournalTrades, accuracyTradeRecords, {
+    reconciledMtfJournalTrades, accuracyTradeRecords, {
       marketSymbol, pipSize: marketConfig.pipSize, requireLtfFib: mtfLtfFibRequired,
       timeframeData: tableTimeframeData, qualifyMtf: savedChartMtfEntryQualification,
     },
   ), [accuracyTradeRecords, marketConfig.pipSize, marketSymbol, mtfLtfFibRequired,
-    savedChartMtfEntryQualification, savedJournalTrades, tableTimeframeData]);
+    savedChartMtfEntryQualification, reconciledMtfJournalTrades, tableTimeframeData]);
   const visibleCanonicalTradeRecords = useMemo(() => canonicalTradeRecords.filter(tradeStyleEnabled),
     [canonicalTradeRecords, tradeStyleEnabled]);
   const allSavedAccuracyRecords = useMemo(() => visibleCanonicalTradeRecords.filter((record) => (
@@ -3402,7 +3448,8 @@ export const OandaProChart: React.FC<{
       record.volume1, record.volume2, record.volume3, record.engulfingCandleCount,
     ]);
     const stored = new Map(savedJournalTrades.map((record) => [record.id, facts(record)]));
-    const recordsToSave = new Map([...openChartJournalTrades, ...canonicalTradeRecords]
+    const recordsToSave = new Map([...openChartJournalTrades, ...canonicalTradeRecords,
+      ...reconciledMtfJournalTrades.filter((record, index) => record !== savedJournalTrades[index])]
       .map((record) => [record.id, record]));
     const changed = [...recordsToSave.values()].filter((record) => (
       stored.get(record.id) !== facts(record)
@@ -3434,7 +3481,7 @@ export const OandaProChart: React.FC<{
       }
       if (saved) setSavedJournalTrades(saved);
     })().catch(() => { journalSyncSignatureRef.current = ''; });
-  }, [canonicalTradeRecords, openChartJournalTrades, savedJournalTrades]);
+  }, [canonicalTradeRecords, openChartJournalTrades, savedJournalTrades, reconciledMtfJournalTrades]);
 
   const replayResultCutoff = replayIndex === null ? undefined
     : displayCandles.length === 0 ? Number.NEGATIVE_INFINITY

@@ -6,12 +6,61 @@ import { MultiTimeframeEntryTable, mtfTableHitExpired, isSlTpTradeDisplayFinishe
   tradeDisplayExpired, tradeDrawingExpired, tradeDrawingFromRecord, resolveArrowTradeZones,
   completedTradeLabel, CompletedTradeRow, resolveRetainedTrade, zoneTableTradeExpired,
   resolveZoneTableTrade, zoneTableCompletedStatus, TradeDetailsRow, ZoneTableEntryPrice,
-  zoneTableMtfStatus } from '../src/components/OandaProChart';
+  zoneTableMtfStatus, reconcileSavedMtfTrade } from '../src/components/OandaProChart';
 import type { JournalTradeRecord } from '../src/components/TradeJournal';
 import type { MtfRow } from '../src/services/mtf';
 import type { StructureZone } from '../src/services/marketStructure';
 
 const bar = (time: number, complete = true) => ({ time, open: 100, high: 102, low: 99, close: 101, volume: 1, complete });
+
+test('saved chart MTF entries resolve from completed candles and stay final after reload', () => {
+  const record: JournalTradeRecord = { ...reloadMtfRecord('open'), id: 'MTF:old-chart',
+    brokerTicket: undefined, signalTimeframe: 'M5', openedAt: 1000, completedAt: 1000,
+    entry: 3996.445, stopLoss: 3992.825, takeProfit: 4007.305, tradeStyle: 'INTRADAY' };
+  const first = { ...bar(1000), open: 3996.445, low: 3994, high: 4000, close: 3999 };
+  const hit = { ...first, time: 1300, high: 4008 };
+  const before = JSON.stringify(record);
+  const resolved = reconcileSavedMtfTrade(record, [first, hit], 1600);
+  assert.equal(resolved.record.result, 'tp');
+  assert.equal(resolved.record.closedAt, 1600);
+  assert.equal(resolved.verified, true);
+  assert.equal(reconcileSavedMtfTrade(record, [first, { ...hit, complete: false }], 1600).record.result, 'open');
+  assert.equal(reconcileSavedMtfTrade(record, [first, hit], 1599).record.result, 'open', 'no future candle exits');
+  assert.equal(reconcileSavedMtfTrade(record, [first, { ...hit, high: 4000, low: 3990 }], 1600).record.result, 'sl');
+  const reloaded = JSON.parse(JSON.stringify(resolved.record));
+  assert.deepEqual(reconcileSavedMtfTrade(reloaded, [], 10000).record, reloaded);
+  assert.equal(JSON.stringify(record), before);
+  const props = { ...reloadMtfProps(), records: [record], asOf: 1600,
+    entryCandles: { M5: [first, hit] } };
+  const html = renderReloadTable(props);
+  assert.ok(html.includes('TP HIT'));
+  assert.ok(!html.includes('ENTRY 3,996.445') && !html.includes('>OPEN<'));
+  const later = Array.from({ length: 6 }, (_, i) => ({ ...first, time: 1600 + i * 300 }));
+  assert.ok(!renderReloadTable({ ...props, asOf: 3400,
+    entryCandles: { M5: [first, hit, ...later] } }).includes('MTF TRADE'));
+});
+
+test('incomplete MTF evidence is unknown while broker trades never use chart exits', () => {
+  const record = { ...reloadMtfRecord('open'), id: 'MTF:chart', brokerTicket: undefined,
+    openedAt: 1000, signalTimeframe: 'M1' as const };
+  const quiet = (time: number) => ({ ...bar(time), low: 99.5, high: 100.5 });
+  for (const candles of [[], [quiet(1060)], [quiet(1000), quiet(1120)], [quiet(1000)]]) {
+    assert.equal(reconcileSavedMtfTrade(record, candles, 1300).verified, false);
+    assert.equal(reconcileSavedMtfTrade(record, candles, 1300).record.result, 'open');
+  }
+  assert.equal(reconcileSavedMtfTrade(record, [quiet(1000), quiet(1060)], 1120).verified, true);
+  assert.equal(reconcileSavedMtfTrade({ ...record, openedAt: 1010 },
+    [{ ...bar(1000), high: 110 }], 1120).verified, false, 'pre-entry candle extremes cannot close a trade');
+  for (const broker of [{ brokerTicket: 123 }, { mt5Managed: true }, { mt5SignalId: 'signal' }]) {
+    const managed = { ...record, ...broker };
+    const result = reconcileSavedMtfTrade(managed, [{ ...bar(1000), high: 110 }], 1120);
+    assert.equal(result.record, managed);
+    assert.equal(result.verified, false);
+  }
+  const html = renderReloadTable({ ...reloadMtfProps(), records: [record], entryCandles: {} });
+  assert.ok(html.includes('STATUS UNKNOWN'));
+  assert.ok(!html.includes('>OPEN<'));
+});
 
 test('zone table identifies its own MTF route without granting direct-entry permission', () => {
   const zone: StructureZone = { id: 'sbr-1', name: 'SBR', category: 'mg', isBuy: false,
@@ -371,7 +420,7 @@ test('an unresolved MTF execution retains its source and prices without an activ
       entryCandles: {}, asOf: record.completedAt }),
   );
   const html = render([]);
-  for (const text of ['Internal DT', 'M1 QML', 'OPEN', '4,021.480', '4,024.050', '4,014.010']) {
+  for (const text of ['Internal DT', 'M1 QML', 'STATUS UNKNOWN', '4,021.480', '4,024.050', '4,014.010']) {
     assert.ok(html.includes(text), `missing ${text}`);
   }
   assert.ok(!html.includes('No active MTF setup'));
