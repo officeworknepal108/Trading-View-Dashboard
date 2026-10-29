@@ -5,11 +5,50 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { MultiTimeframeEntryTable, mtfTableHitExpired, isSlTpTradeDisplayFinished,
   tradeDisplayExpired, tradeDrawingExpired, tradeDrawingFromRecord, resolveArrowTradeZones,
   completedTradeLabel, CompletedTradeRow, resolveRetainedTrade, zoneTableTradeExpired,
-  resolveZoneTableTrade, zoneTableCompletedStatus, TradeDetailsRow, ZoneTableEntryPrice } from '../src/components/OandaProChart';
+  resolveZoneTableTrade, zoneTableCompletedStatus, TradeDetailsRow, ZoneTableEntryPrice,
+  zoneTableMtfStatus } from '../src/components/OandaProChart';
 import type { JournalTradeRecord } from '../src/components/TradeJournal';
 import type { MtfRow } from '../src/services/mtf';
+import type { StructureZone } from '../src/services/marketStructure';
 
 const bar = (time: number, complete = true) => ({ time, open: 100, high: 102, low: 99, close: 101, volume: 1, complete });
+
+test('zone table identifies its own MTF route without granting direct-entry permission', () => {
+  const zone: StructureZone = { id: 'sbr-1', name: 'SBR', category: 'mg', isBuy: false,
+    startTime: 100, endTime: 9000, top: 103, bottom: 102, active: true,
+    status: 'pending', chochClass: 'pending', chochTime: 700, tapTime: 1000, tradeable: false };
+  const row: MtfRow = { id: 'H4-M15-external-choch-700', higherTimeframe: 'H4', lowerTimeframe: 'M15',
+    confirmationKind: 'choch', structureScope: 'external', direction: 'bearish',
+    confirmationTime: 700, confirmationBarsAgo: 1, higherTimeframeZoneId: 'htf',
+    higherTimeframeZone: 'TJL1', higherTimeframeTapTime: 600, higherTimeframeTapBarsAgo: 1,
+    tappedZone: 'SBR', tapTime: 1000, sourcePairOverlapsHigherZone: true, chochSequence: 1 };
+  const before = JSON.stringify({ zone, row });
+  assert.deepEqual(zoneTableMtfStatus([zone], 'M15', [row]), {
+    label: 'MTF SETUP · WAITING FOR ENTRY', confirmed: false,
+  });
+  const completed = tradeDrawingFromRecord({ ...reloadMtfRecord(), direction: 'bearish', signalTimeframe: 'M15' });
+  const trade = { ...completed, result: undefined, resolvedAt: undefined, status: 'active' as const };
+  const confirmed = { ...row, entryZone: zone, engulfingType: 'T1' as const, engulfingTime: 1100, trade };
+  assert.deepEqual(zoneTableMtfStatus([zone], 'M15', [row, confirmed]), {
+    label: 'MTF ENTRY CONFIRMED · H4 → M15', confirmed: true,
+  });
+  for (const changed of [
+    { lowerTimeframe: 'M5' as const }, { direction: 'bullish' as const },
+    { structureScope: 'internal' as const }, { confirmationTime: 701 },
+    { sourcePairOverlapsHigherZone: false }, { chochSequence: 2 },
+    { tappedZone: 'QML' as const }, { tapTime: 1001 },
+  ]) assert.equal(zoneTableMtfStatus([zone], 'M15', [{ ...row, ...changed }]), undefined);
+  assert.equal(zoneTableMtfStatus([zone], 'H4', [row]), undefined);
+  for (const changed of [
+    { tradingTimeBlocked: true }, { trade: undefined }, { trade: completed },
+    { entryZone: { ...zone, id: 'other-sbr' } },
+  ]) assert.equal(zoneTableMtfStatus([zone], 'M15', [{ ...confirmed, ...changed }]), undefined);
+  for (const changed of [
+    { active: false }, { status: 'invalidated' as const }, { invalidatedAt: 1200 }, { supersededAt: 1200 },
+  ]) assert.equal(zoneTableMtfStatus([{ ...zone, ...changed }], 'M15', [row]), undefined);
+  assert.equal(JSON.stringify({ zone, row }), before);
+  assert.equal(zone.tradeable, false, 'the direct route still requires its own confirmation');
+});
 
 test('zone table uses the arrow outcome and hides completed entry prices and trade details', () => {
   for (const result of ['sl', 'tp'] as const) {

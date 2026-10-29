@@ -1041,6 +1041,33 @@ type DisplayMtfRow = MtfRow & {
   tradingTimeBlocked?: boolean;
 };
 
+export function zoneTableMtfStatus(
+  zones: readonly StructureZone[], timeframe: MtfRow['lowerTimeframe'],
+  rows: readonly (MtfRow & { trade?: TradeLevels; tradingTimeBlocked?: boolean })[],
+): { label: string; confirmed: boolean } | undefined {
+  const matches = rows.filter(row => row.lowerTimeframe === timeframe
+    && row.confirmationKind === 'choch' && row.sourcePairOverlapsHigherZone === true
+    && (row.chochSequence ?? 1) === 1
+    && zones.some(zone => zone.active && (zone.status === 'pending' || zone.status === 'valid')
+      && zone.invalidatedAt === undefined && zone.supersededAt === undefined
+      && zone.chochTime === row.confirmationTime
+      && (zone.category === 'internal' ? 'internal' : 'external') === row.structureScope
+      && zone.isBuy === (row.direction === 'bullish')
+      && (row.entryZone ? row.entryZone.id === zone.id
+        : row.tappedZone === zone.name && row.tapTime !== undefined
+          && (row.tapTime === zone.tapTime || row.tapTime === zone.lastTapTime))));
+  const confirmed = matches.find(row => row.trade && !row.trade.result
+    && !row.tradingTimeBlocked && row.engulfingType !== undefined
+    && row.engulfingTime !== undefined && row.entryZone !== undefined);
+  if (confirmed) return {
+    label: `MTF ENTRY CONFIRMED · ${confirmed.higherTimeframe} → ${confirmed.lowerTimeframe}`,
+    confirmed: true,
+  };
+  const waiting = matches.find(row => !row.trade && !row.tradingTimeBlocked
+    && row.engulfingType === undefined);
+  return waiting ? { label: 'MTF SETUP · WAITING FOR ENTRY', confirmed: false } : undefined;
+}
+
 export function isSlTpTradeDisplayFinished(trade: { result?: string; status?: string } | undefined): boolean {
   return trade?.result === 'sl' || trade?.result === 'tp'
     || trade?.status === 'sl-hit' || trade?.status === 'tp-hit'
@@ -8743,6 +8770,8 @@ export const OandaProChart: React.FC<{
                     extremeAPlusTjl2Selection.blockedZoneIds.has(member.id)
                   ));
                   const pendingChoch = zone.chochClass === 'pending';
+                  const mtfStatus = zoneTableMtfStatus(displayZoneMembers(zone), granularity,
+                    mtfRows.filter(row => !hasTradeDisplayExpired(row.trade ?? row.previewTrade)));
                   const chochConfirmationLabel = TJL1_CONFIRMATION_LABELS[granularity].toUpperCase();
                   const chochConfirmationSide = zone.isBuy ? 'ABOVE' : 'BELOW';
                   return (
@@ -8792,7 +8821,7 @@ export const OandaProChart: React.FC<{
                         }`}>
                           {zone.category === 'internal' ? 'INT ' : ''}
                           {pendingChoch
-                            ? `WAIT ${chochConfirmationLabel} CLOSE ${chochConfirmationSide}`
+                            ? mtfStatus?.label ?? `WAIT ${chochConfirmationLabel} CLOSE ${chochConfirmationSide}`
                             : zone.chochClass.toUpperCase()}
                         </span>
                       )}
@@ -8880,6 +8909,10 @@ export const OandaProChart: React.FC<{
                         </span>
                       ) : opportunityExpired ? (
                         <span className="text-rose-700">DISTANCE REACHED · NO NEW ENTRY</span>
+                      ) : mtfStatus ? (
+                        <span className={mtfStatus.confirmed ? 'text-emerald-700' : 'text-violet-700'}>
+                          {mtfStatus.label}
+                        </span>
                       ) : entryDecision && !entryDecision.policy.allowed ? (
                         <span className="text-rose-700">
                           {directEntryPolicyLabel(entryDecision.policy)} · NO TRADE
