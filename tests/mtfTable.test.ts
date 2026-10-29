@@ -3,11 +3,167 @@ import test from 'node:test';
 import React from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { MultiTimeframeEntryTable, mtfTableHitExpired, isSlTpTradeDisplayFinished,
-  tradeDisplayExpired, tradeDrawingExpired, tradeDrawingFromRecord, resolveArrowTradeZones } from '../src/components/OandaProChart';
+  tradeDisplayExpired, tradeDrawingExpired, tradeDrawingFromRecord, resolveArrowTradeZones,
+  completedTradeLabel, CompletedTradeRow, resolveRetainedTrade, zoneTableTradeExpired,
+  resolveZoneTableTrade, zoneTableCompletedStatus, TradeDetailsRow, ZoneTableEntryPrice } from '../src/components/OandaProChart';
 import type { JournalTradeRecord } from '../src/components/TradeJournal';
 import type { MtfRow } from '../src/services/mtf';
 
 const bar = (time: number, complete = true) => ({ time, open: 100, high: 102, low: 99, close: 101, volume: 1, complete });
+
+test('zone table uses the arrow outcome and hides completed entry prices and trade details', () => {
+  for (const result of ['sl', 'tp'] as const) {
+    const record: JournalTradeRecord = { id: 'MT5:filled', zoneId: 'sbr-original', zoneName: 'SBR',
+      zoneTimeframe: 'M15', signalTimeframe: 'M15', source: 'ENGULFING', symbol: 'XAUUSD',
+      signalAt: 1000, openedAt: 1900, completedAt: 2800, direction: 'bearish', engulfingType: 'T3',
+      result, entry: 4051.160, stopLoss: 4060.290, takeProfit: 4032.990, riskPips: 91.3, rewardRisk: 2 };
+    const active = { ...tradeDrawingFromRecord(record), status: 'active' as const,
+      result: undefined, resolvedAt: undefined, entry: 4051.365, stopLoss: 4060.300,
+      takeProfit: 4033.495, riskPips: 89.35 };
+    const before = JSON.stringify({ active, record });
+    const resolved = resolveZoneTableTrade(active, [record], 3700, ['sbr-original'], ['SBR'])!;
+    assert.equal(zoneTableCompletedStatus(resolved), `${result.toUpperCase()} HIT`);
+    assert.equal(resolved.entry, active.entry, 'table prices stay unchanged despite broker fill slippage');
+    const html = renderToStaticMarkup(React.createElement(TradeDetailsRow, {
+      trade: resolved, colSpan: 5,
+    }));
+    assert.equal(html, '', 'the lower details row disappears after SL/TP');
+    assert.equal(renderToStaticMarkup(React.createElement(ZoneTableEntryPrice, { trade: resolved })), '—');
+    const activeHtml = renderToStaticMarkup(React.createElement(TradeDetailsRow, { trade: active, colSpan: 5 }));
+    for (const detail of ['ENTRY', '4,051.365', 'SL', '4,060.300', 'TP', '4,033.495', 'R:R 1:2', '89.35', 'CHART ACTIVE']) {
+      assert.ok(activeHtml.includes(detail), detail);
+    }
+    assert.ok(renderToStaticMarkup(React.createElement(ZoneTableEntryPrice, { trade: active })).includes('4,051.365'));
+    assert.equal(resolveZoneTableTrade(active, [record], 2799, ['sbr-original']), active, 'replay cannot reveal a future exit');
+    assert.equal(resolveZoneTableTrade(active, [record], 3700, ['another-zone']), active);
+    assert.equal(resolveZoneTableTrade(active, [{ ...record, signalAt: 1001 }], 3700, ['sbr-original']), active);
+    assert.equal(resolveZoneTableTrade(active, [{ ...record, signalTimeframe: 'M5' }], 3700, ['sbr-original']), active);
+    assert.equal(JSON.stringify({ active, record }), before, 'display reconciliation does not rewrite trading state');
+  }
+});
+
+test('the reported SBR entry uses the saved exit despite a recalculated zone-price suffix', () => {
+  const chartZoneId = 'TJL2-1793125800-4055.3822';
+  for (const [brokerZoneId, entry, stopLoss, takeProfit] of [
+    ['TJL2-1793125800-4055.3018', 4051.16, 4060.29, 4032.99],
+    ['TJL2-1793125800-4055.2410999999997', 4051.08, 4060.11, 4033.17],
+  ] as const) {
+    for (const result of ['sl', 'tp'] as const) {
+      const record: JournalTradeRecord = { id: 'MT5:reported', symbol: 'XAUUSD', zoneId: brokerZoneId,
+        zoneName: 'SBR', zoneTimeframe: 'M15', signalTimeframe: 'M15', source: 'ENGULFING',
+        signalAt: 1793178000, openedAt: 1793178900, completedAt: 1793190216,
+        direction: 'bearish', engulfingType: 'T3', result, entry, stopLoss, takeProfit, riskPips: 91.3, rewardRisk: 2 };
+      const active = { ...tradeDrawingFromRecord(record), status: 'active' as const, result: undefined,
+        resolvedAt: undefined, entry: 4051.365, stopLoss: 4060.3, takeProfit: 4033.495, riskPips: 89.35 };
+      const resolved = resolveZoneTableTrade(active, [record], 1793190300, [chartZoneId], ['SBR'])!;
+      assert.equal(zoneTableCompletedStatus(resolved), `${result.toUpperCase()} HIT`);
+      const html = renderToStaticMarkup(React.createElement(TradeDetailsRow, {
+        trade: resolved, colSpan: 5,
+      }));
+      assert.equal(html, '');
+      assert.equal(renderToStaticMarkup(React.createElement(ZoneTableEntryPrice, { trade: resolved })), '—');
+      assert.equal(resolveZoneTableTrade(active, [record], 1793190215, [chartZoneId], ['SBR']), active);
+      for (const otherZone of ['TJL2-1793124900-4055.3822', 'TJL1-1793125800-4055.3822', 'SBR-1793125800-4055.3822']) {
+        assert.equal(resolveZoneTableTrade(active, [record], 1793190300, [otherZone], ['SBR']), active,
+          'matching names and entry signals must not combine separate zones');
+      }
+    }
+  }
+});
+
+test('completed zone price cells show the zone boundaries and pip width without trade prices', () => {
+  const zone = { bottom: 4034.310, top: 4038.071 };
+  for (const result of ['sl', 'tp'] as const) {
+    const trade = tradeDrawingFromRecord({ id: 'DIRECT:range', zoneName: 'SBR', zoneTimeframe: 'M15',
+      source: 'ENGULFING', signalTimeframe: 'M15', signalAt: 1000, openedAt: 1900, completedAt: 2800,
+      direction: 'bearish', engulfingType: 'T3', result, entry: 4051.365,
+      stopLoss: 4060.300, takeProfit: 4033.495, riskPips: 89.35, rewardRisk: 2 });
+    const before = JSON.stringify({ trade, zone });
+    const html = renderToStaticMarkup(React.createElement(ZoneTableEntryPrice, { trade, zone, pipSize: 0.1 }));
+    assert.ok(html.includes('4,034.310 – 4,038.071'));
+    assert.ok(html.includes('37.61 PIPS'));
+    for (const hidden of ['ENTRY', '4,051.365', '4,060.300', '4,033.495']) assert.ok(!html.includes(hidden), hidden);
+    assert.equal(zoneTableCompletedStatus(trade), `${result.toUpperCase()} HIT`);
+    assert.equal(renderToStaticMarkup(React.createElement(TradeDetailsRow, { trade, colSpan: 5 })), '');
+    const active = { ...trade, status: 'active' as const, result: undefined, resolvedAt: undefined };
+    const activeHtml = renderToStaticMarkup(React.createElement(ZoneTableEntryPrice, { trade: active, zone, pipSize: 0.1 }));
+    assert.ok(activeHtml.includes('ENTRY') && activeHtml.includes('4,051.365'));
+    assert.equal(JSON.stringify({ trade, zone }), before);
+  }
+});
+
+test('zone status uses broker SL/TP without bars-ago text or changing active status behavior', () => {
+  assert.equal(zoneTableCompletedStatus({ status: 'active' }, { status: 'SL' }), 'SL HIT');
+  assert.equal(zoneTableCompletedStatus({ status: 'active' }, { status: 'TP' }), 'TP HIT');
+  assert.equal(zoneTableCompletedStatus({ result: 'sl' }, { status: 'ACTIVE' }), 'SL HIT');
+  assert.equal(zoneTableCompletedStatus({ status: 'active' }), undefined);
+});
+
+test('completed zone rows outlive drawings and expire only beyond 50 candles from the tap', () => {
+  const candles = Array.from({ length: 52 }, (_, i) => bar(1000 + i * 900));
+  for (const result of ['sl', 'tp'] as const) {
+    const trade = { result, resolvedAt: 1000,
+      signal: { timeframe: 'M15' as const, direction: 'bullish' as const } };
+    const before = JSON.stringify(trade);
+    for (const tapAge of [5, 6, 49, 50]) {
+      const asOf = 1000 + (tapAge + 1) * 900;
+      assert.equal(tradeDrawingExpired(trade, candles, asOf), true);
+      assert.equal(zoneTableTradeExpired(trade, tapAge, candles, asOf), false);
+      const html = renderToStaticMarkup(React.createElement(CompletedTradeRow, {
+        name: 'Internal TJL1', trade, candles, asOf, colSpan: 5,
+      }));
+      assert.ok(html.includes(`${result.toUpperCase()} HIT`));
+      assert.ok(!html.includes('CHART ACTIVE') && !html.includes('ENTRY'));
+    }
+    assert.equal(zoneTableTradeExpired(trade, 51, candles, 47800), true);
+    assert.equal(zoneTableTradeExpired(trade, 2, candles, 47800), false,
+      'a later tap retains its own 50-candle window without restarting drawing expiry');
+    assert.equal(JSON.stringify(trade), before);
+  }
+  assert.equal(zoneTableTradeExpired({ status: 'active' }, 51, candles, 47800), false,
+    'active trades keep their existing retention rules');
+});
+
+test('completed rows show only zone, exit outcome and bars since exit without entry levels', () => {
+  for (const result of ['tp', 'sl'] as const) {
+    const trade = { result, resolvedAt: 1000, entry: 4044.69, stopLoss: 4026.19, takeProfit: 4081.69 };
+    const html = renderToStaticMarkup(React.createElement(CompletedTradeRow, {
+      name: 'Internal TJL1', trade, candles: [1000, 1060, 1120, 1180].map(time => bar(time)), asOf: 1120, colSpan: 5,
+    }));
+    assert.ok(html.includes('Internal TJL1'));
+    assert.ok(html.includes(`${result.toUpperCase()} HIT · 2 bars ago`));
+    for (const obsolete of ['ENTRY', '4,044.690', '4,026.190', '4,081.690', 'CHART ACTIVE', 'T2', 'FIB']) {
+      assert.ok(!html.includes(obsolete), obsolete);
+    }
+  }
+});
+
+test('exit age uses real bars, excludes future candles and does not count market gaps', () => {
+  const trade = { status: 'TP', closedAt: 1000, openedAt: 100 };
+  const candles = [1000, 1060, 10000, 10060].map(time => bar(time));
+  assert.equal(completedTradeLabel(trade, candles, 1000), 'TP HIT · 0 bars ago');
+  assert.equal(completedTradeLabel(trade, candles, 1060), 'TP HIT · 1 bar ago');
+  assert.equal(completedTradeLabel(trade, candles, 10000), 'TP HIT · 2 bars ago');
+  assert.equal(completedTradeLabel({ status: 'SL' }, candles, 10000), 'SL HIT');
+  assert.equal(completedTradeLabel({ status: 'active' }, candles, 10000), undefined);
+});
+
+test('a retained active entry resolves on later candles and keeps the terminal outcome', () => {
+  const trade = tradeDrawingFromRecord({ id: 'DIRECT:test', zoneName: 'Internal TJL1', zoneTimeframe: 'M15',
+    source: 'ENGULFING', signalTimeframe: 'M15', signalAt: 100, openedAt: 1000, completedAt: 1000,
+    direction: 'bullish', engulfingType: 'T2', result: 'tp', entry: 100, stopLoss: 98, takeProfit: 103,
+    riskPips: 20, rewardRisk: 1.5 });
+  const active = { ...trade, status: 'active' as const, result: undefined, resolvedAt: undefined };
+  const before = JSON.stringify(active);
+  const tp = resolveRetainedTrade(active, [bar(1000), { ...bar(1900), high: 104 }]);
+  assert.equal(tp.result, 'tp');
+  assert.equal(tp.resolvedAt, 1900);
+  assert.equal(JSON.stringify(active), before, 'display resolution does not mutate the saved input');
+  assert.equal(resolveRetainedTrade(tp, [{ ...bar(2800), low: 97 }]).result, 'tp');
+  const sl = resolveRetainedTrade(active, [bar(1000), { ...bar(1900), low: 97 }]);
+  assert.equal(sl.result, 'sl');
+  assert.equal(sl.resolvedAt, 1900);
+});
 
 test('arrow details recover a missing journal main zone from its original broker signal', () => {
   const record: JournalTradeRecord = {
@@ -239,7 +395,8 @@ test('loaded recent results retain exactly five completed candles and ignore oth
   const candles = [1060,1120,1180,1240,1300].map(time => bar(time));
   const retained = renderReloadTable({ ...props, asOf: 1300, entryCandles: { M1: candles } });
   assert.ok(retained.includes('TP HIT'));
-  assert.ok(retained.includes('ENTRY 100.000'));
+  assert.ok(retained.includes('TP HIT · 5 bars ago'));
+  assert.ok(!retained.includes('ENTRY 100.000'));
   assert.ok(!retained.includes('Loading MTF data'));
   assert.ok(renderReloadTable({ ...props, asOf: 1360, entryCandles: { M1: candles } }).includes('No active MTF setup'));
 });

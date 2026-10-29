@@ -208,6 +208,38 @@ test('Telegram numbering covers all alert kinds, shared styles, retries, restart
     }
     assert.equal((await messages()).length, beforeCrossAccountRetry + 3,
       'the pending order and its cancellation each send once across both accounts');
+    // Many broker reports must share one signal even when all order IDs and fills differ.
+    const manyKey = `XAUUSD:bearish:M15:${beforeMidnight - 900}`;
+    const reports = Array.from({ length: 24 }, (_, index) => entry(`terminal-${index}-order`, {
+      tradeKey: `${manyKey}:${(100 + index / 100).toFixed(5)}`,
+      direction: 'SELL', openedAt: beforeMidnight + 1, entry: 100 + index / 100,
+    }));
+    const beforeMany = (await messages()).length;
+    for (const kind of ['pending', 'entry', 'rf', 'tp']) {
+      await Promise.all(reports.map((report, index) => send([{
+        ...report, kind, tradeStyle: 'SCALPING', riskFree: 99,
+        rfAt: beforeMidnight + 1, partialClosedVolume: 0.5, remainingVolume: 0.5,
+        closedAt: beforeMidnight + 1, exitPrice: 98, returnR: 2,
+      }], 200, index % 2 ? 'secondary' : 'primary')));
+    }
+    const manyMessages = (await messages()).slice(beforeMany);
+    assert.equal(manyMessages.length, 4, '24 reports produce one message per lifecycle event');
+    assert.equal(new Set(manyMessages.map(message => message.match(/^Trade #\d+/)![0])).size, 1);
+    await stop();
+    await start();
+    await Promise.all(reports.map((report, index) => send([report], 200, index % 2 ? 'secondary' : 'primary')));
+    assert.equal((await messages()).length, beforeMany + 4, 'all terminal aliases survive restart');
+    await send([{ ...reports[0], id: `${manyKey.replace(String(beforeMidnight - 900), String(beforeMidnight - 1800))}:100.00000`,
+      tradeKey: undefined }]);
+    assert.equal((await messages()).length, beforeMany + 5, 'a different signal candle still sends');
+    const futureKey = `EURUSD:bearish:M15:${beforeMidnight - 900}`;
+    await writeFile(path.join(workspace, 'data', 'telegram-alerts.terminal-3.json'), JSON.stringify({
+      [`${futureKey}:100.01000`]: { entry: true },
+    }));
+    await send([entry(`${futureKey}:100.02000`, {
+      symbol: 'EURUSD', direction: 'SELL', openedAt: beforeMidnight + 1,
+    })]);
+    assert.equal((await messages()).length, beforeMany + 5, 'delivery history from additional terminals prevents replay');
     // The day-end report reads real terminal signals only and survives restart.
     await writeFile(clockFile, String(beforeMidnight + 62));
     const closedSignal = { id: 'closed', account: 'account-A', server: 'Broker', status: 'SL',

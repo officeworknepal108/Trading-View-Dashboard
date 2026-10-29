@@ -4,7 +4,7 @@ import express from 'express';
 import { AsyncLocalStorage } from 'node:async_hooks';
 import path from 'path';
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
-import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
+import { mkdir, readdir, readFile, rename, writeFile } from 'node:fs/promises';
 import { createServer as createViteServer } from 'vite';
 import { fetchTradingViewCandles } from './src/services/tradingViewDatafeed';
 import {
@@ -177,7 +177,6 @@ const createTerminalState = () => ({
   mt5BridgeHeartbeat: undefined as Mt5BridgeHeartbeat | undefined,
   mt5MutationQueue: Promise.resolve() as Promise<unknown>,
   journalMutationQueue: Promise.resolve() as Promise<unknown>,
-  telegramAlertQueue: Promise.resolve() as Promise<unknown>,
   automationCandleCache: {} as Partial<Record<TradeTimeframe, StructureCandle[]>>,
   mt5MarketDataUpdatedAt: {} as Partial<Record<TradeTimeframe, number>>,
   mt5MarketDataVersion: 0,
@@ -193,6 +192,8 @@ const mt5Context = () => terminalStates[terminalId()];
 const terminalFile = (file: string) => terminalId() === 'primary' ? file
   : file.replace(/\.json$/, '.secondary.json');
 let configWriteQueue: Promise<unknown> = Promise.resolve();
+// One delivery queue for the Telegram group, independent of terminal count.
+let telegramAlertQueue: Promise<unknown> = Promise.resolve();
 const sharedStrategyFields = ['tradingTimeEnabled', 'telegramMessagesEnabled', 'scalpingEnabled',
   'intradayEnabled', 'mtfLtfFibRequired', 'enabledTimeframes', 'maximumSpreadPoints',
   'signalMaxAgeSeconds', 'pendingExpiryMinutes', 'moveStopToBreakEvenAtR'] as const;
@@ -1212,12 +1213,19 @@ async function deliverTelegramAlerts(
   alerts: TelegramTradeAlert[],
   allowResultWithoutEntry = false,
 ): Promise<string[]> {
-  // Both accounts deliver into one group: serialize against the same history.
-  const task = terminalStates.primary.telegramAlertQueue.then(async () => {
+  const task = telegramAlertQueue.then(async () => {
     const config = await readMt5Config();
-    const histories = await Promise.all([
-      TELEGRAM_ALERTS_FILE, TELEGRAM_ALERTS_FILE.replace(/\.json$/, '.secondary.json'),
-    ].map(async (file): Promise<SentTelegramAlerts> => {
+    // Migrate delivery evidence from every legacy terminal, including future ones.
+    const directory = path.dirname(TELEGRAM_ALERTS_FILE);
+    let legacyFiles: string[] = [];
+    try {
+      legacyFiles = (await readdir(directory))
+        .filter(name => /^telegram-alerts\.[a-zA-Z0-9_-]+\.json$/.test(name))
+        .sort().map(name => path.join(directory, name));
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+    }
+    const histories = await Promise.all([TELEGRAM_ALERTS_FILE, ...legacyFiles].map(async (file): Promise<SentTelegramAlerts> => {
       try { return JSON.parse(await readFile(file, 'utf8')); }
       catch (error) {
         if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
@@ -1265,14 +1273,14 @@ async function deliverTelegramAlerts(
     }
     return acknowledged;
   });
-  terminalStates.primary.telegramAlertQueue = task.then(() => undefined, () => undefined);
+  telegramAlertQueue = task.then(() => undefined, () => undefined);
   return task;
 }
 
 async function deliverDailyTelegramSummary(): Promise<void> {
   // Account 1 owns the group's single daily report; Account 2 must not send another.
   if (terminalId() !== 'primary') return;
-  const task = mt5Context().telegramAlertQueue.then(async () => {
+  const task = telegramAlertQueue.then(async () => {
     const connection = mt5Context().mt5BridgeHeartbeat;
     const now = Date.now() / 1000;
     if (!connection?.account || !connection.server || connection.terminalConnected === false
@@ -1296,7 +1304,7 @@ async function deliverDailyTelegramSummary(): Promise<void> {
     await writeFile(temporary, `${JSON.stringify(sent, null, 2)}\n`, 'utf8');
     await rename(temporary, terminalFile(TELEGRAM_ALERTS_FILE));
   });
-  mt5Context().telegramAlertQueue = task.then(() => undefined, () => undefined);
+  telegramAlertQueue = task.then(() => undefined, () => undefined);
   return task;
 }
 
