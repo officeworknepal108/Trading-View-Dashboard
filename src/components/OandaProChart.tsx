@@ -89,6 +89,7 @@ import { applyOneMinuteGenesisQml, executionZoneName } from '../services/oneMinu
 import {
   DEFAULT_TRADE_RECORD_FILTERS,
   buildCanonicalTradeRecords,
+  tradeSignalMatchesCandles,
   filterAccuracyTradeRecords,
   tradeRecordOutsideTradingTime,
   selectTradeChartRecords,
@@ -1040,6 +1041,29 @@ type DisplayMtfRow = MtfRow & {
   tradeBarsAgo?: number;
   tradingTimeBlocked?: boolean;
 };
+
+/** Stored chart context is a snapshot, not proof that its source setup exists. */
+export function validateRecordedMtfTrade(
+  record: JournalTradeRecord,
+  candles: readonly OandaCandle[] | undefined,
+  qualify: (entry: Parameters<typeof getSavedMtfEntryQualification>[1]) => ReturnType<typeof getSavedMtfEntryQualification>,
+): JournalTradeRecord | undefined {
+  // An actual broker execution remains a fact even when chart feeds differ.
+  if (record.mt5Managed || record.brokerTicket !== undefined) return record;
+  if (record.signalAt === undefined
+    || !candles?.some(candle => candle.time === record.signalAt && candle.complete !== false)
+    || !tradeSignalMatchesCandles(record, candles)
+    || !['T1', 'T2', 'T3', 'T4'].includes(record.engulfingType)) return undefined;
+  const qualification = qualify({
+    id: record.id.startsWith('MTF:') ? record.id
+      : `${record.setupId}:${record.signalAt}:${record.entry}`,
+    signalTime: record.signalAt, direction: record.direction,
+    engulfingType: record.engulfingType as EngulfingTradeSignal['type'],
+    zoneName: record.zoneName as StructureZone['name'],
+    goldScalping: record.tradeStyle === 'SCALPING',
+  });
+  return qualification?.context ? { ...record, mtfContext: qualification.context } : undefined;
+}
 
 export function zoneTableMtfStatus(
   zones: readonly StructureZone[], timeframe: MtfRow['lowerTimeframe'],
@@ -3836,18 +3860,13 @@ export const OandaProChart: React.FC<{
         // A completed record cannot reveal a future result while replaying.
         && (replayIndex === null || record.completedAt <= cutoff))
       .slice(0, 20)
-      .map(record => {
-        if (record.mtfContext || !record.setupId?.startsWith('MTF:') || !record.signalAt) return record;
-        const qualified = savedChartMtfEntryQualification({
-          id: `${record.setupId}:${record.signalAt}:${record.entry}`,
-          signalTime: record.signalAt, direction: record.direction,
-          engulfingType: record.engulfingType as EngulfingTradeSignal['type'],
-          zoneName: record.zoneName, goldScalping: record.tradeStyle === 'SCALPING',
-        });
-        return qualified?.context ? { ...record, mtfContext: qualified.context } : record;
+      .flatMap(record => {
+        const verified = validateRecordedMtfTrade(record,
+          tableTimeframeData[record.signalTimeframe]?.candles, savedChartMtfEntryQualification);
+        return verified ? [verified] : [];
       });
   }, [savedJournalTrades, openChartJournalTrades, displayCandles, granularity, marketSymbol,
-    tradeStyleEnabled, replayIndex, savedChartMtfEntryQualification]);
+    tradeStyleEnabled, replayIndex, savedChartMtfEntryQualification, tableTimeframeData]);
 
   const mtfDrawingZones = useMemo(() => {
     const zones = new Map<string, { zone: StructureZone; label: string; endTime: number }>();

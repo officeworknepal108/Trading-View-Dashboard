@@ -6,12 +6,58 @@ import { MultiTimeframeEntryTable, mtfTableHitExpired, isSlTpTradeDisplayFinishe
   tradeDisplayExpired, tradeDrawingExpired, tradeDrawingFromRecord, resolveArrowTradeZones,
   completedTradeLabel, CompletedTradeRow, resolveRetainedTrade, zoneTableTradeExpired,
   resolveZoneTableTrade, zoneTableCompletedStatus, TradeDetailsRow, ZoneTableEntryPrice,
-  zoneTableMtfStatus, reconcileSavedMtfTrade } from '../src/components/OandaProChart';
+  zoneTableMtfStatus, reconcileSavedMtfTrade, validateRecordedMtfTrade } from '../src/components/OandaProChart';
 import type { JournalTradeRecord } from '../src/components/TradeJournal';
 import type { MtfRow } from '../src/services/mtf';
 import type { StructureZone } from '../src/services/marketStructure';
 
 const bar = (time: number, complete = true) => ({ time, open: 100, high: 102, low: 99, close: 101, volume: 1, complete });
+
+test('a saved internal-zone snapshot cannot supply a missing source structure to the MTF table', () => {
+  const context: MtfRow = {
+    id: 'H4-M15-internal-choch-300', higherTimeframe: 'H4', lowerTimeframe: 'M15',
+    confirmationKind: 'choch', structureScope: 'internal', direction: 'bullish',
+    confirmationTime: 300, confirmationBarsAgo: 1, higherTimeframeZoneId: 'higher',
+    higherTimeframeZone: 'TJL1', higherTimeframeTapTime: 200, higherTimeframeTapBarsAgo: 1,
+    tappedZone: 'Internal RBS', engulfingType: 'T1', engulfingTime: 800,
+  };
+  const record: JournalTradeRecord = { ...reloadMtfRecord('open'),
+    id: 'MTF:H4-M15-internal-choch-300:800:100', brokerTicket: undefined,
+    zoneTimeframe: 'H4', signalTimeframe: 'M15', zoneName: 'Internal RBS',
+    mtfContext: context };
+  const candles = [
+    { ...bar(700), open: 101, high: 102, low: 99, close: 100 },
+    { ...bar(800), open: 100, high: 105, low: 99, close: 104 },
+  ];
+  let checked = false;
+  assert.equal(validateRecordedMtfTrade(record, candles, () => {
+    checked = true;
+    return undefined; // The current structure has no matching internal CHoCH pair.
+  }), undefined);
+  assert.equal(checked, true, 'stored mtfContext must not bypass structural validation');
+  const freshContext = { ...context, confirmationBarsAgo: 2 };
+  assert.deepEqual(validateRecordedMtfTrade(record, candles, () => ({ context: freshContext })),
+    { ...record, mtfContext: freshContext }, 'a qualified entry uses current source context');
+  assert.equal(record.mtfContext, context, 'validation does not rewrite journal history');
+  assert.equal(validateRecordedMtfTrade(record, undefined, () => ({ context })), undefined,
+    'an unverified chart record stays hidden until its candles load');
+  const brokerRecord = { ...record, brokerTicket: 12345 };
+  assert.equal(validateRecordedMtfTrade(brokerRecord, undefined, () => undefined), brokerRecord,
+    'an actual broker execution survives missing chart structure');
+});
+
+test('the reported Internal SBR T4 is rejected when the recorded signal candle is bullish', () => {
+  const record: JournalTradeRecord = { ...reloadMtfRecord('open'),
+    id: 'MTF:H4-M15-internal-choch-1793260800:1793271600:4021.415', brokerTicket: undefined,
+    zoneName: 'Internal SBR', zoneTimeframe: 'H4', signalTimeframe: 'M15',
+    direction: 'bearish', engulfingType: 'T4', engulfingCandleCount: 3,
+    signalAt: 1793271600, entry: 4021.415, stopLoss: 4041.415, takeProfit: 3921.415 };
+  const candles = [{ ...bar(1793271600), open: 4031.14, high: 4039.415,
+    low: 4030.325, close: 4036.12 }];
+  assert.equal(validateRecordedMtfTrade(record, candles, () => {
+    assert.fail('a disproved bearish T4 cannot be restored from cached context');
+  }), undefined);
+});
 
 test('saved chart MTF entries resolve from completed candles and stay final after reload', () => {
   const record: JournalTradeRecord = { ...reloadMtfRecord('open'), id: 'MTF:old-chart',
