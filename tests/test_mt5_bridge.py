@@ -51,6 +51,26 @@ class PartialCloseVolumeTests(BridgeTestCase):
                 bridge.calculate_volume(signal, {"riskPercent": 0.25}, symbol)
 
 
+class LiveEntryGuardTests(BridgeTestCase):
+    def test_rejects_wide_spread_and_adverse_price_that_exceeds_cash_risk(self) -> None:
+        signal = {"direction": "BUY", "orderType": "MARKET",
+                  "entry": 100, "stopLoss": 97}
+        config = {"riskPercent": 0.25}
+        symbol = SimpleNamespace(name="XAUUSD")
+        def profit(_side, _symbol, volume, opened, closed):
+            return (closed - opened) * volume * 100
+        with patch.object(bridge.mt5, "account_info", return_value=SimpleNamespace(equity=10_000)), \
+             patch.object(bridge.mt5, "order_calc_profit", side_effect=profit):
+            self.assertEqual(bridge.checked_live_entry_price(
+                signal, config, symbol, SimpleNamespace(ask=100, bid=99.8), 0.05), 100)
+            with self.assertRaisesRegex(RuntimeError, "spread is too large"):
+                bridge.checked_live_entry_price(
+                    signal, config, symbol, SimpleNamespace(ask=100, bid=99.3), 0.05)
+            with self.assertRaisesRegex(RuntimeError, "per-trade risk"):
+                bridge.checked_live_entry_price(
+                    signal, config, symbol, SimpleNamespace(ask=102.1, bid=101.9), 0.05)
+
+
 class TradeStyleRiskFreeTests(BridgeTestCase):
     def test_only_scalping_closes_half_when_price_reaches_one_r(self) -> None:
         position = SimpleNamespace(type=bridge.mt5.POSITION_TYPE_BUY,

@@ -4,6 +4,12 @@ import {
   MT5_DEFAULT_ENABLED_TIMEFRAMES,
   MT5_ENTRY_TIMEFRAME_OPTIONS,
   MT5_RISK_PERCENT_OPTIONS,
+  goldAutomationCountertrendBlocked,
+  goldAutomationFastMoveBlocked,
+  goldAutomationHighImpactUsdNewsTimes,
+  goldAutomationNewsPauseUntil,
+  goldAutomationOpposingZoneBlocked,
+  goldAutomationRepeatAreaBlocked,
   applySignalOppositePositionTarget,
   buildMt5SignalId,
   canMt5SignalExpireBeforeExecution,
@@ -29,6 +35,8 @@ import {
   shouldRemoveOpenMt5JournalRecord,
   tradeToMt5Signal,
 } from '../src/services/mt5Automation';
+import type { Mt5SignalInput, Mt5StoredSignal } from '../src/services/mt5Automation';
+import type { StructureLine, StructureZone } from '../src/services/marketStructure';
 import type { TradeLevels } from '../src/services/tradeLevels';
 
 test('overall P/L accepts signed broker totals and rejects invalid or inconsistent snapshots', () => {
@@ -371,4 +379,60 @@ test('only pending and active dashboard trades are executable', () => {
   assert.equal(isExecutableTrade({ ...activeTrade, status: 'pending' }), true);
   assert.equal(isExecutableTrade({ ...activeTrade, status: 'risk-free' }), false);
   assert.equal(isExecutableTrade({ ...activeTrade, status: 'tp-hit' }), false);
+});
+
+test('gold entry guards block bearish one-minute buys, nearby sell zones, and repeat stopped areas', () => {
+  const candidate = {
+    symbol: 'XAUUSD', direction: 'BUY', signalTimeframe: 'M1',
+    entry: 100, stopLoss: 97, takeProfit: 109, signalAt: 2_000, calculatedAt: 2_060,
+    journalContext: { biasAtEntry: { M15: 'bearish', H1: 'bearish' } },
+  } as unknown as Mt5SignalInput;
+  assert.equal(goldAutomationCountertrendBlocked(candidate), true);
+  assert.equal(goldAutomationCountertrendBlocked({ ...candidate,
+    journalContext: { ...candidate.journalContext!, biasAtEntry: {
+      ...candidate.journalContext!.biasAtEntry, H1: 'bullish',
+    } },
+  }), false);
+  const sellZone = { active: true, status: 'valid', isBuy: false,
+    startTime: 0, bottom: 104, top: 106 } as StructureZone;
+  assert.equal(goldAutomationOpposingZoneBlocked(candidate, [sellZone]), true);
+  assert.equal(goldAutomationOpposingZoneBlocked(candidate, [{ ...sellZone, bottom: 110, top: 112 }]), false);
+  assert.equal(goldAutomationOpposingZoneBlocked(candidate, [{ ...sellZone, status: 'invalidated' }]), false);
+  const previous = [{ symbol: 'XAUUSD', direction: 'BUY', status: 'SL',
+    entry: 101, stopLoss: 98, closedAt: 1_260 }] as Mt5StoredSignal[];
+  assert.equal(goldAutomationRepeatAreaBlocked(candidate, previous, []), true);
+  const confirmedChoch = [{ type: 'choch', direction: 'bullish', toTime: 800 }] as StructureLine[];
+  assert.equal(goldAutomationRepeatAreaBlocked(candidate, previous, confirmedChoch), false);
+  assert.equal(goldAutomationRepeatAreaBlocked({ ...candidate, entry: 110, stopLoss: 107 }, previous, []), false);
+});
+
+test('fast-move guard only uses completed candles available at signal time', () => {
+  const candles = Array.from({ length: 23 }, (_, index) => ({
+    time: index * 60, open: 100, high: index === 22 ? 104 : 101,
+    low: 100, close: 100, volume: 10, complete: true,
+  }));
+  const candidate = { signalTimeframe: 'M1', signalAt: 22 * 60,
+    calculatedAt: 23 * 60, entry: 100, stopLoss: 97,
+    journalContext: { entrySnapshotCandles: candles },
+  } as unknown as Mt5SignalInput;
+  assert.equal(goldAutomationFastMoveBlocked(candidate), true);
+  assert.equal(goldAutomationFastMoveBlocked({ ...candidate,
+    journalContext: { ...candidate.journalContext!, entrySnapshotCandles: [
+      ...candles.slice(0, 22), { ...candles[22], high: 101 }, { ...candles[22], time: 23 * 60 },
+    ] },
+  }), false);
+});
+
+test('high-impact USD news calendar preserves the event timezone and pauses only around that event', () => {
+  const events = goldAutomationHighImpactUsdNewsTimes([
+    { country: 'USD', impact: 'High', date: '2026-10-30T08:30:00-04:00' },
+    { country: 'USD', impact: 'Low', date: '2026-10-30T09:00:00-04:00' },
+    { country: 'EUR', impact: 'High', date: '2026-10-30T10:00:00+01:00' },
+  ]);
+  const release = Date.parse('2026-10-30T12:30:00Z') / 1000;
+  assert.deepEqual(events, [release]);
+  assert.equal(goldAutomationNewsPauseUntil(events, release - 901), undefined);
+  assert.equal(goldAutomationNewsPauseUntil(events, release - 900), release + 900);
+  assert.equal(goldAutomationNewsPauseUntil(events, release + 900), release + 900);
+  assert.throws(() => goldAutomationHighImpactUsdNewsTimes([{ country: 'USD', impact: 'High', date: 'unknown' }]));
 });

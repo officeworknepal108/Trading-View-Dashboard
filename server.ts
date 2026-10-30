@@ -15,6 +15,12 @@ import { formatTelegramTradeMessage, countDailyTrades, formatDailyTradeSummary, 
   telegramDemoMessages, type TelegramTradeAlert } from './src/services/telegramMessages';
 import {
   MT5_DEFAULT_ENABLED_TIMEFRAMES,
+  goldAutomationCountertrendBlocked,
+  goldAutomationFastMoveBlocked,
+  goldAutomationHighImpactUsdNewsTimes,
+  goldAutomationNewsPauseUntil,
+  goldAutomationOpposingZoneBlocked,
+  goldAutomationRepeatAreaBlocked,
   applySignalOppositePositionTarget,
   canMt5SignalExpireBeforeExecution,
   priorGoldMt5ZoneExecution,
@@ -130,6 +136,49 @@ const AUTOMATION_CONFIRMATION_SECONDS: Partial<Record<TradeTimeframe, number>> =
   M1: 300, M5: DISABLED_HIGHER_TIMEFRAME_CONFIRMATION,
   M15: 3600, M30: 3600, H1: 14400, H4: 86400, D: 604800,
 };
+const GOLD_NEWS_BLACKOUT_SECONDS = 15 * 60;
+const GOLD_NEWS_CALENDAR_URL = 'https://nfs.faireconomy.media/ff_calendar_thisweek.json';
+let goldNewsEvents: number[] | undefined;
+let goldNewsFetchedAt = 0;
+let goldNewsLastAttemptAt = 0;
+let goldNewsLastError: string | undefined;
+let goldNewsFetch: Promise<number[]> | undefined;
+
+async function goldHighImpactUsdNewsTimes(): Promise<number[]> {
+  const now = Date.now();
+  if (goldNewsEvents && now - goldNewsFetchedAt < 60 * 60_000) return goldNewsEvents;
+  if (goldNewsFetch) return goldNewsFetch;
+  if (goldNewsLastError && now - goldNewsLastAttemptAt < 60_000) {
+    if (goldNewsEvents && now - goldNewsFetchedAt < 2 * 60 * 60_000) return goldNewsEvents;
+    throw new Error(goldNewsLastError);
+  }
+  goldNewsLastAttemptAt = now;
+  goldNewsFetch = (async () => {
+    const response = await fetch(GOLD_NEWS_CALENDAR_URL, { signal: AbortSignal.timeout(6_000) });
+    if (!response.ok) throw new Error(`Forex Factory calendar returned ${response.status}.`);
+    const payload: unknown = await response.json();
+    const events = goldAutomationHighImpactUsdNewsTimes(payload);
+    goldNewsEvents = events;
+    goldNewsFetchedAt = Date.now();
+    goldNewsLastError = undefined;
+    return events;
+  })().catch((error: unknown) => {
+    goldNewsLastError = error instanceof Error ? error.message : String(error);
+    if (goldNewsEvents && Date.now() - goldNewsFetchedAt < 2 * 60 * 60_000) return goldNewsEvents;
+    throw error;
+  }).finally(() => { goldNewsFetch = undefined; });
+  return goldNewsFetch;
+}
+
+async function goldNewsPauseUntil(now: number): Promise<number | undefined> {
+  try {
+    const events = await goldHighImpactUsdNewsTimes();
+    return goldAutomationNewsPauseUntil(events, now, GOLD_NEWS_BLACKOUT_SECONDS);
+  } catch {
+    // An unavailable calendar must never make the bot assume a clear news window.
+    return Number.POSITIVE_INFINITY;
+  }
+}
 
 interface Mt5BridgeHeartbeat {
   bridgeId: string;
@@ -688,6 +737,7 @@ async function scanMt5AutomationSignals(): Promise<number> {
   }
   if (!mt5ExecutionFeedIsFresh()) return 0;
   if (!mt5DailyRiskAllowsEntry(mt5Context().mt5BridgeHeartbeat?.dailyRisk)) return 0;
+  if (await goldNewsPauseUntil(Math.floor(Date.now() / 1000)) !== undefined) return 0;
   if (AUTOMATION_TIMEFRAMES.some((timeframe) => !mt5Context().automationCandleCache[timeframe]?.length)) return 0;
   const scanVersion = mt5Context().mt5MarketDataVersion;
   const scanConnection = mt5Context().mt5BridgeHeartbeat ? { ...mt5Context().mt5BridgeHeartbeat } : undefined;
@@ -957,8 +1007,16 @@ async function scanMt5AutomationSignals(): Promise<number> {
   }
 
   const grouped = new Map<string, Mt5SignalInput>();
+  const opposingZones = (['M15', 'H1', 'H4'] as const)
+    .flatMap((timeframe) => structures[timeframe]?.zones ?? []);
+  const previousSignals = await readMt5Signals();
+  const m15Lines = structures.M15?.lines ?? [];
   for (const candidate of candidates) {
     if (mt5SignalDisabledReason(config, candidate)) continue;
+    if (goldAutomationCountertrendBlocked(candidate)
+      || goldAutomationFastMoveBlocked(candidate)
+      || goldAutomationOpposingZoneBlocked(candidate, opposingZones)
+      || goldAutomationRepeatAreaBlocked(candidate, previousSignals, m15Lines)) continue;
     if (candidate.calculatedAt < now - config.signalMaxAgeSeconds) continue;
     if (candidate.signalAt > now + 5 || candidate.calculatedAt > now + 5) continue;
     const existing = grouped.get(candidate.id);
@@ -1455,6 +1513,17 @@ async function startServer() {
           })),
         },
         counts,
+        newsCalendar: {
+          source: 'Forex Factory weekly export',
+          fetchedAt: goldNewsFetchedAt || undefined,
+          available: !!goldNewsEvents && Date.now() - goldNewsFetchedAt < 2 * 60 * 60_000,
+          error: goldNewsLastError,
+          pausedUntil: goldNewsEvents
+            ? goldAutomationNewsPauseUntil(goldNewsEvents, Math.floor(Date.now() / 1000), GOLD_NEWS_BLACKOUT_SECONDS)
+            : undefined,
+          nextHighImpactUsdAt: goldNewsEvents?.filter((time) => time >= Date.now() / 1000)
+            .sort((a, b) => a - b)[0],
+        },
         recentSignals: signals.slice(-25).reverse(),
       });
     } catch (error) {
@@ -1659,6 +1728,7 @@ async function startServer() {
       if (!mt5ExecutionFeedIsFresh()) return res.json({ ok: true, signal: null, config });
       if (!mt5DailyRiskAllowsEntry(mt5Context().mt5BridgeHeartbeat?.dailyRisk)) return res.json({ ok: true, signal: null, config });
       const now = Math.floor(Date.now() / 1000);
+      if (await goldNewsPauseUntil(now) !== undefined) return res.json({ ok: true, signal: null, config });
       const signal = await serializeMt5Mutation(async () => {
         const signals = await readMt5Signals();
         if (!mt5ConnectionMatches(mt5Context().mt5BridgeHeartbeat, req.body) || !mt5ExecutionFeedIsFresh()

@@ -5,7 +5,7 @@ import {
   type TradeLevels,
   type TradeTimeframe,
 } from './tradeLevels';
-import type { StructureCandle } from './marketStructure';
+import type { StructureCandle, StructureLine, StructureZone } from './marketStructure';
 
 export const MT5_RISK_PERCENT_OPTIONS = [
   0.25, 0.5, 1, 1.5, 2, 2.5, 3, 3.5, 4, 4.5, 5,
@@ -191,6 +191,93 @@ export interface Mt5SignalInput {
     volume3?: number;
     entrySnapshotCandles: StructureCandle[];
   };
+}
+
+/** Only a completed higher-timeframe bias may veto a one-minute reversal entry. */
+export function goldAutomationCountertrendBlocked(signal: Mt5SignalInput): boolean {
+  const bias = signal.journalContext?.biasAtEntry;
+  return signal.signalTimeframe === 'M1' && signal.direction === 'BUY'
+    && bias?.M15 === 'bearish' && bias.H1 === 'bearish';
+}
+
+/** A nearby active opposite zone is an obstacle when it lies before the planned TP. */
+export function goldAutomationOpposingZoneBlocked(
+  signal: Mt5SignalInput,
+  zones: readonly StructureZone[],
+): boolean {
+  return zones.some((zone) => {
+    if (!zone.active || zone.status !== 'valid' || zone.isBuy === (signal.direction === 'BUY')
+      || zone.startTime > signal.signalAt
+      || (zone.activeFromTime !== undefined && zone.activeFromTime > signal.signalAt)
+      || (zone.invalidatedAt !== undefined && zone.invalidatedAt <= signal.signalAt)) return false;
+    const bottom = Math.min(zone.bottom, zone.top);
+    const top = Math.max(zone.bottom, zone.top);
+    return signal.direction === 'BUY'
+      ? bottom < signal.takeProfit && top > signal.entry
+      : top > signal.takeProfit && bottom < signal.entry;
+  });
+}
+
+/** One unusually large completed minute must not consume the whole planned stop. */
+export function goldAutomationFastMoveBlocked(signal: Mt5SignalInput): boolean {
+  if (signal.signalTimeframe !== 'M1') return false;
+  const candles = (signal.journalContext?.entrySnapshotCandles ?? [])
+    .filter((candle) => candle.complete !== false && candle.time + 60 <= signal.calculatedAt)
+    .slice(-23);
+  if (candles.length < 23) return false;
+  const ranges = candles.map((candle) => candle.high - candle.low);
+  const baseline = ranges.slice(0, 20).sort((a, b) => a - b);
+  const median = (baseline[9] + baseline[10]) / 2;
+  const stopDistance = Math.abs(signal.entry - signal.stopLoss);
+  return median > 0 && ranges.slice(-3).some((range) => (
+    range >= stopDistance && range >= 2 * median
+  ));
+}
+
+/** A stopped price area stays unavailable until a new completed M15 CHoCH. */
+export function goldAutomationRepeatAreaBlocked(
+  signal: Mt5SignalInput,
+  previous: readonly Mt5StoredSignal[],
+  m15Lines: readonly StructureLine[],
+): boolean {
+  const lower = Math.min(signal.entry, signal.stopLoss);
+  const upper = Math.max(signal.entry, signal.stopLoss);
+  return previous.some((prior) => {
+    if (prior.status !== 'SL' || prior.symbol !== signal.symbol
+      || prior.direction !== signal.direction || !prior.closedAt
+      || prior.closedAt >= signal.signalAt) return false;
+    const priorLower = Math.min(prior.entry, prior.stopLoss);
+    const priorUpper = Math.max(prior.entry, prior.stopLoss);
+    if (lower > priorUpper || upper < priorLower) return false;
+    const direction = signal.direction === 'BUY' ? 'bullish' : 'bearish';
+    return !m15Lines.some((line) => line.type === 'choch' && line.direction === direction
+      && line.toTime + 900 > prior.closedAt && line.toTime + 900 <= signal.signalAt);
+  });
+}
+
+/** Forex Factory weekly export carries timezone offsets in each event date. */
+export function goldAutomationHighImpactUsdNewsTimes(payload: unknown): number[] {
+  if (!Array.isArray(payload) || payload.length === 0) {
+    throw new Error('Forex Factory calendar is empty or invalid.');
+  }
+  let datedEvents = 0;
+  const events = payload.flatMap((event: unknown) => {
+    if (!event || typeof event !== 'object') return [];
+    const row = event as Record<string, unknown>;
+    if (typeof row.date !== 'string' || !Number.isFinite(Date.parse(row.date))) return [];
+    datedEvents += 1;
+    return row.country === 'USD' && row.impact === 'High'
+      ? [Date.parse(row.date) / 1000] : [];
+  });
+  if (datedEvents === 0) throw new Error('Forex Factory calendar contains no valid dates.');
+  return [...new Set(events)].sort((a, b) => a - b);
+}
+
+export function goldAutomationNewsPauseUntil(
+  events: readonly number[], now: number, blackoutSeconds = 15 * 60,
+): number | undefined {
+  const event = events.find((time) => Math.abs(time - now) <= blackoutSeconds);
+  return event === undefined ? undefined : event + blackoutSeconds;
 }
 
 /** One structure origin stays the same zone when its quoted price is revised. */

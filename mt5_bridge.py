@@ -421,6 +421,38 @@ def calculate_volume(signal: dict[str, Any], config: dict[str, Any], symbol_info
     return volume
 
 
+def checked_live_entry_price(signal: dict[str, Any], config: dict[str, Any],
+                             symbol_info: Any, tick: Any, volume: float) -> float:
+    """Reject a market entry whose current quote breaks its spread or cash-risk budget."""
+    buy = signal["direction"] == "BUY"
+    is_limit = signal["orderType"] == "LIMIT"
+    price = float(signal["entry"] if is_limit else tick.ask if buy else tick.bid)
+    stop = float(signal["stopLoss"])
+    if not math.isfinite(price) or not math.isfinite(stop) or price <= 0:
+        raise RuntimeError("The executable MT5 price or stop loss is invalid.")
+    if (buy and price <= stop) or (not buy and price >= stop):
+        raise RuntimeError("The live MT5 quote has passed the planned stop loss.")
+    if not is_limit:
+        spread = float(tick.ask) - float(tick.bid)
+        if not math.isfinite(spread) or spread < 0:
+            raise RuntimeError("The live MT5 spread is invalid.")
+        if spread >= 0.20 * abs(price - stop):
+            raise RuntimeError("MT5 spread is too large relative to the planned stop distance.")
+    account = mt5.account_info()
+    if not account or not math.isfinite(float(account.equity)) or float(account.equity) <= 0:
+        raise RuntimeError("Unable to verify live MT5 account risk.")
+    risk_budget = float(account.equity) * float(config["riskPercent"]) / 100.0
+    loss_at_stop = mt5.order_calc_profit(
+        mt5.ORDER_TYPE_BUY if buy else mt5.ORDER_TYPE_SELL,
+        symbol_info.name, volume, price, stop,
+    )
+    if loss_at_stop is None or not math.isfinite(float(loss_at_stop)):
+        raise RuntimeError("MT5 could not calculate loss at the planned stop.")
+    if -float(loss_at_stop) > risk_budget + max(0.01, risk_budget * 0.005):
+        raise RuntimeError("Live MT5 entry price would exceed the configured per-trade risk.")
+    return price
+
+
 def overall_profit_snapshot(now: datetime | None = None) -> dict[str, Any]:
     """Read-only bot P/L across all available history of the connected account."""
     assert_execution_account()
@@ -644,6 +676,7 @@ def place_signal(signal: dict[str, Any], config: dict[str, Any]) -> dict[str, An
     volume = calculate_volume(signal, config, info)
     is_buy = signal["direction"] == "BUY"
     is_limit = signal["orderType"] == "LIMIT"
+    checked_price = checked_live_entry_price(signal, config, info, tick, volume)
     if is_limit:
         if is_buy and float(signal["entry"]) >= float(tick.ask):
             raise RuntimeError("BUY LIMIT entry is not below the current ask price.")
@@ -651,11 +684,11 @@ def place_signal(signal: dict[str, Any], config: dict[str, Any]) -> dict[str, An
             raise RuntimeError("SELL LIMIT entry is not above the current bid price.")
         order_type = mt5.ORDER_TYPE_BUY_LIMIT if is_buy else mt5.ORDER_TYPE_SELL_LIMIT
         action = mt5.TRADE_ACTION_PENDING
-        price = float(signal["entry"])
+        price = checked_price
     else:
         order_type = mt5.ORDER_TYPE_BUY if is_buy else mt5.ORDER_TYPE_SELL
         action = mt5.TRADE_ACTION_DEAL
-        price = float(tick.ask if is_buy else tick.bid)
+        price = checked_price
     tag = hashlib.sha1(signal["id"].encode("utf-8")).hexdigest()[:10]
     request = {
         "action": action,
