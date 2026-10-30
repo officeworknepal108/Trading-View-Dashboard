@@ -2099,7 +2099,7 @@ export const OandaProChart: React.FC<{
   const [showLtfChoch, setShowLtfChoch] = useState(false);
   const [comparisonTimeframe, setComparisonTimeframe] = useState<OandaGranularity | null>(null);
   const [hiddenComparisonZoneKeys, setHiddenComparisonZoneKeys] = useState<string[]>([]);
-  const [zoneLengthModes, setZoneLengthModes] = useState<Record<string, 'left'>>({});
+  const [zoneLengthModes, setZoneLengthModes] = useState<Record<string, 'left' | 'original'>>({});
   const [hiddenCompletedTradeDrawings, setHiddenCompletedTradeDrawings] = useState<Set<string>>(() => new Set());
   const [showDrawingTools, setShowDrawingTools] = useState(false);
   const [activeDrawingTool, setActiveDrawingTool] = useState<ChartDrawingTool | null>(null);
@@ -4627,9 +4627,14 @@ export const OandaProChart: React.FC<{
       closeButtonPositions.push({ left: buttonLeft, top: buttonTop });
       const button = document.createElement('button');
       button.type = 'button';
-      const movedLeft = zoneLengthModes[key] === 'left';
-      button.textContent = movedLeft ? '\u2713' : '\u00d7';
-      button.title = movedLeft ? `Restore ${name} zone to its original position` : `Move ${name} zone to the left edge`;
+      const currentChartZone = key.startsWith(`${marketSymbol}:${granularity}:chart:`);
+      const mtfZone = key.startsWith(`${marketSymbol}:${granularity}:mtf:`);
+      const reduced = zoneLengthModes[key] !== undefined;
+      button.textContent = reduced ? '\u2713' : '\u00d7';
+      button.title = reduced ? `Restore ${name} zone to its extended position`
+        : currentChartZone ? `Show ${name} zone at its original 30-bar position`
+          : mtfZone ? `Show ${name} zone for 10 bars from its source candle`
+          : `Move ${name} zone to the left edge`;
       button.setAttribute('aria-label', button.title);
       button.dataset.journalExclude = 'true';
       Object.assign(button.style, {
@@ -4643,8 +4648,8 @@ export const OandaProChart: React.FC<{
         event.stopPropagation();
         setZoneLengthModes((current) => {
           const next = { ...current };
-          if (movedLeft) delete next[key];
-          else next[key] = 'left';
+          if (reduced) delete next[key];
+          else next[key] = currentChartZone ? 'original' : 'left';
           return next;
         });
       });
@@ -4865,9 +4870,11 @@ export const OandaProChart: React.FC<{
       if (!first || !last || first.time > last.time) continue;
       if (visibleTimeRange && (zoneLengthModes[key] === undefined && last.time < Number(visibleTimeRange.from)
         || first.time > Number(visibleTimeRange.to))) continue;
-      const left = Math.max(0, zoneStartCoordinate(key, chart.timeScale().timeToCoordinate(first.time as UTCTimestamp)) ?? 0);
-      const right = Math.min(rightEdge, zoneEndCoordinate(key,
-        chart.timeScale().logicalToCoordinate(displayCandles.length - 1 + 10)) ?? rightEdge);
+      const left = Math.max(0, chart.timeScale().timeToCoordinate(first.time as UTCTimestamp) ?? 0);
+      const mtfEnd = zoneLengthModes[key] === 'left'
+        ? chart.timeScale().logicalToCoordinate(displayCandles.indexOf(first) + 10)
+        : chart.timeScale().logicalToCoordinate(displayCandles.length - 1 + 10);
+      const right = Math.min(rightEdge, mtfEnd ?? rightEdge);
       const top = series.priceToCoordinate(zone.top);
       const bottom = series.priceToCoordinate(zone.bottom);
       if (top === null || bottom === null || left >= right) continue;
@@ -4900,7 +4907,10 @@ export const OandaProChart: React.FC<{
       const normalRight = extendedEndIndex === undefined
         ? chart.timeScale().timeToCoordinate(zone.endTime as UTCTimestamp)
         : chart.timeScale().logicalToCoordinate(extendedEndIndex);
-      const rawRight = zoneEndCoordinate(zoneKey('chart', zone.id), normalRight);
+      const chartZoneKey = zoneKey('chart', zone.id);
+      const rawRight = zoneLengthModes[chartZoneKey] === 'original'
+        ? chart.timeScale().timeToCoordinate(zone.endTime as UTCTimestamp)
+        : zoneEndCoordinate(chartZoneKey, normalRight);
       const top = series.priceToCoordinate(zone.top);
       const bottom = series.priceToCoordinate(zone.bottom);
       if (top === null || bottom === null) continue;
@@ -5048,7 +5058,7 @@ export const OandaProChart: React.FC<{
           box.appendChild(shortLabel);
         }
         fragment.appendChild(box);
-        if (touchesLivePrice(zone) || zoneLengthModes[zoneKey('chart', zone.id)] === 'left') {
+        if (touchesLivePrice(zone) || zoneLengthModes[chartZoneKey] === 'original') {
           appendZoneCloseButton(zoneKey('chart', zone.id), name, right, zoneTopCoordinate, zoneTopCoordinate + zoneHeight);
         }
         continue;
@@ -5127,7 +5137,7 @@ export const OandaProChart: React.FC<{
       }
       box.appendChild(label);
       fragment.appendChild(box);
-      if (touchesLivePrice(zone) || zoneLengthModes[zoneKey('chart', zone.id)] === 'left') {
+      if (touchesLivePrice(zone) || zoneLengthModes[chartZoneKey] === 'original') {
         appendZoneCloseButton(zoneKey('chart', zone.id), name, right, zoneTopCoordinate, zoneTopCoordinate + zoneHeight);
       }
     }
