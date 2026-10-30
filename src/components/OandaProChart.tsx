@@ -2099,7 +2099,7 @@ export const OandaProChart: React.FC<{
   const [showLtfChoch, setShowLtfChoch] = useState(false);
   const [comparisonTimeframe, setComparisonTimeframe] = useState<OandaGranularity | null>(null);
   const [hiddenComparisonZoneKeys, setHiddenComparisonZoneKeys] = useState<string[]>([]);
-  const [zoneLengthModes, setZoneLengthModes] = useState<Record<string, 'left' | 'original'>>({});
+  const [zoneLengthModes, setZoneLengthModes] = useState<Record<string, 'left' | 'original' | 'live'>>({});
   const [hiddenCompletedTradeDrawings, setHiddenCompletedTradeDrawings] = useState<Set<string>>(() => new Set());
   const [showDrawingTools, setShowDrawingTools] = useState(false);
   const [activeDrawingTool, setActiveDrawingTool] = useState<ChartDrawingTool | null>(null);
@@ -4607,6 +4607,9 @@ export const OandaProChart: React.FC<{
     const zoneKey = (kind: string, id: string) => `${marketSymbol}:${granularity}:${kind}:${id}`;
     const closeButtonPositions: Array<{ left: number; top: number }> = [];
     const zoneEndCoordinate = (key: string, normalRight: number | null) => {
+      if (zoneLengthModes[key] === 'live') {
+        return chart.timeScale().logicalToCoordinate(displayCandles.length - 1 + 10);
+      }
       if (zoneLengthModes[key] !== 'left') return normalRight;
       const scale = chart.timeScale();
       const latestIndex = displayCandles.length - 1;
@@ -4629,7 +4632,8 @@ export const OandaProChart: React.FC<{
       button.type = 'button';
       const currentChartZone = key.startsWith(`${marketSymbol}:${granularity}:chart:`);
       const mtfZone = key.startsWith(`${marketSymbol}:${granularity}:mtf:`);
-      const reduced = zoneLengthModes[key] !== undefined;
+      const reduced = currentChartZone
+        ? zoneLengthModes[key] === 'original' : zoneLengthModes[key] === 'left';
       button.textContent = reduced ? '\u2713' : '\u00d7';
       button.title = reduced ? `Restore ${name} zone to its extended position`
         : currentChartZone ? `Show ${name} zone at its original 30-bar position`
@@ -4648,7 +4652,8 @@ export const OandaProChart: React.FC<{
         event.stopPropagation();
         setZoneLengthModes((current) => {
           const next = { ...current };
-          if (reduced) delete next[key];
+          if (reduced && currentChartZone) next[key] = 'live';
+          else if (reduced) delete next[key];
           else next[key] = currentChartZone ? 'original' : 'left';
           return next;
         });
@@ -5061,7 +5066,7 @@ export const OandaProChart: React.FC<{
           box.appendChild(shortLabel);
         }
         fragment.appendChild(box);
-        if (touchesLivePrice(zone) || zoneLengthModes[chartZoneKey] === 'original') {
+        if (touchesLivePrice(zone) || zoneLengthModes[chartZoneKey] !== undefined) {
           appendZoneCloseButton(zoneKey('chart', zone.id), name, right, zoneTopCoordinate, zoneTopCoordinate + zoneHeight);
         }
         continue;
@@ -5140,7 +5145,7 @@ export const OandaProChart: React.FC<{
       }
       box.appendChild(label);
       fragment.appendChild(box);
-      if (touchesLivePrice(zone) || zoneLengthModes[chartZoneKey] === 'original') {
+      if (touchesLivePrice(zone) || zoneLengthModes[chartZoneKey] !== undefined) {
         appendZoneCloseButton(zoneKey('chart', zone.id), name, right, zoneTopCoordinate, zoneTopCoordinate + zoneHeight);
       }
     }
