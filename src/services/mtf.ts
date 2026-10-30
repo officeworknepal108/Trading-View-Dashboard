@@ -131,6 +131,7 @@ function latestHigherTimeframeTouch(
   candles: readonly StructureCandle[],
   zones: readonly StructureZone[],
   event: ConfirmationEvent,
+  touchStartsByZone: Map<StructureZone, number[]>,
   includeOriginOnly = false,
 ): { zone: StructureZone; time: number; sourcePairOverlaps: boolean } | undefined {
   let latest: { zone: StructureZone; time: number; sourcePairOverlaps: boolean } | undefined;
@@ -156,25 +157,29 @@ function latestHigherTimeframeTouch(
       && overlaps(sourceZone.bottom, sourceZone.top, zone.bottom, zone.top)
     ));
     if (!sourcePairIsInZone && !(includeOriginOnly && chochOriginIsInZone)) continue;
-    let insideZone = false;
-    let latestTapTime: number | undefined;
-    for (const candle of candles) {
-      // The candle that confirms the LTF CHOCH can also be the candle that
-      // reaches the mapped HTF zone. CHOCH is known only after that candle is
-      // complete, so treating its completed range as the HTF tap does not use
-      // future information. Candles after the CHOCH still cannot arm it.
-      if (candle.time > event.time) break;
-      const overlaps = candle.complete !== false
-        && zoneWasUsableAt(zone, candle.time)
-        && candleTouchesZone(candle, zone);
-      // The HTF tap establishes directional context first. The matching LTF
-      // structure and CHOCH may form afterward; they do not require a second
-      // HTF retap once price has already visited this valid level.
-      if (overlaps && !insideZone) {
-        latestTapTime = candle.time;
+    let touchStarts = touchStartsByZone.get(zone);
+    if (!touchStarts) {
+      touchStarts = [];
+      let insideZone = false;
+      for (const candle of candles) {
+        const overlaps = candle.complete !== false
+          && zoneWasUsableAt(zone, candle.time)
+          && candleTouchesZone(candle, zone);
+        if (overlaps && !insideZone) touchStarts.push(candle.time);
+        insideZone = overlaps;
       }
-      insideZone = overlaps;
+      touchStartsByZone.set(zone, touchStarts);
     }
+    // Reuse the completed tap history for each CHOCH, but never use a tap
+    // after this event. The confirming candle itself may be the first tap.
+    let low = 0;
+    let high = touchStarts.length;
+    while (low < high) {
+      const middle = Math.floor((low + high) / 2);
+      if (touchStarts[middle] <= event.time) low = middle + 1;
+      else high = middle;
+    }
+    const latestTapTime = low > 0 ? touchStarts[low - 1] : undefined;
     if (latestTapTime !== undefined && (latest === undefined
       || (sourcePairIsInZone && !latest.sourcePairOverlaps)
       || (sourcePairIsInZone === latest.sourcePairOverlaps && (latestTapTime > latest.time
@@ -248,10 +253,11 @@ export function matchMtfChochEvents(
   includeOriginOnly = false,
 ) {
   const timesByZone = new Map<string, number[]>();
+  const touchStartsByZone = new Map<StructureZone, number[]>();
   return buildChochEvents(lowerZones).sort((first, second) => first.time - second.time)
     .flatMap((event) => {
       const higherTimeframeTouch = latestHigherTimeframeTouch(
-        lowerCandles, higherZones, event, includeOriginOnly,
+        lowerCandles, higherZones, event, touchStartsByZone, includeOriginOnly,
       );
       if (!higherTimeframeTouch) return [];
       // Count the whole loaded history before trimming table/history rows.

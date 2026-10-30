@@ -201,6 +201,16 @@ test('M15 can display completed M1/M5 scalps on their filled-entry candles witho
   assert.equal(new Set(selected.map((record) => record.id)).size, selected.length);
 });
 
+test('projected entries match the same candle with unordered bars and a market gap', () => {
+  const { scalp } = synchronizedFixture();
+  const inside = { ...scalp, openedAt: 899 };
+  const next = { ...scalp, id: 'next-candle', openedAt: 900 };
+  const gap = { ...scalp, id: 'gap-entry', openedAt: 1800 };
+  const candles = [{ time: 2700 }, { time: 900 }, { time: 0 }];
+  const selected = selectTradeChartRecords([inside, next, gap], 'M15', candles, true);
+  assert.deepEqual(new Set(selected.map((record) => record.id)), new Set([inside.id, next.id]));
+});
+
 test('H1 shows completed M1/M5 scalps on their filled-entry hour alongside native H1 trades', () => {
   const { scalp, intraday } = synchronizedFixture();
   const m1 = { ...scalp, openedAt: 3599, completedAt: 4000 };

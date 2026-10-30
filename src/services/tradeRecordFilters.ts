@@ -271,12 +271,29 @@ export function selectTradeChartRecords<T extends FilterableTradeRecord & {
         || (options.includeActive && (record.result === 'open' || record.result === 'risk-free')))
       && typeof record.openedAt === 'number' && Number.isFinite(record.openedAt)));
   }
-  const byId = new Map(selected.filter((record) => candles.some((candle) => (
-    record.signalTimeframe === chartTimeframe ? candle.time === record.signalAt
-      : chartTimeframe !== 'M15' && chartTimeframe !== 'H1' ? candle.time === record.openedAt
-      : record.openedAt !== undefined && record.openedAt >= candle.time
-        && record.openedAt < candle.time + tradeTimeframeSeconds(chartTimeframe)
-  ))).map((record) => [record.id, record]));
+  // The old per-record candle scan made each live chart refresh proportional
+  // to every saved trade multiplied by every loaded candle.
+  const candleTimes = new Set(candles.map((candle) => candle.time));
+  const projectedTimes = chartTimeframe === 'M15' || chartTimeframe === 'H1'
+    ? [...candleTimes].sort((first, second) => first - second) : [];
+  const containsProjectedEntry = (openedAt: number | undefined): boolean => {
+    if (openedAt === undefined || !Number.isFinite(openedAt)) return false;
+    let low = 0;
+    let high = projectedTimes.length;
+    while (low < high) {
+      const middle = Math.floor((low + high) / 2);
+      if (projectedTimes[middle] <= openedAt) low = middle + 1;
+      else high = middle;
+    }
+    return low > 0 && openedAt < projectedTimes[low - 1] + tradeTimeframeSeconds(chartTimeframe);
+  };
+  const byId = new Map(selected.filter((record) => (
+    record.signalTimeframe === chartTimeframe
+      ? record.signalAt !== undefined && Number.isFinite(record.signalAt) && candleTimes.has(record.signalAt)
+      : chartTimeframe !== 'M15' && chartTimeframe !== 'H1'
+        ? record.openedAt !== undefined && Number.isFinite(record.openedAt) && candleTimes.has(record.openedAt)
+        : containsProjectedEntry(record.openedAt)
+  )).map((record) => [record.id, record]));
   return [...byId.values()].sort((first, second) => second.completedAt - first.completedAt);
 }
 
@@ -284,6 +301,23 @@ export interface AccuracyVerificationCandle {
   time: number;
   high: number;
   low: number;
+}
+
+/** Loaded chart candles are chronological; locate one without scanning the full history. */
+function candleIndexAtTime(candles: readonly { time: number }[], time: number, seconds?: number): number {
+  if (!Number.isFinite(time)) return -1;
+  let low = 0;
+  let high = candles.length;
+  while (low < high) {
+    const middle = Math.floor((low + high) / 2);
+    if (candles[middle].time <= time) low = middle + 1;
+    else high = middle;
+  }
+  let index = low - 1;
+  if (index < 0 || (seconds === undefined
+    ? candles[index].time !== time : time >= candles[index].time + seconds)) return -1;
+  while (index > 0 && candles[index - 1].time === candles[index].time) index -= 1;
+  return index;
 }
 
 /** A saved chart signal must still be a completed engulfing when its candles are loaded. */
@@ -294,11 +328,13 @@ export function tradeSignalMatchesCandles(record: {
   engulfingCandleCount?: number;
 }, candles: readonly StructureCandle[] | undefined): boolean {
   if (!candles?.length || record.signalAt === undefined) return true;
-  const index = candles.findIndex((candle) => candle.time === record.signalAt);
+  const index = candleIndexAtTime(candles, record.signalAt);
   if (index < 0) return record.signalAt < candles[0].time
     || record.signalAt > candles[candles.length - 1].time;
   if (candles[index].complete === false) return false;
-  const pattern = detectEngulfingPatternAt([...candles], index);
+  // Engulfing patterns inspect at most ten bars ending at this candle.
+  const localCandles = candles.slice(Math.max(0, index - 9), index + 1);
+  const pattern = detectEngulfingPatternAt(localCandles, localCandles.length - 1);
   return pattern?.type === record.engulfingType && pattern.direction === record.direction
     && (record.engulfingCandleCount === undefined || pattern.candleCount === record.engulfingCandleCount);
 }
@@ -314,7 +350,8 @@ export function savedDirectZoneMatchesStructure(
   signalCandles: readonly AccuracyVerificationCandle[] | undefined,
   sourceZones: readonly AccuracySourceZone[] | undefined,
 ): boolean {
-  if (record.signalAt === undefined || !signalCandles?.some((candle) => candle.time === record.signalAt)
+  if (record.signalAt === undefined || !signalCandles
+    || candleIndexAtTime(signalCandles, record.signalAt) < 0
     || !sourceZones) return true;
   const prefix = record.id.startsWith('DIRECT:') ? 'DIRECT:'
     : record.id.startsWith(`GOLD_SCALP:${record.zoneTimeframe}:`)
@@ -347,10 +384,8 @@ export function accuracyResultMatchesCandles(
   if (!candles?.length || record.signalAt === undefined
     || !Number.isFinite(record.signalAt) || !Number.isFinite(record.completedAt)) return true;
 
-  const signalIsLoaded = candles.some((candle) => candle.time === record.signalAt);
-  const signalFallsInsideLoadedCandle = candles.some((candle) => (
-    record.signalAt! >= candle.time && record.signalAt! < candle.time + timeframeSeconds
-  ));
+  const signalIsLoaded = candleIndexAtTime(candles, record.signalAt) >= 0;
+  const signalFallsInsideLoadedCandle = candleIndexAtTime(candles, record.signalAt, timeframeSeconds) >= 0;
   // A signal inside the loaded chart must have a verifiable fill and result.
   // A timestamp between candle opens is not a confirmation on this timeframe.
   // Records entirely before the loaded window remain in the saved history.
@@ -358,12 +393,8 @@ export function accuracyResultMatchesCandles(
   if (!signalIsLoaded) return true;
 
   const firstExecutionTime = record.signalAt + signalBarSeconds;
-  const firstIndex = candles.findIndex((candle) => (
-    firstExecutionTime >= candle.time && firstExecutionTime < candle.time + timeframeSeconds
-  ));
-  const lastIndex = candles.findIndex((candle) => (
-    record.completedAt >= candle.time && record.completedAt < candle.time + timeframeSeconds
-  ));
+  const firstIndex = candleIndexAtTime(candles, firstExecutionTime, timeframeSeconds);
+  const lastIndex = candleIndexAtTime(candles, record.completedAt, timeframeSeconds);
   if (firstIndex < 0 || lastIndex < 0 || lastIndex < firstIndex) return false;
 
   const buy = record.direction === 'bullish';
@@ -405,10 +436,10 @@ export function buildCanonicalTradeRecords<T extends CanonicalTradeRecord>(
     if (marketSymbol === 'XAUUSD') return record.entry >= 1000;
     if (record.entry >= 1000) return false;
     const entryTime = record.openedAt;
-    const candle = timeframeData[record.signalTimeframe]?.candles.find((candidate) => (
-      entryTime !== undefined && entryTime >= candidate.time
-      && entryTime < (candidate.time + tradeTimeframeSeconds(record.signalTimeframe))
-    ));
+    const signalCandles = timeframeData[record.signalTimeframe]?.candles;
+    const candleIndex = signalCandles && entryTime !== undefined
+      ? candleIndexAtTime(signalCandles, entryTime, tradeTimeframeSeconds(record.signalTimeframe)) : -1;
+    const candle = candleIndex >= 0 ? signalCandles?.[candleIndex] : undefined;
     return candle !== undefined && record.entry >= candle.low - pipSize * 3
       && record.entry <= candle.high + pipSize * 3;
   };
@@ -435,7 +466,8 @@ export function buildCanonicalTradeRecords<T extends CanonicalTradeRecord>(
     const signalCandles = timeframeData[record.signalTimeframe]?.candles;
     let verified = { ...record,
       tradeStyle: record.tradeStyle ?? (marketSymbol === 'XAUUSD' ? 'INTRADAY' : undefined) };
-    if (record.source === 'MTF' && signalCandles?.some((candle) => candle.time === record.signalAt)) {
+    if (record.source === 'MTF' && signalCandles && record.signalAt !== undefined
+      && candleIndexAtTime(signalCandles, record.signalAt) >= 0) {
       if (record.signalAt === undefined || !['T1', 'T2', 'T3', 'T4'].includes(record.engulfingType)) return [];
       const qualification = qualifyMtf({
         id: record.id, signalTime: record.signalAt, direction: record.direction,

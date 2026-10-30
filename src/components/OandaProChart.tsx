@@ -157,8 +157,9 @@ type ChochFibVisibility = [boolean, boolean, boolean, boolean];
 type ChartDrawingTool = 'rectangle' | 'fib' | 'measure' | 'note' | 'path' | 'trend';
 type ChartDrawingVisibility = 'all' | 'current-only' | 'current-and-above' | 'current-and-below';
 
-// Coalesce zone movement into one animation frame. User drawing redraws also
-// render React controls, so keep those separately throttled.
+// Scrolling can fire every frame; rebuilding all zone DOM at that rate stalls
+// the chart. Keep data/setting redraws immediate and limit scroll redraws.
+const SCROLL_OVERLAY_REDRAW_INTERVAL_MS = 80;
 const DRAWING_REDRAW_INTERVAL_MS = 80;
 
 interface ChartDrawingPoint {
@@ -1989,6 +1990,8 @@ export const OandaProChart: React.FC<{
   const [hoveredEntry, setHoveredEntry] = useState<{ entry: EntryHover; x: number; y: number } | null>(null);
   const redrawZonesRef = useRef<() => void>(() => undefined);
   const overlayRedrawFrameRef = useRef<number | null>(null);
+  const overlayScrollTimerRef = useRef<number | null>(null);
+  const lastOverlayRedrawAtRef = useRef(0);
   const drawingRedrawFrameRef = useRef<number | null>(null);
   const drawingRedrawTimerRef = useRef<number | null>(null);
   const lastDrawingRedrawAtRef = useRef(0);
@@ -5661,12 +5664,25 @@ export const OandaProChart: React.FC<{
   redrawZonesRef.current = redrawZones;
 
   const scheduleOverlayRedraw = useCallback(() => {
+    if (overlayScrollTimerRef.current !== null) {
+      window.clearTimeout(overlayScrollTimerRef.current);
+      overlayScrollTimerRef.current = null;
+    }
     if (overlayRedrawFrameRef.current !== null) return;
     overlayRedrawFrameRef.current = window.requestAnimationFrame(() => {
       overlayRedrawFrameRef.current = null;
       redrawZonesRef.current();
+      lastOverlayRedrawAtRef.current = performance.now();
     });
   }, []);
+
+  const scheduleScrollOverlayRedraw = useCallback(() => {
+    if (overlayRedrawFrameRef.current !== null || overlayScrollTimerRef.current !== null) return;
+    const elapsed = performance.now() - lastOverlayRedrawAtRef.current;
+    const delay = Math.max(0, SCROLL_OVERLAY_REDRAW_INTERVAL_MS - elapsed);
+    if (delay === 0) scheduleOverlayRedraw();
+    else overlayScrollTimerRef.current = window.setTimeout(scheduleOverlayRedraw, delay);
+  }, [scheduleOverlayRedraw]);
 
   const scheduleDrawingRedraw = useCallback(() => {
     if (!hasChartDrawingLayerRef.current
@@ -6131,7 +6147,7 @@ export const OandaProChart: React.FC<{
       window.requestAnimationFrame(() => syncReplaySelectionLineRef.current());
     });
     const handleVisibleRangeChange = () => {
-      scheduleOverlayRedraw();
+      scheduleScrollOverlayRedraw();
       scheduleDrawingRedraw();
       syncReplaySelectionLineRef.current();
     };
@@ -6148,6 +6164,10 @@ export const OandaProChart: React.FC<{
         window.cancelAnimationFrame(overlayRedrawFrameRef.current);
         overlayRedrawFrameRef.current = null;
       }
+      if (overlayScrollTimerRef.current !== null) {
+        window.clearTimeout(overlayScrollTimerRef.current);
+        overlayScrollTimerRef.current = null;
+      }
       if (drawingRedrawFrameRef.current !== null) {
         window.cancelAnimationFrame(drawingRedrawFrameRef.current);
         drawingRedrawFrameRef.current = null;
@@ -6162,7 +6182,7 @@ export const OandaProChart: React.FC<{
       volumeSeriesRef.current = null;
       markersRef.current = null;
     };
-  }, [scheduleDrawingRedraw, scheduleOverlayRedraw]);
+  }, [scheduleDrawingRedraw, scheduleOverlayRedraw, scheduleScrollOverlayRedraw]);
 
   useEffect(() => {
     candleSeriesRef.current?.applyOptions({
