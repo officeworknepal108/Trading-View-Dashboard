@@ -3886,7 +3886,7 @@ export const OandaProChart: React.FC<{
     tradeStyleEnabled, replayIndex, savedChartMtfEntryQualification, tableTimeframeData]);
 
   const mtfDrawingZones = useMemo(() => {
-    const zones = new Map<string, { zone: StructureZone; label: string; endTime: number }>();
+    const zones = new Map<string, { zone: StructureZone; label: string; timeframe: TradeTimeframe; endTime: number }>();
     const add = (context: MtfRow | undefined, endTime: number) => {
       if (!context || !(context.higherTimeframe === granularity || context.lowerTimeframe === granularity)) return;
       for (const [zone, timeframe, role] of [
@@ -3895,7 +3895,7 @@ export const OandaProChart: React.FC<{
       ] as const) {
         if (!zone) continue;
         zones.set(`${timeframe}:${zone.id}`, {
-          zone, label: `${formatTradeTimeframe(timeframe)} MTF ${role} · ${zone.name}`,
+          zone, timeframe, label: `${formatTradeTimeframe(timeframe)} MTF ${role} · ${zone.name}`,
           endTime: Math.max(zone.startTime + TIMEFRAME_SECONDS[granularity], endTime),
         });
       }
@@ -4863,16 +4863,19 @@ export const OandaProChart: React.FC<{
         appendZoneCloseButton(key, `15M SCALP ${zone.name}`, right, Math.min(top, bottom), Math.max(top, bottom));
       }
     }
-    for (const { zone, label, endTime } of mtfDrawingZones) {
-      const key = zoneKey(`mtf:${label}`, zone.id);
+    for (const { zone, label, timeframe, endTime } of mtfDrawingZones) {
+      const sameTimeframe = timeframe === granularity;
+      const key = zoneKey(`${sameTimeframe ? 'mtf' : 'mtf-higher'}:${label}`, zone.id);
       const first = displayCandles.find(candle => candle.time >= zone.startTime);
       const last = [...displayCandles].reverse().find(candle => candle.time <= endTime);
       if (!first || !last || first.time > last.time) continue;
       if (visibleTimeRange && (zoneLengthModes[key] === undefined && last.time < Number(visibleTimeRange.from)
         || first.time > Number(visibleTimeRange.to))) continue;
-      const left = Math.max(0, chart.timeScale().timeToCoordinate(first.time as UTCTimestamp) ?? 0);
+      const sourceLeft = chart.timeScale().timeToCoordinate(first.time as UTCTimestamp);
+      const left = Math.max(0, sameTimeframe ? sourceLeft ?? 0 : zoneStartCoordinate(key, sourceLeft) ?? 0);
       const mtfEnd = zoneLengthModes[key] === 'left'
-        ? chart.timeScale().logicalToCoordinate(displayCandles.indexOf(first) + 10)
+        ? sameTimeframe ? chart.timeScale().logicalToCoordinate(displayCandles.indexOf(first) + 10)
+          : zoneEndCoordinate(key, chart.timeScale().logicalToCoordinate(displayCandles.length - 1 + 10))
         : chart.timeScale().logicalToCoordinate(displayCandles.length - 1 + 10);
       const right = Math.min(rightEdge, mtfEnd ?? rightEdge);
       const top = series.priceToCoordinate(zone.top);
