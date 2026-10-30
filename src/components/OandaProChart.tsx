@@ -117,6 +117,7 @@ import {
   resolveTradeOverlaySetupKey,
   tradeOverlayEntryEventKey,
   tradeOverlayExecutionKey,
+  tradeOverlaySetupEntryKey,
   tradeOverlayZoneLabel,
 } from '../services/tradeOverlayIdentity';
 import {
@@ -601,6 +602,19 @@ function mt5StatusRenderSignature(status: Mt5AutomationStatus): string {
     counts: status.counts,
     recentSignals: status.recentSignals,
   });
+}
+
+export function internalSbrTableSourceVisible(
+  zoneName: string | undefined,
+  sourceZoneId: string | undefined,
+  zones: readonly Pick<StructureZone, 'id' | 'name' | 'active' | 'status'>[],
+  showInternal: boolean,
+): boolean {
+  if (zoneName !== 'Internal SBR') return true;
+  return showInternal && zones.some((zone) => (
+    zone.id === sourceZoneId && zone.name === 'Internal SBR'
+    && zone.active && zone.status === 'valid'
+  ));
 }
 
 function tradeStatusLabel(trade: TradeLevels): string {
@@ -2085,6 +2099,7 @@ export const OandaProChart: React.FC<{
   const [showLtfChoch, setShowLtfChoch] = useState(false);
   const [comparisonTimeframe, setComparisonTimeframe] = useState<OandaGranularity | null>(null);
   const [hiddenComparisonZoneKeys, setHiddenComparisonZoneKeys] = useState<string[]>([]);
+  const [zoneLengthModes, setZoneLengthModes] = useState<Record<string, 'left'>>({});
   const [hiddenCompletedTradeDrawings, setHiddenCompletedTradeDrawings] = useState<Set<string>>(() => new Set());
   const [showDrawingTools, setShowDrawingTools] = useState(false);
   const [activeDrawingTool, setActiveDrawingTool] = useState<ChartDrawingTool | null>(null);
@@ -3765,11 +3780,13 @@ export const OandaProChart: React.FC<{
     retainedChartTradesForTimeframe.filter((overlay) => (
       isDirectTradeOverlay(overlay.id, overlay.setupId)
       && hasIdentifiedDirectZoneLabel(overlay.id, overlay.setupId, overlay.label)
+      && internalSbrTableSourceVisible(tradeOverlayZoneLabel(overlay.label),
+        directTradeOverlayZoneId(overlay), displayZones, showInternal)
       && !redundantRetainedOverlayIds.has(overlay.id)
       && !redundantStandaloneZoneIds.has(directTradeOverlayZoneId(overlay) ?? '')
       && !extremeAPlusTjl2Selection.blockedZoneIds.has(directTradeOverlayZoneId(overlay) ?? '')
     ))
-  ), [extremeAPlusTjl2Selection.blockedZoneIds, redundantRetainedOverlayIds, redundantStandaloneZoneIds, retainedChartTradesForTimeframe]);
+  ), [displayZones, extremeAPlusTjl2Selection.blockedZoneIds, redundantRetainedOverlayIds, redundantStandaloneZoneIds, retainedChartTradesForTimeframe, showInternal]);
 
   const liveMt5TradeOverlays = useMemo<TradeOverlay[]>(() => (
     (mt5Status?.positions ?? []).flatMap((position) => {
@@ -3894,32 +3911,35 @@ export const OandaProChart: React.FC<{
   const completedChartTradeKeys = useMemo(() => {
     const setupKeys = new Set<string>();
     const entryEventKeys = new Set<string>();
+    const addCompletedEntry = (setupKey: string, signal: TradeLevels['signal']) => {
+      const eventKey = tradeOverlayEntryEventKey(signal);
+      setupKeys.add(tradeOverlaySetupEntryKey(setupKey, eventKey));
+      entryEventKeys.add(eventKey);
+    };
     for (const overlay of retainedChartTradesForTimeframe) {
       if (!isCompletedTrade(overlay.trade)) continue;
-      setupKeys.add(tradeOverlaySetupKey(overlay));
-      entryEventKeys.add(tradeOverlayEntryEventKey(overlay.trade.signal));
+      addCompletedEntry(tradeOverlaySetupKey(overlay), overlay.trade.signal);
     }
     for (const [zoneId, trade] of directZoneTrades) {
       if (!isCompletedTrade(trade)) continue;
-      setupKeys.add(resolveTradeOverlaySetupKey(
+      addCompletedEntry(resolveTradeOverlaySetupKey(
         `DIRECT:${zoneId}:${trade.signal.time}:${trade.entry}`,
-      ));
-      entryEventKeys.add(tradeOverlayEntryEventKey(trade.signal));
+      ), trade.signal);
     }
     for (const row of mtfRows) {
       if (!row.trade || !isCompletedTrade(row.trade)) continue;
-      setupKeys.add(resolveTradeOverlaySetupKey(
+      addCompletedEntry(resolveTradeOverlaySetupKey(
         `MTF:${row.id}:${row.engulfingTime}:${row.trade.entry}`,
-      ));
-      entryEventKeys.add(tradeOverlayEntryEventKey(row.trade.signal));
+      ), row.trade.signal);
     }
     for (const record of savedJournalTrades) {
       if ((record.symbol ?? 'XAUUSD') !== marketSymbol || !record.signalAt || record.completedAt > tradeDisplayAsOf
         || (!['sl', 'tp', 'rf'].includes(record.result) && !hasTradeDrawingExpired(record))) continue;
-      setupKeys.add(resolveTradeOverlaySetupKey(record.id, record.setupId));
-      entryEventKeys.add(tradeOverlayEntryEventKey({
+      const eventKey = tradeOverlayEntryEventKey({
         timeframe: record.signalTimeframe, direction: record.direction, time: record.signalAt,
-      }));
+      });
+      setupKeys.add(tradeOverlaySetupEntryKey(resolveTradeOverlaySetupKey(record.id, record.setupId), eventKey));
+      entryEventKeys.add(eventKey);
     }
     return { setupKeys, entryEventKeys };
   }, [directZoneTrades, mtfRows, savedJournalTrades, marketSymbol, tradeDisplayAsOf, hasTradeDrawingExpired, retainedChartTradesForTimeframe]);
@@ -3936,8 +3956,12 @@ export const OandaProChart: React.FC<{
       // The result owns the five-bar window; stale active copies must not reappear afterward.
       const setupKey = tradeOverlaySetupKey(overlay);
       const entryEventKey = tradeOverlayEntryEventKey(overlay.trade.signal);
+      const setupEntryKey = tradeOverlaySetupEntryKey(setupKey, entryEventKey);
       const liveBrokerPosition = replayIndex === null
         && liveMt5TradeOverlays.some((live) => live.id === overlay.id);
+      if (!liveBrokerPosition && isDirectTradeOverlay(overlay.id, overlay.setupId)
+        && !internalSbrTableSourceVisible(tradeOverlayZoneLabel(overlay.label),
+          directTradeOverlayZoneId(overlay), displayZones, showInternal)) return;
       if (!liveBrokerPosition && !isCompletedTrade(overlay.trade) && !overlay.referenceOnly && isTradeOverlayTerminated(
         setupKey,
         entryEventKey,
@@ -3947,7 +3971,7 @@ export const OandaProChart: React.FC<{
       )) return;
       if (!isTradeOverlayVisibleOnTimeframe(overlay.chartTimeframe, granularity)) return;
       if (!overlay.referenceOnly && (setupKey.startsWith('DIRECT:') || setupKey.startsWith('MTF:'))
-        && chartSetupKeys.has(setupKey)) return;
+        && chartSetupKeys.has(setupEntryKey)) return;
       // OANDA/chart recalculation can revise a zone ID or its SL/TP after MT5
       // has filled it. The entry candle still identifies the same execution.
       if (!overlay.referenceOnly && entryEventKeys.has(entryEventKey)) return;
@@ -3960,7 +3984,7 @@ export const OandaProChart: React.FC<{
       if (!overlays.has(signature)) {
         overlays.set(signature, overlay);
         if (!overlay.referenceOnly && (setupKey.startsWith('DIRECT:') || setupKey.startsWith('MTF:'))) {
-          chartSetupKeys.add(setupKey);
+          chartSetupKeys.add(setupEntryKey);
         }
         if (!overlay.referenceOnly) entryEventKeys.add(entryEventKey);
       }
@@ -4031,7 +4055,7 @@ export const OandaProChart: React.FC<{
     }
     return Array.from(overlays.values())
       .sort((first, second) => second.trade.calculatedAt - first.trade.calculatedAt);
-  }, [hasTradeDrawingExpired, savedJournalTrades, directZoneTrades, granularity, tradeDisplayAsOf, tradeStyleEnabled, completedChartTradeKeys, directZoneEntryDecisions, goldScalpingAccuracyTrades, hasRetainedDirectTradeSource, liveMt5TradeOverlays, marketSymbol, mtfRows, overlayStyleEnabled, replayIndex, retainedChartTradesForTimeframe, tradeOverlays, tradingTimeEnabled]);
+  }, [displayZones, showInternal, hasTradeDrawingExpired, savedJournalTrades, directZoneTrades, granularity, tradeDisplayAsOf, tradeStyleEnabled, completedChartTradeKeys, directZoneEntryDecisions, goldScalpingAccuracyTrades, hasRetainedDirectTradeSource, liveMt5TradeOverlays, marketSymbol, mtfRows, overlayStyleEnabled, replayIndex, retainedChartTradesForTimeframe, tradeOverlays, tradingTimeEnabled]);
 
   useEffect(() => {
     if (replayIndex !== null || !mt5Status?.config
@@ -4576,6 +4600,56 @@ export const OandaProChart: React.FC<{
     }
 
     const fragment = document.createDocumentFragment();
+    const livePrice = displayCandles[displayCandles.length - 1].close;
+    const touchesLivePrice = (zone: StructureZone) => (
+      zone.active && livePrice >= zone.bottom && livePrice <= zone.top
+    );
+    const zoneKey = (kind: string, id: string) => `${marketSymbol}:${granularity}:${kind}:${id}`;
+    const closeButtonPositions: Array<{ left: number; top: number }> = [];
+    const zoneEndCoordinate = (key: string, normalRight: number | null) => {
+      if (zoneLengthModes[key] !== 'left') return normalRight;
+      const scale = chart.timeScale();
+      const latestIndex = displayCandles.length - 1;
+      const barWidth = Math.abs((scale.logicalToCoordinate(latestIndex) ?? 0)
+        - (scale.logicalToCoordinate(Math.max(0, latestIndex - 10)) ?? 0));
+      return Math.min(rightEdge, 4 + Math.max(80, barWidth));
+    };
+    const zoneStartCoordinate = (key: string, normalLeft: number | null) => (
+      zoneLengthModes[key] === 'left' ? 4 : normalLeft
+    );
+    const appendZoneCloseButton = (key: string, name: string, right: number, top: number, bottom: number) => {
+      if (top > host.clientHeight || bottom < 0) return;
+      const buttonTop = Math.max(0, Math.min(host.clientHeight - 12, top - 6));
+      let buttonLeft = Math.max(0, right - 13);
+      while (buttonLeft >= 14 && closeButtonPositions.some((position) => (
+        Math.abs(position.left - buttonLeft) < 14 && Math.abs(position.top - buttonTop) < 12
+      ))) buttonLeft -= 14;
+      closeButtonPositions.push({ left: buttonLeft, top: buttonTop });
+      const button = document.createElement('button');
+      button.type = 'button';
+      const movedLeft = zoneLengthModes[key] === 'left';
+      button.textContent = movedLeft ? '\u2713' : '\u00d7';
+      button.title = movedLeft ? `Restore ${name} zone to its original position` : `Move ${name} zone to the left edge`;
+      button.setAttribute('aria-label', button.title);
+      button.dataset.journalExclude = 'true';
+      Object.assign(button.style, {
+        position: 'absolute', left: `${buttonLeft}px`, top: `${buttonTop}px`,
+        width: '12px', height: '12px', padding: '0', border: '1px solid #cbd5e1',
+        borderRadius: '2px', background: 'rgba(255,255,255,0.95)', color: '#64748b',
+        fontSize: '10px', lineHeight: '10px', cursor: 'pointer', pointerEvents: 'auto', zIndex: '2',
+      });
+      button.addEventListener('pointerdown', (event) => event.stopPropagation());
+      button.addEventListener('click', (event) => {
+        event.stopPropagation();
+        setZoneLengthModes((current) => {
+          const next = { ...current };
+          if (movedLeft) delete next[key];
+          else next[key] = 'left';
+          return next;
+        });
+      });
+      fragment.appendChild(button);
+    };
     const candleByTime = overlayCandlesByTime;
     const mtfBadgesByZone = new Map<string, Set<string>>();
     for (const row of mtfRows) {
@@ -4648,8 +4722,9 @@ export const OandaProChart: React.FC<{
       }
       const comparisonStartX = chart.timeScale().logicalToCoordinate(originLogicalIndex);
       if (comparisonStartX === null) continue;
-      const left = Math.max(0, comparisonStartX);
-      const right = Math.min(rightEdge, comparisonEndX);
+      const comparisonKey = zoneKey(`comparison:${comparisonTimeframe}`, zone.id);
+      const left = Math.max(0, zoneStartCoordinate(comparisonKey, comparisonStartX) ?? 0);
+      const right = Math.min(rightEdge, zoneEndCoordinate(comparisonKey, comparisonEndX) ?? rightEdge);
       if (right <= left) continue;
       const top = series.priceToCoordinate(zone.top);
       const bottom = series.priceToCoordinate(zone.bottom);
@@ -4682,8 +4757,12 @@ export const OandaProChart: React.FC<{
       box.appendChild(label);
       const closeButton = document.createElement('button');
       closeButton.type = 'button';
-      closeButton.textContent = '×';
-      closeButton.title = `Hide ${GRANULARITY_LABELS[comparisonTimeframe!]} ${zone.isBuy ? 'buy' : 'sell'} ${zone.name} zone`;
+      closeButton.hidden = !touchesLivePrice(zone) && zoneLengthModes[comparisonKey] !== 'left';
+      const movedLeft = zoneLengthModes[comparisonKey] === 'left';
+      closeButton.textContent = movedLeft ? '\u2713' : '\u00d7';
+      closeButton.title = movedLeft
+        ? `Restore ${GRANULARITY_LABELS[comparisonTimeframe!]} ${zone.name} zone to its original position`
+        : `Move ${GRANULARITY_LABELS[comparisonTimeframe!]} ${zone.name} zone to the left edge`;
       closeButton.setAttribute('aria-label', closeButton.title);
       closeButton.style.position = 'absolute';
       closeButton.style.right = '2px';
@@ -4703,8 +4782,12 @@ export const OandaProChart: React.FC<{
       closeButton.addEventListener('pointerdown', (event) => event.stopPropagation());
       closeButton.addEventListener('click', (event) => {
         event.stopPropagation();
-        const key = `${marketSymbol}:${comparisonTimeframe}:${zone.id}`;
-        setHiddenComparisonZoneKeys((current) => current.includes(key) ? current : [...current, key]);
+        setZoneLengthModes((current) => {
+          const next = { ...current };
+          if (movedLeft) delete next[comparisonKey];
+          else next[comparisonKey] = 'left';
+          return next;
+        });
       });
       box.appendChild(closeButton);
       fragment.appendChild(box);
@@ -4739,18 +4822,19 @@ export const OandaProChart: React.FC<{
       fragment.appendChild(badge);
     }
     for (const zone of scalpingEnabled ? oneMinuteScalpingZones : []) {
-      if (visibleTimeRange && (zone.endTime < Number(visibleTimeRange.from)
+      const key = zoneKey('scalp', zone.id);
+      if (visibleTimeRange && zoneLengthModes[key] !== 'left' && (zone.endTime < Number(visibleTimeRange.from)
         || zone.startTime > Number(visibleTimeRange.to))) continue;
       if (!(zone.category === 'mg' ? showMgZonesRef.current
         : zone.category === 'iss' ? showIssRef.current
           : zone.category === 'internal' ? showInternalRef.current
             : showSupplyDemandRef.current)) continue;
       const rawLeft = chart.timeScale().timeToCoordinate(zone.startTime as UTCTimestamp);
-      const rawRight = chart.timeScale().timeToCoordinate(zone.endTime as UTCTimestamp);
+      const rawRight = zoneEndCoordinate(key, chart.timeScale().timeToCoordinate(zone.endTime as UTCTimestamp));
       const top = series.priceToCoordinate(zone.top);
       const bottom = series.priceToCoordinate(zone.bottom);
       if (top === null || bottom === null) continue;
-      const left = Math.max(0, rawLeft ?? 0);
+      const left = Math.max(0, zoneStartCoordinate(key, rawLeft) ?? 0);
       const right = Math.min(rightEdge, rawRight ?? rightEdge);
       if (left >= right) continue;
       const box = document.createElement('div');
@@ -4770,15 +4854,20 @@ export const OandaProChart: React.FC<{
       label.style.color = zone.isBuy ? '#047857' : '#be123c';
       box.appendChild(label);
       fragment.appendChild(box);
+      if (touchesLivePrice(zone) || zoneLengthModes[key] === 'left') {
+        appendZoneCloseButton(key, `15M SCALP ${zone.name}`, right, Math.min(top, bottom), Math.max(top, bottom));
+      }
     }
     for (const { zone, label, endTime } of mtfDrawingZones) {
+      const key = zoneKey(`mtf:${label}`, zone.id);
       const first = displayCandles.find(candle => candle.time >= zone.startTime);
       const last = [...displayCandles].reverse().find(candle => candle.time <= endTime);
       if (!first || !last || first.time > last.time) continue;
-      if (visibleTimeRange && (last.time < Number(visibleTimeRange.from)
+      if (visibleTimeRange && (zoneLengthModes[key] === undefined && last.time < Number(visibleTimeRange.from)
         || first.time > Number(visibleTimeRange.to))) continue;
-      const left = Math.max(0, chart.timeScale().timeToCoordinate(first.time as UTCTimestamp) ?? 0);
-      const right = Math.min(rightEdge, chart.timeScale().timeToCoordinate(last.time as UTCTimestamp) ?? rightEdge);
+      const left = Math.max(0, zoneStartCoordinate(key, chart.timeScale().timeToCoordinate(first.time as UTCTimestamp)) ?? 0);
+      const right = Math.min(rightEdge, zoneEndCoordinate(key,
+        chart.timeScale().logicalToCoordinate(displayCandles.length - 1 + 10)) ?? rightEdge);
       const top = series.priceToCoordinate(zone.top);
       const bottom = series.priceToCoordinate(zone.bottom);
       if (top === null || bottom === null || left >= right) continue;
@@ -4793,6 +4882,7 @@ export const OandaProChart: React.FC<{
       });
       box.textContent = label;
       fragment.appendChild(box);
+      appendZoneCloseButton(key, label, right, Math.min(top, bottom), Math.max(top, bottom));
     }
     const occupiedZoneLabelRects: Array<{
       left: number;
@@ -4804,17 +4894,18 @@ export const OandaProChart: React.FC<{
       if (!isVisualZoneVisible(zone)) continue;
       const listedInTable = displayZoneMembers(zone).some((member) => listedZoneIds.has(member.id));
       const extendedEndIndex = zoneDrawingEndIndices.get(zone.id);
-      if (visibleTimeRange && ((extendedEndIndex === undefined && zone.endTime < Number(visibleTimeRange.from))
+      if (visibleTimeRange && ((zoneLengthModes[zoneKey('chart', zone.id)] === undefined && extendedEndIndex === undefined && zone.endTime < Number(visibleTimeRange.from))
         || zone.startTime > Number(visibleTimeRange.to))) continue;
       const rawLeft = chart.timeScale().timeToCoordinate(zone.startTime as UTCTimestamp);
-      const rawRight = extendedEndIndex === undefined
+      const normalRight = extendedEndIndex === undefined
         ? chart.timeScale().timeToCoordinate(zone.endTime as UTCTimestamp)
         : chart.timeScale().logicalToCoordinate(extendedEndIndex);
+      const rawRight = zoneEndCoordinate(zoneKey('chart', zone.id), normalRight);
       const top = series.priceToCoordinate(zone.top);
       const bottom = series.priceToCoordinate(zone.bottom);
       if (top === null || bottom === null) continue;
       if (Math.min(top, bottom) > host.clientHeight || Math.max(top, bottom) < 0) continue;
-      const left = Math.max(0, rawLeft === null ? 0 : rawLeft);
+      const left = Math.max(0, zoneStartCoordinate(zoneKey('chart', zone.id), rawLeft) ?? 0);
       const right = Math.min(rightEdge, rawRight === null ? rightEdge : rawRight);
       if (left >= right || right <= 0) continue;
       const zoneWidth = right - left;
@@ -4957,6 +5048,9 @@ export const OandaProChart: React.FC<{
           box.appendChild(shortLabel);
         }
         fragment.appendChild(box);
+        if (touchesLivePrice(zone) || zoneLengthModes[zoneKey('chart', zone.id)] === 'left') {
+          appendZoneCloseButton(zoneKey('chart', zone.id), name, right, zoneTopCoordinate, zoneTopCoordinate + zoneHeight);
+        }
         continue;
       }
       const detailLines = zoneWidth >= 160
@@ -5033,6 +5127,9 @@ export const OandaProChart: React.FC<{
       }
       box.appendChild(label);
       fragment.appendChild(box);
+      if (touchesLivePrice(zone) || zoneLengthModes[zoneKey('chart', zone.id)] === 'left') {
+        appendZoneCloseButton(zoneKey('chart', zone.id), name, right, zoneTopCoordinate, zoneTopCoordinate + zoneHeight);
+      }
     }
 
     const hasVisibleFibMarking = Object.values(fibVisibilityRef.current).some(Boolean)
@@ -5532,7 +5629,7 @@ export const OandaProChart: React.FC<{
     // Swap the complete overlay in one operation so the browser does not
     // perform layout work for every individual zone, line, and label.
     layer.replaceChildren(fragment);
-  }, [hasTradeDrawingExpired, hiddenCompletedTradeDrawings, comparisonTimeframe, directZoneTrades, displayCandles, extremeAPlusTjl2Selection, granularity, latestCandle?.time, ltfChochContext, marketConfig.pipSize, marketSymbol, mtfRows, mtfDrawingZones, oneMinuteScalpingZones, overlayCandlesByTime, repeatedLtfChochLabels, replayIndex, scalpingEnabled, tableTimeframeData, visibleComparisonZones, zoneDrawingEndIndices, zoneTableRows]);
+  }, [hasTradeDrawingExpired, zoneLengthModes, hiddenCompletedTradeDrawings, comparisonTimeframe, directZoneTrades, displayCandles, extremeAPlusTjl2Selection, granularity, latestCandle?.time, ltfChochContext, marketConfig.pipSize, marketSymbol, mtfRows, mtfDrawingZones, oneMinuteScalpingZones, overlayCandlesByTime, repeatedLtfChochLabels, replayIndex, scalpingEnabled, tableTimeframeData, visibleComparisonZones, zoneDrawingEndIndices, zoneTableRows]);
 
   redrawZonesRef.current = redrawZones;
 
@@ -7711,6 +7808,19 @@ export const OandaProChart: React.FC<{
             >
               LONG/SHORT POSITION {showTradeLevels ? 'ON' : 'OFF'}
             </button>
+            {(Object.keys(zoneLengthModes).length > 0 || hiddenComparisonZoneKeys.length > 0) && (
+              <button
+                type="button"
+                onClick={() => {
+                  setZoneLengthModes({});
+                  setHiddenComparisonZoneKeys([]);
+                }}
+                className="whitespace-nowrap rounded-full border border-slate-200 bg-white px-1.5 py-0.5 text-[8px] font-black text-slate-600"
+                title="Restore zones to their original positions"
+              >
+                RESTORE ZONE POSITIONS
+              </button>
+            )}
             <button
               type="button"
               onClick={() => setShowEntryArrows((value) => !value)}

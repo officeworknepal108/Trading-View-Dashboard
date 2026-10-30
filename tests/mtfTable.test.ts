@@ -4,7 +4,7 @@ import React from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { MultiTimeframeEntryTable, mtfTableHitExpired, isSlTpTradeDisplayFinished,
   tradeDisplayExpired, tradeDrawingExpired, tradeDrawingFromRecord, resolveArrowTradeZones,
-  completedTradeLabel, CompletedTradeRow, resolveRetainedTrade, zoneTableTradeExpired,
+  completedTradeLabel, CompletedTradeRow, resolveRetainedTrade, zoneTableTradeExpired, internalSbrTableSourceVisible,
   resolveZoneTableTrade, zoneTableCompletedStatus, TradeDetailsRow, ZoneTableEntryPrice,
   zoneTableMtfStatus, reconcileSavedMtfTrade, validateRecordedMtfTrade } from '../src/components/OandaProChart';
 import type { JournalTradeRecord } from '../src/components/TradeJournal';
@@ -12,6 +12,22 @@ import type { MtfRow } from '../src/services/mtf';
 import type { StructureZone } from '../src/services/marketStructure';
 
 const bar = (time: number, complete = true) => ({ time, open: 100, high: 102, low: 99, close: 101, volume: 1, complete });
+
+test('a retained Internal SBR row requires its current active chart zone', () => {
+  const zone = { id: 'internal-sbr', name: 'Internal SBR' as const, active: true, status: 'valid' as const };
+  assert.equal(internalSbrTableSourceVisible('Internal SBR', zone.id, [zone], true), true);
+  assert.equal(internalSbrTableSourceVisible('Internal SBR', zone.id, [], true), false);
+  assert.equal(internalSbrTableSourceVisible('Internal SBR', 'old-zone', [zone], true), false);
+  assert.equal(internalSbrTableSourceVisible('Internal SBR', undefined, [zone], true), false);
+  assert.equal(internalSbrTableSourceVisible('Internal SBR', zone.id, [zone], false), false);
+  assert.equal(internalSbrTableSourceVisible('Internal SBR', zone.id, [{ ...zone, active: false }], true), false);
+  assert.equal(internalSbrTableSourceVisible('Internal SBR', zone.id, [{ ...zone, status: 'pending' }], true), false);
+  assert.equal(internalSbrTableSourceVisible('Internal SBR', zone.id, [{ ...zone, name: 'Internal TJL2' }], true), false);
+  for (const name of ['TJL2', 'SBR', 'Internal RBS']) {
+    assert.equal(internalSbrTableSourceVisible(name, undefined, [], false), true,
+      'other retained trade rows keep their existing behavior');
+  }
+});
 
 test('a saved internal-zone snapshot cannot supply a missing source structure to the MTF table', () => {
   const context: MtfRow = {

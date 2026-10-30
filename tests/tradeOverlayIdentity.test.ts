@@ -11,6 +11,7 @@ import {
   resolveTradeOverlaySetupKey,
   tradeOverlayEntryEventKey,
   tradeOverlayExecutionKey,
+  tradeOverlaySetupEntryKey,
   tradeOverlayZoneLabel,
 } from '../src/services/tradeOverlayIdentity';
 
@@ -147,7 +148,9 @@ test('matches recalculated and broker drawings from the same entry event', () =>
 });
 
 test('removes every drawing copy immediately after SL or TP completes its execution', () => {
-  const completedSetups = new Set(['DIRECT:zone-a', 'MTF:setup-42']);
+  const completedSetups = new Set(['DIRECT:zone-a', 'MTF:setup-42'].map(setup => (
+    tradeOverlaySetupEntryKey(setup, 'M15:bullish:1792171800')
+  )));
   const completedEvents = new Set(['M15:bullish:1792171800']);
 
   assert.equal(isTradeOverlayTerminated(
@@ -162,4 +165,21 @@ test('removes every drawing copy immediately after SL or TP completes its execut
   assert.equal(isTradeOverlayTerminated(
     'DIRECT:zone-b', 'M15:bearish:1792172700', false, completedSetups, completedEvents,
   ), false, 'an unrelated unresolved execution remains visible');
+});
+
+test('the earlier TJL2 result cannot hide the reported later active entry from the same zone', () => {
+  const setup = 'DIRECT:TJL2-1793293200-4025.59';
+  const earlierEvent = tradeOverlayEntryEventKey({ timeframe: 'M15', direction: 'bearish', time: 1793306700 });
+  const activeEvent = tradeOverlayEntryEventKey({ timeframe: 'M15', direction: 'bearish', time: 1793314800 });
+  const completedSetups = new Set([tradeOverlaySetupEntryKey(setup, earlierEvent)]);
+  const completedEvents = new Set([earlierEvent]);
+  assert.equal(isTradeOverlayTerminated(setup, activeEvent, false, completedSetups, completedEvents), false,
+    'the active 4013.620 entry remains drawable after the earlier 4024.035 entry completes');
+  assert.equal(isTradeOverlayTerminated(setup, earlierEvent, false, completedSetups, completedEvents), true,
+    'a stale active copy of the earlier completed entry stays hidden');
+  const drawnSetups = new Set([tradeOverlaySetupEntryKey(setup, earlierEvent)]);
+  assert.equal(drawnSetups.has(tradeOverlaySetupEntryKey(setup, activeEvent)), false,
+    'drawing the earlier result must not deduplicate the later entry');
+  assert.equal(isTradeOverlayTerminated(setup, earlierEvent, false, completedSetups, new Set()), true,
+    'the setup check still recognizes the same completed entry');
 });

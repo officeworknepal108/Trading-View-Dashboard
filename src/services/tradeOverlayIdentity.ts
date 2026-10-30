@@ -125,14 +125,19 @@ export function liveMtfPositionMatchesChartRow(
     && position.direction === (row.direction === 'bullish' ? 'BUY' : 'SELL');
 }
 
+/** Keep separate entries from one zone distinct, including recalculated prices. */
+export function tradeOverlaySetupEntryKey(setupKey: string, entryEventKey: string): string {
+  return `${setupKey}:${entryEventKey}`;
+}
+
 export function isTradeOverlayTerminated(
   setupKey: string,
   entryEventKey: string,
   tradeCompleted: boolean,
-  completedSetupKeys: ReadonlySet<string>,
+  completedSetupEntryKeys: ReadonlySet<string>,
   completedEntryEventKeys: ReadonlySet<string>,
 ): boolean {
   return tradeCompleted
-    || completedSetupKeys.has(setupKey)
+    || completedSetupEntryKeys.has(tradeOverlaySetupEntryKey(setupKey, entryEventKey))
     || completedEntryEventKeys.has(entryEventKey);
 }
