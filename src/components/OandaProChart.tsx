@@ -662,6 +662,12 @@ function mt5SignalStatusLabel(signal: Mt5StoredSignal): string {
   if (signal.status === 'CANCELLED') return 'MT5 CANCELLED';
   if (signal.status === 'EXPIRED') return 'MT5 EXPIRED';
   if (signal.status === 'SIMULATED') return 'MT5 SIMULATED';
+  if (signal.status === 'REJECTED' && signal.message?.startsWith('STRONG OPPOSITE')) {
+    return 'STRONG OPPOSITE SETUP · TRADE SKIPPED';
+  }
+  if (signal.status === 'REJECTED' && signal.message?.startsWith('WEAK OPPOSITE')) {
+    return 'WEAK OPPOSITE SETUP · TRADE SKIPPED';
+  }
   if (signal.message?.includes('daily loss')) return 'MT5 REJECTED · DAILY LOSS LIMIT';
   if (signal.message?.includes('open trades')) return 'MT5 REJECTED · OPEN TRADE LIMIT';
   if (signal.message?.toLowerCase().includes('spread')) return 'MT5 REJECTED · SPREAD LIMIT';
@@ -8306,6 +8312,20 @@ export const OandaProChart: React.FC<{
             ))}
           </div>
         )}
+
+        {replayIndex === null && marketSymbol === 'XAUUSD' && mt5Status?.recentSignals
+          ?.filter((signal) => signal.status === 'REJECTED'
+            && /^(STRONG|WEAK) OPPOSITE (BUY|SELL) SETUP - TRADE SKIPPED:/.test(signal.message ?? '')
+            && signal.updatedAt * 1000 >= Date.now() - 15 * 60 * 1000)
+          .slice(0, 1).map((signal) => (
+            <div key={signal.id} role="status" className={`border-b px-3 py-1.5 text-[10px] font-bold ${
+              signal.message?.startsWith('STRONG')
+                ? 'border-rose-200 bg-rose-50 text-rose-800'
+                : 'border-amber-200 bg-amber-50 text-amber-900'
+            }`}>
+              {signal.message}
+            </div>
+          ))}
 
         <div className="flex flex-wrap items-center gap-x-4 gap-y-1 border-b border-slate-100 px-4 py-2 text-xs">
           <span className="flex items-center gap-1.5 font-black text-slate-800">

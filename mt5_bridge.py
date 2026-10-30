@@ -600,6 +600,31 @@ def check_daily_trade_budget(request: dict[str, Any], config: dict[str, Any]) ->
         raise RuntimeError("New trade's SL risk exceeds today's remaining daily risk allowance.")
 
 
+def opposite_position_alert(signal: dict[str, Any], symbol: str) -> str | None:
+    """Check the live account, including manual trades, before an opposite entry."""
+    positions = mt5.positions_get(symbol=symbol)
+    if positions is None:
+        raise RuntimeError("Open MT5 positions are unavailable; opposite-position safety check failed.")
+    opposite_type = (mt5.POSITION_TYPE_SELL if signal["direction"] == "BUY"
+                     else mt5.POSITION_TYPE_BUY)
+    opposite = next((position for position in positions if position.type == opposite_type), None)
+    if opposite is None:
+        return None
+    bias = (signal.get("journalContext") or {}).get("biasAtEntry") or {}
+    expected = "bullish" if signal["direction"] == "BUY" else "bearish"
+    aligned = bias.get("M15") == expected and bias.get("H1") == expected
+    strength = "STRONG" if aligned else "WEAK"
+    open_side = "SELL" if signal["direction"] == "BUY" else "BUY"
+    reason = (f"M15 and H1 are both {expected}." if aligned else
+              f"M15 is {bias.get('M15', 'unconfirmed')}; H1 is {bias.get('H1', 'unconfirmed')}. "
+              f"Both trends do not confirm {signal['direction']}.")
+    action = ("Review the open position and its stop loss; no trade was opened." if aligned
+              else "No trade was opened.")
+    return (f"{strength} OPPOSITE {signal['direction']} SETUP - TRADE SKIPPED: "
+            f"{open_side} position #{opposite.ticket} is already open on {symbol}. "
+            f"{reason} {action}")
+
+
 def check_safety(signal: dict[str, Any], config: dict[str, Any]) -> tuple[Any, Any]:
     enabled_timeframes = config.get("enabledTimeframes", ["M1", "M5", "M15", "M30", "H1"])
     signal_timeframe = str(signal.get("signalTimeframe", ""))
@@ -622,6 +647,9 @@ def check_safety(signal: dict[str, Any], config: dict[str, Any]) -> tuple[Any, A
     symbol = str(config["brokerSymbol"])
     if not mt5.symbol_select(symbol, True):
         raise RuntimeError(f"Broker symbol {symbol} is unavailable: {mt5.last_error()}")
+    conflict = opposite_position_alert(signal, symbol)
+    if conflict:
+        raise RuntimeError(conflict)
     info = mt5.symbol_info(symbol)
     tick = mt5.symbol_info_tick(symbol)
     if not info or not tick:
@@ -643,7 +671,8 @@ def check_safety(signal: dict[str, Any], config: dict[str, Any]) -> tuple[Any, A
     return info, tick
 
 
-def send_with_filling_fallback(request: dict[str, Any], risk_config: dict[str, Any] | None = None) -> Any:
+def send_with_filling_fallback(request: dict[str, Any], risk_config: dict[str, Any] | None = None,
+                               entry_signal: dict[str, Any] | None = None) -> Any:
     result = None
     successful_send_codes = (mt5.TRADE_RETCODE_DONE, mt5.TRADE_RETCODE_DONE_PARTIAL)
     for filling in (mt5.ORDER_FILLING_IOC, mt5.ORDER_FILLING_FOK, mt5.ORDER_FILLING_RETURN):
@@ -655,6 +684,10 @@ def send_with_filling_fallback(request: dict[str, Any], risk_config: dict[str, A
         assert_execution_account()
         if risk_config is not None:
             check_daily_trade_budget(request, risk_config)
+        if entry_signal is not None:
+            conflict = opposite_position_alert(entry_signal, request["symbol"])
+            if conflict:
+                raise RuntimeError(conflict)
         result = mt5.order_send(candidate)
         if result and result.retcode in successful_send_codes:
             return result
@@ -703,7 +736,7 @@ def place_signal(signal: dict[str, Any], config: dict[str, Any]) -> dict[str, An
         "comment": f"KB-{tag}",
         "type_time": mt5.ORDER_TIME_GTC,
     }
-    result = send_with_filling_fallback(request, risk_config=config)
+    result = send_with_filling_fallback(request, risk_config=config, entry_signal=signal)
     status = "PLACED" if is_limit else "ACTIVE"
     execution_price = float(result.price or price)
     initial_stop_loss = float(signal["stopLoss"])

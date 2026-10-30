@@ -71,6 +71,38 @@ class LiveEntryGuardTests(BridgeTestCase):
                     signal, config, symbol, SimpleNamespace(ask=102.1, bid=101.9), 0.05)
 
 
+class OppositePositionGuardTests(BridgeTestCase):
+    def test_strong_and_weak_alerts_use_completed_trend_snapshot(self) -> None:
+        manual_buy = SimpleNamespace(ticket=123, type=bridge.mt5.POSITION_TYPE_BUY, magic=0)
+        sell = {"direction": "SELL", "journalContext": {"biasAtEntry": {"M15": "bearish", "H1": "bearish"}}}
+        with patch.object(bridge.mt5, "positions_get", return_value=[manual_buy]) as positions:
+            message = bridge.opposite_position_alert(sell, "XAUUSD")
+            self.assertIn("STRONG OPPOSITE SELL SETUP - TRADE SKIPPED", message)
+            self.assertIn("BUY position #123", message)
+            positions.assert_called_with(symbol="XAUUSD")
+            sell["journalContext"]["biasAtEntry"]["H1"] = "bullish"
+            self.assertIn("WEAK OPPOSITE SELL SETUP - TRADE SKIPPED",
+                          bridge.opposite_position_alert(sell, "XAUUSD"))
+            self.assertIsNone(bridge.opposite_position_alert(
+                {"direction": "BUY", "journalContext": {}}, "XAUUSD"))
+
+    def test_opposite_sell_blocks_buy_immediately_before_order_send(self) -> None:
+        manual_sell = SimpleNamespace(ticket=456, type=bridge.mt5.POSITION_TYPE_SELL, magic=0)
+        buy = {"direction": "BUY", "journalContext": {"biasAtEntry": {"M15": "bullish", "H1": "bearish"}}}
+        request = {"symbol": "XAUUSD"}
+        with patch.object(bridge.mt5, "positions_get", return_value=[manual_sell]), \
+             patch.object(bridge.mt5, "order_check", return_value=SimpleNamespace(retcode=0)), \
+             patch.object(bridge.mt5, "order_send") as send:
+            with self.assertRaisesRegex(RuntimeError, "WEAK OPPOSITE BUY SETUP - TRADE SKIPPED"):
+                bridge.send_with_filling_fallback(request, entry_signal=buy)
+            send.assert_not_called()
+
+    def test_unavailable_positions_fail_closed(self) -> None:
+        with patch.object(bridge.mt5, "positions_get", return_value=None):
+            with self.assertRaisesRegex(RuntimeError, "safety check failed"):
+                bridge.opposite_position_alert({"direction": "SELL"}, "XAUUSD")
+
+
 class TradeStyleRiskFreeTests(BridgeTestCase):
     def test_only_scalping_closes_half_when_price_reaches_one_r(self) -> None:
         position = SimpleNamespace(type=bridge.mt5.POSITION_TYPE_BUY,
