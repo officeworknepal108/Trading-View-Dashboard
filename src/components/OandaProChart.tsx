@@ -148,7 +148,7 @@ import {
   type Mt5StoredSignal,
 } from '../services/mt5Automation';
 
-type OandaGranularity = 'M1' | 'M5' | 'M15' | 'M30' | 'H1' | 'H4' | 'D';
+type OandaGranularity = 'M1' | 'M5' | 'M15' | 'M30' | 'H1' | 'H4' | 'D' | 'W';
 type MarketGranularity = OandaGranularity | 'W' | 'MO';
 type LiveChartDataSource = 'MT5' | 'OANDA';
 type FibVisibilityKey = 'tjl1' | 'tjl2' | 'choch' | 'intChoch' | 'intTjl1' | 'intTjl2'
@@ -479,11 +479,12 @@ const TIMEFRAMES: Array<{ value: OandaGranularity; label: string }> = [
   { value: 'H1', label: '1h' },
   { value: 'H4', label: '4h' },
   { value: 'D', label: 'D' },
+  { value: 'W', label: '1W' },
 ];
-const DRAWING_TIMEFRAME_ORDER: OandaGranularity[] = ['M1', 'M5', 'M15', 'M30', 'H1', 'H4', 'D'];
+const DRAWING_TIMEFRAME_ORDER: OandaGranularity[] = ['M1', 'M5', 'M15', 'M30', 'H1', 'H4', 'D', 'W'];
 
 const TREND_TABLE_GRANULARITIES: OandaGranularity[] = ['M1', 'M5', 'M15', 'H1', 'H4', 'D'];
-const AUTOMATION_GRANULARITIES: OandaGranularity[] = ['M1', 'M5', 'M15', 'M30', 'H1'];
+const AUTOMATION_GRANULARITIES: TradeTimeframe[] = ['M1', 'M5', 'M15', 'M30', 'H1'];
 const MT5_CHART_GRANULARITIES: OandaGranularity[] = ['M1', 'M5', 'M15', 'M30', 'H1', 'H4', 'D'];
 
 const ACCURACY_ZONE_ROWS = [
@@ -493,7 +494,7 @@ const ACCURACY_ZONE_ROWS = [
 ];
 
 const TREND_TABLE_LABELS: Record<OandaGranularity, string> = {
-  M1: '1 MIN', M5: '5 MIN', M15: '15 MIN', M30: '30 MIN', H1: '1 HOUR', H4: '4 HOUR', D: '1 DAY',
+  M1: '1 MIN', M5: '5 MIN', M15: '15 MIN', M30: '30 MIN', H1: '1 HOUR', H4: '4 HOUR', D: '1 DAY', W: '1 WEEK',
 };
 
 const TIMEFRAME_SECONDS: Record<MarketGranularity, number> = {
@@ -513,6 +514,7 @@ const TJL1_CONFIRMATION_SECONDS: Partial<Record<MarketGranularity, number>> = {
   H1: 14400,
   H4: 86400,
   D: 604800,
+  W: 4 * 604800,
 };
 
 const VIP_SUPPORT_GRANULARITIES: Record<OandaGranularity, MarketGranularity[]> = {
@@ -524,6 +526,7 @@ const VIP_SUPPORT_GRANULARITIES: Record<OandaGranularity, MarketGranularity[]> =
   H1: ['H4', 'D'],
   H4: ['D', 'W'],
   D: ['W', 'MO'],
+  W: ['MO'],
 };
 
 const DIRECT_ENGULFING_FALLBACKS: Partial<Record<OandaGranularity, OandaGranularity[]>> = {
@@ -561,7 +564,7 @@ function resolveRuleForDirectEntry(options: {
 }
 
 const TJL1_CONFIRMATION_LABELS: Record<OandaGranularity, string> = {
-  M1: '5m', M5: '15m', M15: '1h', M30: '1h', H1: '4h', H4: '1D', D: '1W',
+  M1: '5m', M5: '15m', M15: '1h', M30: '1h', H1: '4h', H4: '1D', D: '1W', W: '4W',
 };
 
 // Number#toLocaleString constructs an ICU formatter on every call. These
@@ -2449,7 +2452,7 @@ export const OandaProChart: React.FC<{
 
   const structure = useMemo(
     () => analyzeChartStructure('chart', displayCandles, {
-      allowSupplyDemand: ['H1', 'H4', 'D'].includes(granularity),
+      allowSupplyDemand: ['H1', 'H4', 'D', 'W'].includes(granularity),
       sourceBarSeconds: TIMEFRAME_SECONDS[granularity],
       confirmationBarSeconds: TJL1_CONFIRMATION_SECONDS[granularity],
       zoneVisualBars: 30,
@@ -5811,7 +5814,7 @@ export const OandaProChart: React.FC<{
     tasks.push({
       key: 'chart', candles: visibleCandles,
       options: {
-        allowSupplyDemand: ['H1', 'H4', 'D'].includes(granularity),
+        allowSupplyDemand: ['H1', 'H4', 'D', 'W'].includes(granularity),
         sourceBarSeconds: TIMEFRAME_SECONDS[granularity],
         confirmationBarSeconds: TJL1_CONFIRMATION_SECONDS[granularity], zoneVisualBars: 30,
       },
@@ -9267,7 +9270,7 @@ export const OandaProChart: React.FC<{
           <span>Genesis Low: {formatPrice(structure.genesis?.price)}</span>
           <span>Active MG zones: {displayZones.filter((zone) => zone.category === 'mg' && zone.active).length}</span>
           <span>Invalid zones: {displayZones.filter((zone) => !zone.active).length}</span>
-          <span>S/D: {['H1', 'H4', 'D'].includes(granularity) ? displayZones.filter((zone) => zone.category === 'supplyDemand').length : 'H1+ ONLY'}</span>
+          <span>S/D: {['H1', 'H4', 'D', 'W'].includes(granularity) ? displayZones.filter((zone) => zone.category === 'supplyDemand').length : 'H1+ ONLY'}</span>
           <span>Last candle: {latestCandle?.complete === false ? 'FORMING' : 'COMPLETE'}</span>
           <span className="ml-auto">Updated: {lastUpdated ? new Date(lastUpdated).toLocaleTimeString() : '—'}</span>
         </div>
