@@ -94,6 +94,7 @@ import {
   tradeRecordOutsideTradingTime,
   selectTradeChartRecords,
   selectTwoMonthAccuracyRecords,
+  selectTwoMonthJournalRecords,
   twoMonthAccuracyWindow,
   tradeRecordDatePeriodKey,
   tradeRecordPeriodLabel,
@@ -1635,6 +1636,7 @@ function journalVolumeMetadata(
 const EngulfingAccuracyTable: React.FC<{
   records: AccuracyTradeRecord[];
   allRecords: AccuracyTradeRecord[];
+  mt5Records: AccuracyTradeRecord[];
   timeframe: OandaGranularity;
   showAllTrades: boolean;
   historyAsOf: number;
@@ -1643,7 +1645,8 @@ const EngulfingAccuracyTable: React.FC<{
   entryArrowsVisible: boolean;
   onClose: () => void;
   onVisibleRecordIdsChange: (ids: string[]) => void;
-}> = ({ records, allRecords, timeframe, showAllTrades, historyAsOf, timeZone, marketSymbol, entryArrowsVisible, onClose, onVisibleRecordIdsChange }) => {
+}> = ({ records, allRecords, mt5Records, timeframe, showAllTrades, historyAsOf, timeZone, marketSymbol, entryArrowsVisible, onClose, onVisibleRecordIdsChange }) => {
+  const [activeTab, setActiveTab] = useState<'SETUPS' | 'MT5'>('SETUPS');
   const [filters, setFilters] = useState<TradeRecordFilters>(() => ({
     ...DEFAULT_TRADE_RECORD_FILTERS,
     timeframes: [timeframe],
@@ -1661,12 +1664,18 @@ const EngulfingAccuracyTable: React.FC<{
     timeZone, day: '2-digit', month: 'short', year: 'numeric',
   });
   const filteredAllRecords = useMemo(
-    () => filterAccuracyTradeRecords<AccuracyTradeRecord>(selectTwoMonthAccuracyRecords(allRecords, historyAsOf), filters, timeZone, marketSymbol)
+    () => filterAccuracyTradeRecords<AccuracyTradeRecord>(
+      activeTab === 'MT5'
+        ? selectTwoMonthJournalRecords(mt5Records, historyAsOf)
+        : selectTwoMonthAccuracyRecords(allRecords, historyAsOf),
+      filters, timeZone, marketSymbol)
       .filter((record) => matchesAccuracyTradingTime(record, tradingTimeFilter)
         && matchesStyle(record)),
-    [allRecords, filters, timeZone, tradingTimeFilter, selectedStyle, historyAsOf, marketSymbol],
+    [activeTab, allRecords, mt5Records, filters, timeZone, tradingTimeFilter, selectedStyle, historyAsOf, marketSymbol],
   );
-  const summaryRecords = filteredAllRecords;
+  const summaryRecords = filteredAllRecords.filter((record) => (
+    record.result === 'tp' || record.result === 'sl' || record.result === 'rf'
+  ));
   const visibleChartIds = useMemo(() => {
     const selectedIds = new Set(summaryRecords.map((record) => record.id));
     return new Set(records.filter((record) => selectedIds.has(record.id)).map((record) => record.id));
@@ -1676,11 +1685,13 @@ const EngulfingAccuracyTable: React.FC<{
   }, [onVisibleRecordIdsChange, summaryRecords]);
   const timeframeCounts = accuracyCounts(summaryRecords);
   const availableTimeframes = useMemo(() => Array.from(new Set<TradeTimeframe>(
-    [...TIMEFRAMES.map(({ value }) => value), ...allRecords.map((record) => record.signalTimeframe)],
-  )).sort((first, second) => TIMEFRAME_SECONDS[first] - TIMEFRAME_SECONDS[second]), [allRecords]);
+    [...TIMEFRAMES.map(({ value }) => value),
+      ...allRecords.map((record) => record.signalTimeframe),
+      ...mt5Records.map((record) => record.signalTimeframe)],
+  )).sort((first, second) => TIMEFRAME_SECONDS[first] - TIMEFRAME_SECONDS[second]), [allRecords, mt5Records]);
   const availableZones = useMemo(() => Array.from(new Set(
-    allRecords.map((record) => record.zoneName),
-  )).sort(), [allRecords]);
+    [...allRecords, ...mt5Records].map((record) => record.zoneName),
+  )).sort(), [allRecords, mt5Records]);
   const extraZoneRows: string[] = Array.from(new Set<string>(
     summaryRecords.map((record) => record.zoneName),
   ))
@@ -1710,10 +1721,11 @@ const EngulfingAccuracyTable: React.FC<{
       <th className="whitespace-nowrap px-1.5 py-0.5">Accuracy%</th>
     </tr>
   );
+  const showTradeRows = showAllTrades || activeTab === 'MT5';
 
   return (
     <div data-journal-exclude="true" className={`pointer-events-auto absolute z-30 overflow-hidden rounded-md border border-slate-300 bg-white/95 shadow-md ${
-      showAllTrades
+      showTradeRows
         ? 'bottom-3 left-3 top-3 flex w-fit max-w-[calc(100%_-_24px)] flex-col'
         : 'left-3 top-1/2 flex max-h-[calc(100%_-_24px)] max-w-[calc(100%_-_24px)] -translate-y-1/2 flex-col'
     }`}>
@@ -1765,8 +1777,29 @@ const EngulfingAccuracyTable: React.FC<{
       <div className="shrink-0 border-b border-indigo-100 bg-white px-2 py-1 text-[9px] font-bold text-indigo-700">
         {formatHistoryDate(historyWindow.from)} – {formatHistoryDate(historyWindow.to)}
       </div>
-      <div className={showAllTrades ? 'flex min-h-0 flex-1' : 'min-h-0 overflow-auto'}>
-        <div className={showAllTrades ? 'w-[290px] shrink-0 overflow-auto border-r border-slate-300' : ''}>
+      <div className="flex shrink-0 items-center gap-1 border-b border-indigo-100 bg-white px-2 py-1 text-[9px] font-bold">
+        <button type="button" onClick={() => {
+          setActiveTab('SETUPS');
+          setFilters((current) => ({ ...current, timeframes: [timeframe] }));
+        }}
+          aria-pressed={activeTab === 'SETUPS'}
+          className={`rounded px-2 py-1 ${activeTab === 'SETUPS' ? 'bg-indigo-600 text-white' : 'text-indigo-700 hover:bg-indigo-50'}`}>
+          ALL SETUPS
+        </button>
+        <button type="button" onClick={() => {
+          setActiveTab('MT5');
+          setFilters((current) => ({ ...current, timeframes: 'ALL' }));
+        }}
+          aria-pressed={activeTab === 'MT5'}
+          className={`rounded px-2 py-1 ${activeTab === 'MT5' ? 'bg-indigo-600 text-white' : 'text-indigo-700 hover:bg-indigo-50'}`}>
+          EXECUTED IN MT5
+        </button>
+        {activeTab === 'MT5' && <span className="ml-1 text-slate-500">
+          {summaryRecords.length} closed · {filteredAllRecords.length - summaryRecords.length} open · accuracy uses closed trades
+        </span>}
+      </div>
+      <div className={showTradeRows ? 'flex min-h-0 flex-1' : 'min-h-0 overflow-auto'}>
+        <div className={showTradeRows ? 'w-[290px] shrink-0 overflow-auto border-r border-slate-300' : ''}>
           <table className="w-full border-collapse text-center text-[9px]">
             <thead>{header('Timeframe')}</thead>
             <tbody>
@@ -1793,11 +1826,11 @@ const EngulfingAccuracyTable: React.FC<{
             </tbody>
           </table>
         </div>
-        {showAllTrades && (
+        {showTradeRows && (
           <div className="min-w-0 max-w-[calc(100vw-338px)] flex-1 overflow-auto">
             <div className="sticky left-0 top-0 z-20 border-b border-indigo-200 bg-indigo-50">
               <div className="bg-indigo-100 px-2 py-1 text-[9px] font-black uppercase tracking-wide text-indigo-800">
-                All completed setups · {filteredAllRecords.length}/{allRecords.length} shown · {entryArrowsVisible ? visibleChartIds.size : 0} chart arrows · newest first
+                {activeTab === 'MT5' ? 'MT5 broker executions' : 'All completed setups'} · {filteredAllRecords.length}/{activeTab === 'MT5' ? mt5Records.length : allRecords.length} shown · {entryArrowsVisible ? visibleChartIds.size : 0} chart arrows · newest first
               </div>
               <div className="flex flex-wrap items-center gap-1 border-t border-indigo-100 px-1.5 py-1">
                 <select value={filters.datePeriod} onChange={(event) => setFilters((current) => ({
@@ -1842,7 +1875,7 @@ const EngulfingAccuracyTable: React.FC<{
               <thead className="sticky top-[55px] z-10 bg-slate-600 uppercase text-white">
               <tr>
                 <th className="px-1.5 py-1">#</th>
-                <th className="whitespace-nowrap px-1.5 py-1 text-left">Completed</th>
+                <th className="whitespace-nowrap px-1.5 py-1 text-left">{activeTab === 'MT5' ? 'Closed / opened' : 'Completed'}</th>
                 <th className="whitespace-nowrap px-1.5 py-1 text-left">Entered</th>
                 <th className="px-1.5 py-1">On chart</th>
                 <th className="whitespace-nowrap px-1.5 py-1">Trading time</th>
@@ -1856,6 +1889,11 @@ const EngulfingAccuracyTable: React.FC<{
                 <th className="px-1.5 py-1">SL</th>
                 <th className="px-1.5 py-1">TP</th>
                 <th className="px-1.5 py-1">R:R</th>
+                {activeTab === 'MT5' && <>
+                  <th className="px-1.5 py-1">MT5 ticket</th>
+                  <th className="px-1.5 py-1">Lots</th>
+                  <th className="px-1.5 py-1">Broker P/L</th>
+                </>}
               </tr>
               </thead>
               <tbody>
@@ -1863,7 +1901,8 @@ const EngulfingAccuracyTable: React.FC<{
                   <tr key={record.id} title={`Trade ID: ${record.id}`} className="border-t border-slate-200 odd:bg-white even:bg-slate-50">
                   <td className="px-1.5 py-1 text-slate-500">{index + 1}</td>
                   <td className="whitespace-nowrap px-1.5 py-1 text-left text-slate-600">
-                    {formatAccuracyTradeTime(record.completedAt, timeZone)}
+                    {activeTab === 'MT5' && (record.result === 'open' || record.result === 'risk-free')
+                      ? 'OPEN' : formatAccuracyTradeTime(record.completedAt, timeZone)}
                   </td>
                   <td className="whitespace-nowrap px-1.5 py-1 text-left text-slate-600">
                     {record.openedAt !== undefined
@@ -1894,7 +1933,8 @@ const EngulfingAccuracyTable: React.FC<{
                   <td className={`px-1.5 py-1 font-black ${
                     record.result === 'tp'
                       ? 'text-emerald-700'
-                      : record.result === 'rf' ? 'text-amber-600' : 'text-rose-700'
+                      : record.result === 'rf' || record.result === 'risk-free'
+                        ? 'text-amber-600' : record.result === 'open' ? 'text-blue-700' : 'text-rose-700'
                   }`}>
                     {record.result.toUpperCase()}
                   </td>
@@ -1902,12 +1942,18 @@ const EngulfingAccuracyTable: React.FC<{
                   <td className="whitespace-nowrap px-1.5 py-1 text-slate-700">{formatPrice(record.stopLoss)}</td>
                   <td className="whitespace-nowrap px-1.5 py-1 text-slate-700">{formatPrice(record.takeProfit)}</td>
                   <td className="px-1.5 py-1 font-bold text-slate-700">1:{record.rewardRisk}</td>
+                  {activeTab === 'MT5' && <>
+                    <td className="px-1.5 py-1 font-bold text-indigo-700">#{record.brokerTicket}</td>
+                    <td className="px-1.5 py-1 text-slate-700">{record.volume ?? '—'}</td>
+                    <td className="px-1.5 py-1 text-slate-700">{record.realizedProfit === undefined ? '—' : record.realizedProfit.toFixed(2)}</td>
+                  </>}
                   </tr>
                 ))}
               {filteredAllRecords.length === 0 && (
                   <tr>
-                    <td colSpan={15} className="px-2 py-3 text-center text-slate-400">
-                      {selectedStyle === 'INTRADAY'
+                    <td colSpan={activeTab === 'MT5' ? 18 : 15} className="px-2 py-3 text-center text-slate-400">
+                      {activeTab === 'MT5' ? 'No executed MT5 trades match these filters'
+                        : selectedStyle === 'INTRADAY'
                         ? 'No classified Intraday trades yet; rules are still being defined.'
                         : 'No completed setups match these filters'}
                     </td>
@@ -2066,6 +2112,7 @@ export const OandaProChart: React.FC<{
   const [visibleAccuracyRecordIds, setVisibleAccuracyRecordIds] = useState<string[] | null>(null);
   const [showAccuracyOptions, setShowAccuracyOptions] = useState(false);
   const [showAllAccuracyTrades, setShowAllAccuracyTrades] = useState(false);
+  const [executedMt5Trades, setExecutedMt5Trades] = useState<AccuracyTradeRecord[]>([]);
   const [showJournal, setShowJournal] = useState(() => (
     new URLSearchParams(window.location.search).get('journal') === '1'
   ));
@@ -2225,6 +2272,26 @@ export const OandaProChart: React.FC<{
       .catch(() => undefined);
     return () => { cancelled = true; };
   }, []);
+
+  useEffect(() => {
+    if (!showAccuracyTable) return;
+    let cancelled = false;
+    const refreshExecutedTrades = async () => {
+      try {
+        const response = await terminalFetch('/api/journal/trades?view=dashboard', { cache: 'no-store' });
+        const payload = await response.json() as { ok?: boolean; trades?: AccuracyTradeRecord[] };
+        if (!cancelled && response.ok && payload.ok && Array.isArray(payload.trades)) {
+          setExecutedMt5Trades(payload.trades.filter((trade) => (
+            trade.mt5Managed === true && Number.isFinite(trade.brokerTicket)
+            && (trade.brokerTicket ?? 0) > 0
+          )).sort((first, second) => second.completedAt - first.completedAt));
+        }
+      } catch { /* Keep the latest broker records while the local server reconnects. */ }
+    };
+    void refreshExecutedTrades();
+    const timer = window.setInterval(() => void refreshExecutedTrades(), 5_000);
+    return () => { cancelled = true; window.clearInterval(timer); };
+  }, [showAccuracyTable, terminalFetch]);
 
   const refreshMt5Status = useCallback(async () => {
     try {
@@ -9240,6 +9307,10 @@ export const OandaProChart: React.FC<{
             <EngulfingAccuracyTable
               records={timeframeAccuracyRecords}
               allRecords={replayVisibleAccuracyRecords}
+              mt5Records={executedMt5Trades.filter((trade) => (
+                (trade.symbol ?? 'XAUUSD') === marketSymbol
+                && (replayResultCutoff === undefined || (trade.openedAt ?? trade.completedAt) <= replayResultCutoff)
+              ))}
               timeframe={granularity}
               showAllTrades={showAllAccuracyTrades}
               historyAsOf={replayResultCutoff ?? Math.floor(Date.now() / 1000)}
