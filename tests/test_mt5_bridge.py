@@ -297,14 +297,15 @@ class OverallProfitTests(BridgeTestCase):
             magic=bridge.MAGIC_NUMBER if magic is None else magic,
             type=bridge.mt5.DEAL_TYPE_SELL if kind is None else kind)
 
-    def test_all_history_counts_bot_net_results_and_costs_but_not_deposits_or_manual_trades(self) -> None:
+    def test_all_history_counts_bot_and_manual_trades_but_not_deposits(self) -> None:
         self.deals.extend([self.deal(1, 0, commission=-0.10), self.deal(1, -12.25),
                            self.deal(2, 25, commission=-1, swap=-0.5, fee=-0.5),
-                           self.deal(3, -1000, magic=0), self.deal(0, 5000, kind=bridge.mt5.DEAL_TYPE_BALANCE)])
+                           self.deal(3, 100, magic=0), self.deal(4, -7.5, magic=0),
+                           self.deal(0, 5000, kind=bridge.mt5.DEAL_TYPE_BALANCE)])
         result = bridge.overall_profit_snapshot(now=self.now)
-        self.assertAlmostEqual(result["realizedLossMoney"], 12.35)
-        self.assertAlmostEqual(result["realizedProfitMoney"], 23)
-        self.assertAlmostEqual(result["netMoney"], 10.65)
+        self.assertAlmostEqual(result["realizedLossMoney"], 19.85)
+        self.assertAlmostEqual(result["realizedProfitMoney"], 123)
+        self.assertAlmostEqual(result["netMoney"], 103.15)
         bridge.mt5.history_deals_get.assert_called_once_with(0, self.now.timestamp() + 86400)
 
     def test_recent_loss_with_broker_server_timestamp_ahead_of_utc_is_included(self) -> None:
@@ -318,15 +319,15 @@ class OverallProfitTests(BridgeTestCase):
         self.deals.extend([self.deal(1, 0, commission=-1), self.deal(1, -12, magic=0)])
         self.assertEqual(bridge.overall_profit_snapshot(now=self.now)["realizedLossMoney"], 13)
 
-    def test_floating_profit_is_live_and_only_bot_positions_count(self) -> None:
+    def test_floating_profit_is_live_for_bot_and_manual_positions(self) -> None:
         self.deals.append(self.deal(1, -12.35))
         self.positions.extend([SimpleNamespace(ticket=2, magic=bridge.MAGIC_NUMBER, profit=5, swap=-1),
-                               SimpleNamespace(ticket=3, magic=0, profit=500, swap=0)])
+                               SimpleNamespace(ticket=3, magic=0, profit=500, swap=-2)])
         result = bridge.overall_profit_snapshot(now=self.now)
-        self.assertEqual(result["floatingMoney"], 4)
-        self.assertAlmostEqual(result["netMoney"], -8.35)
+        self.assertEqual(result["floatingMoney"], 502)
+        self.assertAlmostEqual(result["netMoney"], 489.65)
         self.positions[0].profit = 8
-        self.assertEqual(bridge.overall_profit_snapshot(now=self.now)["floatingMoney"], 7)
+        self.assertEqual(bridge.overall_profit_snapshot(now=self.now)["floatingMoney"], 505)
         self.assertEqual(bridge.mt5.history_deals_get.call_count, 1)
 
     def test_midnight_does_not_reset_totals_and_account_switch_does_not_reuse_them(self) -> None:
@@ -341,7 +342,7 @@ class OverallProfitTests(BridgeTestCase):
 
     def test_balance_change_refreshes_history_without_waiting_for_cache_timeout(self) -> None:
         self.assertEqual(bridge.overall_profit_snapshot(now=self.now)["netMoney"], 0)
-        self.deals.append(self.deal(1, -12.35))
+        self.deals.append(self.deal(1, -12.35, magic=0))
         self.account.balance -= 12.35
         self.assertAlmostEqual(bridge.overall_profit_snapshot(now=self.now)["netMoney"], -12.35)
         self.assertEqual(bridge.mt5.history_deals_get.call_count, 2)

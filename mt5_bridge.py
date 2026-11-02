@@ -454,7 +454,7 @@ def checked_live_entry_price(signal: dict[str, Any], config: dict[str, Any],
 
 
 def overall_profit_snapshot(now: datetime | None = None) -> dict[str, Any]:
-    """Read-only bot P/L across all available history of the connected account."""
+    """Read-only trade P/L across all available history of the connected account."""
     assert_execution_account()
     account = mt5.account_info()
     if not account or not math.isfinite(float(account.balance)):
@@ -469,11 +469,9 @@ def overall_profit_snapshot(now: datetime | None = None) -> dict[str, Any]:
         if deals is None:
             raise RuntimeError("Overall profit/loss is unavailable: MT5 history could not be read.")
         trade_types = (mt5.DEAL_TYPE_BUY, mt5.DEAL_TYPE_SELL)
-        bot_ids = {int(deal.position_id) for deal in deals
-                   if deal.magic == MAGIC_NUMBER and deal.type in trade_types and deal.position_id}
         realized_by_position: dict[int, float] = {}
         for deal in deals:
-            if deal.type not in trade_types or (deal.magic != MAGIC_NUMBER and deal.position_id not in bot_ids):
+            if deal.type not in trade_types:
                 continue
             amount = math.fsum(float(getattr(deal, field, 0)) for field in ("profit", "commission", "swap", "fee"))
             if not math.isfinite(amount):
@@ -483,14 +481,11 @@ def overall_profit_snapshot(now: datetime | None = None) -> dict[str, Any]:
         profit = math.fsum(max(0, value) for value in realized_by_position.values())
         loss = math.fsum(max(0, -value) for value in realized_by_position.values())
         assert_execution_account()
-        OVERALL_PROFIT_CACHE.update(key=key, checkedAt=checked_at, botIds=bot_ids,
-                                    profit=profit, loss=loss)
+        OVERALL_PROFIT_CACHE.update(key=key, checkedAt=checked_at, profit=profit, loss=loss)
     positions = mt5.positions_get()
     if positions is None:
         raise RuntimeError("Overall profit/loss is unavailable: MT5 positions could not be read.")
-    floating = math.fsum(float(position.profit) + float(position.swap) for position in positions
-                        if position.magic == MAGIC_NUMBER
-                        or getattr(position, "identifier", position.ticket) in OVERALL_PROFIT_CACHE["botIds"])
+    floating = math.fsum(float(position.profit) + float(position.swap) for position in positions)
     if not math.isfinite(floating):
         raise RuntimeError("Overall profit/loss is unavailable: invalid floating values.")
     assert_execution_account()

@@ -3520,6 +3520,21 @@ export const OandaProChart: React.FC<{
           sourceCandles, marketSymbol === 'XAUUSD' ? { tradeStyle: 'INTRADAY' } : undefined);
       }
     }
+    // A retained direct trade can reach TP/SL after its original zone stops
+    // producing a fresh entry decision. Keep the journal and arrows in sync
+    // with the completed trade already displayed in the Zone Table.
+    for (const overlay of visibleRetainedChartTradeOverlays) {
+      if (!overlay.id.startsWith('DIRECT:') || overlay.referenceOnly
+        || (overlay.symbol ?? 'XAUUSD') !== marketSymbol
+        || !overlay.trade.result || overlay.trade.filledAt === undefined) continue;
+      const saved = savedJournalTrades.find((record) => record.id === overlay.id);
+      addRecord(overlay.id, saved?.zoneName ?? tradeOverlayZoneLabel(overlay.label) ?? 'Unknown',
+        saved?.zoneTimeframe ?? overlay.trade.signal.timeframe, 'ENGULFING', overlay.trade,
+        tableTimeframeData[overlay.trade.signal.timeframe]?.candles,
+        { zoneId: saved?.zoneId ?? directTradeOverlayZoneId(overlay),
+          tradeStyle: saved?.tradeStyle ?? (marketSymbol === 'XAUUSD' ? 'INTRADAY' : undefined),
+          fibSource: saved?.fibSource, fibBand: saved?.fibBand });
+    }
     for (const row of mtfRows) {
       const trade = row.trade ?? row.previewTrade;
       if (!trade) continue;
@@ -3558,6 +3573,8 @@ export const OandaProChart: React.FC<{
     trackedDirectTradeSetups,
     tradeTrackingScope,
     tradingTimeEnabled,
+    savedJournalTrades,
+    visibleRetainedChartTradeOverlays,
     vipCandles,
   ]);
 
@@ -4437,8 +4454,19 @@ export const OandaProChart: React.FC<{
         projected ? record.openedAt ?? signalAt + TIMEFRAME_SECONDS[record.signalTimeframe]
           : signalAt);
     }
+    if (replayIndex === null) {
+      for (const overlay of retainedDirectChartTradesForTimeframe) {
+        const trade = overlay.trade;
+        if (!overlay.id.startsWith('DIRECT:') || overlay.referenceOnly
+          || trade.filledAt === undefined || trade.signal.timeframe !== granularity) continue;
+        add(overlay.id, trade, 'CHART ENTRY', tradeOverlayZoneLabel(overlay.label) ?? 'Unknown',
+          overlay.fibLabels?.join(' · ') ?? 'Not recorded',
+          marketSymbol === 'XAUUSD' ? 'INTRADAY' : 'ALL', false);
+      }
+    }
     return Array.from(entries.values());
-  }, [chartEntryRecords, displayCandles, granularity, marketSymbol, tradingTimeEnabled, visibleAccuracyRecordIds]);
+  }, [chartEntryRecords, displayCandles, granularity, marketSymbol, replayIndex,
+    retainedDirectChartTradesForTimeframe, tradingTimeEnabled, visibleAccuracyRecordIds]);
   const latestCandle = displayCandles[displayCandles.length - 1] || null;
   const previousCandle = displayCandles.length > 1 ? displayCandles[displayCandles.length - 2] : null;
   const headerCandlesByTime = useMemo(() => new Map(displayCandles.map((candle, index) => (
@@ -7593,7 +7621,7 @@ export const OandaProChart: React.FC<{
                   </div>}
                 </div>
                 <div className="mb-2 rounded border border-slate-200 bg-slate-50 p-2 leading-relaxed text-slate-600">
-                  <div className="mb-1 font-black text-slate-800">Overall bot profit / loss</div>
+                  <div className="mb-1 font-black text-slate-800">Overall account profit / loss</div>
                   <div className="mb-1 text-[8px]">This MT5 account · all available history · no daily reset</div>
                   {mt5Status.bridge.connected && overallProfit?.available ? <>
                     <div>Realized profit: <b className="text-emerald-700">{overallProfitMoney(overallProfit.realizedProfitMoney)}</b></div>
@@ -7603,7 +7631,7 @@ export const OandaProChart: React.FC<{
                     <div className={`mt-1 font-black ${overallProfit.netMoney < 0 ? 'text-rose-700' : 'text-emerald-700'}`}>
                       Overall P/L: {overallProfitMoney(overallProfit.netMoney)}
                     </div>
-                    <div className="mt-1 text-[8px]">Bot trades only · commission, swap and fees included</div>
+                    <div className="mt-1 text-[8px]">Bot and manual trades · commission, swap and fees included</div>
                   </> : <div className="text-amber-700">
                     {overallProfit?.available === false ? overallProfit.error : 'Waiting for overall MT5 profit/loss data.'}
                   </div>}
