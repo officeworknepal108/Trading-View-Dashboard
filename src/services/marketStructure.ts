@@ -147,6 +147,15 @@ export interface StructureZone {
   swingEngulfingDirection?: EngulfingDirection;
   swingEngulfingTime?: number;
   swingEngulfingCandleCount?: number;
+  // Independent 1H swing confluence for M15 TJL1/TJL2 after a M15 CHoCH.
+  h1SwingFibBand?: Extract<FibBand, '0.5-0.618' | '0.71-0.79'>;
+  h1SwingFibStatus?: 'aligned';
+  h1SwingSourcePrice?: number;
+  h1SwingZeroPrice?: number;
+  h1SwingEngulfingType?: EngulfingType;
+  h1SwingEngulfingDirection?: EngulfingDirection;
+  h1SwingEngulfingTime?: number;
+  h1SwingEngulfingCandleCount?: number;
   // Direction-matched confluence from the current 9:15 Nepal Day FIB.
   dayFibBand?: Extract<FibBand, '0.5-0.618' | '0.71-0.79'>;
   dayFibStatus?: 'a-plus';

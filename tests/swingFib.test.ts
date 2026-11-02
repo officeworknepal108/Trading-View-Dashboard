@@ -1,7 +1,23 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import type { StructureCandle } from '../src/services/marketStructure';
-import { buildAlternatingSwingFibs } from '../src/services/swingFib';
+import { buildAlternatingSwingFibs, buildOneHourSwingFibs } from '../src/services/swingFib';
+
+test('1H swing uses the nearest hourly pivot before the latest hourly structure turn', () => {
+  const hour = 3600;
+  const candles = [
+    candle(0, 100, 95), candle(hour, 105, 96), candle(2 * hour, 110, 97),
+    candle(3 * hour, 120, 101), candle(4 * hour, 115, 99),
+    candle(5 * hour, 112, 96), candle(6 * hour, 108, 90),
+    candle(7 * hour, 100, 92), candle(8 * hour, 104, 94),
+    candle(9 * hour, 108, 95, true, 100),
+  ];
+  const moves = buildOneHourSwingFibs(candles, [{ time: 6 * hour, text: 'SL' }]);
+  assert.equal(moves[0].sourceTime, 3 * hour);
+  assert.equal(moves[0].sourcePrice, 120);
+  assert.equal(moves[0].zeroPrice, 90);
+  assert.equal(moves[1].direction, 'up');
+});
 
 function candle(
   time: number,

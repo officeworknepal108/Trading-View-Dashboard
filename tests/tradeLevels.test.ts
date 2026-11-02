@@ -443,6 +443,12 @@ test('only the FIB source that produced the entry controls the deep-discount buf
     type: 'T2',
     time: 120,
   }), true);
+  assert.equal(isDeepDiscountTradeSignal({
+    ...zone,
+    h1SwingFibBand: '0.71-0.79',
+    h1SwingEngulfingType: 'T1',
+    h1SwingEngulfingTime: 60,
+  }, bullishSignal), true, 'the selected 1H swing route takes precedence at the same candle');
 });
 
 test('oversized setup creates a capped pending entry and becomes risk-free at 1R', () => {

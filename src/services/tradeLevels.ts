@@ -91,6 +91,7 @@ export function measureTradeableFibZone(
   const fibAligned = inherentlyTradeableDbDt
     || (zone.fibStatus === 'a-plus' && zone.fibBand !== undefined)
     || (zone.swingFibStatus === 'a-plus' && zone.swingFibBand !== undefined)
+    || (zone.h1SwingFibStatus === 'aligned' && zone.h1SwingFibBand !== undefined)
     || (zone.dayFibStatus === 'a-plus' && zone.dayFibBand !== undefined);
   if ((!fibAligned && !measurableMajorLiquidity) || zone.tapTime === undefined
     || (!measurableMajorLiquidity && !isZoneEligibleForEngulfingEntry(zone))) {
@@ -281,7 +282,7 @@ export function formatTradeTimeframe(timeframe: string): string {
   return timeframe;
 }
 
-export type ZoneEngulfingFibSource = 'structure' | 'swing' | 'day';
+export type ZoneEngulfingFibSource = 'structure' | 'swing' | 'h1Swing' | 'day';
 
 export function isDaySwingFibEntryTimeframe(timeframe: TradeTimeframe): boolean {
   return timeframe !== 'M1' && timeframe !== 'M5';
@@ -294,6 +295,10 @@ export function isZoneEngulfingFibQualified(
   if (source === 'swing') {
     return zone.swingFibStatus === 'a-plus'
       && (zone.swingFibBand === '0.5-0.618' || zone.swingFibBand === '0.71-0.79');
+  }
+  if (source === 'h1Swing') {
+    return zone.h1SwingFibStatus === 'aligned'
+      && (zone.h1SwingFibBand === '0.5-0.618' || zone.h1SwingFibBand === '0.71-0.79');
   }
   if (source === 'day') {
     return zone.dayFibStatus === 'a-plus'
@@ -313,6 +318,17 @@ export function resolveZoneEngulfingSignal(
   zone: StructureZone,
   chartTimeframe: TradeTimeframe,
 ): EngulfingTradeSignal | undefined {
+  if (chartTimeframe === 'M15' && isZoneEngulfingFibQualified(zone, 'h1Swing')
+    && zone.h1SwingEngulfingType && zone.h1SwingEngulfingDirection
+    && zone.h1SwingEngulfingTime !== undefined) {
+    return {
+      type: zone.h1SwingEngulfingType,
+      direction: zone.h1SwingEngulfingDirection,
+      time: zone.h1SwingEngulfingTime,
+      candleCount: zone.h1SwingEngulfingCandleCount ?? 2,
+      timeframe: 'M15',
+    };
+  }
   // A fallback can intentionally be preferred even when the zone also has a
   // chart-timeframe engulfing (for example, 1H entries confirmed on 15M/30M).
   if (isZoneEngulfingFibQualified(zone, 'structure')
@@ -393,7 +409,7 @@ export function isUnfilledDirectSetupQualified(options: {
 }
 
 function isDeepFibBand(band: StructureZone['fibBand'] | StructureZone['swingFibBand']
-  | StructureZone['dayFibBand']): boolean {
+  | StructureZone['h1SwingFibBand'] | StructureZone['dayFibBand']): boolean {
   return band === '0.71-0.79' || band === 'deep';
 }
 
@@ -402,6 +418,9 @@ export function isDeepDiscountTradeSignal(
   signal: EngulfingTradeSignal,
 ): boolean {
   if (zone.name === 'DB' || zone.name === 'DT') return true;
+  if (signal.time === zone.h1SwingEngulfingTime && signal.type === zone.h1SwingEngulfingType) {
+    return isDeepFibBand(zone.h1SwingFibBand);
+  }
   if (signal.time === zone.engulfingTime && signal.type === zone.engulfingType) {
     return isDeepFibBand(zone.fibBand);
   }

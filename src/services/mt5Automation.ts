@@ -211,22 +211,39 @@ export function goldAutomationCountertrendBlocked(signal: Mt5SignalInput): boole
   );
 }
 
-/** A nearby active opposite zone is an obstacle when it lies before the planned TP. */
+/** The first active opposing zone must be at least one full stop distance from entry. */
+export function goldOpposingZoneBeforeOneR(
+  signal: Pick<Mt5SignalInput, 'direction' | 'entry' | 'stopLoss' | 'signalAt'>,
+  zones: readonly StructureZone[],
+): { zone: StructureZone; rewardRisk: number } | undefined {
+  const risk = Math.abs(signal.entry - signal.stopLoss);
+  if (!Number.isFinite(risk) || risk <= 0 || !Number.isFinite(signal.entry)) return undefined;
+  let nearest: { zone: StructureZone; rewardRisk: number } | undefined;
+  for (const zone of zones) {
+    if (!zone.active || zone.status !== 'valid' || zone.isBuy === (signal.direction === 'BUY')
+      || zone.startTime > signal.signalAt
+      || (zone.activeFromTime !== undefined && zone.activeFromTime > signal.signalAt)
+      || (zone.invalidatedAt !== undefined && zone.invalidatedAt <= signal.signalAt)) continue;
+    const bottom = Math.min(zone.bottom, zone.top);
+    const top = Math.max(zone.bottom, zone.top);
+    if (!Number.isFinite(bottom) || !Number.isFinite(top)) continue;
+    const inTradePath = signal.direction === 'BUY' ? top >= signal.entry : bottom <= signal.entry;
+    if (!inTradePath) continue;
+    const distance = signal.direction === 'BUY'
+      ? Math.max(0, bottom - signal.entry)
+      : Math.max(0, signal.entry - top);
+    if (distance >= risk) continue;
+    const rewardRisk = distance / risk;
+    if (!nearest || rewardRisk < nearest.rewardRisk) nearest = { zone, rewardRisk };
+  }
+  return nearest;
+}
+
 export function goldAutomationOpposingZoneBlocked(
   signal: Mt5SignalInput,
   zones: readonly StructureZone[],
 ): boolean {
-  return zones.some((zone) => {
-    if (!zone.active || zone.status !== 'valid' || zone.isBuy === (signal.direction === 'BUY')
-      || zone.startTime > signal.signalAt
-      || (zone.activeFromTime !== undefined && zone.activeFromTime > signal.signalAt)
-      || (zone.invalidatedAt !== undefined && zone.invalidatedAt <= signal.signalAt)) return false;
-    const bottom = Math.min(zone.bottom, zone.top);
-    const top = Math.max(zone.bottom, zone.top);
-    return signal.direction === 'BUY'
-      ? bottom < signal.takeProfit && top > signal.entry
-      : top > signal.takeProfit && bottom < signal.entry;
-  });
+  return goldOpposingZoneBeforeOneR(signal, zones) !== undefined;
 }
 
 /** One unusually large completed minute must not consume the whole planned stop. */

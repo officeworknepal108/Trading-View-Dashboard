@@ -10,6 +10,7 @@ import {
   goldAutomationHighImpactUsdNewsTimes,
   goldAutomationNewsPauseUntil,
   goldAutomationOpposingZoneBlocked,
+  goldOpposingZoneBeforeOneR,
   goldAutomationRepeatAreaBlocked,
   applySignalOppositePositionTarget,
   buildMt5SignalId,
@@ -382,7 +383,7 @@ test('only pending and active dashboard trades are executable', () => {
   assert.equal(isExecutableTrade({ ...activeTrade, status: 'tp-hit' }), false);
 });
 
-test('gold entry guards block bearish one-minute buys, nearby sell zones, and repeat stopped areas', () => {
+test('gold entry guards block bearish one-minute buys, opposing zones before 1R, and repeat stopped areas', () => {
   const candidate = {
     symbol: 'XAUUSD', direction: 'BUY', signalTimeframe: 'M1',
     entry: 100, stopLoss: 97, takeProfit: 109, signalAt: 2_000, calculatedAt: 2_060,
@@ -395,10 +396,21 @@ test('gold entry guards block bearish one-minute buys, nearby sell zones, and re
     } },
   }), false);
   const sellZone = { active: true, status: 'valid', isBuy: false,
-    startTime: 0, bottom: 104, top: 106 } as StructureZone;
+    startTime: 0, bottom: 102, top: 104 } as StructureZone;
   assert.equal(goldAutomationOpposingZoneBlocked(candidate, [sellZone]), true);
+  assert.equal(goldAutomationOpposingZoneBlocked(candidate, [{ ...sellZone, bottom: 103, top: 106 }]), false);
+  assert.equal(goldAutomationOpposingZoneBlocked(candidate, [{ ...sellZone, bottom: 104, top: 106 }]), false);
   assert.equal(goldAutomationOpposingZoneBlocked(candidate, [{ ...sellZone, bottom: 110, top: 112 }]), false);
   assert.equal(goldAutomationOpposingZoneBlocked(candidate, [{ ...sellZone, status: 'invalidated' }]), false);
+  const picturedSell = { ...candidate, direction: 'SELL' as const,
+    entry: 3959.4, stopLoss: 3972.31, takeProfit: 3933.58 };
+  const picturedBuyZone = { ...sellZone, name: 'TJL2' as const, isBuy: true,
+    bottom: 3950.575, top: 3954.817 };
+  const obstacle = goldOpposingZoneBeforeOneR(picturedSell, [picturedBuyZone]);
+  assert.equal(obstacle?.zone.name, 'TJL2');
+  assert.ok(Math.abs((obstacle?.rewardRisk ?? 0) - 0.355) < 0.001);
+  assert.equal(goldAutomationOpposingZoneBlocked(picturedSell,
+    [{ ...picturedBuyZone, bottom: 3942, top: 3946.48 }]), false);
   const previous = [{ symbol: 'XAUUSD', direction: 'BUY', status: 'SL',
     entry: 101, stopLoss: 98, closedAt: 1_260 }] as Mt5StoredSignal[];
   assert.equal(goldAutomationRepeatAreaBlocked(candidate, previous, []), true);

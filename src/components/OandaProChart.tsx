@@ -32,11 +32,11 @@ import {
   StructureZone,
 } from '../services/marketStructure';
 import { findReplayIndexAtOrBefore } from '../services/replay';
-import { buildAlternatingSwingFibs, SwingFibMove } from '../services/swingFib';
+import { buildAlternatingSwingFibs, buildOneHourSwingFibs, SwingFibMove } from '../services/swingFib';
 import { ChartTimeZone, formatChartTick, formatChartTime } from '../services/chartTime';
 import { structureSnapshotsMatch, type PreparedStructureAnalysis, type StructureAnalysisTask } from '../services/structureAnalysis';
 import { buildDayFibs, DayFibMove } from '../services/dayFib';
-import { applySwingFibConfluence } from '../services/swingFibConfluence';
+import { applyPostChochH1SwingFibConfluence, applySwingFibConfluence } from '../services/swingFibConfluence';
 import { applyDayFibConfluence } from '../services/dayFibConfluence';
 import { INDICATOR_FIB_LEVELS, indicatorFibPrice } from '../services/indicatorFib';
 import {
@@ -145,6 +145,7 @@ import {
   MT5_ENTRY_TIMEFRAME_OPTIONS,
   MT5_RISK_PERCENT_OPTIONS,
   goldM1BuyCountertrendBlocked,
+  goldOpposingZoneBeforeOneR,
   isTradeStyleEnabled,
   type Mt5AutomationStatus,
   type Mt5StoredSignal,
@@ -154,7 +155,7 @@ type OandaGranularity = 'M1' | 'M5' | 'M15' | 'M30' | 'H1' | 'H4' | 'D' | 'W';
 type MarketGranularity = OandaGranularity | 'W' | 'MO';
 type LiveChartDataSource = 'MT5' | 'OANDA';
 type FibVisibilityKey = 'tjl1' | 'tjl2' | 'choch' | 'intChoch' | 'intTjl1' | 'intTjl2'
-  | 'doubleChoch' | 'intDoubleChoch' | 'iss' | 'swing' | 'day';
+  | 'doubleChoch' | 'intDoubleChoch' | 'iss' | 'swing' | 'h1Swing' | 'day';
 type ChochFibVisibility = [boolean, boolean, boolean, boolean];
 type ChartDrawingTool = 'rectangle' | 'fib' | 'measure' | 'note' | 'path' | 'trend';
 type ChartDrawingVisibility = 'all' | 'current-only' | 'current-and-above' | 'current-and-below';
@@ -271,6 +272,7 @@ export const DEFAULT_FIB_VISIBILITY: Record<FibVisibilityKey, boolean> = {
   doubleChoch: false,
   iss: false,
   swing: false,
+  h1Swing: false,
   day: false,
 };
 
@@ -281,6 +283,7 @@ const FIB_VISIBILITY_OPTIONS: Array<{ key: FibVisibilityKey; label: string }> = 
   { key: 'doubleChoch', label: 'D CHoCH MARKING' },
   { key: 'iss', label: 'ISS MARKING' },
   { key: 'swing', label: 'SWING MARKING' },
+  { key: 'h1Swing', label: '1H SWING MARKING' },
   { key: 'day', label: 'DAY FIB' },
 ];
 
@@ -298,7 +301,8 @@ const ALL_FIB_VISIBILITY_OPTIONS = [
 
 function isSingleFibMarkingKey(key: FibVisibilityKey): boolean {
   return key === 'tjl1' || key === 'tjl2' || key === 'intTjl1' || key === 'intTjl2'
-    || key === 'doubleChoch' || key === 'intDoubleChoch' || key === 'iss' || key === 'day';
+    || key === 'doubleChoch' || key === 'intDoubleChoch' || key === 'iss'
+    || key === 'day';
 }
 
 interface OandaCandle {
@@ -334,6 +338,7 @@ interface DirectZoneEntryDecision {
   previewTrade?: TradeLevels;
   trades?: TradeLevels[];
   oppositePositionOpen: boolean;
+  opposingZoneBlock?: NonNullable<ReturnType<typeof goldOpposingZoneBeforeOneR>>;
 }
 
 interface TradeOverlay {
@@ -865,6 +870,9 @@ function tradeZoneFibLabels(zone: StructureZone): string[] {
   if (zone.swingFibStatus === 'a-plus' && zone.swingFibBand) {
     labels.push(`SWING A+ FIB ${zone.swingFibBand}`);
   }
+  if (zone.h1SwingFibStatus === 'aligned' && zone.h1SwingFibBand) {
+    labels.push(`1H SWING FIB ALIGNED ${zone.h1SwingFibBand}`);
+  }
   if (zone.dayFibStatus === 'a-plus' && zone.dayFibBand) {
     labels.push(`DAY FIB A+ ${zone.dayFibBand}`);
   }
@@ -893,6 +901,8 @@ function displayEngulfingLabel(zone: StructureZone): string | undefined {
     isZoneEngulfingFibQualified(zone, 'structure') ? zone.engulfingType : undefined,
     isZoneEngulfingFibQualified(zone, 'swing') && zone.swingEngulfingType
       ? `SW ${zone.swingEngulfingType}` : undefined,
+    isZoneEngulfingFibQualified(zone, 'h1Swing') && zone.h1SwingEngulfingType
+      ? `1H SW ${zone.h1SwingEngulfingType}` : undefined,
     isZoneEngulfingFibQualified(zone, 'day') && zone.dayEngulfingType
       ? `DAY ${zone.dayEngulfingType}` : undefined,
   ].filter((label): label is string => label !== undefined);
@@ -1044,6 +1054,9 @@ function mtfZoneLabel(name: StructureZone['name'], majorLiquidity = false): stri
 }
 
 function mtfSignalLabel(row: DisplayMtfRow, trade: TradeLevels | undefined): string {
+  if (row.opposingZoneBlock) return `NO ENTRY · ${row.opposingZoneBlock.zone.name} ${
+    row.opposingZoneBlock.zone.isBuy ? 'BUY' : 'SELL'
+  } ZONE AT ${row.opposingZoneBlock.rewardRisk.toFixed(2)}R`;
   if ((row.chochSequence ?? 1) > 1) return mtfChochSequenceLabel(row.chochSequence!);
   if (row.sourcePairOverlapsHigherZone === false) {
     return 'CHOCH OBSERVED · SOURCE OUTSIDE ZONE · NO ENTRY';
@@ -1066,6 +1079,7 @@ type DisplayMtfRow = MtfRow & {
   previewTrade?: TradeLevels;
   tradeBarsAgo?: number;
   tradingTimeBlocked?: boolean;
+  opposingZoneBlock?: NonNullable<ReturnType<typeof goldOpposingZoneBeforeOneR>>;
 };
 
 /** Stored chart context is a snapshot, not proof that its source setup exists. */
@@ -1605,17 +1619,22 @@ function journalFibMetadata(
 ): Pick<JournalTradeRecord, 'fibSource' | 'fibBand' | 'fibLevels'> {
   let fibSource = zone.majorLiquidity ? 'MAJOR LIQUIDITY' : 'ZONE FIB';
   let fibBand = zone.fibBand;
-  if (signal.time === zone.swingEngulfingTime && signal.type === zone.swingEngulfingType) {
+  if (signal.time === zone.h1SwingEngulfingTime && signal.type === zone.h1SwingEngulfingType) {
+    fibSource = '1H SWING FIB';
+    fibBand = zone.h1SwingFibBand;
+  } else if (signal.time === zone.swingEngulfingTime && signal.type === zone.swingEngulfingType) {
     fibSource = '4H SWING FIB';
     fibBand = zone.swingFibBand;
   } else if (signal.time === zone.dayEngulfingTime && signal.type === zone.dayEngulfingType) {
     fibSource = 'DAY FIB';
     fibBand = zone.dayFibBand;
   }
-  const fibLevels = zone.fibSourcePrice !== undefined && zone.fibZeroPrice !== undefined
+  const sourcePrice = fibSource === '1H SWING FIB' ? zone.h1SwingSourcePrice : zone.fibSourcePrice;
+  const zeroPrice = fibSource === '1H SWING FIB' ? zone.h1SwingZeroPrice : zone.fibZeroPrice;
+  const fibLevels = sourcePrice !== undefined && zeroPrice !== undefined
     ? [0.5, 0.618, 0.71, 0.79].map((level) => ({
       label: String(level),
-      price: zone.fibZeroPrice! + (zone.fibSourcePrice! - zone.fibZeroPrice!) * level,
+      price: zeroPrice + (sourcePrice - zeroPrice) * level,
     }))
     : undefined;
   return { fibSource, fibBand, fibLevels };
@@ -2016,6 +2035,7 @@ export const OandaProChart: React.FC<{
   const zonesRef = useRef<StructureZone[]>([]);
   const visualZonesRef = useRef<DisplayStructureZone[]>([]);
   const swingFibMovesRef = useRef<SwingFibMove[]>([]);
+  const h1SwingFibMovesRef = useRef<SwingFibMove[]>([]);
   const dayFibMovesRef = useRef<DayFibMove[]>([]);
   const structureLinesRef = useRef<StructureLine[]>([]);
   const structureMarkersRef = useRef<any[]>([]);
@@ -2027,6 +2047,7 @@ export const OandaProChart: React.FC<{
   const showIssRef = useRef(true);
   const showInternalRef = useRef(true);
   const showFibRef = useRef(true);
+  const showAlignedH1FibRef = useRef(false);
   const fibVisibilityRef = useRef<Record<FibVisibilityKey, boolean>>(DEFAULT_FIB_VISIBILITY);
   const fibPreviousVisibilityRef = useRef<Record<FibVisibilityKey, boolean>>(DEFAULT_FIB_VISIBILITY);
   const chochFibVisibilityRef = useRef<ChochFibVisibility>(DEFAULT_CHOCH_FIB_VISIBILITY);
@@ -2091,6 +2112,7 @@ export const OandaProChart: React.FC<{
   const [showIss, setShowIss] = useState(true);
   const [showInternal, setShowInternal] = useState(true);
   const [showFib, setShowFib] = useState(true);
+  const [showAlignedH1Fib, setShowAlignedH1Fib] = useState(false);
   const [showFibOptions, setShowFibOptions] = useState(false);
   const [showInternalFibOptions, setShowInternalFibOptions] = useState(false);
   const [expandedFibOption, setExpandedFibOption] = useState<FibVisibilityKey | null>(null);
@@ -2183,10 +2205,6 @@ export const OandaProChart: React.FC<{
   const [retainedChartTradeOverlays, setRetainedChartTradeOverlays] = useState<
   Map<string, TradeOverlay>
   >(() => loadStoredRetainedChartTrades(retainedStorageKey));
-  const hasAnyFibMarking = Object.values(fibVisibility).some(Boolean)
-    || Object.values(fibPreviousVisibility).some(Boolean)
-    || chochFibVisibility.some(Boolean);
-
   candlesRef.current = candles;
   replaySelectingRef.current = replaySelecting;
   replaySelectionIndexRef.current = replaySelectionIndex;
@@ -2568,6 +2586,31 @@ export const OandaProChart: React.FC<{
     });
   }, [h4SwingSource]);
 
+  const h1SwingSource = useMemo(() => {
+    if (!(fibVisibility.h1Swing || fibPreviousVisibility.h1Swing
+      || (marketSymbol === 'XAUUSD' && granularity === 'M15'))
+      || !['M5', 'M15', 'M30', 'H1'].includes(granularity)) {
+      return { candles: [] as OandaCandle[], markers: [] as typeof structure.markers };
+    }
+    if (granularity === 'H1') return { candles: displayCandles, markers: structure.markers };
+    const h1Candles = vipCandles.H1 || [];
+    if (h1Candles.length === 0) {
+      return { candles: h1Candles, markers: [] as typeof structure.markers };
+    }
+    const h1Structure = analyzeChartStructure('h1-swing', h1Candles, {
+      allowSupplyDemand: true,
+      sourceBarSeconds: TIMEFRAME_SECONDS.H1,
+      confirmationBarSeconds: TJL1_CONFIRMATION_SECONDS.H1,
+      zoneVisualBars: 30,
+    });
+    return { candles: h1Candles, markers: h1Structure.markers };
+  }, [displayCandles, fibPreviousVisibility.h1Swing, fibVisibility.h1Swing,
+    granularity, marketSymbol, structure.markers, vipCandles]);
+
+  const h1SwingFibMoves = useMemo(() => buildOneHourSwingFibs(
+    h1SwingSource.candles, h1SwingSource.markers,
+  ), [h1SwingSource]);
+
   const dayFibMoves = useMemo(() => (
     ['M1', 'M5', 'M15', 'M30'].includes(granularity)
       ? buildDayFibs(displayCandles)
@@ -2590,10 +2633,18 @@ export const OandaProChart: React.FC<{
       ? dayFibMoves[dayFibMoves.length - 1]
       : undefined,
   ), [dayFibMoves, displayCandles, granularity, swingFibConfluence.zones]);
+  const h1PostChochZones = useMemo(() => (
+    marketSymbol === 'XAUUSD' && granularity === 'M15'
+      ? applyPostChochH1SwingFibConfluence(
+        displayCandles, dayFibConfluence.zones, structure.lines, h1SwingFibMoves,
+      )
+      : dayFibConfluence.zones
+  ), [dayFibConfluence.zones, displayCandles, granularity, h1SwingFibMoves,
+    marketSymbol, structure.lines]);
   const displayZones = useMemo(() => {
     const fallbackGranularities = DIRECT_ENGULFING_FALLBACKS[granularity] ?? [];
     const latestChartCandle = displayCandles[displayCandles.length - 1];
-    if (!latestChartCandle) return dayFibConfluence.zones;
+    if (!latestChartCandle) return h1PostChochZones;
     const cutoff = timeframeWindowCutoff(
       latestChartCandle.time,
       TIMEFRAME_SECONDS[granularity],
@@ -2608,13 +2659,32 @@ export const OandaProChart: React.FC<{
         fallbackGranularity,
         granularity === 'H1',
       );
-    }, dayFibConfluence.zones);
+    }, h1PostChochZones);
     if (granularity === 'M1') {
       const dailyCandles = (vipCandles.D || []).filter((candle) => candle.time <= cutoff);
       zones = applyOneMinuteGenesisQml(zones, displayCandles, dailyCandles);
     }
     return zones;
-  }, [dayFibConfluence.zones, displayCandles, granularity, vipCandles]);
+  }, [displayCandles, granularity, h1PostChochZones, vipCandles]);
+  const opposingGoldZones = useMemo(() => {
+    if (marketSymbol !== 'XAUUSD') return [] as StructureZone[];
+    const latest = displayCandles[displayCandles.length - 1];
+    if (!latest) return [] as StructureZone[];
+    const cutoff = latest.time + (latest.complete ? TIMEFRAME_SECONDS[granularity] : 0);
+    return (['M15', 'H1', 'H4'] as const).flatMap((timeframe) => {
+      if (timeframe === granularity) return displayZones;
+      const support = vipSupportContexts.find((context) => context.timeframe === GRANULARITY_LABELS[timeframe]);
+      if (support) return support.zones;
+      const sourceCandles = (vipCandles[timeframe] ?? []).filter((candle) => candle.time <= cutoff);
+      if (sourceCandles.length === 0) return [];
+      return analyzeChartStructure(`opposing:${timeframe}`, sourceCandles, {
+        allowSupplyDemand: timeframe !== 'M15',
+        sourceBarSeconds: TIMEFRAME_SECONDS[timeframe],
+        confirmationBarSeconds: TJL1_CONFIRMATION_SECONDS[timeframe],
+        zoneVisualBars: 30,
+      }).zones;
+    });
+  }, [analyzeChartStructure, displayCandles, displayZones, granularity, marketSymbol, vipCandles, vipSupportContexts]);
   const consolidatedDisplayZones = useMemo(
     () => consolidateZonesForDisplay(displayZones, marketConfig.pipSize),
     [displayZones, marketConfig.pipSize],
@@ -2864,6 +2934,22 @@ export const OandaProChart: React.FC<{
         });
         continue;
       }
+      const opposingZoneBlock = marketSymbol === 'XAUUSD' && trade
+        ? goldOpposingZoneBeforeOneR({
+          direction: setup.signal.direction === 'bullish' ? 'BUY' : 'SELL',
+          entry: trade.entry,
+          stopLoss: trade.stopLoss,
+          signalAt: setup.signal.time,
+        }, opposingGoldZones)
+        : undefined;
+      if (opposingZoneBlock) {
+        decisions.set(setup.zone.id, {
+          policy,
+          oppositePositionOpen: false,
+          opposingZoneBlock,
+        });
+        continue;
+      }
       decisions.set(setup.zone.id, {
         policy,
         trade,
@@ -2882,6 +2968,7 @@ export const OandaProChart: React.FC<{
     marketConfig.mt5AutomationEnabled,
     marketConfig.pipSize,
     mt5Status?.positions,
+    opposingGoldZones,
     pendingM15DbBlocksSignal,
     replayIndex,
     redundantStandaloneZoneIds,
@@ -3124,6 +3211,7 @@ export const OandaProChart: React.FC<{
       zoneTimeframe: 'M15' | 'H1';
       trade: TradeLevels;
       countertrendBlocked: boolean;
+      opposingZoneBlock?: NonNullable<ReturnType<typeof goldOpposingZoneBeforeOneR>>;
     }> = [];
     for (const zoneTimeframe of ['M15', 'H1'] as const) {
       const zoneData = tableTimeframeData[zoneTimeframe];
@@ -3161,18 +3249,27 @@ export const OandaProChart: React.FC<{
           rule,
         });
         if (!trade) continue;
+        const opposingZoneBlock = goldOpposingZoneBeforeOneR({
+          direction: signal.direction === 'bullish' ? 'BUY' : 'SELL',
+          entry: trade.entry,
+          stopLoss: trade.stopLoss,
+          signalAt: signal.time,
+        }, opposingGoldZones);
         rows.push({ zone, zoneTimeframe, trade, countertrendBlocked: blockedGoldChartEntry(
           signal.time, signal.timeframe, signal.direction,
-        ) });
+        ), opposingZoneBlock });
       }
     }
     return rows;
-  }, [blockedGoldChartEntry, extremeAPlusMtfBlockedZoneIds, marketConfig.pipSize, marketSymbol, swingFibMoves, tableTimeframeData, zoneEntryRecords]);
+  }, [blockedGoldChartEntry, extremeAPlusMtfBlockedZoneIds, marketConfig.pipSize, marketSymbol, opposingGoldZones, swingFibMoves, tableTimeframeData, zoneEntryRecords]);
   const goldScalpingAccuracyTrades = useMemo(() => goldScalpingCandidates.filter(
-    (candidate) => !candidate.countertrendBlocked,
+    (candidate) => !candidate.countertrendBlocked && !candidate.opposingZoneBlock,
   ), [goldScalpingCandidates]);
   const blockedGoldScalpingSetups = useMemo(() => goldScalpingCandidates.filter(
     (candidate) => candidate.countertrendBlocked,
+  ), [goldScalpingCandidates]);
+  const blockedGoldScalpingOpposingSetups = useMemo(() => goldScalpingCandidates.filter(
+    (candidate) => !candidate.countertrendBlocked && candidate.opposingZoneBlock,
   ), [goldScalpingCandidates]);
   const goldScalpingDirectTrades = useMemo(() => goldScalpingAccuracyTrades.filter(({ trade }) => (
     !tradingTimeEnabled || (isNepalTradingTime(trade.signal.time + TIMEFRAME_SECONDS[trade.signal.timeframe])
@@ -3219,6 +3316,7 @@ export const OandaProChart: React.FC<{
       let trade: TradeLevels | undefined;
       let previewTrade: TradeLevels | undefined;
       let tradingTimeBlocked = false;
+      let opposingZoneBlock: NonNullable<ReturnType<typeof goldOpposingZoneBeforeOneR>> | undefined;
       const lowerTimeframeData = tableTimeframeData[row.lowerTimeframe];
       if (marketConfig.mt5AutomationEnabled
         && !findEarlierZoneEntry({ symbol: marketSymbol, zoneTimeframe: row.higherTimeframe,
@@ -3253,6 +3351,15 @@ export const OandaProChart: React.FC<{
             trade = undefined;
             tradingTimeBlocked = true;
           }
+          if (marketSymbol === 'XAUUSD' && trade) {
+            opposingZoneBlock = goldOpposingZoneBeforeOneR({
+              direction: signal.direction === 'bullish' ? 'BUY' : 'SELL',
+              entry: trade.entry,
+              stopLoss: trade.stopLoss,
+              signalAt: signal.time,
+            }, opposingGoldZones);
+            if (opposingZoneBlock) trade = undefined;
+          }
         }
       }
       const displayedTrade = trade ?? previewTrade;
@@ -3262,10 +3369,10 @@ export const OandaProChart: React.FC<{
       const tradeBarsAgo = tradeIndex >= 0 && lowerTimeframeData
         ? lowerTimeframeData.candles.length - 1 - tradeIndex
         : undefined;
-      return { ...row, setupId, trade, previewTrade, tradeBarsAgo, tradingTimeBlocked };
+      return { ...row, setupId, trade, previewTrade, tradeBarsAgo, tradingTimeBlocked, opposingZoneBlock };
     });
   },
-    [activeMtfRows, marketConfig.mt5AutomationEnabled, marketSymbol, tableTimeframeData, tradingTimeEnabled, zoneEntryRecords],
+    [activeMtfRows, marketConfig.mt5AutomationEnabled, marketSymbol, opposingGoldZones, tableTimeframeData, tradingTimeEnabled, zoneEntryRecords],
   );
 
   const mtfRows = useMemo<DisplayMtfRow[]>(() => (
@@ -5229,6 +5336,9 @@ export const OandaProChart: React.FC<{
       if (!inactive && showFibRef.current && zone.swingFibStatus === 'a-plus' && zone.swingFibBand) {
         labelDetails.push(`SWING A+ FIB ${zone.swingFibBand}`);
       }
+      if (!inactive && zone.h1SwingFibStatus === 'aligned' && zone.h1SwingFibBand) {
+        labelDetails.push(`1H SWING FIB ALIGNED ${zone.h1SwingFibBand}`);
+      }
       if (!inactive && showFibRef.current && zone.dayFibStatus === 'a-plus' && zone.dayFibBand) {
         labelDetails.push(`DAY FIB A+ ${zone.dayFibBand}`);
       }
@@ -5343,7 +5453,16 @@ export const OandaProChart: React.FC<{
       }
     }
 
-    const hasVisibleFibMarking = Object.values(fibVisibilityRef.current).some(Boolean)
+    const alignedH1SwingMoveIds = new Set((showAlignedH1FibRef.current
+      ? h1SwingFibMovesRef.current : [])
+      .filter((move) => zonesRef.current.some((zone) => (
+        zone.h1SwingFibStatus === 'aligned'
+        && zone.h1SwingSourcePrice === move.sourcePrice
+        && zone.h1SwingZeroPrice === move.zeroPrice
+      )))
+      .map((move) => `h1-swing-fib-${move.startedAt}-${move.direction}`));
+    const hasVisibleFibMarking = alignedH1SwingMoveIds.size > 0
+      || Object.values(fibVisibilityRef.current).some(Boolean)
       || Object.values(fibPreviousVisibilityRef.current).some(Boolean)
       || chochFibVisibilityRef.current.some(Boolean);
     if (showStructureRef.current || showIssRef.current || showInternalRef.current
@@ -5408,6 +5527,29 @@ export const OandaProChart: React.FC<{
           fibMovesByType.set('swing', swingZones);
         }
 
+        if (['M5', 'M15', 'M30', 'H1'].includes(granularity)
+          && (fibVisibilityRef.current.h1Swing || fibPreviousVisibilityRef.current.h1Swing
+            || alignedH1SwingMoveIds.size > 0)) {
+          const h1SwingZones = h1SwingFibMovesRef.current.map<StructureZone>((move) => ({
+            id: `h1-swing-fib-${move.startedAt}-${move.direction}`,
+            name: move.direction === 'up' ? 'DEMAND' : 'SUPPLY',
+            category: 'supplyDemand',
+            isBuy: move.direction === 'up',
+            startTime: move.startedAt,
+            endTime: move.zeroTime,
+            top: Math.max(move.sourcePrice, move.zeroPrice),
+            bottom: Math.min(move.sourcePrice, move.zeroPrice),
+            active: true,
+            status: 'valid',
+            fibRelevant: true,
+            fibSourceTime: move.sourceTime,
+            fibSourcePrice: move.sourcePrice,
+            fibZeroTime: move.zeroTime,
+            fibZeroPrice: move.zeroPrice,
+          }));
+          fibMovesByType.set('h1Swing', h1SwingZones);
+        }
+
         if (fibVisibilityRef.current.day) {
           const dayZones = dayFibMovesRef.current.map<StructureZone>((move) => ({
             id: `day-fib-${move.sessionDate}`,
@@ -5461,10 +5603,14 @@ export const OandaProChart: React.FC<{
             && fibPreviousVisibilityRef.current[type]
             ? orderedMoves.slice(1, 2)
             : [];
-          return [
+          const selectedMoves = [
             ...(fibVisibilityRef.current[type] && orderedMoves[0] ? [orderedMoves[0]] : []),
             ...previousMoves,
           ];
+          if (type === 'h1Swing') {
+            selectedMoves.push(...orderedMoves.filter((zone) => alignedH1SwingMoveIds.has(zone.id)));
+          }
+          return Array.from(new Map(selectedMoves.map((zone) => [zone.id, zone])).values());
         });
 
         const fibAnchorCoordinate = (anchorTime: number) => {
@@ -5487,7 +5633,22 @@ export const OandaProChart: React.FC<{
           return chart.timeScale().timeToCoordinate(fallbackCandle.time as UTCTimestamp);
         };
 
+        const liveCandle = displayCandles[displayCandles.length - 1];
+        const previousCandle = displayCandles[displayCandles.length - 2];
+        const liveX = liveCandle
+          ? chart.timeScale().timeToCoordinate(liveCandle.time as UTCTimestamp) : null;
+        const previousX = previousCandle
+          ? chart.timeScale().timeToCoordinate(previousCandle.time as UTCTimestamp) : null;
+        const candleSpacing = liveX !== null && previousX !== null
+          ? Math.abs(liveX - previousX)
+          : chart.timeScale().options().barSpacing;
+        const fiveCandlesPastLive = liveX === null
+          ? rightEdge : liveX + 5 * candleSpacing;
+
         for (const zone of latestFibMoves) {
+          const isH1Swing = zone.id.startsWith('h1-swing-fib-');
+          const isSwingDrawing = isH1Swing || zone.id.startsWith('swing-fib-');
+          const fibColor = isH1Swing ? '#7c3aed' : '#e11d48';
           const sourceX = fibAnchorCoordinate(zone.fibSourceTime!);
           const zeroX = fibAnchorCoordinate(zone.fibZeroTime!);
           const sourceY = series.priceToCoordinate(zone.fibSourcePrice);
@@ -5496,7 +5657,11 @@ export const OandaProChart: React.FC<{
 
           const lineLeft = Math.min(sourceX, zeroX);
           const lineRight = Math.max(sourceX, zeroX);
-          if (lineRight < 0 || lineLeft > rightEdge) continue;
+          if ((!isSwingDrawing && lineRight < 0) || lineLeft > rightEdge) continue;
+          const levelLineLeft = isSwingDrawing ? Math.max(0, lineLeft) : lineLeft;
+          const levelLineRight = isSwingDrawing
+            ? Math.min(rightEdge, fiveCandlesPastLive) : lineRight;
+          if (levelLineRight <= levelLineLeft) continue;
 
           for (const level of INDICATOR_FIB_LEVELS) {
             const price = indicatorFibPrice(zone.fibZeroPrice, zone.fibSourcePrice, level.ratio);
@@ -5504,20 +5669,20 @@ export const OandaProChart: React.FC<{
             if (y === null || y < -20 || y > host.clientHeight + 20) continue;
 
             const levelLine = document.createElementNS(namespace, 'line');
-            levelLine.setAttribute('x1', String(lineLeft));
+            levelLine.setAttribute('x1', String(levelLineLeft));
             levelLine.setAttribute('y1', String(y));
-            levelLine.setAttribute('x2', String(lineRight));
+            levelLine.setAttribute('x2', String(levelLineRight));
             levelLine.setAttribute('y2', String(y));
-            levelLine.setAttribute('stroke', '#e11d48');
+            levelLine.setAttribute('stroke', fibColor);
             levelLine.setAttribute('stroke-width', level.ratio === 0 || level.ratio === 1 ? '1.2' : '1');
             levelLine.setAttribute('stroke-opacity', '0.82');
             svg.appendChild(levelLine);
 
             const levelText = document.createElementNS(namespace, 'text');
-            levelText.setAttribute('x', String(Math.max(18, lineLeft - 7)));
+            levelText.setAttribute('x', String(Math.max(18, levelLineLeft - 7)));
             levelText.setAttribute('y', String(y + 3));
             levelText.setAttribute('text-anchor', 'end');
-            levelText.setAttribute('fill', '#e11d48');
+            levelText.setAttribute('fill', fibColor);
             levelText.setAttribute('fill-opacity', '0.9');
             levelText.setAttribute('font-size', '9');
             levelText.setAttribute('font-weight', '700');
@@ -5530,7 +5695,7 @@ export const OandaProChart: React.FC<{
           anchorLine.setAttribute('y1', String(sourceY));
           anchorLine.setAttribute('x2', String(zeroX));
           anchorLine.setAttribute('y2', String(zeroY));
-          anchorLine.setAttribute('stroke', '#f43f5e');
+          anchorLine.setAttribute('stroke', isH1Swing ? '#8b5cf6' : '#f43f5e');
           anchorLine.setAttribute('stroke-width', '1.2');
           anchorLine.setAttribute('stroke-opacity', '0.82');
           anchorLine.setAttribute('stroke-dasharray', '7 6');
@@ -5542,7 +5707,7 @@ export const OandaProChart: React.FC<{
             circle.setAttribute('cy', String(anchor.y));
             circle.setAttribute('r', '4');
             circle.setAttribute('fill', '#ffffff');
-            circle.setAttribute('stroke', '#2563eb');
+            circle.setAttribute('stroke', isH1Swing ? '#7c3aed' : '#2563eb');
             circle.setAttribute('stroke-width', '1.4');
             svg.appendChild(circle);
           }
@@ -5887,6 +6052,7 @@ export const OandaProChart: React.FC<{
     zonesRef.current = displayZones;
     visualZonesRef.current = consolidatedDisplayZones;
     swingFibMovesRef.current = swingFibMoves;
+    h1SwingFibMovesRef.current = h1SwingFibMoves;
     dayFibMovesRef.current = dayFibMoves;
     structureLinesRef.current = structure.lines;
     structureMarkersRef.current = structure.markers;
@@ -5898,6 +6064,7 @@ export const OandaProChart: React.FC<{
     showIssRef.current = showIss;
     showInternalRef.current = showInternal;
     showFibRef.current = showFib;
+    showAlignedH1FibRef.current = showAlignedH1Fib;
     fibVisibilityRef.current = fibVisibility;
     fibPreviousVisibilityRef.current = fibPreviousVisibility;
     chochFibVisibilityRef.current = chochFibVisibility;
@@ -5905,7 +6072,7 @@ export const OandaProChart: React.FC<{
     showTradeLevelsRef.current = showTradeLevels;
     tradeOverlaysRef.current = [...visibleTradeOverlays, ...replayHistoryOverlays];
     scheduleOverlayRedraw();
-  }, [chochFibVisibility, consolidatedDisplayZones, dayFibMoves, displayZones, fibPreviousVisibility, fibVisibility, redrawZones, replayHistoryOverlays, scheduleOverlayRedraw, showFib, showInternal, showInvalidZones, showIss, showMgZones, showStructure, showSupplyDemand, showTradeLevels, structure.internalMarkers, structure.issMarkers, structure.lines, structure.markers, swingFibMoves, visibleTradeOverlays]);
+  }, [chochFibVisibility, consolidatedDisplayZones, dayFibMoves, displayZones, fibPreviousVisibility, fibVisibility, h1SwingFibMoves, redrawZones, replayHistoryOverlays, scheduleOverlayRedraw, showAlignedH1Fib, showFib, showInternal, showInvalidZones, showIss, showMgZones, showStructure, showSupplyDemand, showTradeLevels, structure.internalMarkers, structure.issMarkers, structure.lines, structure.markers, swingFibMoves, visibleTradeOverlays]);
 
   useEffect(() => {
     const overlay = tradeOverlays[0];
@@ -7269,26 +7436,35 @@ export const OandaProChart: React.FC<{
     );
   };
 
+  const hasAnyFibMarking = (showAlignedH1Fib && displayZones.some((zone) => (
+    zone.h1SwingFibStatus === 'aligned'
+  ))) || Object.values(fibVisibility).some(Boolean)
+    || Object.values(fibPreviousVisibility).some(Boolean)
+    || chochFibVisibility.some(Boolean);
+
   const renderFibOptionButton = (option: { key: FibVisibilityKey; label: string }) => {
     const isSingleMarking = isSingleFibMarkingKey(option.key);
     const isChochMarking = option.key === 'choch';
     const isUnavailable = (option.key === 'swing' && granularity === 'D')
+      || (option.key === 'h1Swing' && !['M5', 'M15', 'M30', 'H1'].includes(granularity))
       || (option.key === 'day' && !['M1', 'M5', 'M15', 'M30'].includes(granularity));
     const latestOn = fibVisibility[option.key];
     const previousOn = fibPreviousVisibility[option.key];
+    const autoAligned = option.key === 'h1Swing' && showFib && showAlignedH1Fib
+      && displayZones.some((zone) => zone.h1SwingFibStatus === 'aligned');
     const chochVisibleCount = chochFibVisibility.filter(Boolean).length;
     const status = isUnavailable
-      ? option.key === 'day' ? '≤30m' : '≤4H'
+      ? option.key === 'day' ? '≤30m' : option.key === 'h1Swing' ? '≤1H' : '≤4H'
       : isChochMarking
         ? `${chochVisibleCount}/4`
       : isSingleMarking
       ? latestOn ? 'ON' : 'OFF'
       : latestOn && previousOn
         ? 'BOTH'
-        : latestOn ? 'LATEST' : previousOn ? 'PREV' : 'OFF';
+        : latestOn ? 'LATEST' : previousOn ? 'PREV' : autoAligned ? 'ON' : 'OFF';
     const active = !isUnavailable && (isChochMarking
       ? chochVisibleCount > 0
-      : latestOn || (!isSingleMarking && previousOn));
+      : latestOn || (!isSingleMarking && previousOn) || autoAligned);
     return (
       <button
         key={option.key}
@@ -7325,6 +7501,8 @@ export const OandaProChart: React.FC<{
         title={isUnavailable
           ? option.key === 'day'
             ? 'Day FIB is available on the 1m, 5m, 15m, and 30m charts'
+            : option.key === 'h1Swing'
+            ? 'Show the 1H Swing FIB drawing on the 5m, 15m, 30m, or 1H chart'
             : 'Show the 4H Swing FIB drawing on charts from 1m through 4H'
           : isChochMarking
             ? 'Choose each of the latest four CHoCH FIB drawings separately'
@@ -7822,6 +8000,7 @@ export const OandaProChart: React.FC<{
                         setFibVisibility({ ...DEFAULT_FIB_VISIBILITY });
                         setFibPreviousVisibility({ ...DEFAULT_FIB_VISIBILITY });
                         setChochFibVisibility([false, false, false, false]);
+                        setShowAlignedH1Fib(false);
                       }}
                       disabled={!hasAnyFibMarking}
                       className={`rounded-full border px-2 py-1 text-[8px] font-black leading-none transition ${
@@ -7961,6 +8140,27 @@ export const OandaProChart: React.FC<{
                               {fibPreviousVisibility[expandedFibOption] ? 'ON' : 'OFF'}
                             </span>
                           </button>
+                          {expandedFibOption === 'h1Swing' && (
+                            <button
+                              type="button"
+                              onClick={() => setShowAlignedH1Fib((current) => !current)}
+                              className={`col-span-2 flex items-center justify-between rounded border px-1.5 py-1 text-[8px] font-black leading-none ${
+                                showAlignedH1Fib
+                                  ? 'border-fuchsia-300 bg-fuchsia-200 text-fuchsia-800'
+                                  : 'border-slate-200 bg-white text-slate-500'
+                              }`}
+                              title="Show or hide the 1H swing Fib automatically when a 15m TJL zone is aligned"
+                            >
+                              <span>ALIGNED 1H FIB</span>
+                              <span className={`ml-1 rounded-full px-1 py-0.5 text-[8px] ${
+                                showAlignedH1Fib
+                                  ? 'bg-fuchsia-300 text-fuchsia-900'
+                                  : 'bg-slate-200 text-slate-500'
+                              }`}>
+                                {showAlignedH1Fib ? 'ON' : 'OFF'}
+                              </span>
+                            </button>
+                          )}
                         </>}
                       </div>
                     </div>
@@ -8989,6 +9189,26 @@ export const OandaProChart: React.FC<{
                       </td>
                     </tr>
                   ))}
+                {blockedGoldScalpingOpposingSetups.filter(({ trade, zoneTimeframe }) => (
+                  (trade.signal.timeframe === granularity || zoneTimeframe === granularity)
+                  && latestCandle !== null
+                  && latestCandle.time - trade.signal.time <= 50 * TIMEFRAME_SECONDS.M1
+                )).sort((first, second) => second.trade.signal.time - first.trade.signal.time)
+                  .slice(0, 3).map(({ zone, zoneTimeframe, trade, opposingZoneBlock }) => (
+                    <tr key={`opposing-scalp-${zoneTimeframe}-${zone.id}-${trade.signal.time}`}
+                      className="border-t border-amber-200 bg-amber-50/80">
+                      <td className="px-2 py-1 font-black text-slate-700">SCALP · {executionZoneName(zone)}</td>
+                      <td className="px-2 py-1 font-bold text-slate-600">
+                        {trade.signal.direction === 'bullish' ? 'BUY' : 'SELL'} SETUP
+                      </td>
+                      <td className="px-2 py-1 text-slate-400">—</td>
+                      <td className="px-2 py-1 text-center font-black text-slate-600">{trade.signal.type}</td>
+                      <td className="whitespace-nowrap px-2 py-1 text-right font-black text-amber-800">
+                        NO ENTRY · {opposingZoneBlock!.zone.name} {opposingZoneBlock!.zone.isBuy ? 'BUY' : 'SELL'} ZONE AT{' '}
+                        {opposingZoneBlock!.rewardRisk.toFixed(2)}R
+                      </td>
+                    </tr>
+                  ))}
                 {retainedDirectChartTradesForTimeframe.map((overlay) => {
                   const bullish = overlay.trade.signal.direction === 'bullish';
                   const zoneLabel = tradeOverlayZoneLabel(overlay.label);
@@ -9089,6 +9309,11 @@ export const OandaProChart: React.FC<{
                         {showFib && zone.swingFibStatus === 'a-plus' && zone.swingFibBand && (
                           <span className="ml-1 rounded bg-violet-100 px-1 py-0.5 text-[8px] font-black text-violet-800">
                             SWING A+ FIB {zone.swingFibBand}
+                          </span>
+                        )}
+                        {zone.h1SwingFibStatus === 'aligned' && zone.h1SwingFibBand && (
+                          <span className="ml-1 rounded bg-violet-100 px-1 py-0.5 text-[8px] font-black text-violet-800">
+                            1H SWING FIB ALIGNED {zone.h1SwingFibBand}
                           </span>
                         )}
                         {showFib && zone.dayFibStatus === 'a-plus' && zone.dayFibBand && (
@@ -9277,6 +9502,11 @@ export const OandaProChart: React.FC<{
                           SWING A+ FIB {zone.swingFibBand}
                         </span>
                       )}
+                      {zone.h1SwingFibStatus === 'aligned' && zone.h1SwingFibBand && (
+                        <span className="ml-1 rounded bg-violet-100 px-1 py-0.5 text-[8px] font-black text-violet-800">
+                          1H SWING FIB ALIGNED {zone.h1SwingFibBand}
+                        </span>
+                      )}
                       {showFib && zone.dayFibStatus === 'a-plus' && zone.dayFibBand && (
                         <span className="ml-1 rounded bg-sky-100 px-1 py-0.5 text-[8px] font-black text-sky-800">
                           DAY FIB A+ {zone.dayFibBand}
@@ -9337,6 +9567,12 @@ export const OandaProChart: React.FC<{
                       ) : mt5Signal ? (
                         <span className={mt5SignalStatusClassName(mt5Signal)}>
                           {mt5SignalStatusLabel(mt5Signal)}
+                        </span>
+                      ) : entryDecision?.opposingZoneBlock ? (
+                        <span className="text-rose-700">
+                          NO ENTRY · {entryDecision.opposingZoneBlock.zone.name}{' '}
+                          {entryDecision.opposingZoneBlock.zone.isBuy ? 'BUY' : 'SELL'} ZONE AT{' '}
+                          {entryDecision.opposingZoneBlock.rewardRisk.toFixed(2)}R
                         </span>
                       ) : isCompletedTrade(trade) ? (
                         <span className={trade?.status === 'sl-hit' ? 'text-rose-700' : 'text-emerald-700'}>

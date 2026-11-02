@@ -52,10 +52,11 @@ import {
   isZoneEligibleForEngulfingEntry,
   isGoldZoneEntryBlocked,
   type StructureCandle,
+  type StructureZone,
 } from './src/services/marketStructure';
-import { buildAlternatingSwingFibs } from './src/services/swingFib';
+import { buildAlternatingSwingFibs, buildOneHourSwingFibs } from './src/services/swingFib';
 import { buildDayFibs } from './src/services/dayFib';
-import { applySwingFibConfluence } from './src/services/swingFibConfluence';
+import { applyPostChochH1SwingFibConfluence, applySwingFibConfluence } from './src/services/swingFibConfluence';
 import { applyDayFibConfluence } from './src/services/dayFibConfluence';
 import { applyOneMinuteGenesisQml, executionZoneName } from './src/services/oneMinuteGenesis';
 import { buildGoldIntradayMtfRows, buildGoldScalpingMtfRows, type MtfGranularity, type MtfTimeframeData } from './src/services/mtf';
@@ -521,6 +522,7 @@ function sanitizeMt5Config(candidate: any, current: Mt5AutomationConfig): Mt5Aut
 async function enqueueMt5Signal(
   candidate: Mt5SignalInput,
   config: Mt5AutomationConfig,
+  opposingZones?: readonly StructureZone[],
 ): Promise<{ signal: Mt5StoredSignal; duplicate: boolean }> {
   if (terminalId() === 'secondary' && !candidate.id.endsWith(':secondary')) {
     candidate = { ...candidate, id: `${candidate.id}:secondary` };
@@ -573,6 +575,13 @@ async function enqueueMt5Signal(
       existing.updatedAt = now;
       await writeMt5Signals(signals);
       return { signal: existing, duplicate: true };
+    }
+    if (candidate.symbol === 'XAUUSD') {
+      const zones = opposingZones ?? await loadGoldOpposingZones();
+      if (!zones) throw new Error('Unable to verify opposing Gold zones; new entry is paused.');
+      if (goldAutomationOpposingZoneBlocked(candidate, zones)) {
+        throw new Error('Opposing Gold zone is closer than 1:1; new entry is blocked.');
+      }
     }
     const signal: Mt5StoredSignal = {
       ...candidate,
@@ -763,6 +772,28 @@ async function loadOandaAutomationCandles(timeframe: TradeTimeframe): Promise<St
   return request;
 }
 
+async function loadGoldOpposingZones(): Promise<StructureZone[] | undefined> {
+  const timeframes = ['M15', 'H1', 'H4', 'D'] as const;
+  const candles = {} as Pick<Record<TradeTimeframe, StructureCandle[]>, typeof timeframes[number]>;
+  for (const timeframe of timeframes) {
+    const source = await loadOandaAutomationCandles(timeframe);
+    if (!source) return undefined;
+    candles[timeframe] = source;
+  }
+  const rawStructures: Partial<Record<TradeTimeframe, ReturnType<typeof analyzeMarketStructure>>> = {};
+  for (const timeframe of timeframes) {
+    rawStructures[timeframe] = analyzeMarketStructure(candles[timeframe], {
+      allowSupplyDemand: timeframe !== 'M15',
+      sourceBarSeconds: AUTOMATION_SECONDS[timeframe],
+      confirmationBarSeconds: AUTOMATION_CONFIRMATION_SECONDS[timeframe],
+      zoneVisualBars: 30,
+    });
+  }
+  return (['M15', 'H1', 'H4'] as const).flatMap((timeframe) => (
+    analyzeAutomationTimeframe(timeframe, candles[timeframe], rawStructures).zones
+  ));
+}
+
 async function scanMt5AutomationSignals(): Promise<number> {
   const config = await readMt5Config();
   if (!config.enabled) return 0;
@@ -815,6 +846,9 @@ async function scanMt5AutomationSignals(): Promise<number> {
       zeroPrice: h4SeedLine.toPrice,
     })
     : [];
+  const h1SwingFibMoves = buildOneHourSwingFibs(
+    candles.H1, rawStructures.H1?.markers ?? [],
+  );
   const candidates: Mt5SignalInput[] = [];
   const now = Math.floor(Date.now() / 1000);
 
@@ -836,6 +870,11 @@ async function scanMt5AutomationSignals(): Promise<number> {
         zones,
         dayFibMoves[dayFibMoves.length - 1],
       ).zones;
+    }
+    if (zoneTimeframe === 'M15') {
+      zones = applyPostChochH1SwingFibConfluence(
+        sourceCandles, zones, structures.M15?.lines ?? [], h1SwingFibMoves,
+      );
     }
     for (const fallbackTimeframe of AUTOMATION_FALLBACKS[zoneTimeframe] ?? []) {
       const fallbackCandles = candles[fallbackTimeframe].filter((candle) => (
@@ -931,7 +970,10 @@ async function scanMt5AutomationSignals(): Promise<number> {
       const volumeContext = journalVolumeContext(candles[signal.timeframe], signal);
       let fibSource = zone.majorLiquidity ? 'MAJOR LIQUIDITY' : 'ZONE FIB';
       let fibBand = zone.fibBand;
-      if (signal.time === zone.swingEngulfingTime && signal.type === zone.swingEngulfingType) {
+      if (signal.time === zone.h1SwingEngulfingTime && signal.type === zone.h1SwingEngulfingType) {
+        fibSource = '1H SWING FIB';
+        fibBand = zone.h1SwingFibBand;
+      } else if (signal.time === zone.swingEngulfingTime && signal.type === zone.swingEngulfingType) {
         fibSource = '4H SWING FIB';
         fibBand = zone.swingFibBand;
       } else if (signal.time === zone.dayEngulfingTime && signal.type === zone.dayEngulfingType) {
@@ -959,7 +1001,9 @@ async function scanMt5AutomationSignals(): Promise<number> {
         }),
         fibSource,
         fibBand,
-        fibLevels: journalFibLevels(zone.fibSourcePrice, zone.fibZeroPrice),
+        fibLevels: fibSource === '1H SWING FIB'
+          ? journalFibLevels(zone.h1SwingSourcePrice, zone.h1SwingZeroPrice)
+          : journalFibLevels(zone.fibSourcePrice, zone.fibZeroPrice),
         ...volumeContext,
         entrySnapshotCandles: journalSnapshotCandles(
           candles[signal.timeframe], signal.time, signalClose,
@@ -1075,7 +1119,7 @@ async function scanMt5AutomationSignals(): Promise<number> {
   let queued = 0;
   for (const candidate of grouped.values()) {
     if (!mt5ConnectionMatches(scanConnection, mt5Context().mt5BridgeHeartbeat ?? {}) || !mt5ExecutionFeedIsFresh()) break;
-    const result = await enqueueMt5Signal(candidate, config);
+    const result = await enqueueMt5Signal(candidate, config, opposingZones);
     if (!result.duplicate) queued += 1;
   }
   mt5Context().lastScannedMt5MarketDataVersion = scanVersion;

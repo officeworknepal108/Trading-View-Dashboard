@@ -4,6 +4,7 @@ import {
   type EngulfingDirection,
   type FibBand,
   type StructureCandle,
+  type StructureLine,
   type StructureZone,
 } from './marketStructure';
 import type { SwingFibMove } from './swingFib';
@@ -131,4 +132,84 @@ export function applySwingFibConfluence(
     zones: nextZones,
     engulfingMarkers: engulfingMarkers.sort((a, b) => Number(a.time) - Number(b.time)).slice(-120),
   };
+}
+
+/** Adds an independent H1 swing route only to pre-existing M15 TJL1/TJL2
+ * zones after the opposite M15 CHoCH. The 4H fields are left untouched. */
+export function applyPostChochH1SwingFibConfluence(
+  candles: StructureCandle[],
+  zones: StructureZone[],
+  lines: StructureLine[],
+  moves: SwingFibMove[],
+  type4MaxCandles = 10,
+): StructureZone[] {
+  const nextZones = zones.map((zone) => ({
+    ...zone,
+    h1SwingFibBand: undefined,
+    h1SwingFibStatus: undefined,
+    h1SwingSourcePrice: undefined,
+    h1SwingZeroPrice: undefined,
+    h1SwingEngulfingType: undefined,
+    h1SwingEngulfingDirection: undefined,
+    h1SwingEngulfingTime: undefined,
+    h1SwingEngulfingCandleCount: undefined,
+  }));
+  const latestCandle = candles[candles.length - 1];
+  const choch = lines.filter((line) => line.type === 'choch' && line.label === 'CHoCH'
+    && line.toTime < (latestCandle?.time ?? 0))
+    .sort((first, second) => first.toTime - second.toTime).at(-1);
+  if (!choch || moves.length === 0) return nextZones;
+  const contexts = [...moves].slice(-2).reverse().map((move) => {
+    const level = (ratio: number) => move.zeroPrice + (move.sourcePrice - move.zeroPrice) * ratio;
+    return {
+      move,
+      primary: [level(0.5), level(0.618)] as const,
+      deep: [level(0.71), level(0.79)] as const,
+      // The post-CHoCH M15 setup can revisit either band of the prior H1 swing.
+      allowDeep: true,
+    };
+  });
+  for (const zone of nextZones) {
+    if ((zone.name !== 'TJL1' && zone.name !== 'TJL2') || zone.category !== 'mg'
+      || !zone.active || zone.status !== 'valid' || zone.startTime >= choch.toTime
+      || zone.isBuy === (choch.direction === 'bullish')) continue;
+    const match = contexts.flatMap((context) => {
+      if (zone.isBuy !== (context.move.direction === 'up')) return [];
+      const band: SwingFibBand | undefined = overlaps(zone.bottom, zone.top, ...context.primary)
+        ? '0.5-0.618'
+        : context.allowDeep && overlaps(zone.bottom, zone.top, ...context.deep)
+          ? '0.71-0.79' : undefined;
+      return band ? [{ ...context, band }] : [];
+    })[0];
+    if (!match) continue;
+    const { band, move } = match;
+    zone.h1SwingFibBand = band;
+    zone.h1SwingFibStatus = 'aligned';
+    zone.h1SwingSourcePrice = move.sourcePrice;
+    zone.h1SwingZeroPrice = move.zeroPrice;
+    const validFrom = Math.max(
+      choch.toTime + 900,
+      move.zeroTime + 3600,
+      zone.activeFromTime ?? zone.startTime,
+      zone.confirmationTime ?? zone.startTime,
+    );
+    const startIndex = candles.findIndex((candle) => candle.time >= validFrom);
+    if (startIndex < 0) continue;
+    for (let endIndex = Math.max(1, startIndex); endIndex < candles.length; endIndex += 1) {
+      const candle = candles[endIndex];
+      if (candle.complete === false || candle.time < validFrom) continue;
+      const pattern = detectEngulfingPatternAt(candles, endIndex, type4MaxCandles);
+      if (!pattern || pattern.direction !== (zone.isBuy ? 'bullish' : 'bearish')) continue;
+      const touchesZone = candles.slice(pattern.startIndex, pattern.endIndex + 1)
+        .some((item) => item.time >= validFrom && item.time > zone.startTime
+          && item.high >= zone.bottom && item.low <= zone.top);
+      if (!touchesZone) continue;
+      zone.h1SwingEngulfingType = pattern.type;
+      zone.h1SwingEngulfingDirection = pattern.direction;
+      zone.h1SwingEngulfingTime = candle.time;
+      zone.h1SwingEngulfingCandleCount = pattern.candleCount;
+      break;
+    }
+  }
+  return nextZones;
 }
