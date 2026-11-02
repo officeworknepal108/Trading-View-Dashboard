@@ -5012,6 +5012,13 @@ export const OandaProChart: React.FC<{
       const isIss = zone.category === 'iss';
       const isInternal = zone.category === 'internal';
       const isMg = zone.category === 'mg';
+      const overlappingIssL4 = isMg && zone.name === 'TJL2'
+        ? visualZonesRef.current.some((candidate) => (
+          candidate.category === 'iss' && candidate.name === 'ISS L4'
+          && candidate.active === zone.active && candidate.isBuy === zone.isBuy
+          && candidate.startTime === zone.startTime
+          && candidate.bottom <= zone.bottom && candidate.top >= zone.top
+        )) : false;
       // Like TJL1, show HTF confirmation state only on the zone whose break
       // actually confirmed Double CHoCH (SBR for bearish, RBS for bullish).
       const showsDoubleChochStatus = zone.doubleChochStatus !== undefined
@@ -5036,6 +5043,9 @@ export const OandaProChart: React.FC<{
       const zoneTopCoordinate = Math.min(top, bottom);
       const zoneHeight = Math.max(2, Math.abs(bottom - top));
       box.style.position = 'absolute';
+      // The narrower TJL2 is a separate entry zone inside ISS L4. Keep its
+      // boundary and name above the ISS fill so the chart matches the table.
+      if (overlappingIssL4) box.style.zIndex = '2';
       box.style.left = `${left}px`;
       box.style.width = `${right - left}px`;
       box.style.top = `${zoneTopCoordinate}px`;
@@ -5067,7 +5077,9 @@ export const OandaProChart: React.FC<{
       }
 
       const label = document.createElement('span');
-      const name = isMg || isIss || isInternal
+      const name = overlappingIssL4
+        ? `TJL2 ${demand ? 'BUY' : 'SELL'} · ISS L4 OVERLAP`
+        : isMg || isIss || isInternal
         ? displayConfluenceZoneName(zone, true)
         : demand ? 'DEMAND' : 'SUPPLY';
       const labelDetails: string[] = [];
