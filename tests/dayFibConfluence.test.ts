@@ -75,6 +75,20 @@ test('Day FIB engulfing can form in the deep band without touching exact 0.5', (
   assert.ok(candles[2].high < 110, 'the engulfing candle does not touch the exact 0.5 level');
 });
 
+test('Day FIB engulfing qualifies when the prior pattern candle touched the zone but the final candle stays above the band', () => {
+  const candles: StructureCandle[] = [
+    { time: 2, open: 119, high: 120, low: 118, close: 119, complete: true },
+    { time: 3, open: 109.5, high: 110, low: 108, close: 108.5, complete: true },
+    { time: 4, open: 113.06, high: 114.5, low: 113.06, close: 114, complete: true },
+  ];
+  const result = applyDayFibConfluence(candles, [
+    zone({ id: 'primary-buy', bottom: 108, top: 110 }),
+  ], buyMove);
+
+  assert.ok(Math.abs(candles[2].low - 110 - 3.06) < 1e-9);
+  assert.equal(result.zones[0].dayEngulfingType, 'T1');
+});
+
 test('invalidated zones cannot retain Day FIB or engulfing status', () => {
   const result = applyDayFibConfluence([], [
     zone({ status: 'invalidated', active: false, invalidatedAt: 10 }),

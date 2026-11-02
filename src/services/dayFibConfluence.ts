@@ -33,8 +33,8 @@ function clearDayConfluence(zone: StructureZone): StructureZone {
 
 /**
  * Applies the current 9:15 Nepal Day FIB to matching external and internal
- * structure zones. Both golden bands qualify, and engulfing may form anywhere
- * inside the zone's qualifying band.
+ * structure zones. Both golden bands qualify the zone; an engulfing pattern
+ * must touch that zone after activation.
  */
 export function applyDayFibConfluence(
   candles: StructureCandle[],
@@ -66,7 +66,6 @@ export function applyDayFibConfluence(
 
     zone.dayFibBand = band;
     zone.dayFibStatus = 'a-plus';
-    const [bandFirst, bandSecond] = band === '0.5-0.618' ? primary : deep;
     const validFrom = Math.max(
       move.activationTime,
       move.zeroTime,
@@ -80,7 +79,6 @@ export function applyDayFibConfluence(
       if (finalCandle.complete === false || finalCandle.time < validFrom) continue;
       const pattern = detectEngulfingPatternAt(candles, endIndex, type4MaxCandles);
       if (!pattern || pattern.direction !== requiredDirection) continue;
-      if (!overlaps(finalCandle.low, finalCandle.high, bandFirst, bandSecond)) continue;
       const touchesZone = candles
         .slice(pattern.startIndex, pattern.endIndex + 1)
         .some((candle) => (

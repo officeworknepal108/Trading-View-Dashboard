@@ -477,7 +477,7 @@ Generic mapped fallback scanning uses valid, active, tradeable zones and matchin
 - Apply the same Swing FIB qualification to external and internal structure zones.
 - Up swing accepts BUY zones and bullish engulfing; down swing accepts SELL zones and bearish engulfing.
 - A zone overlapping either 0.500-0.618 or 0.710-0.790 becomes Swing A+.
-- The final engulfing candle must overlap the qualifying band, and the engulfing sequence must touch the zone after both zone activation and the Swing level-0 timestamp.
+- The engulfing sequence must touch the zone after both zone activation and the Swing level-0 timestamp. The final candle does not need to overlap the qualifying band.
 - Deep-band Swing engulfing does not need exact 0.500 contact.
 
 ## 17. Nepal 09:15 Day FIB
@@ -496,7 +496,7 @@ Generic mapped fallback scanning uses valid, active, tradeable zones and matchin
 - Up Day FIB accepts BUY zones/bullish engulfing; down accepts SELL zones/bearish engulfing.
 - Apply the same Day FIB qualification to external and internal structure zones.
 - Either primary or deep band qualifies.
-- Final engulfing candle must overlap the selected band; the pattern must touch the active zone after activation and after the Day FIB extreme timestamp.
+- The pattern must touch the active zone after activation and after the Day FIB extreme timestamp. The final candle does not need to overlap the selected band.
 - Deep Day FIB does not require exact 0.500 contact.
 
 ## 18. ISS five-wave structure

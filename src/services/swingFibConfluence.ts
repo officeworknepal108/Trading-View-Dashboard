@@ -80,11 +80,10 @@ export function applySwingFibConfluence(
       return band ? [{ ...context, band }] : [];
     })[0];
     if (!match) continue;
-    const { band, move, primary, deep, requiredDirection } = match;
+    const { band, move, requiredDirection } = match;
 
     zone.swingFibBand = band;
     zone.swingFibStatus = 'a-plus';
-    const [bandFirst, bandSecond] = band === '0.5-0.618' ? primary : deep;
     const validFrom = Math.max(
       move.zeroTime,
       zone.startTime,
@@ -97,7 +96,6 @@ export function applySwingFibConfluence(
       if (finalCandle.complete === false || finalCandle.time < validFrom) continue;
       const pattern = detectEngulfingPatternAt(candles, endIndex, type4MaxCandles);
       if (!pattern || pattern.direction !== requiredDirection) continue;
-      if (!overlaps(finalCandle.low, finalCandle.high, bandFirst, bandSecond)) continue;
       const touchesZone = candles
         .slice(pattern.startIndex, pattern.endIndex + 1)
         .some((candle) => (

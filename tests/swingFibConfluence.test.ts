@@ -95,6 +95,20 @@ test('Swing engulfing can form inside the deep band without touching exact 0.5',
   assert.ok(candles[2].low > 110, 'the engulfing candle does not touch the exact 0.5 level');
 });
 
+test('Swing engulfing qualifies when the prior pattern candle touched the zone but the final candle misses the band', () => {
+  const candles: StructureCandle[] = [
+    { time: 2, open: 101, high: 102, low: 100, close: 101, complete: true },
+    { time: 3, open: 114.5, high: 115.5, low: 114.2, close: 115, complete: true },
+    { time: 4, open: 113, high: 113.5, low: 110.5, close: 111, complete: true },
+  ];
+  const result = applySwingFibConfluence(candles, [
+    zone({ id: 'deep-sell', bottom: 114.2, top: 115.6 }),
+  ], sellMove);
+
+  assert.ok(candles[2].high < 114.2);
+  assert.equal(result.zones[0].swingEngulfingType, 'T1');
+});
+
 test('invalidated zones cannot retain Swing FIB or engulfing status', () => {
   const result = applySwingFibConfluence([], [
     zone({ status: 'invalidated', active: false, invalidatedAt: 10 }),

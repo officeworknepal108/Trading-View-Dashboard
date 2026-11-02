@@ -194,10 +194,21 @@ export interface Mt5SignalInput {
 }
 
 /** Only a completed higher-timeframe bias may veto a one-minute reversal entry. */
+export function goldM1BuyCountertrendBlocked(
+  signalTimeframe: TradeTimeframe,
+  direction: 'BUY' | 'SELL',
+  m15Trend: MarketTrend | undefined,
+  h1Trend: MarketTrend | undefined,
+): boolean {
+  return signalTimeframe === 'M1' && direction === 'BUY'
+    && m15Trend === 'bearish' && h1Trend === 'bearish';
+}
+
 export function goldAutomationCountertrendBlocked(signal: Mt5SignalInput): boolean {
   const bias = signal.journalContext?.biasAtEntry;
-  return signal.signalTimeframe === 'M1' && signal.direction === 'BUY'
-    && bias?.M15 === 'bearish' && bias.H1 === 'bearish';
+  return goldM1BuyCountertrendBlocked(
+    signal.signalTimeframe, signal.direction, bias?.M15, bias?.H1,
+  );
 }
 
 /** A nearby active opposite zone is an obstacle when it lies before the planned TP. */

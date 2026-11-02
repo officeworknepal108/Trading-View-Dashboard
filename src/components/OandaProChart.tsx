@@ -144,6 +144,7 @@ import {
   MT5_DEFAULT_ENABLED_TIMEFRAMES,
   MT5_ENTRY_TIMEFRAME_OPTIONS,
   MT5_RISK_PERCENT_OPTIONS,
+  goldM1BuyCountertrendBlocked,
   isTradeStyleEnabled,
   type Mt5AutomationStatus,
   type Mt5StoredSignal,
@@ -2622,6 +2623,53 @@ export const OandaProChart: React.FC<{
     () => redundantStandaloneLiquidityZoneIds(displayZones, marketConfig.pipSize),
     [displayZones, marketConfig.pipSize],
   );
+  const blockedGoldChartEntry = useMemo(() => {
+    const trendCache = new Map<string, ReturnType<typeof analyzeMarketStructure>['trend']>();
+    const blockedCache = new Map<number, boolean>();
+    const trendAt = (timeframe: 'M15' | 'H1', cutoff: number) => {
+      const key = `${timeframe}:${cutoff}`;
+      const cached = trendCache.get(key);
+      if (cached) return cached;
+      const source = granularity === timeframe ? displayCandles : vipCandles[timeframe] ?? [];
+      const completed = source.filter((candle) => (
+        candle.complete !== false && candle.time + TIMEFRAME_SECONDS[timeframe] <= cutoff
+      ));
+      if (completed.length === 0) return undefined;
+      const trend = analyzeMarketStructure(completed, {
+        allowSupplyDemand: timeframe === 'H1',
+        sourceBarSeconds: TIMEFRAME_SECONDS[timeframe],
+        confirmationBarSeconds: TJL1_CONFIRMATION_SECONDS[timeframe],
+        zoneVisualBars: 30,
+      }).trend;
+      trendCache.set(key, trend);
+      return trend;
+    };
+    return (signalTime: number, signalTimeframe: TradeTimeframe,
+      direction: 'bullish' | 'bearish') => {
+      if (marketSymbol !== 'XAUUSD' || signalTimeframe !== 'M1' || direction !== 'bullish') return false;
+      const cached = blockedCache.get(signalTime);
+      if (cached !== undefined) return cached;
+      const cutoff = signalTime + TIMEFRAME_SECONDS.M1;
+      const blocked = goldM1BuyCountertrendBlocked(
+        signalTimeframe, 'BUY', trendAt('M15', cutoff), trendAt('H1', cutoff),
+      );
+      blockedCache.set(signalTime, blocked);
+      return blocked;
+    };
+  }, [displayCandles, granularity, marketSymbol, vipCandles]);
+  const visibleSavedJournalTrades = useMemo(() => savedJournalTrades.filter((record) => (
+    record.mt5Managed || record.brokerTicket !== undefined || record.mt5SignalId
+    || record.id.startsWith('MT5:') || record.signalAt === undefined
+    || !blockedGoldChartEntry(record.signalAt, record.signalTimeframe, record.direction)
+  )), [blockedGoldChartEntry, savedJournalTrades]);
+  const visibleRetainedChartTradeOverlays = useMemo(() => [
+    ...retainedChartTradeOverlays.values(),
+  ].filter((overlay) => (
+    overlay.id.startsWith('MT5:') || !blockedGoldChartEntry(
+      overlay.trade.signal.time, overlay.trade.signal.timeframe,
+      overlay.trade.signal.direction,
+    )
+  )), [blockedGoldChartEntry, retainedChartTradeOverlays]);
   const extremeAPlusTjl2Selection = useMemo(
     () => selectExtremeAPlusTjl2Zones(displayZones, marketConfig.pipSize),
     [displayZones, marketConfig.pipSize],
@@ -2639,8 +2687,8 @@ export const OandaProChart: React.FC<{
   ), [consolidatedDisplayZones, displayCandles, granularity, marketSymbol, retainedChartTradeOverlays]);
 
   const zoneEntryRecords = useMemo<ZoneTradeRecord[]>(() => [
-    ...savedJournalTrades,
-    ...[...retainedChartTradeOverlays.values()].filter((overlay) => !overlay.referenceOnly)
+    ...visibleSavedJournalTrades,
+    ...visibleRetainedChartTradeOverlays.filter((overlay) => !overlay.referenceOnly)
       .map((overlay) => ({
         id: overlay.id, symbol: overlay.symbol ?? 'XAUUSD',
         setupId: overlay.setupId, zoneTimeframe: overlay.chartTimeframe,
@@ -2648,7 +2696,7 @@ export const OandaProChart: React.FC<{
       })),
     ...(mt5Status?.recentSignals ?? []).filter((signal) => signal.openedAt !== undefined)
       .map((signal) => ({ ...signal, signalAt: signal.signalAt })),
-  ], [savedJournalTrades, retainedChartTradeOverlays, mt5Status?.recentSignals]);
+  ], [visibleSavedJournalTrades, visibleRetainedChartTradeOverlays, mt5Status?.recentSignals]);
 
   // Preserve Gold's original tracking identity exactly. Currency pairs receive
   // their own symbol-prefixed scopes without changing Gold's entry lifecycle.
@@ -3069,12 +3117,13 @@ export const OandaProChart: React.FC<{
     }
     return blockedByTimeframe;
   }, [marketConfig.pipSize, tableTimeframeData]);
-  const goldScalpingAccuracyTrades = useMemo(() => {
+  const goldScalpingCandidates = useMemo(() => {
     if (marketSymbol !== 'XAUUSD') return [];
     const rows: Array<{
       zone: StructureZone;
       zoneTimeframe: 'M15' | 'H1';
       trade: TradeLevels;
+      countertrendBlocked: boolean;
     }> = [];
     for (const zoneTimeframe of ['M15', 'H1'] as const) {
       const zoneData = tableTimeframeData[zoneTimeframe];
@@ -3112,11 +3161,19 @@ export const OandaProChart: React.FC<{
           rule,
         });
         if (!trade) continue;
-        rows.push({ zone, zoneTimeframe, trade });
+        rows.push({ zone, zoneTimeframe, trade, countertrendBlocked: blockedGoldChartEntry(
+          signal.time, signal.timeframe, signal.direction,
+        ) });
       }
     }
     return rows;
-  }, [extremeAPlusMtfBlockedZoneIds, marketConfig.pipSize, marketSymbol, swingFibMoves, tableTimeframeData, zoneEntryRecords]);
+  }, [blockedGoldChartEntry, extremeAPlusMtfBlockedZoneIds, marketConfig.pipSize, marketSymbol, swingFibMoves, tableTimeframeData, zoneEntryRecords]);
+  const goldScalpingAccuracyTrades = useMemo(() => goldScalpingCandidates.filter(
+    (candidate) => !candidate.countertrendBlocked,
+  ), [goldScalpingCandidates]);
+  const blockedGoldScalpingSetups = useMemo(() => goldScalpingCandidates.filter(
+    (candidate) => candidate.countertrendBlocked,
+  ), [goldScalpingCandidates]);
   const goldScalpingDirectTrades = useMemo(() => goldScalpingAccuracyTrades.filter(({ trade }) => (
     !tradingTimeEnabled || (isNepalTradingTime(trade.signal.time + TIMEFRAME_SECONDS[trade.signal.timeframe])
       && (trade.filledAt === undefined || isNepalTradingTime(trade.filledAt)))
@@ -3131,6 +3188,9 @@ export const OandaProChart: React.FC<{
     return Array.from(rows.values())
     .filter((row) => !extremeAPlusMtfBlockedZoneIds
       .get(row.higherTimeframe)?.has(row.higherTimeframeZoneId))
+    .filter((row) => row.engulfingTime === undefined || !blockedGoldChartEntry(
+      row.engulfingTime, row.lowerTimeframe, row.direction,
+    ))
     .filter((row) => {
       if (marketSymbol !== 'XAUUSD' || row.engulfingTime === undefined) return true;
       const zoneData = tableTimeframeData[row.higherTimeframe];
@@ -3145,7 +3205,7 @@ export const OandaProChart: React.FC<{
     .filter((row) => row.engulfingBarsAgo !== undefined
       ? row.engulfingBarsAgo <= 100
       : (row.tapBarsAgo ?? row.confirmationBarsAgo) <= 50);
-  }, [extremeAPlusMtfBlockedZoneIds, marketConfig.pipSize, marketSymbol, mtfLtfFibRequired, tableTimeframeData]);
+  }, [blockedGoldChartEntry, extremeAPlusMtfBlockedZoneIds, marketConfig.pipSize, marketSymbol, mtfLtfFibRequired, tableTimeframeData]);
 
   const allMtfTradeRows = useMemo<DisplayMtfRow[]>(() => {
     const setupIds = new Map<string, string>();
@@ -3260,7 +3320,9 @@ export const OandaProChart: React.FC<{
       volumeCandles: OandaCandle[] | undefined,
       journalDetails: Partial<JournalTradeRecord> = {},
     ) => {
-      if (!trade?.result) return;
+      if (!trade?.result || blockedGoldChartEntry(
+        trade.signal.time, trade.signal.timeframe, trade.signal.direction,
+      )) return;
       const screenshotDataUrl = readPendingJournalScreenshot(id);
       records.set(id, {
         ...records.get(id),
@@ -3475,6 +3537,7 @@ export const OandaProChart: React.FC<{
     }
     return deduplicateTradeRecords(Array.from(records.values()));
   }, [
+    blockedGoldChartEntry,
     currentDirectTradeSetups,
     displayCandles,
     displayZones,
@@ -3505,6 +3568,9 @@ export const OandaProChart: React.FC<{
       zoneTimeframe: TradeTimeframe, source: 'ENGULFING' | 'MTF',
       trade: TradeLevels | undefined, tradeStyle?: 'SCALPING' | 'INTRADAY', mtfContext?: MtfRow) => {
       if (!trade || trade.filledAt === undefined || isCompletedTrade(trade)) return;
+      if (blockedGoldChartEntry(
+        trade.signal.time, trade.signal.timeframe, trade.signal.direction,
+      )) return;
       if (tradingTimeEnabled && (!isNepalTradingTime(trade.calculatedAt)
         || !isNepalTradingTime(trade.filledAt))) return;
       records.push({
@@ -3535,14 +3601,14 @@ export const OandaProChart: React.FC<{
         marketSymbol === 'XAUUSD' ? row.goldScalping ? 'SCALPING' : 'INTRADAY' : undefined, row);
     }
     return records;
-  }, [allMtfTradeRows, directZoneTrades, displayZones, goldScalpingDirectTrades, granularity,
+  }, [allMtfTradeRows, blockedGoldChartEntry, directZoneTrades, displayZones, goldScalpingDirectTrades, granularity,
     marketSymbol, replayIndex, tradingTimeEnabled]);
 
-  const reconciledMtfJournalTrades = useMemo(() => savedJournalTrades.map(record => (
+  const reconciledMtfJournalTrades = useMemo(() => visibleSavedJournalTrades.map(record => (
     replayIndex === null && record.source === 'MTF' && (record.symbol ?? 'XAUUSD') === marketSymbol
       ? reconcileSavedMtfTrade(record, tableTimeframeData[record.signalTimeframe]?.candles ?? [], tradeDisplayAsOf).record
       : record
-  )), [savedJournalTrades, replayIndex, marketSymbol, tableTimeframeData, tradeDisplayAsOf]);
+  )), [visibleSavedJournalTrades, replayIndex, marketSymbol, tableTimeframeData, tradeDisplayAsOf]);
   const canonicalTradeRecords = useMemo(() => buildCanonicalTradeRecords(
     reconciledMtfJournalTrades, accuracyTradeRecords, {
       marketSymbol, pipSize: marketConfig.pipSize, requireLtfFib: mtfLtfFibRequired,
@@ -3566,8 +3632,9 @@ export const OandaProChart: React.FC<{
       record.volume1, record.volume2, record.volume3, record.engulfingCandleCount,
     ]);
     const stored = new Map(savedJournalTrades.map((record) => [record.id, facts(record)]));
+    const storedRecords = new Map(savedJournalTrades.map((record) => [record.id, record]));
     const recordsToSave = new Map([...openChartJournalTrades, ...canonicalTradeRecords,
-      ...reconciledMtfJournalTrades.filter((record, index) => record !== savedJournalTrades[index])]
+      ...reconciledMtfJournalTrades.filter((record) => record !== storedRecords.get(record.id))]
       .map((record) => [record.id, record]));
     const changed = [...recordsToSave.values()].filter((record) => (
       stored.get(record.id) !== facts(record)
@@ -3626,7 +3693,9 @@ export const OandaProChart: React.FC<{
       drawingTimeframe: OandaGranularity = trade.signal.timeframe,
       zone?: StructureZone,
     ) => {
-      if (isCompletedTrade(trade)) return;
+      if (isCompletedTrade(trade) || blockedGoldChartEntry(
+        trade.signal.time, trade.signal.timeframe, trade.signal.direction,
+      )) return;
       const signature = [
         trade.calculatedAt,
         trade.entry,
@@ -3737,6 +3806,7 @@ export const OandaProChart: React.FC<{
     return Array.from(overlays.values())
       .sort((first, second) => second.trade.calculatedAt - first.trade.calculatedAt);
   }, [
+    blockedGoldChartEntry,
     currentDirectTradeSetups,
     displayCandles,
     displayZones,
@@ -3828,7 +3898,7 @@ export const OandaProChart: React.FC<{
 
   const retainedChartTradesForTimeframe = useMemo(() => {
     const firstTradeBySetup = new Map<string, TradeOverlay>();
-    const candidates = [...retainedChartTradeOverlays.values()]
+    const candidates = visibleRetainedChartTradeOverlays
       .filter((overlay) => (overlay.symbol ?? 'XAUUSD') === marketSymbol
         && overlayStyleEnabled(overlay)
         && overlay.chartTimeframe === granularity
@@ -3851,7 +3921,7 @@ export const OandaProChart: React.FC<{
     }
     return [...firstTradeBySetup.values()]
       .sort((first, second) => second.trade.calculatedAt - first.trade.calculatedAt);
-  }, [granularity, hasRetainedDirectTradeSource, marketSymbol, overlayStyleEnabled, retainedChartTradeOverlays, savedChartMtfEntryQualification, tradingTimeEnabled]);
+  }, [granularity, hasRetainedDirectTradeSource, marketSymbol, overlayStyleEnabled, visibleRetainedChartTradeOverlays, savedChartMtfEntryQualification, tradingTimeEnabled]);
 
   // The Zone Table owns only direct chart-zone trades. MTF trades remain
   // drawable on the chart, but all their row/details UI belongs to MTF Table.
@@ -4011,7 +4081,7 @@ export const OandaProChart: React.FC<{
         `MTF:${row.id}:${row.engulfingTime}:${row.trade.entry}`,
       ), row.trade.signal);
     }
-    for (const record of savedJournalTrades) {
+    for (const record of visibleSavedJournalTrades) {
       if ((record.symbol ?? 'XAUUSD') !== marketSymbol || !record.signalAt || record.completedAt > tradeDisplayAsOf
         || (!['sl', 'tp', 'rf'].includes(record.result) && !hasTradeDrawingExpired(record))) continue;
       const eventKey = tradeOverlayEntryEventKey({
@@ -4021,7 +4091,7 @@ export const OandaProChart: React.FC<{
       entryEventKeys.add(eventKey);
     }
     return { setupKeys, entryEventKeys };
-  }, [directZoneTrades, mtfRows, savedJournalTrades, marketSymbol, tradeDisplayAsOf, hasTradeDrawingExpired, retainedChartTradesForTimeframe]);
+  }, [directZoneTrades, mtfRows, visibleSavedJournalTrades, marketSymbol, tradeDisplayAsOf, hasTradeDrawingExpired, retainedChartTradesForTimeframe]);
 
   const visibleTradeOverlays = useMemo(() => {
     const overlays = new Map<string, TradeOverlay>();
@@ -4031,6 +4101,10 @@ export const OandaProChart: React.FC<{
       if (hasTradeDrawingExpired(overlay.trade)) return;
       if (!overlayStyleEnabled(overlay)) return;
       if ((overlay.symbol ?? 'XAUUSD') !== marketSymbol) return;
+      if (!overlay.id.startsWith('MT5:') && blockedGoldChartEntry(
+        overlay.trade.signal.time, overlay.trade.signal.timeframe,
+        overlay.trade.signal.direction,
+      )) return;
       if (!overlay.referenceOnly && !isCompletedTrade(overlay.trade) && !hasRetainedDirectTradeSource(overlay)) return;
       // The result owns the five-bar window; stale active copies must not reappear afterward.
       const setupKey = tradeOverlaySetupKey(overlay);
@@ -4071,7 +4145,7 @@ export const OandaProChart: React.FC<{
     // An open broker position owns its drawing, including after partial RF.
     if (replayIndex === null) liveMt5TradeOverlays.forEach(addOverlay);
     // A final exit starts the drawing's five-completed-candle retention window.
-    for (const record of deduplicateTradeRecords<JournalTradeRecord>(savedJournalTrades)) {
+    for (const record of deduplicateTradeRecords<JournalTradeRecord>(visibleSavedJournalTrades)) {
       if (!['sl', 'tp', 'rf', 'risk-free'].includes(record.result)
         || (record.symbol ?? 'XAUUSD') !== marketSymbol || record.signalTimeframe !== granularity
         || record.completedAt > tradeDisplayAsOf || hasTradeDrawingExpired(record)
@@ -4134,7 +4208,7 @@ export const OandaProChart: React.FC<{
     }
     return Array.from(overlays.values())
       .sort((first, second) => second.trade.calculatedAt - first.trade.calculatedAt);
-  }, [displayZones, showInternal, hasTradeDrawingExpired, savedJournalTrades, directZoneTrades, granularity, tradeDisplayAsOf, tradeStyleEnabled, completedChartTradeKeys, directZoneEntryDecisions, goldScalpingAccuracyTrades, hasRetainedDirectTradeSource, liveMt5TradeOverlays, marketSymbol, mtfRows, overlayStyleEnabled, replayIndex, retainedChartTradesForTimeframe, tradeOverlays, tradingTimeEnabled]);
+  }, [blockedGoldChartEntry, displayZones, showInternal, hasTradeDrawingExpired, visibleSavedJournalTrades, directZoneTrades, granularity, tradeDisplayAsOf, tradeStyleEnabled, completedChartTradeKeys, directZoneEntryDecisions, goldScalpingAccuracyTrades, hasRetainedDirectTradeSource, liveMt5TradeOverlays, marketSymbol, mtfRows, overlayStyleEnabled, replayIndex, retainedChartTradesForTimeframe, tradeOverlays, tradingTimeEnabled]);
 
   useEffect(() => {
     if (replayIndex !== null || !mt5Status?.config
@@ -8869,6 +8943,24 @@ export const OandaProChart: React.FC<{
                     </tr>
                   );
                 })}
+                {blockedGoldScalpingSetups.filter(({ trade }) => (
+                  trade.signal.timeframe === granularity
+                  && displayCandles.some((candle) => candle.time === trade.signal.time)
+                  && latestCandle !== null
+                  && latestCandle.time - trade.signal.time <= 50 * TIMEFRAME_SECONDS.M1
+                )).sort((first, second) => second.trade.signal.time - first.trade.signal.time)
+                  .slice(0, 3).map(({ zone, zoneTimeframe, trade }) => (
+                    <tr key={`blocked-scalp-${zoneTimeframe}-${zone.id}-${trade.signal.time}`}
+                      className="border-t border-amber-200 bg-amber-50/80">
+                      <td className="px-2 py-1 font-black text-slate-700">SCALP · {executionZoneName(zone)}</td>
+                      <td className="px-2 py-1 font-bold text-slate-600">BUY SETUP</td>
+                      <td className="px-2 py-1 text-slate-400">—</td>
+                      <td className="px-2 py-1 text-center font-black text-slate-600">{trade.signal.type}</td>
+                      <td className="whitespace-nowrap px-2 py-1 text-right font-black text-amber-800">
+                        BLOCKED · 15M + 1H BEARISH · NO ENTRY
+                      </td>
+                    </tr>
+                  ))}
                 {retainedDirectChartTradesForTimeframe.map((overlay) => {
                   const bullish = overlay.trade.signal.direction === 'bullish';
                   const zoneLabel = tradeOverlayZoneLabel(overlay.label);

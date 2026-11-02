@@ -5,6 +5,7 @@ import {
   MT5_ENTRY_TIMEFRAME_OPTIONS,
   MT5_RISK_PERCENT_OPTIONS,
   goldAutomationCountertrendBlocked,
+  goldM1BuyCountertrendBlocked,
   goldAutomationFastMoveBlocked,
   goldAutomationHighImpactUsdNewsTimes,
   goldAutomationNewsPauseUntil,
@@ -404,6 +405,14 @@ test('gold entry guards block bearish one-minute buys, nearby sell zones, and re
   const confirmedChoch = [{ type: 'choch', direction: 'bullish', toTime: 800 }] as StructureLine[];
   assert.equal(goldAutomationRepeatAreaBlocked(candidate, previous, confirmedChoch), false);
   assert.equal(goldAutomationRepeatAreaBlocked({ ...candidate, entry: 110, stopLoss: 107 }, previous, []), false);
+});
+
+test('chart and MT5 share the exact one-minute buy countertrend rule', () => {
+  assert.equal(goldM1BuyCountertrendBlocked('M1', 'BUY', 'bearish', 'bearish'), true);
+  assert.equal(goldM1BuyCountertrendBlocked('M1', 'BUY', 'bearish', 'bullish'), false);
+  assert.equal(goldM1BuyCountertrendBlocked('M1', 'SELL', 'bearish', 'bearish'), false);
+  assert.equal(goldM1BuyCountertrendBlocked('M5', 'BUY', 'bearish', 'bearish'), false);
+  assert.equal(goldM1BuyCountertrendBlocked('M1', 'BUY', undefined, 'bearish'), false);
 });
 
 test('fast-move guard only uses completed candles available at signal time', () => {
