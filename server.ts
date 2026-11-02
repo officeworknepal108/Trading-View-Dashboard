@@ -122,6 +122,10 @@ const DEFAULT_MT5_CONFIG: Mt5AutomationConfig = {
 
 const AUTOMATION_TIMEFRAMES: TradeTimeframe[] = ['M1', 'M5', 'M15', 'M30', 'H1', 'H4', 'D'];
 const AUTOMATION_DIRECT_TIMEFRAMES: TradeTimeframe[] = ['M15', 'H1'];
+const oandaAutomationCandles = new Map<TradeTimeframe, { candles: StructureCandle[]; fetchedAt: number }>();
+const oandaAutomationFetches = new Map<TradeTimeframe, Promise<StructureCandle[] | undefined>>();
+const oandaAutomationRetryAfter = new Map<TradeTimeframe, number>();
+let lastOandaAutomationErrorAt = 0;
 const AUTOMATION_FALLBACKS: Partial<Record<TradeTimeframe, TradeTimeframe[]>> = {
   M1: ['M5'], M15: ['M30'], H1: ['M15', 'M30'],
 };
@@ -728,6 +732,37 @@ function buildJournalAutoReason(options: {
     + `${options.signal.direction} confirmation. Volume logic: ${options.volumeLogicStatus.toUpperCase()}.`;
 }
 
+async function loadOandaAutomationCandles(timeframe: TradeTimeframe): Promise<StructureCandle[] | undefined> {
+  const cached = oandaAutomationCandles.get(timeframe);
+  const brokerBarTime = mt5Context().automationCandleCache[timeframe]?.at(-1)?.time ?? 0;
+  const ageMs = cached ? Date.now() - cached.fetchedAt : Infinity;
+  const cacheMs = Math.min(AUTOMATION_SECONDS[timeframe] * 500, 300_000);
+  if (cached && ageMs < cacheMs && (
+    (cached.candles.at(-1)?.time ?? 0) >= brokerBarTime || ageMs < 5_000
+  )) return cached.candles;
+  if (Date.now() < (oandaAutomationRetryAfter.get(timeframe) ?? 0)) return undefined;
+  const pending = oandaAutomationFetches.get(timeframe);
+  if (pending) return pending;
+  const request = fetchTradingViewCandles({
+    exchange: 'OANDA', symbol: 'XAUUSD', granularity: timeframe,
+    count: ['M1', 'M5', 'M15', 'M30'].includes(timeframe) ? 5000 : 1500,
+  }).then((candles) => {
+    if (candles.length < 10) throw new Error(`Too few OANDA ${timeframe} candles for automation.`);
+    oandaAutomationCandles.set(timeframe, { candles, fetchedAt: Date.now() });
+    oandaAutomationRetryAfter.delete(timeframe);
+    return candles;
+  }).catch((error: unknown) => {
+    oandaAutomationRetryAfter.set(timeframe, Date.now() + 10_000);
+    if (Date.now() - lastOandaAutomationErrorAt > 30_000) {
+      console.error('OANDA automation feed unavailable:', error instanceof Error ? error.message : error);
+      lastOandaAutomationErrorAt = Date.now();
+    }
+    return undefined;
+  }).finally(() => { oandaAutomationFetches.delete(timeframe); });
+  oandaAutomationFetches.set(timeframe, request);
+  return request;
+}
+
 async function scanMt5AutomationSignals(): Promise<number> {
   const config = await readMt5Config();
   if (!config.enabled) return 0;
@@ -742,7 +777,18 @@ async function scanMt5AutomationSignals(): Promise<number> {
   const scanVersion = mt5Context().mt5MarketDataVersion;
   const scanConnection = mt5Context().mt5BridgeHeartbeat ? { ...mt5Context().mt5BridgeHeartbeat } : undefined;
   if (scanVersion === mt5Context().lastScannedMt5MarketDataVersion) return 0;
-  const candles = mt5Context().automationCandleCache as Record<TradeTimeframe, StructureCandle[]>;
+  const candles = {} as Record<TradeTimeframe, StructureCandle[]>;
+  for (const timeframe of AUTOMATION_TIMEFRAMES) {
+    const source = await loadOandaAutomationCandles(timeframe);
+    if (!source) return 0;
+    candles[timeframe] = source;
+  }
+  // Wait for OANDA to publish the current bar before scanning its completed predecessor.
+  // Broker and OANDA prices may differ; only their candle time needs to line up.
+  if ((['M1', 'M5', 'M15', 'M30'] as const).some((timeframe) => (
+    (candles[timeframe].at(-1)?.time ?? 0)
+      < (mt5Context().automationCandleCache[timeframe]?.at(-1)?.time ?? 0)
+  ))) return 0;
   const rawStructures: Partial<Record<TradeTimeframe, ReturnType<typeof analyzeMarketStructure>>> = {};
   for (const timeframe of AUTOMATION_TIMEFRAMES) {
     rawStructures[timeframe] = analyzeMarketStructure(candles[timeframe], {
