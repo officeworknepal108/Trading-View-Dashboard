@@ -2733,6 +2733,22 @@ export const OandaProChart: React.FC<{
       return blocked;
     };
   }, [displayCandles, granularity, marketSymbol, vipCandles]);
+  const blockedGoldHistoricalTrade = useCallback((record: AccuracyTradeRecord) => {
+    if (marketSymbol !== 'XAUUSD' || (record.symbol ?? 'XAUUSD') !== 'XAUUSD'
+      || record.direction !== 'bullish') return false;
+    const scalpCandle = record.source === 'ENGULFING' && record.tradeStyle === 'SCALPING';
+    if (record.signalTimeframe !== 'M1' && !(scalpCandle && record.signalTimeframe === 'M5')) return false;
+    const bias = record.biasAtEntry;
+    if (bias?.M15 !== undefined && bias.H1 !== undefined) {
+      return goldM1BuyCountertrendBlocked(record.signalTimeframe, 'BUY', bias.M15, bias.H1)
+        || (scalpCandle && goldM5ScalpingBuyCountertrendBlocked(
+          record.signalTimeframe, 'BUY', bias.M15, bias.H1,
+        ));
+    }
+    return record.signalAt !== undefined && blockedGoldChartEntry(
+      record.signalAt, record.signalTimeframe, record.direction, scalpCandle,
+    );
+  }, [blockedGoldChartEntry, marketSymbol]);
   const visibleSavedJournalTrades = useMemo(() => savedJournalTrades.filter((record) => (
     record.mt5Managed || record.brokerTicket !== undefined || record.mt5SignalId
     || record.id.startsWith('MT5:') || record.signalAt === undefined
@@ -3746,8 +3762,9 @@ export const OandaProChart: React.FC<{
     },
   ), [accuracyTradeRecords, marketConfig.pipSize, marketSymbol, mtfLtfFibRequired,
     savedChartMtfEntryQualification, reconciledMtfJournalTrades, tableTimeframeData]);
-  const visibleCanonicalTradeRecords = useMemo(() => canonicalTradeRecords.filter(tradeStyleEnabled),
-    [canonicalTradeRecords, tradeStyleEnabled]);
+  const visibleCanonicalTradeRecords = useMemo(() => canonicalTradeRecords.filter((record) => (
+    tradeStyleEnabled(record) && !blockedGoldHistoricalTrade(record)
+  )), [blockedGoldHistoricalTrade, canonicalTradeRecords, tradeStyleEnabled]);
   const allSavedAccuracyRecords = useMemo(() => visibleCanonicalTradeRecords.filter((record) => (
     record.result === 'tp' || record.result === 'sl' || record.result === 'rf'
   )), [visibleCanonicalTradeRecords]);
@@ -4527,18 +4544,7 @@ export const OandaProChart: React.FC<{
     const visibleIds = visibleAccuracyRecordIds === null
       ? null : new Set<string>(visibleAccuracyRecordIds);
     for (const record of chartEntryRecords) {
-      if (marketSymbol === 'XAUUSD' && record.direction === 'bullish') {
-        const scalpCandle = record.source === 'ENGULFING' && record.tradeStyle === 'SCALPING';
-        const bias = record.biasAtEntry;
-        const blocked = bias?.M15 !== undefined && bias.H1 !== undefined
-          ? goldM1BuyCountertrendBlocked(record.signalTimeframe, 'BUY', bias.M15, bias.H1)
-            || (scalpCandle && goldM5ScalpingBuyCountertrendBlocked(
-              record.signalTimeframe, 'BUY', bias.M15, bias.H1,
-            ))
-          : blockedGoldChartEntry(record.signalAt!, record.signalTimeframe,
-            record.direction, scalpCandle);
-        if (blocked) continue;
-      }
+      if (blockedGoldHistoricalTrade(record)) continue;
       const active = record.result === 'open' || record.result === 'risk-free';
       if (!active && visibleIds !== null && !visibleIds.has(record.id)) continue;
       const signalAt = record.signalAt!;
@@ -4590,7 +4596,7 @@ export const OandaProChart: React.FC<{
       }
     }
     return Array.from(entries.values());
-  }, [blockedGoldChartEntry, chartEntryRecords, displayCandles, granularity, marketSymbol, replayIndex,
+  }, [blockedGoldHistoricalTrade, chartEntryRecords, displayCandles, granularity, marketSymbol, replayIndex,
     retainedDirectChartTradesForTimeframe, tradingTimeEnabled, visibleAccuracyRecordIds]);
   const latestCandle = displayCandles[displayCandles.length - 1] || null;
   const previousCandle = displayCandles.length > 1 ? displayCandles[displayCandles.length - 2] : null;
@@ -9695,6 +9701,7 @@ export const OandaProChart: React.FC<{
               allRecords={replayVisibleAccuracyRecords}
               mt5Records={executedMt5Trades.filter((trade) => (
                 (trade.symbol ?? 'XAUUSD') === marketSymbol
+                && !blockedGoldHistoricalTrade(trade)
                 && (replayResultCutoff === undefined || (trade.openedAt ?? trade.completedAt) <= replayResultCutoff)
               ))}
               timeframe={granularity}
