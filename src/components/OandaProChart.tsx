@@ -145,6 +145,7 @@ import {
   MT5_ENTRY_TIMEFRAME_OPTIONS,
   MT5_RISK_PERCENT_OPTIONS,
   goldM1BuyCountertrendBlocked,
+  goldM5ScalpingBuyCountertrendBlocked,
   goldOpposingZoneBeforeOneR,
   isTradeStyleEnabled,
   type Mt5AutomationStatus,
@@ -2695,7 +2696,7 @@ export const OandaProChart: React.FC<{
   );
   const blockedGoldChartEntry = useMemo(() => {
     const trendCache = new Map<string, ReturnType<typeof analyzeMarketStructure>['trend']>();
-    const blockedCache = new Map<number, boolean>();
+    const blockedCache = new Map<string, boolean>();
     const trendAt = (timeframe: 'M15' | 'H1', cutoff: number) => {
       const key = `${timeframe}:${cutoff}`;
       const cached = trendCache.get(key);
@@ -2715,15 +2716,20 @@ export const OandaProChart: React.FC<{
       return trend;
     };
     return (signalTime: number, signalTimeframe: TradeTimeframe,
-      direction: 'bullish' | 'bearish') => {
-      if (marketSymbol !== 'XAUUSD' || signalTimeframe !== 'M1' || direction !== 'bullish') return false;
-      const cached = blockedCache.get(signalTime);
+      direction: 'bullish' | 'bearish', scalpingEntry = false) => {
+      if (marketSymbol !== 'XAUUSD' || direction !== 'bullish'
+        || (signalTimeframe !== 'M1' && !(scalpingEntry && signalTimeframe === 'M5'))) return false;
+      const key = `${signalTime}:${signalTimeframe}:${scalpingEntry}`;
+      const cached = blockedCache.get(key);
       if (cached !== undefined) return cached;
-      const cutoff = signalTime + TIMEFRAME_SECONDS.M1;
-      const blocked = goldM1BuyCountertrendBlocked(
-        signalTimeframe, 'BUY', trendAt('M15', cutoff), trendAt('H1', cutoff),
-      );
-      blockedCache.set(signalTime, blocked);
+      const cutoff = signalTime + TIMEFRAME_SECONDS[signalTimeframe];
+      const m15Trend = trendAt('M15', cutoff);
+      const h1Trend = trendAt('H1', cutoff);
+      const blocked = goldM1BuyCountertrendBlocked(signalTimeframe, 'BUY', m15Trend, h1Trend)
+        || (scalpingEntry && goldM5ScalpingBuyCountertrendBlocked(
+          signalTimeframe, 'BUY', m15Trend, h1Trend,
+        ));
+      blockedCache.set(key, blocked);
       return blocked;
     };
   }, [displayCandles, granularity, marketSymbol, vipCandles]);
@@ -3256,7 +3262,7 @@ export const OandaProChart: React.FC<{
           signalAt: signal.time,
         }, opposingGoldZones);
         rows.push({ zone, zoneTimeframe, trade, countertrendBlocked: blockedGoldChartEntry(
-          signal.time, signal.timeframe, signal.direction,
+          signal.time, signal.timeframe, signal.direction, true,
         ), opposingZoneBlock });
       }
     }

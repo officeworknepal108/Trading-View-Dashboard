@@ -204,11 +204,24 @@ export function goldM1BuyCountertrendBlocked(
     && m15Trend === 'bearish' && h1Trend === 'bearish';
 }
 
+export function goldM5ScalpingBuyCountertrendBlocked(
+  signalTimeframe: TradeTimeframe,
+  direction: 'BUY' | 'SELL',
+  m15Trend: MarketTrend | undefined,
+  h1Trend: MarketTrend | undefined,
+): boolean {
+  return signalTimeframe === 'M5' && direction === 'BUY'
+    && m15Trend === 'bearish' && h1Trend === 'bearish';
+}
+
 export function goldAutomationCountertrendBlocked(signal: Mt5SignalInput): boolean {
   const bias = signal.journalContext?.biasAtEntry;
   return goldM1BuyCountertrendBlocked(
     signal.signalTimeframe, signal.direction, bias?.M15, bias?.H1,
-  );
+  ) || (signal.source === 'ENGULFING' && signal.tradeStyle === 'SCALPING'
+    && goldM5ScalpingBuyCountertrendBlocked(
+      signal.signalTimeframe, signal.direction, bias?.M15, bias?.H1,
+    ));
 }
 
 /** The first active opposing zone must be at least one full stop distance from entry. */

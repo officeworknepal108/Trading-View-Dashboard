@@ -6,6 +6,7 @@ import {
   MT5_RISK_PERCENT_OPTIONS,
   goldAutomationCountertrendBlocked,
   goldM1BuyCountertrendBlocked,
+  goldM5ScalpingBuyCountertrendBlocked,
   goldAutomationFastMoveBlocked,
   goldAutomationHighImpactUsdNewsTimes,
   goldAutomationNewsPauseUntil,
@@ -425,6 +426,26 @@ test('chart and MT5 share the exact one-minute buy countertrend rule', () => {
   assert.equal(goldM1BuyCountertrendBlocked('M1', 'SELL', 'bearish', 'bearish'), false);
   assert.equal(goldM1BuyCountertrendBlocked('M5', 'BUY', 'bearish', 'bearish'), false);
   assert.equal(goldM1BuyCountertrendBlocked('M1', 'BUY', undefined, 'bearish'), false);
+});
+
+test('bearish M15 and H1 block M5 scalp buys while allowing MTF buys', () => {
+  const candidate = {
+    source: 'ENGULFING', tradeStyle: 'SCALPING', signalTimeframe: 'M5', direction: 'BUY',
+    journalContext: { biasAtEntry: { M15: 'bearish', H1: 'bearish' } },
+  } as unknown as Mt5SignalInput;
+  assert.equal(goldM5ScalpingBuyCountertrendBlocked('M5', 'BUY', 'bearish', 'bearish'), true);
+  assert.equal(goldAutomationCountertrendBlocked(candidate), true);
+  assert.equal(goldAutomationCountertrendBlocked({ ...candidate, source: 'MTF' }), false);
+  assert.equal(goldAutomationCountertrendBlocked({ ...candidate, tradeStyle: 'INTRADAY' }), false);
+  assert.equal(goldAutomationCountertrendBlocked({ ...candidate, direction: 'SELL' }), false);
+  assert.equal(goldAutomationCountertrendBlocked({ ...candidate,
+    journalContext: { ...candidate.journalContext!, biasAtEntry: {
+      ...candidate.journalContext!.biasAtEntry, H1: 'bullish',
+    } },
+  }), false);
+  assert.equal(goldAutomationCountertrendBlocked({ ...candidate,
+    source: 'MTF', signalTimeframe: 'M1',
+  }), true);
 });
 
 test('fast-move guard only uses completed candles available at signal time', () => {
