@@ -4527,6 +4527,18 @@ export const OandaProChart: React.FC<{
     const visibleIds = visibleAccuracyRecordIds === null
       ? null : new Set<string>(visibleAccuracyRecordIds);
     for (const record of chartEntryRecords) {
+      if (marketSymbol === 'XAUUSD' && record.direction === 'bullish') {
+        const scalpCandle = record.source === 'ENGULFING' && record.tradeStyle === 'SCALPING';
+        const bias = record.biasAtEntry;
+        const blocked = bias?.M15 !== undefined && bias.H1 !== undefined
+          ? goldM1BuyCountertrendBlocked(record.signalTimeframe, 'BUY', bias.M15, bias.H1)
+            || (scalpCandle && goldM5ScalpingBuyCountertrendBlocked(
+              record.signalTimeframe, 'BUY', bias.M15, bias.H1,
+            ))
+          : blockedGoldChartEntry(record.signalAt!, record.signalTimeframe,
+            record.direction, scalpCandle);
+        if (blocked) continue;
+      }
       const active = record.result === 'open' || record.result === 'risk-free';
       if (!active && visibleIds !== null && !visibleIds.has(record.id)) continue;
       const signalAt = record.signalAt!;
@@ -4578,7 +4590,7 @@ export const OandaProChart: React.FC<{
       }
     }
     return Array.from(entries.values());
-  }, [chartEntryRecords, displayCandles, granularity, marketSymbol, replayIndex,
+  }, [blockedGoldChartEntry, chartEntryRecords, displayCandles, granularity, marketSymbol, replayIndex,
     retainedDirectChartTradesForTimeframe, tradingTimeEnabled, visibleAccuracyRecordIds]);
   const latestCandle = displayCandles[displayCandles.length - 1] || null;
   const previousCandle = displayCandles.length > 1 ? displayCandles[displayCandles.length - 2] : null;
