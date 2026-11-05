@@ -316,6 +316,151 @@ interface OandaCandle {
   complete: boolean;
 }
 
+interface AutoTrendline {
+  firstIndex: number;
+  secondIndex: number;
+  firstPrice: number;
+  slope: number;
+  direction: 'up' | 'down';
+  kind: 'continuation' | 'breakout';
+  touches: number;
+  lastTouchIndex: number;
+  thirdTouchIndex?: number;
+}
+
+export function detectAutoTrendlines(candles: OandaCandle[], pipSize: number): AutoTrendline[] {
+  const lastClosedIndex = candles.length - (candles.at(-1)?.complete === false ? 2 : 1);
+  if (lastClosedIndex < 8) return [];
+  const firstSearchIndex = Math.max(2, lastClosedIndex - 320);
+  const tolerance = Math.max(pipSize * 2, 1e-8);
+  const candidates: AutoTrendline[] = [];
+
+  for (const direction of ['up', 'down'] as const) {
+    const isUp = direction === 'up';
+    const pivots: number[] = [];
+    for (let index = firstSearchIndex; index <= lastClosedIndex - 2; index += 1) {
+      const value = isUp ? candles[index].low : candles[index].high;
+      const neighbors = [index - 2, index - 1, index + 1, index + 2];
+      if (neighbors.every((neighbor) => isUp
+        ? value <= candles[neighbor].low : value >= candles[neighbor].high)) pivots.push(index);
+    }
+    const pivotSet = new Set(pivots);
+
+    for (let first = 0; first < pivots.length; first += 1) {
+      const firstIndex = pivots[first];
+      const firstPrice = isUp ? candles[firstIndex].low : candles[firstIndex].high;
+      for (let second = first + 1; second < pivots.length; second += 1) {
+        const secondIndex = pivots[second];
+        if (secondIndex - firstIndex < 3 || secondIndex - firstIndex > 240) continue;
+        const candle = candles[secondIndex];
+        // The first anchor is always the wick tip. The second contact can be
+        // either the wick tip or the nearest edge of the candle body.
+        for (const secondPrice of new Set([
+          isUp ? candle.low : candle.high,
+          isUp ? Math.min(candle.open, candle.close) : Math.max(candle.open, candle.close),
+          (candle.open + candle.close) / 2,
+        ])) {
+          if (isUp ? secondPrice <= firstPrice + tolerance : secondPrice >= firstPrice - tolerance) continue;
+          const slope = (secondPrice - firstPrice) / (secondIndex - firstIndex);
+          const priceAt = (index: number) => firstPrice + slope * (index - firstIndex);
+          const whollyBeyond = (index: number) => isUp
+            ? candles[index].high < priceAt(index)
+            : candles[index].low > priceAt(index);
+          let brokenBeforeSecond = false;
+          for (let index = firstIndex + 1; index < secondIndex; index += 1) {
+            if (whollyBeyond(index)) { brokenBeforeSecond = true; break; }
+          }
+          if (brokenBeforeSecond) continue;
+
+          let breakIndex = -1;
+          let retestIndex = -1;
+          let touches = 2;
+          let lastTouchIndex = secondIndex;
+          let thirdTouchIndex: number | undefined;
+          for (let index = secondIndex + 1; index <= lastClosedIndex; index += 1) {
+            if (breakIndex < 0) {
+              if (whollyBeyond(index)) { breakIndex = index; continue; }
+              if (pivotSet.has(index) && candles[index].low <= priceAt(index) + tolerance
+                && candles[index].high >= priceAt(index) - tolerance) {
+                touches += 1;
+                lastTouchIndex = index;
+                if (thirdTouchIndex === undefined) thirdTouchIndex = index;
+              }
+            } else if (candles[index].low <= priceAt(index) + tolerance
+              && candles[index].high >= priceAt(index) - tolerance) {
+              retestIndex = index;
+              break;
+            }
+          }
+          if (breakIndex >= 0 && retestIndex < 0) continue;
+          if (retestIndex >= 0) {
+            if (thirdTouchIndex === undefined) thirdTouchIndex = retestIndex;
+            const latestLinePrice = priceAt(lastClosedIndex);
+            if (isUp ? candles[lastClosedIndex].close >= latestLinePrice
+              : candles[lastClosedIndex].close <= latestLinePrice) continue;
+          }
+          if (thirdTouchIndex === undefined) continue;
+          candidates.push({
+            firstIndex, secondIndex, firstPrice, slope, direction,
+            kind: breakIndex < 0 ? 'continuation' : 'breakout',
+            touches,
+            lastTouchIndex: retestIndex >= 0 ? retestIndex : lastTouchIndex,
+            thirdTouchIndex,
+          });
+        }
+      }
+    }
+  }
+
+  const selected: AutoTrendline[] = [];
+  for (const kind of ['continuation', 'breakout'] as const) {
+    for (const direction of ['up', 'down'] as const) {
+      const ranked = candidates.filter((line) => line.kind === kind && line.direction === direction)
+        .sort((a, b) => b.touches - a.touches || b.lastTouchIndex - a.lastTouchIndex
+          || b.secondIndex - a.secondIndex);
+      for (const line of ranked) {
+        if (selected.filter((chosen) => chosen.kind === kind && chosen.direction === direction).length >= 2) break;
+        const linePrice = line.firstPrice + line.slope * (lastClosedIndex - line.firstIndex);
+        if (selected.some((chosen) => chosen.kind === kind && chosen.direction === direction
+          && ((chosen.firstIndex === line.firstIndex && chosen.secondIndex === line.secondIndex)
+            || Math.abs((chosen.firstPrice + chosen.slope * (lastClosedIndex - chosen.firstIndex)) - linePrice)
+              < tolerance * 3))) continue;
+        selected.push(line);
+      }
+    }
+  }
+  return selected;
+}
+
+interface HigherTimeframeTrendline {
+  id: string;
+  timeframe: OandaGranularity;
+  sourceCandles: OandaCandle[];
+  line: AutoTrendline;
+  currentPrice: number;
+}
+
+function trendlinePriceAtTime(
+  line: AutoTrendline,
+  candles: OandaCandle[],
+  timeframe: OandaGranularity,
+  time: number,
+): number {
+  let low = 0;
+  let high = candles.length;
+  while (low < high) {
+    const middle = (low + high) >> 1;
+    if (candles[middle].time <= time) low = middle + 1;
+    else high = middle;
+  }
+  const index = Math.max(0, low - 1);
+  const nextTime = candles[index + 1]?.time ?? marketCandleCloseTime(candles[index].time, timeframe);
+  const barSeconds = Math.max(1, nextTime - candles[index].time);
+  return line.firstPrice + line.slope * (
+    index + (time - candles[index].time) / barSeconds - line.firstIndex
+  );
+}
+
 interface MarketDataResponse {
   ok: boolean;
   source?: string;
@@ -2045,6 +2190,8 @@ export const OandaProChart: React.FC<{
   const showMgZonesRef = useRef(true);
   const showSupplyDemandRef = useRef(true);
   const showStructureRef = useRef(true);
+  const showTrendlinesRef = useRef(true);
+  const showAllTrendlinesRef = useRef(false);
   const showIssRef = useRef(true);
   const showInternalRef = useRef(true);
   const showFibRef = useRef(true);
@@ -2108,6 +2255,10 @@ export const OandaProChart: React.FC<{
   const [refreshKey, setRefreshKey] = useState(0);
   const [chartTimeZone, setChartTimeZone] = useState<ChartTimeZone>('Asia/Kathmandu');
   const [showStructure, setShowStructure] = useState(true);
+  const [showTrendlines, setShowTrendlines] = useState(true);
+  const [showAllTrendlines, setShowAllTrendlines] = useState(false);
+  const [showTrendlineOptions, setShowTrendlineOptions] = useState(false);
+  const [hiddenHtfTrendlineIds, setHiddenHtfTrendlineIds] = useState<Set<string>>(() => new Set());
   const [showMgZones, setShowMgZones] = useState(true);
   const [showSupplyDemand, setShowSupplyDemand] = useState(true);
   const [showIss, setShowIss] = useState(true);
@@ -2472,6 +2623,35 @@ export const OandaProChart: React.FC<{
   const displayCandles = useMemo(() => replayIndex === null
     ? candles
     : candles.slice(0, Math.min(candles.length, replayIndex + 1)), [candles, replayIndex]);
+  const autoTrendlines = useMemo(() => detectAutoTrendlines(displayCandles, marketConfig.pipSize),
+    [displayCandles, marketConfig.pipSize]);
+  const htfTrendlineCutoff = displayCandles.length > 0
+    ? displayCandles[displayCandles.length - 1].time
+      + (displayCandles[displayCandles.length - 1].complete ? TIMEFRAME_SECONDS[granularity] : 0)
+    : 0;
+  const htfTrendlines = useMemo<HigherTimeframeTrendline[]>(() => {
+    if (htfTrendlineCutoff === 0) return [];
+    const currentTime = displayCandles[displayCandles.length - 1].time;
+    return DRAWING_TIMEFRAME_ORDER
+      .filter((timeframe) => TIMEFRAME_SECONDS[timeframe] > TIMEFRAME_SECONDS[granularity])
+      .flatMap((timeframe) => {
+        const sourceCandles = (vipCandles[timeframe] ?? []).filter((candle) => (
+          candle.complete !== false && marketCandleCloseTime(candle.time, timeframe) <= htfTrendlineCutoff
+        ));
+        if (sourceCandles.length < 9) return [];
+        return detectAutoTrendlines(sourceCandles, marketConfig.pipSize).map((line) => ({
+          id: `${marketSymbol}:${timeframe}:${sourceCandles[line.firstIndex].time}:${sourceCandles[line.secondIndex].time}:${line.firstPrice.toFixed(6)}:${line.slope.toFixed(9)}`,
+          timeframe,
+          sourceCandles,
+          line,
+          currentPrice: trendlinePriceAtTime(line, sourceCandles, timeframe, currentTime),
+        }));
+      });
+  }, [displayCandles, granularity, htfTrendlineCutoff, marketConfig.pipSize, marketSymbol, vipCandles]);
+  const nearbyHtfTrendlines = useMemo(() => htfTrendlines.filter((trendline) => (
+    showAllTrendlines || Math.abs(trendline.currentPrice - (displayCandles.at(-1)?.close ?? 0))
+      <= 200 * marketConfig.pipSize
+  )), [displayCandles, htfTrendlines, marketConfig.pipSize, showAllTrendlines]);
 
   const vipSupportGranularities = VIP_SUPPORT_GRANULARITIES[granularity];
   const mtfLowerGranularities = useMemo(() => MTF_MAPPINGS
@@ -2485,6 +2665,7 @@ export const OandaProChart: React.FC<{
     ...vipSupportGranularities,
     ...TREND_TABLE_GRANULARITIES,
     ...AUTOMATION_GRANULARITIES,
+    ...DRAWING_TIMEFRAME_ORDER.filter((value) => TIMEFRAME_SECONDS[value] > TIMEFRAME_SECONDS[granularity]),
     ...(DIRECT_ENGULFING_FALLBACKS[granularity] ?? []),
   ])).filter((value) => value !== granularity), [
     granularity,
@@ -5489,7 +5670,7 @@ export const OandaProChart: React.FC<{
       || Object.values(fibVisibilityRef.current).some(Boolean)
       || Object.values(fibPreviousVisibilityRef.current).some(Boolean)
       || chochFibVisibilityRef.current.some(Boolean);
-    if (showStructureRef.current || showIssRef.current || showInternalRef.current
+    if (showStructureRef.current || showIssRef.current || showInternalRef.current || showTrendlinesRef.current
       || (showFibRef.current && hasVisibleFibMarking)) {
       const namespace = 'http://www.w3.org/2000/svg';
       const svg = document.createElementNS(namespace, 'svg');
@@ -5498,6 +5679,175 @@ export const OandaProChart: React.FC<{
       svg.style.position = 'absolute';
       svg.style.inset = '0';
       svg.style.overflow = 'hidden';
+
+      if (showTrendlinesRef.current) {
+        const scale = chart.timeScale();
+        const endIndex = displayCandles.length - 1 + 8;
+        for (const trendline of autoTrendlines) {
+          const currentLinePrice = trendline.firstPrice
+            + trendline.slope * (displayCandles.length - 1 - trendline.firstIndex);
+          if (!showAllTrendlinesRef.current
+            && Math.abs(currentLinePrice - livePrice) > 200 * marketConfig.pipSize) continue;
+          const endPrice = trendline.firstPrice + trendline.slope * (endIndex - trendline.firstIndex);
+          const x1 = scale.logicalToCoordinate(trendline.firstIndex);
+          const x2 = scale.logicalToCoordinate(endIndex);
+          const y1 = series.priceToCoordinate(trendline.firstPrice);
+          const y2 = series.priceToCoordinate(endPrice);
+          if (x1 === null || x2 === null || y1 === null || y2 === null || x2 <= 0 || x1 >= rightEdge) continue;
+          const color = trendline.kind === 'breakout' ? '#7c3aed'
+            : trendline.direction === 'up' ? '#089981' : '#dc2626';
+          const labelText = trendline.kind === 'breakout' ? 'Breakout Trendline' : 'Continuation Trendline';
+          const labelWidth = labelText.length * 5.2 + 12;
+          const visibleStartX = Math.max(0, x1);
+          const visibleEndX = Math.min(rightEdge, x2);
+          const labelX = (visibleStartX + visibleEndX) / 2;
+          const labelY = y1 + (y2 - y1) * (labelX - x1) / (x2 - x1);
+          const lineLength = Math.hypot(x2 - x1, y2 - y1);
+          const showInlineLabel = visibleEndX - visibleStartX > labelWidth + 20
+            && labelY > 10 && labelY < host.clientHeight - 10;
+          const appendLineSegment = (start: number, end: number) => {
+            if (end <= start) return;
+            const line = document.createElementNS(namespace, 'line');
+            line.setAttribute('x1', String(x1 + (x2 - x1) * start));
+            line.setAttribute('y1', String(y1 + (y2 - y1) * start));
+            line.setAttribute('x2', String(x1 + (x2 - x1) * end));
+            line.setAttribute('y2', String(y1 + (y2 - y1) * end));
+            line.setAttribute('stroke', color);
+            line.setAttribute('stroke-width', '1.7');
+            line.setAttribute('stroke-opacity', '0.9');
+            if (trendline.kind === 'breakout') line.setAttribute('stroke-dasharray', '6 3');
+            svg.appendChild(line);
+          };
+          if (showInlineLabel) {
+            const center = (labelX - x1) / (x2 - x1);
+            const halfGap = labelWidth / (2 * lineLength);
+            appendLineSegment(0, center - halfGap);
+            appendLineSegment(center + halfGap, 1);
+          } else appendLineSegment(0, 1);
+
+          const tapIndexes = [trendline.firstIndex, trendline.secondIndex, trendline.thirdTouchIndex];
+          tapIndexes.forEach((tapIndex, tapNumber) => {
+            if (tapIndex === undefined) return;
+            const tapX = scale.logicalToCoordinate(tapIndex);
+            const tapPrice = trendline.firstPrice + trendline.slope * (tapIndex - trendline.firstIndex);
+            const tapY = series.priceToCoordinate(tapPrice);
+            if (tapX === null || tapY === null || tapX < 0 || tapX > rightEdge
+              || tapY < 8 || tapY > host.clientHeight - 8) return;
+            const tapLabel = document.createElementNS(namespace, 'text');
+            tapLabel.setAttribute('x', String(tapX));
+            tapLabel.setAttribute('y', String(tapY + (trendline.direction === 'up' ? 9 : -4)));
+            tapLabel.setAttribute('text-anchor', 'middle');
+            tapLabel.setAttribute('fill', color);
+            tapLabel.setAttribute('font-size', '7');
+            tapLabel.setAttribute('font-weight', '700');
+            tapLabel.textContent = String(tapNumber + 1);
+            svg.appendChild(tapLabel);
+          });
+
+          if (showInlineLabel) {
+            const label = document.createElementNS(namespace, 'text');
+            label.setAttribute('x', String(labelX));
+            label.setAttribute('y', String(labelY));
+            label.setAttribute('text-anchor', 'middle');
+            label.setAttribute('dominant-baseline', 'middle');
+            label.setAttribute('transform', `rotate(${Math.atan2(y2 - y1, x2 - x1) * 180 / Math.PI} ${labelX} ${labelY})`);
+            label.setAttribute('fill', color);
+            label.setAttribute('font-size', '9');
+            label.setAttribute('font-weight', '700');
+            label.textContent = labelText;
+            svg.appendChild(label);
+          }
+        }
+
+        for (const htfTrendline of nearbyHtfTrendlines) {
+          if (hiddenHtfTrendlineIds.has(htfTrendline.id)) continue;
+          const { line, sourceCandles, timeframe } = htfTrendline;
+          const firstTime = sourceCandles[line.firstIndex].time;
+          let startIndex = 0;
+          let high = displayCandles.length;
+          while (startIndex < high) {
+            const middle = (startIndex + high) >> 1;
+            if (displayCandles[middle].time < firstTime) startIndex = middle + 1;
+            else high = middle;
+          }
+          if (startIndex >= displayCandles.length) continue;
+          const startPrice = trendlinePriceAtTime(line, sourceCandles, timeframe, displayCandles[startIndex].time);
+          const endPrice = trendlinePriceAtTime(line, sourceCandles, timeframe,
+            displayCandles[displayCandles.length - 1].time + 8 * TIMEFRAME_SECONDS[granularity]);
+          const x1 = scale.logicalToCoordinate(startIndex);
+          const x2 = scale.logicalToCoordinate(endIndex);
+          const y1 = series.priceToCoordinate(startPrice);
+          const y2 = series.priceToCoordinate(endPrice);
+          if (x1 === null || x2 === null || y1 === null || y2 === null || x2 <= 0 || x1 >= rightEdge
+            || (y1 < 0 && y2 < 0) || (y1 > host.clientHeight && y2 > host.clientHeight)) continue;
+          const labelText = `${GRANULARITY_LABELS[timeframe].toUpperCase()} ${line.kind === 'breakout'
+            ? 'Breakout' : 'Continuation'} Trendline`;
+          const labelWidth = labelText.length * 4.5 + 12;
+          let visibleStartX = Math.max(0, x1);
+          let visibleEndX = Math.min(rightEdge, x2);
+          if (y1 !== y2) {
+            const topX = x1 + (0 - y1) * (x2 - x1) / (y2 - y1);
+            const bottomX = x1 + (host.clientHeight - y1) * (x2 - x1) / (y2 - y1);
+            visibleStartX = Math.max(visibleStartX, Math.min(topX, bottomX));
+            visibleEndX = Math.min(visibleEndX, Math.max(topX, bottomX));
+          }
+          if (visibleEndX <= visibleStartX) continue;
+          const labelX = (visibleStartX + visibleEndX) / 2;
+          const labelY = y1 + (y2 - y1) * (labelX - x1) / (x2 - x1);
+          const showInlineLabel = visibleEndX - visibleStartX > labelWidth + 20
+            && labelY > 8 && labelY < host.clientHeight - 8;
+          const appendFadedSegment = (start: number, end: number) => {
+            if (end <= start) return;
+            const segment = document.createElementNS(namespace, 'line');
+            segment.setAttribute('x1', String(x1 + (x2 - x1) * start));
+            segment.setAttribute('y1', String(y1 + (y2 - y1) * start));
+            segment.setAttribute('x2', String(x1 + (x2 - x1) * end));
+            segment.setAttribute('y2', String(y1 + (y2 - y1) * end));
+            segment.setAttribute('stroke', '#64748b');
+            segment.setAttribute('stroke-width', '1.2');
+            segment.setAttribute('stroke-opacity', '0.45');
+            segment.setAttribute('stroke-dasharray', '5 4');
+            svg.appendChild(segment);
+          };
+          if (showInlineLabel) {
+            const center = (labelX - x1) / (x2 - x1);
+            const halfGap = labelWidth / (2 * Math.hypot(x2 - x1, y2 - y1));
+            appendFadedSegment(0, center - halfGap);
+            appendFadedSegment(center + halfGap, 1);
+            const label = document.createElementNS(namespace, 'text');
+            label.setAttribute('x', String(labelX));
+            label.setAttribute('y', String(labelY));
+            label.setAttribute('text-anchor', 'middle');
+            label.setAttribute('dominant-baseline', 'middle');
+            label.setAttribute('transform', `rotate(${Math.atan2(y2 - y1, x2 - x1) * 180 / Math.PI} ${labelX} ${labelY})`);
+            label.setAttribute('fill', '#64748b');
+            label.setAttribute('fill-opacity', '0.8');
+            label.setAttribute('font-size', '8');
+            label.textContent = labelText;
+            svg.appendChild(label);
+          } else appendFadedSegment(0, 1);
+
+          const close = document.createElement('button');
+          close.type = 'button';
+          close.textContent = '×';
+          close.title = `Remove ${labelText}`;
+          close.setAttribute('aria-label', `Remove ${labelText}`);
+          Object.assign(close.style, {
+            position: 'absolute',
+            left: `${Math.max(4, Math.min(rightEdge - 14, labelX + (showInlineLabel ? labelWidth / 2 + 5 : 0)))}px`,
+            top: `${Math.max(4, Math.min(host.clientHeight - 16, labelY - 7))}px`,
+            width: '13px', height: '13px', padding: '0', border: '1px solid #cbd5e1',
+            borderRadius: '3px', background: 'rgba(255,255,255,0.8)', color: '#64748b',
+            fontSize: '10px', lineHeight: '10px', cursor: 'pointer', pointerEvents: 'auto', zIndex: '2',
+          });
+          close.addEventListener('pointerdown', (event) => event.stopPropagation());
+          close.addEventListener('click', (event) => {
+            event.stopPropagation();
+            setHiddenHtfTrendlineIds((current) => new Set(current).add(htfTrendline.id));
+          });
+          fragment.appendChild(close);
+        }
+      }
 
       if (showFibRef.current && hasVisibleFibMarking) {
         const fibMovesByType = new Map<FibVisibilityKey, StructureZone[]>();
@@ -6029,7 +6379,7 @@ export const OandaProChart: React.FC<{
     // Swap the complete overlay in one operation so the browser does not
     // perform layout work for every individual zone, line, and label.
     layer.replaceChildren(fragment);
-  }, [hasTradeDrawingExpired, zoneLengthModes, hiddenCompletedTradeDrawings, comparisonTimeframe, directZoneTrades, displayCandles, extremeAPlusTjl2Selection, granularity, latestCandle?.time, ltfChochContext, marketConfig.pipSize, marketSymbol, mtfRows, mtfDrawingZones, oneMinuteScalpingZones, overlayCandlesByTime, repeatedLtfChochLabels, replayIndex, scalpingEnabled, tableTimeframeData, visibleComparisonZones, zoneDrawingEndIndices, zoneTableRows]);
+  }, [autoTrendlines, hasTradeDrawingExpired, zoneLengthModes, hiddenCompletedTradeDrawings, hiddenHtfTrendlineIds, nearbyHtfTrendlines, comparisonTimeframe, directZoneTrades, displayCandles, extremeAPlusTjl2Selection, granularity, latestCandle?.time, ltfChochContext, marketConfig.pipSize, marketSymbol, mtfRows, mtfDrawingZones, oneMinuteScalpingZones, overlayCandlesByTime, repeatedLtfChochLabels, replayIndex, scalpingEnabled, tableTimeframeData, visibleComparisonZones, zoneDrawingEndIndices, zoneTableRows]);
 
   redrawZonesRef.current = redrawZones;
 
@@ -6085,6 +6435,8 @@ export const OandaProChart: React.FC<{
     showMgZonesRef.current = showMgZones;
     showSupplyDemandRef.current = showSupplyDemand;
     showStructureRef.current = showStructure;
+    showTrendlinesRef.current = showTrendlines;
+    showAllTrendlinesRef.current = showAllTrendlines;
     showIssRef.current = showIss;
     showInternalRef.current = showInternal;
     showFibRef.current = showFib;
@@ -6096,7 +6448,7 @@ export const OandaProChart: React.FC<{
     showTradeLevelsRef.current = showTradeLevels;
     tradeOverlaysRef.current = [...visibleTradeOverlays, ...replayHistoryOverlays];
     scheduleOverlayRedraw();
-  }, [chochFibVisibility, consolidatedDisplayZones, dayFibMoves, displayZones, fibPreviousVisibility, fibVisibility, h1SwingFibMoves, redrawZones, replayHistoryOverlays, scheduleOverlayRedraw, showAlignedH1Fib, showFib, showInternal, showInvalidZones, showIss, showMgZones, showStructure, showSupplyDemand, showTradeLevels, structure.internalMarkers, structure.issMarkers, structure.lines, structure.markers, swingFibMoves, visibleTradeOverlays]);
+  }, [chochFibVisibility, consolidatedDisplayZones, dayFibMoves, displayZones, fibPreviousVisibility, fibVisibility, h1SwingFibMoves, redrawZones, replayHistoryOverlays, scheduleOverlayRedraw, showAlignedH1Fib, showAllTrendlines, showFib, showInternal, showInvalidZones, showIss, showMgZones, showStructure, showSupplyDemand, showTradeLevels, showTrendlines, structure.internalMarkers, structure.issMarkers, structure.lines, structure.markers, swingFibMoves, visibleTradeOverlays]);
 
   useEffect(() => {
     const overlay = tradeOverlays[0];
@@ -7945,6 +8297,48 @@ export const OandaProChart: React.FC<{
             >
               MG STRUCTURE {showStructure ? 'ON' : 'OFF'}
             </button>
+            <div className="relative flex">
+              <button
+                type="button"
+                onClick={() => setShowTrendlines((value) => !value)}
+                className={`whitespace-nowrap rounded-l-full border border-r-0 px-1.5 py-0.5 text-[8px] font-black transition ${
+                  showTrendlines ? 'border-violet-200 bg-violet-50 text-violet-700' : 'border-slate-200 bg-white text-slate-500'
+                }`}
+                title="Show or hide continuation and breakout trend lines"
+              >
+                TREND LINES {showTrendlines ? 'ON' : 'OFF'}
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowTrendlineOptions((visible) => !visible)}
+                className={`rounded-r-full border px-1 py-0.5 text-[8px] font-black transition ${
+                  showTrendlineOptions
+                    ? 'border-violet-300 bg-violet-100 text-violet-800'
+                    : showTrendlines
+                      ? 'border-violet-200 bg-violet-50 text-violet-700'
+                      : 'border-slate-200 bg-white text-slate-500'
+                }`}
+                title="Open trend line options"
+                aria-label="Open trend line options"
+                aria-expanded={showTrendlineOptions}
+              >
+                {showTrendlineOptions ? '▴' : '▾'}
+              </button>
+              {showTrendlineOptions && (
+                <div className="absolute left-0 top-full z-40 mt-1 rounded-lg border border-violet-100 bg-white p-2 shadow-xl ring-1 ring-slate-900/5">
+                  <button
+                    type="button"
+                    onClick={() => setShowAllTrendlines((value) => !value)}
+                    className={`whitespace-nowrap rounded-full border px-2 py-1 text-[8px] font-black transition ${
+                      showAllTrendlines ? 'border-violet-200 bg-violet-50 text-violet-700' : 'border-slate-200 bg-white text-slate-500'
+                    }`}
+                    title="Show all active trend lines, including those more than 200 pips from live price"
+                  >
+                    SHOW ALL TREND LINES {showAllTrendlines ? 'ON' : 'OFF'}
+                  </button>
+                </div>
+              )}
+            </div>
             <button
               onClick={() => setShowMgZones((value) => !value)}
               className={`whitespace-nowrap rounded-full border px-1.5 py-0.5 text-[8px] font-black transition ${
