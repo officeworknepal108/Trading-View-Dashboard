@@ -395,9 +395,15 @@ export function detectAutoTrendlines(candles: OandaCandle[], pipSize: number): A
           if (breakIndex >= 0 && retestIndex < 0) continue;
           if (retestIndex >= 0) {
             if (thirdTouchIndex === undefined) thirdTouchIndex = retestIndex;
-            const latestLinePrice = priceAt(lastClosedIndex);
-            if (isUp ? candles[lastClosedIndex].close >= latestLinePrice
-              : candles[lastClosedIndex].close <= latestLinePrice) continue;
+            let invalidated = false;
+            for (let index = retestIndex; index <= lastClosedIndex; index += 1) {
+              if (isUp ? candles[index].close >= priceAt(index)
+                : candles[index].close <= priceAt(index)) {
+                invalidated = true;
+                break;
+              }
+            }
+            if (invalidated) continue;
           }
           if (thirdTouchIndex === undefined) continue;
           candidates.push({
@@ -5700,8 +5706,9 @@ export const OandaProChart: React.FC<{
           const y2 = series.priceToCoordinate(endPrice);
           if (x1 === null || x2 === null || y1 === null || y2 === null
             || (!shortened && x2 <= 0) || x1 >= rightEdge) continue;
-          const color = trendline.kind === 'breakout' ? '#7c3aed'
-            : trendline.direction === 'up' ? '#089981' : '#dc2626';
+          const color = trendline.direction === 'up'
+            ? trendline.kind === 'breakout' ? '#dc2626' : '#089981'
+            : trendline.kind === 'breakout' ? '#089981' : '#dc2626';
           const labelText = trendline.kind === 'breakout' ? 'Breakout Trendline' : 'Continuation Trendline';
           const labelWidth = labelText.length * 5.2 + 12;
           const visibleStartX = Math.max(0, x1);
