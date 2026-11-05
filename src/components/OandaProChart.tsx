@@ -2255,9 +2255,11 @@ export const OandaProChart: React.FC<{
   const [refreshKey, setRefreshKey] = useState(0);
   const [chartTimeZone, setChartTimeZone] = useState<ChartTimeZone>('Asia/Kathmandu');
   const [showStructure, setShowStructure] = useState(true);
+  const [showStructureOptions, setShowStructureOptions] = useState(false);
   const [showTrendlines, setShowTrendlines] = useState(true);
   const [showAllTrendlines, setShowAllTrendlines] = useState(false);
   const [showTrendlineOptions, setShowTrendlineOptions] = useState(false);
+  const [shortenedTrendlineIds, setShortenedTrendlineIds] = useState<Set<string>>(() => new Set());
   const [hiddenHtfTrendlineIds, setHiddenHtfTrendlineIds] = useState<Set<string>>(() => new Set());
   const [showMgZones, setShowMgZones] = useState(true);
   const [showSupplyDemand, setShowSupplyDemand] = useState(true);
@@ -5684,16 +5686,20 @@ export const OandaProChart: React.FC<{
         const scale = chart.timeScale();
         const endIndex = displayCandles.length - 1 + 8;
         for (const trendline of autoTrendlines) {
+          const trendlineId = `${marketSymbol}:${granularity}:${displayCandles[trendline.firstIndex].time}:${displayCandles[trendline.secondIndex].time}:${trendline.firstPrice.toFixed(6)}:${trendline.slope.toFixed(9)}`;
+          const shortened = shortenedTrendlineIds.has(trendlineId);
           const currentLinePrice = trendline.firstPrice
             + trendline.slope * (displayCandles.length - 1 - trendline.firstIndex);
           if (!showAllTrendlinesRef.current
             && Math.abs(currentLinePrice - livePrice) > 200 * marketConfig.pipSize) continue;
-          const endPrice = trendline.firstPrice + trendline.slope * (endIndex - trendline.firstIndex);
+          const drawnEndIndex = shortened ? trendline.secondIndex : endIndex;
+          const endPrice = trendline.firstPrice + trendline.slope * (drawnEndIndex - trendline.firstIndex);
           const x1 = scale.logicalToCoordinate(trendline.firstIndex);
-          const x2 = scale.logicalToCoordinate(endIndex);
+          const x2 = scale.logicalToCoordinate(drawnEndIndex);
           const y1 = series.priceToCoordinate(trendline.firstPrice);
           const y2 = series.priceToCoordinate(endPrice);
-          if (x1 === null || x2 === null || y1 === null || y2 === null || x2 <= 0 || x1 >= rightEdge) continue;
+          if (x1 === null || x2 === null || y1 === null || y2 === null
+            || (!shortened && x2 <= 0) || x1 >= rightEdge) continue;
           const color = trendline.kind === 'breakout' ? '#7c3aed'
             : trendline.direction === 'up' ? '#089981' : '#dc2626';
           const labelText = trendline.kind === 'breakout' ? 'Breakout Trendline' : 'Continuation Trendline';
@@ -5703,7 +5709,7 @@ export const OandaProChart: React.FC<{
           const labelX = (visibleStartX + visibleEndX) / 2;
           const labelY = y1 + (y2 - y1) * (labelX - x1) / (x2 - x1);
           const lineLength = Math.hypot(x2 - x1, y2 - y1);
-          const showInlineLabel = visibleEndX - visibleStartX > labelWidth + 20
+          const showInlineLabel = !shortened && visibleEndX - visibleStartX > labelWidth + 20
             && labelY > 10 && labelY < host.clientHeight - 10;
           const appendLineSegment = (start: number, end: number) => {
             if (end <= start) return;
@@ -5714,7 +5720,7 @@ export const OandaProChart: React.FC<{
             line.setAttribute('y2', String(y1 + (y2 - y1) * end));
             line.setAttribute('stroke', color);
             line.setAttribute('stroke-width', '1.7');
-            line.setAttribute('stroke-opacity', '0.9');
+            line.setAttribute('stroke-opacity', shortened ? '0.55' : '0.7');
             if (trendline.kind === 'breakout') line.setAttribute('stroke-dasharray', '6 3');
             svg.appendChild(line);
           };
@@ -5725,7 +5731,9 @@ export const OandaProChart: React.FC<{
             appendLineSegment(center + halfGap, 1);
           } else appendLineSegment(0, 1);
 
-          const tapIndexes = [trendline.firstIndex, trendline.secondIndex, trendline.thirdTouchIndex];
+          const tapIndexes = shortened
+            ? [trendline.firstIndex, trendline.secondIndex]
+            : [trendline.firstIndex, trendline.secondIndex, trendline.thirdTouchIndex];
           tapIndexes.forEach((tapIndex, tapNumber) => {
             if (tapIndex === undefined) return;
             const tapX = scale.logicalToCoordinate(tapIndex);
@@ -5738,6 +5746,7 @@ export const OandaProChart: React.FC<{
             tapLabel.setAttribute('y', String(tapY + (trendline.direction === 'up' ? 9 : -4)));
             tapLabel.setAttribute('text-anchor', 'middle');
             tapLabel.setAttribute('fill', color);
+            tapLabel.setAttribute('fill-opacity', '0.8');
             tapLabel.setAttribute('font-size', '7');
             tapLabel.setAttribute('font-weight', '700');
             tapLabel.textContent = String(tapNumber + 1);
@@ -5752,11 +5761,39 @@ export const OandaProChart: React.FC<{
             label.setAttribute('dominant-baseline', 'middle');
             label.setAttribute('transform', `rotate(${Math.atan2(y2 - y1, x2 - x1) * 180 / Math.PI} ${labelX} ${labelY})`);
             label.setAttribute('fill', color);
+            label.setAttribute('fill-opacity', '0.8');
             label.setAttribute('font-size', '9');
             label.setAttribute('font-weight', '700');
             label.textContent = labelText;
             svg.appendChild(label);
           }
+
+          const toggle = document.createElement('button');
+          toggle.type = 'button';
+          toggle.textContent = shortened ? '✓' : '×';
+          toggle.title = shortened ? `Restore ${labelText}` : `Shorten ${labelText} to second touch`;
+          toggle.setAttribute('aria-label', toggle.title);
+          const controlX = shortened ? x2 + 3 : labelX + (showInlineLabel ? labelWidth / 2 + 4 : 0);
+          const controlY = shortened ? y2 - 5 : y1 + (y2 - y1) * (controlX - x1) / (x2 - x1) - 5;
+          Object.assign(toggle.style, {
+            position: 'absolute',
+            left: `${Math.max(4, Math.min(rightEdge - 10, controlX))}px`,
+            top: `${Math.max(4, Math.min(host.clientHeight - 11, controlY))}px`,
+            width: '9px', height: '9px', padding: '0', border: '1px solid #cbd5e1',
+            borderRadius: '2px', background: 'rgba(255,255,255,0.8)', color,
+            fontSize: '7px', lineHeight: '7px', cursor: 'pointer', pointerEvents: 'auto', zIndex: '2',
+          });
+          toggle.addEventListener('pointerdown', (event) => event.stopPropagation());
+          toggle.addEventListener('click', (event) => {
+            event.stopPropagation();
+            setShortenedTrendlineIds((current) => {
+              const next = new Set(current);
+              if (shortened) next.delete(trendlineId);
+              else next.add(trendlineId);
+              return next;
+            });
+          });
+          fragment.appendChild(toggle);
         }
 
         for (const htfTrendline of nearbyHtfTrendlines) {
@@ -5834,11 +5871,11 @@ export const OandaProChart: React.FC<{
           close.setAttribute('aria-label', `Remove ${labelText}`);
           Object.assign(close.style, {
             position: 'absolute',
-            left: `${Math.max(4, Math.min(rightEdge - 14, labelX + (showInlineLabel ? labelWidth / 2 + 5 : 0)))}px`,
-            top: `${Math.max(4, Math.min(host.clientHeight - 16, labelY - 7))}px`,
-            width: '13px', height: '13px', padding: '0', border: '1px solid #cbd5e1',
-            borderRadius: '3px', background: 'rgba(255,255,255,0.8)', color: '#64748b',
-            fontSize: '10px', lineHeight: '10px', cursor: 'pointer', pointerEvents: 'auto', zIndex: '2',
+            left: `${Math.max(4, Math.min(rightEdge - 11, labelX + (showInlineLabel ? labelWidth / 2 + 4 : 0)))}px`,
+            top: `${Math.max(4, Math.min(host.clientHeight - 12, labelY - 5))}px`,
+            width: '10px', height: '10px', padding: '0', border: '1px solid #cbd5e1',
+            borderRadius: '2px', background: 'rgba(255,255,255,0.8)', color: '#64748b',
+            fontSize: '8px', lineHeight: '8px', cursor: 'pointer', pointerEvents: 'auto', zIndex: '2',
           });
           close.addEventListener('pointerdown', (event) => event.stopPropagation());
           close.addEventListener('click', (event) => {
@@ -6274,11 +6311,13 @@ export const OandaProChart: React.FC<{
         const latestCandleX = latestTradeCandle
           ? chart.timeScale().timeToCoordinate(latestTradeCandle.time as UTCTimestamp)
           : null;
-        // An unresolved Long/Short drawing grows with every new candle. It no
-        // longer stops at an arbitrary pixel width before TP or SL is reached.
-        const drawingRight = latestCandleX === null
+        // Keep an unresolved Long/Short drawing ten bars ahead of the current candle.
+        const drawingRightX = resolutionTime === undefined
+          ? chart.timeScale().logicalToCoordinate(displayCandles.length - 1 + 10)
+          : latestCandleX === null ? null : latestCandleX + 6;
+        const drawingRight = drawingRightX === null
           ? rightEdge
-          : Math.min(rightEdge, Math.max(left + 8, latestCandleX + 6));
+          : Math.min(rightEdge, Math.max(left + 8, drawingRightX));
         const width = drawingRight - left;
         if (width < 8 || left >= rightEdge) continue;
         const makeRange = (firstY: number, secondY: number, reward: boolean) => {
@@ -6379,7 +6418,7 @@ export const OandaProChart: React.FC<{
     // Swap the complete overlay in one operation so the browser does not
     // perform layout work for every individual zone, line, and label.
     layer.replaceChildren(fragment);
-  }, [autoTrendlines, hasTradeDrawingExpired, zoneLengthModes, hiddenCompletedTradeDrawings, hiddenHtfTrendlineIds, nearbyHtfTrendlines, comparisonTimeframe, directZoneTrades, displayCandles, extremeAPlusTjl2Selection, granularity, latestCandle?.time, ltfChochContext, marketConfig.pipSize, marketSymbol, mtfRows, mtfDrawingZones, oneMinuteScalpingZones, overlayCandlesByTime, repeatedLtfChochLabels, replayIndex, scalpingEnabled, tableTimeframeData, visibleComparisonZones, zoneDrawingEndIndices, zoneTableRows]);
+  }, [autoTrendlines, hasTradeDrawingExpired, zoneLengthModes, hiddenCompletedTradeDrawings, hiddenHtfTrendlineIds, nearbyHtfTrendlines, shortenedTrendlineIds, comparisonTimeframe, directZoneTrades, displayCandles, extremeAPlusTjl2Selection, granularity, latestCandle?.time, ltfChochContext, marketConfig.pipSize, marketSymbol, mtfRows, mtfDrawingZones, oneMinuteScalpingZones, overlayCandlesByTime, repeatedLtfChochLabels, replayIndex, scalpingEnabled, tableTimeframeData, visibleComparisonZones, zoneDrawingEndIndices, zoneTableRows]);
 
   redrawZonesRef.current = redrawZones;
 
@@ -8286,17 +8325,109 @@ export const OandaProChart: React.FC<{
                 </button>
               </div>
               <div className="flex flex-wrap items-center justify-center gap-1">
-            <button
-              onClick={() => setShowStructure((value) => !value)}
-              className={`whitespace-nowrap rounded-full border px-1.5 py-0.5 text-[8px] font-black transition ${
-                showStructure
-                  ? 'border-indigo-200 bg-indigo-50 text-indigo-700'
-                  : 'border-slate-200 bg-white text-slate-500'
-              }`}
-              title="Show or hide HH, HL, LH and LL structure markings"
-            >
-              MG STRUCTURE {showStructure ? 'ON' : 'OFF'}
-            </button>
+            <div className="relative">
+              <button
+                type="button"
+                onClick={() => setShowStructureOptions((visible) => !visible)}
+                className={`whitespace-nowrap rounded-full border px-1.5 py-0.5 text-[8px] font-black transition ${
+                  showStructureOptions
+                    ? 'border-indigo-300 bg-indigo-100 text-indigo-800'
+                    : 'border-indigo-200 bg-indigo-50 text-indigo-700'
+                }`}
+                title="Open structure indicator options"
+                aria-label="Open structure indicator options"
+                aria-expanded={showStructureOptions}
+              >
+                STRUCTURE {showStructureOptions ? '▴' : '▾'}
+              </button>
+              {showStructureOptions && (
+                <div className="absolute left-0 top-full z-50 mt-1 w-64 rounded-lg border border-indigo-100 bg-white p-2 shadow-xl ring-1 ring-slate-900/5">
+                  <div className="mb-1.5 border-b border-slate-100 pb-1 text-[9px] font-black text-slate-700">STRUCTURE INDICATORS</div>
+                  <div className="flex flex-wrap gap-1">
+                    <button
+                      type="button"
+                      onClick={() => setShowStructure((value) => !value)}
+                      className={`whitespace-nowrap rounded-full border px-1.5 py-0.5 text-[8px] font-black transition ${
+                        showStructure ? 'border-indigo-200 bg-indigo-50 text-indigo-700' : 'border-slate-200 bg-white text-slate-500'
+                      }`}
+                      title="Show or hide HH, HL, LH and LL structure markings"
+                    >
+                      MG STRUCTURE {showStructure ? 'ON' : 'OFF'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setShowMgZones((value) => !value)}
+                      className={`whitespace-nowrap rounded-full border px-1.5 py-0.5 text-[8px] font-black transition ${
+                        showMgZones ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : 'border-slate-200 bg-white text-slate-500'
+                      }`}
+                      title="Show or hide TJL1, TJL2, QML, SBR, RBS, DT and DB zones"
+                    >
+                      MG ZONES {showMgZones ? 'ON' : 'OFF'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setShowSupplyDemand((value) => !value)}
+                      className={`whitespace-nowrap rounded-full border px-1.5 py-0.5 text-[8px] font-black transition ${
+                        showSupplyDemand ? 'border-cyan-200 bg-cyan-50 text-cyan-700' : 'border-slate-200 bg-white text-slate-500'
+                      }`}
+                      title="Show or hide supply and demand zones; available only on H1, H4 and D"
+                    >
+                      S/D 1H+ {showSupplyDemand ? 'ON' : 'OFF'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setShowIss((value) => !value)}
+                      className={`whitespace-nowrap rounded-full border px-1.5 py-0.5 text-[8px] font-black transition ${
+                        showIss ? 'border-amber-200 bg-amber-50 text-amber-700' : 'border-slate-200 bg-white text-slate-500'
+                      }`}
+                      title="Show or hide ISS 0–5 wave markings"
+                    >
+                      ISS 5-WAVE {showIss ? 'ON' : 'OFF'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setShowInternal((value) => !value)}
+                      className={`whitespace-nowrap rounded-full border px-1.5 py-0.5 text-[8px] font-black transition ${
+                        showInternal ? 'border-violet-200 bg-violet-50 text-violet-700' : 'border-slate-200 bg-white text-slate-500'
+                      }`}
+                      title="Show or hide post-ISS internal structure, zones, BOS and CHoCH"
+                    >
+                      INT STRUCTURE {showInternal ? 'ON' : 'OFF'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setShowEngulfing((value) => !value)}
+                      className={`whitespace-nowrap rounded-full border px-1.5 py-0.5 text-[8px] font-black transition ${
+                        showEngulfing ? 'border-blue-200 bg-blue-50 text-blue-700' : 'border-slate-200 bg-white text-slate-500'
+                      }`}
+                      title="Show or hide confirmed Type 1–4 engulfing signals and their mapped fallback timeframe"
+                    >
+                      ENGULFING {showEngulfing ? 'ON' : 'OFF'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setShowTradeLevels((value) => !value)}
+                      className={`whitespace-nowrap rounded-full border px-1.5 py-0.5 text-[8px] font-black transition ${
+                        showTradeLevels ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : 'border-slate-200 bg-white text-slate-500'
+                      }`}
+                      title="Show or hide the Entry-to-TP reward box and Entry-to-SL risk box"
+                    >
+                      LONG/SHORT POSITION {showTradeLevels ? 'ON' : 'OFF'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setShowInvalidZones((value) => !value)}
+                      className={`whitespace-nowrap rounded-full border px-1.5 py-0.5 text-[8px] font-black transition ${
+                        showInvalidZones ? 'border-slate-400 bg-slate-200 text-slate-700' : 'border-slate-200 bg-white text-slate-500'
+                      }`}
+                      title="Show or hide rejected, invalidated, and superseded zones"
+                    >
+                      INVALID ZONES {showInvalidZones ? 'ON' : 'OFF'}
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
             <div className="relative flex">
               <button
                 type="button"
@@ -8339,46 +8470,6 @@ export const OandaProChart: React.FC<{
                 </div>
               )}
             </div>
-            <button
-              onClick={() => setShowMgZones((value) => !value)}
-              className={`whitespace-nowrap rounded-full border px-1.5 py-0.5 text-[8px] font-black transition ${
-                showMgZones
-                  ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
-                  : 'border-slate-200 bg-white text-slate-500'
-              }`}
-              title="Show or hide TJL1, TJL2, QML, SBR, RBS, DT and DB zones"
-            >
-              MG ZONES {showMgZones ? 'ON' : 'OFF'}
-            </button>
-            <button
-              onClick={() => setShowSupplyDemand((value) => !value)}
-              className={`whitespace-nowrap rounded-full border px-1.5 py-0.5 text-[8px] font-black transition ${
-                showSupplyDemand
-                  ? 'border-cyan-200 bg-cyan-50 text-cyan-700'
-                  : 'border-slate-200 bg-white text-slate-500'
-              }`}
-              title="Show or hide supply and demand zones; available only on H1, H4 and D"
-            >
-              S/D 1H+ {showSupplyDemand ? 'ON' : 'OFF'}
-            </button>
-            <button
-              onClick={() => setShowIss((value) => !value)}
-              className={`whitespace-nowrap rounded-full border px-1.5 py-0.5 text-[8px] font-black transition ${
-                showIss ? 'border-amber-200 bg-amber-50 text-amber-700' : 'border-slate-200 bg-white text-slate-500'
-              }`}
-              title="Show or hide ISS 0–5 wave markings"
-            >
-              ISS 5-WAVE {showIss ? 'ON' : 'OFF'}
-            </button>
-            <button
-              onClick={() => setShowInternal((value) => !value)}
-              className={`whitespace-nowrap rounded-full border px-1.5 py-0.5 text-[8px] font-black transition ${
-                showInternal ? 'border-violet-200 bg-violet-50 text-violet-700' : 'border-slate-200 bg-white text-slate-500'
-              }`}
-              title="Show or hide post-ISS internal structure, zones, BOS and CHoCH"
-            >
-              INT STRUCTURE {showInternal ? 'ON' : 'OFF'}
-            </button>
             <div className="relative flex">
               <button
                 onClick={() => setShowFib((value) => !value)}
@@ -8604,15 +8695,6 @@ export const OandaProChart: React.FC<{
               JOURNAL
             </button>
             <button
-              onClick={() => setShowEngulfing((value) => !value)}
-              className={`whitespace-nowrap rounded-full border px-1.5 py-0.5 text-[8px] font-black transition ${
-                showEngulfing ? 'border-blue-200 bg-blue-50 text-blue-700' : 'border-slate-200 bg-white text-slate-500'
-              }`}
-              title="Show or hide confirmed Type 1–4 engulfing signals and their mapped fallback timeframe"
-            >
-              ENGULFING {showEngulfing ? 'ON' : 'OFF'}
-            </button>
-            <button
               onClick={() => {
                 const enabled = !tradingTimeEnabled;
                 setTradingTimeEnabled(enabled);
@@ -8642,17 +8724,6 @@ export const OandaProChart: React.FC<{
               title="Send or pause Telegram trade messages"
             >
               TELEGRAM {telegramMessagesEnabled ? 'ON' : 'OFF'}
-            </button>
-            <button
-              onClick={() => setShowTradeLevels((value) => !value)}
-              className={`whitespace-nowrap rounded-full border px-1.5 py-0.5 text-[8px] font-black transition ${
-                showTradeLevels
-                  ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
-                  : 'border-slate-200 bg-white text-slate-500'
-              }`}
-              title="Show or hide the Entry-to-TP reward box and Entry-to-SL risk box"
-            >
-              LONG/SHORT POSITION {showTradeLevels ? 'ON' : 'OFF'}
             </button>
             {(Object.keys(zoneLengthModes).length > 0 || hiddenComparisonZoneKeys.length > 0) && (
               <button
@@ -8744,17 +8815,6 @@ export const OandaProChart: React.FC<{
                 </div>
               )}
             </div>
-            <button
-              onClick={() => setShowInvalidZones((value) => !value)}
-              className={`whitespace-nowrap rounded-full border px-1.5 py-0.5 text-[8px] font-black transition ${
-                showInvalidZones
-                  ? 'border-slate-400 bg-slate-200 text-slate-700'
-                  : 'border-slate-200 bg-white text-slate-500'
-              }`}
-              title="Show or hide rejected, invalidated, and superseded zones"
-            >
-              INVALID ZONES {showInvalidZones ? 'ON' : 'OFF'}
-            </button>
             <button
               type="button"
               onClick={() => setShowZoneComparison((value) => !value)}
