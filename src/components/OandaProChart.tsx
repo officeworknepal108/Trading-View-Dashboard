@@ -328,7 +328,8 @@ interface AutoTrendline {
   thirdTouchIndex?: number;
 }
 
-export function detectAutoTrendlines(candles: OandaCandle[], pipSize: number): AutoTrendline[] {
+export function detectAutoTrendlines(candles: OandaCandle[], pipSize: number,
+  allowLiveTouches = false): AutoTrendline[] {
   const lastClosedIndex = candles.length - (candles.at(-1)?.complete === false ? 2 : 1);
   if (lastClosedIndex < 8) return [];
   const firstSearchIndex = Math.max(2, lastClosedIndex - 320);
@@ -377,17 +378,24 @@ export function detectAutoTrendlines(candles: OandaCandle[], pipSize: number): A
           let touches = 2;
           let lastTouchIndex = secondIndex;
           let thirdTouchIndex: number | undefined;
-          for (let index = secondIndex + 1; index <= lastClosedIndex; index += 1) {
+          let movedAwayFromLine = false;
+          const lastScanIndex = allowLiveTouches ? candles.length - 1 : lastClosedIndex;
+          for (let index = secondIndex + 1; index <= lastScanIndex; index += 1) {
+            const linePrice = priceAt(index);
+            const candleAtIndex = candles[index];
+            const touchesLine = candleAtIndex.low <= linePrice + tolerance
+              && candleAtIndex.high >= linePrice - tolerance;
             if (breakIndex < 0) {
-              if (whollyBeyond(index)) { breakIndex = index; continue; }
-              if (pivotSet.has(index) && candles[index].low <= priceAt(index) + tolerance
-                && candles[index].high >= priceAt(index) - tolerance) {
+              if (index <= lastClosedIndex && whollyBeyond(index)) { breakIndex = index; continue; }
+              if ((allowLiveTouches ? movedAwayFromLine : pivotSet.has(index)) && touchesLine) {
                 touches += 1;
                 lastTouchIndex = index;
                 if (thirdTouchIndex === undefined) thirdTouchIndex = index;
+                movedAwayFromLine = false;
               }
-            } else if (candles[index].low <= priceAt(index) + tolerance
-              && candles[index].high >= priceAt(index) - tolerance) {
+              if (allowLiveTouches && (isUp ? candleAtIndex.low > linePrice + tolerance
+                : candleAtIndex.high < linePrice - tolerance)) movedAwayFromLine = true;
+            } else if (touchesLine) {
               retestIndex = index;
               break;
             }
@@ -2631,7 +2639,7 @@ export const OandaProChart: React.FC<{
   const displayCandles = useMemo(() => replayIndex === null
     ? candles
     : candles.slice(0, Math.min(candles.length, replayIndex + 1)), [candles, replayIndex]);
-  const autoTrendlines = useMemo(() => detectAutoTrendlines(displayCandles, marketConfig.pipSize),
+  const autoTrendlines = useMemo(() => detectAutoTrendlines(displayCandles, marketConfig.pipSize, true),
     [displayCandles, marketConfig.pipSize]);
   const htfTrendlineCutoff = displayCandles.length > 0
     ? displayCandles[displayCandles.length - 1].time
