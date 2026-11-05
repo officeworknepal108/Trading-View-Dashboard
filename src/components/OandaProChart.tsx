@@ -335,6 +335,16 @@ export function detectAutoTrendlines(candles: OandaCandle[], pipSize: number,
   const firstSearchIndex = Math.max(2, lastClosedIndex - 320);
   const tolerance = Math.max(pipSize * 2, 1e-8);
   const candidates: AutoTrendline[] = [];
+  const candleRangeSums = [0];
+  for (const candle of candles) {
+    candleRangeSums.push(candleRangeSums[candleRangeSums.length - 1] + candle.high - candle.low);
+  }
+  const clearanceDistances = candles.map((_, index) => {
+    const recentStart = Math.max(0, index - 19);
+    const averageRange = (candleRangeSums[index + 1] - candleRangeSums[recentStart])
+      / (index + 1 - recentStart);
+    return Math.max(pipSize * 3, averageRange * 1.5);
+  });
 
   for (const direction of ['up', 'down'] as const) {
     const isUp = direction === 'up';
@@ -345,14 +355,11 @@ export function detectAutoTrendlines(candles: OandaCandle[], pipSize: number,
       if (neighbors.every((neighbor) => isUp
         ? value <= candles[neighbor].low : value >= candles[neighbor].high)) pivots.push(index);
     }
-    const pivotSet = new Set(pivots);
-
     for (let first = 0; first < pivots.length; first += 1) {
       const firstIndex = pivots[first];
       const firstPrice = isUp ? candles[firstIndex].low : candles[firstIndex].high;
-      for (let second = first + 1; second < pivots.length; second += 1) {
-        const secondIndex = pivots[second];
-        if (secondIndex - firstIndex < 3 || secondIndex - firstIndex > 240) continue;
+      for (let secondIndex = firstIndex + 5;
+        secondIndex <= Math.min(lastClosedIndex, firstIndex + 240); secondIndex += 1) {
         const candle = candles[secondIndex];
         // The first anchor is always the wick tip. The second contact can be
         // either the wick tip or the nearest edge of the candle body.
@@ -367,14 +374,26 @@ export function detectAutoTrendlines(candles: OandaCandle[], pipSize: number,
           const whollyBeyond = (index: number) => isUp
             ? candles[index].high < priceAt(index)
             : candles[index].low > priceAt(index);
+          const clearlyAway = (index: number, breakout = false) => index <= lastClosedIndex && (
+            isUp !== breakout
+              ? candles[index].low - priceAt(index) >= clearanceDistances[index]
+              : priceAt(index) - candles[index].high >= clearanceDistances[index]
+          );
           let brokenBeforeSecond = false;
+          let firstLegMovedAway = false;
           for (let index = firstIndex + 1; index < secondIndex; index += 1) {
-            if (whollyBeyond(index)) { brokenBeforeSecond = true; break; }
+            const contact = candles[index].low <= priceAt(index) + tolerance
+              && candles[index].high >= priceAt(index) - tolerance;
+            const earlierContact = index - firstIndex >= 5 && firstLegMovedAway && contact;
+            if (whollyBeyond(index) || earlierContact) { brokenBeforeSecond = true; break; }
+            if (contact) firstLegMovedAway = false;
+            if (clearlyAway(index)) firstLegMovedAway = true;
           }
-          if (brokenBeforeSecond) continue;
+          if (brokenBeforeSecond || !firstLegMovedAway) continue;
 
           let breakIndex = -1;
           let retestIndex = -1;
+          let firstRetestIndex = -1;
           let touches = 2;
           let lastTouchIndex = secondIndex;
           let thirdTouchIndex: number | undefined;
@@ -385,26 +404,39 @@ export function detectAutoTrendlines(candles: OandaCandle[], pipSize: number,
             const candleAtIndex = candles[index];
             const touchesLine = candleAtIndex.low <= linePrice + tolerance
               && candleAtIndex.high >= linePrice - tolerance;
+            const hasTouchSpacing = touches >= 6 || index - lastTouchIndex >= 5;
             if (breakIndex < 0) {
-              if (index <= lastClosedIndex && whollyBeyond(index)) { breakIndex = index; continue; }
-              if ((allowLiveTouches ? movedAwayFromLine : pivotSet.has(index)) && touchesLine) {
+              if (index <= lastClosedIndex && whollyBeyond(index)) {
+                breakIndex = index;
+                movedAwayFromLine = clearlyAway(index, true);
+                continue;
+              }
+              if (hasTouchSpacing && movedAwayFromLine && touchesLine) {
                 touches += 1;
                 lastTouchIndex = index;
                 if (thirdTouchIndex === undefined) thirdTouchIndex = index;
+              }
+              if (touchesLine) movedAwayFromLine = false;
+              if (touches < 6 ? clearlyAway(index)
+                : isUp ? candleAtIndex.low > linePrice + tolerance
+                  : candleAtIndex.high < linePrice - tolerance) movedAwayFromLine = true;
+            } else {
+              if (touchesLine) {
+                if (firstRetestIndex < 0) firstRetestIndex = index;
+                if (hasTouchSpacing && movedAwayFromLine) {
+                  retestIndex = index;
+                  break;
+                }
                 movedAwayFromLine = false;
               }
-              if (allowLiveTouches && (isUp ? candleAtIndex.low > linePrice + tolerance
-                : candleAtIndex.high < linePrice - tolerance)) movedAwayFromLine = true;
-            } else if (touchesLine) {
-              retestIndex = index;
-              break;
+              if (clearlyAway(index, true)) movedAwayFromLine = true;
             }
           }
           if (breakIndex >= 0 && retestIndex < 0) continue;
           if (retestIndex >= 0) {
             if (thirdTouchIndex === undefined) thirdTouchIndex = retestIndex;
             let invalidated = false;
-            for (let index = retestIndex; index <= lastClosedIndex; index += 1) {
+            for (let index = firstRetestIndex; index <= lastClosedIndex; index += 1) {
               if (isUp ? candles[index].close >= priceAt(index)
                 : candles[index].close <= priceAt(index)) {
                 invalidated = true;
@@ -2272,6 +2304,9 @@ export const OandaProChart: React.FC<{
   const [showStructureOptions, setShowStructureOptions] = useState(false);
   const [showTrendlines, setShowTrendlines] = useState(true);
   const [showAllTrendlines, setShowAllTrendlines] = useState(false);
+  const [trendlineTimeframes, setTrendlineTimeframes] = useState<Set<OandaGranularity>>(() => new Set(
+    DRAWING_TIMEFRAME_ORDER.filter((timeframe) => TIMEFRAME_SECONDS[timeframe] >= TIMEFRAME_SECONDS[granularity]),
+  ));
   const [showTrendlineOptions, setShowTrendlineOptions] = useState(false);
   const [shortenedTrendlineIds, setShortenedTrendlineIds] = useState<Set<string>>(() => new Set());
   const [hiddenHtfTrendlineIds, setHiddenHtfTrendlineIds] = useState<Set<string>>(() => new Set());
@@ -2639,8 +2674,9 @@ export const OandaProChart: React.FC<{
   const displayCandles = useMemo(() => replayIndex === null
     ? candles
     : candles.slice(0, Math.min(candles.length, replayIndex + 1)), [candles, replayIndex]);
-  const autoTrendlines = useMemo(() => detectAutoTrendlines(displayCandles, marketConfig.pipSize, true),
-    [displayCandles, marketConfig.pipSize]);
+  const autoTrendlines = useMemo(() => trendlineTimeframes.has(granularity)
+    ? detectAutoTrendlines(displayCandles, marketConfig.pipSize, true) : [],
+  [displayCandles, granularity, marketConfig.pipSize, trendlineTimeframes]);
   const htfTrendlineCutoff = displayCandles.length > 0
     ? displayCandles[displayCandles.length - 1].time
       + (displayCandles[displayCandles.length - 1].complete ? TIMEFRAME_SECONDS[granularity] : 0)
@@ -2648,11 +2684,12 @@ export const OandaProChart: React.FC<{
   const htfTrendlines = useMemo<HigherTimeframeTrendline[]>(() => {
     if (htfTrendlineCutoff === 0) return [];
     const currentTime = displayCandles[displayCandles.length - 1].time;
+    const sourceCutoff = replayIndex === null ? Date.now() / 1000 : htfTrendlineCutoff;
     return DRAWING_TIMEFRAME_ORDER
-      .filter((timeframe) => TIMEFRAME_SECONDS[timeframe] > TIMEFRAME_SECONDS[granularity])
+      .filter((timeframe) => timeframe !== granularity && trendlineTimeframes.has(timeframe))
       .flatMap((timeframe) => {
         const sourceCandles = (vipCandles[timeframe] ?? []).filter((candle) => (
-          candle.complete !== false && marketCandleCloseTime(candle.time, timeframe) <= htfTrendlineCutoff
+          candle.complete !== false && marketCandleCloseTime(candle.time, timeframe) <= sourceCutoff
         ));
         if (sourceCandles.length < 9) return [];
         return detectAutoTrendlines(sourceCandles, marketConfig.pipSize).map((line) => ({
@@ -2663,7 +2700,7 @@ export const OandaProChart: React.FC<{
           currentPrice: trendlinePriceAtTime(line, sourceCandles, timeframe, currentTime),
         }));
       });
-  }, [displayCandles, granularity, htfTrendlineCutoff, marketConfig.pipSize, marketSymbol, vipCandles]);
+  }, [displayCandles, granularity, htfTrendlineCutoff, marketConfig.pipSize, marketSymbol, replayIndex, trendlineTimeframes, vipCandles]);
   const nearbyHtfTrendlines = useMemo(() => htfTrendlines.filter((trendline) => (
     showAllTrendlines || Math.abs(trendline.currentPrice - (displayCandles.at(-1)?.close ?? 0))
       <= 200 * marketConfig.pipSize
@@ -2681,7 +2718,7 @@ export const OandaProChart: React.FC<{
     ...vipSupportGranularities,
     ...TREND_TABLE_GRANULARITIES,
     ...AUTOMATION_GRANULARITIES,
-    ...DRAWING_TIMEFRAME_ORDER.filter((value) => TIMEFRAME_SECONDS[value] > TIMEFRAME_SECONDS[granularity]),
+    ...DRAWING_TIMEFRAME_ORDER,
     ...(DIRECT_ENGULFING_FALLBACKS[granularity] ?? []),
   ])).filter((value) => value !== granularity), [
     granularity,
@@ -5819,14 +5856,18 @@ export const OandaProChart: React.FC<{
           let high = displayCandles.length;
           while (startIndex < high) {
             const middle = (startIndex + high) >> 1;
-            if (displayCandles[middle].time < firstTime) startIndex = middle + 1;
+            if (displayCandles[middle].time <= firstTime) startIndex = middle + 1;
             else high = middle;
           }
-          if (startIndex >= displayCandles.length) continue;
-          const startPrice = trendlinePriceAtTime(line, sourceCandles, timeframe, displayCandles[startIndex].time);
+          startIndex = Math.max(0, startIndex - 1);
+          const startTime = Math.max(firstTime, displayCandles[startIndex].time);
+          const startLogical = startIndex + (startTime - displayCandles[startIndex].time)
+            / Math.max(1, (displayCandles[startIndex + 1]?.time
+              ?? marketCandleCloseTime(displayCandles[startIndex].time, granularity)) - displayCandles[startIndex].time);
+          const startPrice = trendlinePriceAtTime(line, sourceCandles, timeframe, startTime);
           const endPrice = trendlinePriceAtTime(line, sourceCandles, timeframe,
             displayCandles[displayCandles.length - 1].time + 8 * TIMEFRAME_SECONDS[granularity]);
-          const x1 = scale.logicalToCoordinate(startIndex);
+          const x1 = scale.logicalToCoordinate(startLogical);
           const x2 = scale.logicalToCoordinate(endIndex);
           const y1 = series.priceToCoordinate(startPrice);
           const y2 = series.priceToCoordinate(endPrice);
@@ -8482,6 +8523,24 @@ export const OandaProChart: React.FC<{
                   >
                     SHOW ALL TREND LINES {showAllTrendlines ? 'ON' : 'OFF'}
                   </button>
+                  <fieldset className="mt-2 border-t border-violet-100 pt-2">
+                    <legend className="px-1 text-[9px] font-bold text-violet-700">TRENDLINE TIMEFRAMES</legend>
+                    <div className="grid grid-cols-2 gap-x-3 gap-y-1">
+                      {DRAWING_TIMEFRAME_ORDER.map((timeframe) => (
+                        <label key={timeframe} className="flex cursor-pointer items-center gap-2 whitespace-nowrap rounded px-1 py-1 text-[10px] text-slate-700 hover:bg-violet-50">
+                          <input type="checkbox" checked={trendlineTimeframes.has(timeframe)}
+                            onChange={() => setTrendlineTimeframes((current) => {
+                              const next = new Set(current);
+                              if (next.has(timeframe)) next.delete(timeframe);
+                              else next.add(timeframe);
+                              return next;
+                            })}
+                            className="h-3 w-3 accent-violet-600" />
+                          {GRANULARITY_LABELS[timeframe]}
+                        </label>
+                      ))}
+                    </div>
+                  </fieldset>
                 </div>
               )}
             </div>
