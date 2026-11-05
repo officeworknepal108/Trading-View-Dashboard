@@ -2703,7 +2703,7 @@ export const OandaProChart: React.FC<{
   }, [displayCandles, granularity, htfTrendlineCutoff, marketConfig.pipSize, marketSymbol, replayIndex, trendlineTimeframes, vipCandles]);
   const nearbyHtfTrendlines = useMemo(() => htfTrendlines.filter((trendline) => (
     showAllTrendlines || Math.abs(trendline.currentPrice - (displayCandles.at(-1)?.close ?? 0))
-      <= 200 * marketConfig.pipSize
+      <= 400 * marketConfig.pipSize
   )), [displayCandles, htfTrendlines, marketConfig.pipSize, showAllTrendlines]);
 
   const vipSupportGranularities = VIP_SUPPORT_GRANULARITIES[granularity];
@@ -5742,7 +5742,7 @@ export const OandaProChart: React.FC<{
           const currentLinePrice = trendline.firstPrice
             + trendline.slope * (displayCandles.length - 1 - trendline.firstIndex);
           if (!showAllTrendlinesRef.current
-            && Math.abs(currentLinePrice - livePrice) > 200 * marketConfig.pipSize) continue;
+            && Math.abs(currentLinePrice - livePrice) > 400 * marketConfig.pipSize) continue;
           const drawnEndIndex = shortened ? trendline.secondIndex : endIndex;
           const endPrice = trendline.firstPrice + trendline.slope * (drawnEndIndex - trendline.firstIndex);
           const x1 = scale.logicalToCoordinate(trendline.firstIndex);
@@ -8519,7 +8519,7 @@ export const OandaProChart: React.FC<{
                     className={`whitespace-nowrap rounded-full border px-2 py-1 text-[8px] font-black transition ${
                       showAllTrendlines ? 'border-violet-200 bg-violet-50 text-violet-700' : 'border-slate-200 bg-white text-slate-500'
                     }`}
-                    title="Show all active trend lines, including those more than 200 pips from live price"
+                    title="Show all active trend lines, including those more than 400 pips from live price"
                   >
                     SHOW ALL TREND LINES {showAllTrendlines ? 'ON' : 'OFF'}
                   </button>
