@@ -6,6 +6,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { createServer } from 'node:net';
+import { seedDashboardSession } from './helpers/dashboardSession';
 
 test('Telegram numbering covers all alert kinds, shared styles, retries, restarts and Nepal midnight', { timeout: 120_000 }, async () => {
   const workspace = await mkdtemp(path.join(tmpdir(), 'telegram-numbering-test-'));
@@ -13,6 +14,7 @@ test('Telegram numbering covers all alert kinds, shared styles, retries, restart
   const captureFile = path.join(workspace, 'messages.jsonl');
   const failOnceFile = path.join(workspace, 'fail-once.txt');
   const beforeMidnight = Date.parse('2026-10-26T18:14:59Z') / 1000;
+  const cookie = await seedDashboardSession(workspace, beforeMidnight * 1000);
   await mkdir(path.join(workspace, 'data'));
   await writeFile(clockFile, String(beforeMidnight));
   await writeFile(path.join(workspace, 'data', 'mt5-automation.json'), JSON.stringify({
@@ -47,6 +49,12 @@ test('Telegram numbering covers all alert kinds, shared styles, retries, restart
     });
   });
   const base = `http://127.0.0.1:${port}`;
+  const dashboardFetch: typeof fetch = (input, options) => {
+    const headers = new Headers(options?.headers);
+    headers.set('Cookie', cookie);
+    headers.set('Origin', base);
+    return fetch(input, { ...options, headers });
+  };
   let child: ChildProcess | undefined;
   const stop = async () => {
     if (!child || child.exitCode !== null) return;
@@ -60,21 +68,21 @@ test('Telegram numbering covers all alert kinds, shared styles, retries, restart
       fileURLToPath(new URL('../server.ts', import.meta.url))], {
       cwd: workspace, windowsHide: true,
       env: { ...process.env, PORT: String(port), NODE_ENV: 'production',
-        TELEGRAM_BOT_TOKEN: 'fake-test-token', TELEGRAM_CHAT_ID: 'fake-test-chat', MT5_BRIDGE_TOKEN: 'fake-bridge-test' },
+        TELEGRAM_BOT_TOKEN: 'fake-test-token', TELEGRAM_CHAT_ID: 'fake-test-chat', MT5_BRIDGE_TOKEN: 'fake-bridge-test', AUTH_PUBLIC_URL: base },
       stdio: ['ignore', 'pipe', 'pipe'],
     });
     let output = '';
     child.stdout!.on('data', chunk => { output += chunk.toString(); });
     child.stderr!.on('data', chunk => { output += chunk.toString(); });
     for (let attempt = 0; attempt < 400; attempt++) {
-      try { if ((await fetch(`${base}/api/health`)).ok) return; } catch { /* Starting. */ }
+      try { if ((await dashboardFetch(`${base}/api/health`)).ok) return; } catch { /* Starting. */ }
       if (child.exitCode !== null) throw new Error(output);
       await new Promise(resolve => setTimeout(resolve, 100));
     }
     throw new Error(`Isolated server did not become ready: ${output}`);
   };
   const send = async (alerts: unknown[], expectedStatus = 200, terminal = 'primary') => {
-    const response = await fetch(`${base}/api/telegram/alerts?terminal=${terminal}`, {
+    const response = await dashboardFetch(`${base}/api/telegram/alerts?terminal=${terminal}`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ alerts }),
     });
     assert.equal(response.status, expectedStatus, await response.text());
@@ -250,7 +258,7 @@ test('Telegram numbering covers all alert kinds, shared styles, retries, restart
       { ...closedSignal, id: 'simulated', status: 'SIMULATED', brokerTicket: 125 },
     ] }));
     const heartbeat = async () => {
-      const response = await fetch(`${base}/api/mt5/heartbeat`, {
+      const response = await dashboardFetch(`${base}/api/mt5/heartbeat`, {
         method: 'POST', headers: { 'Content-Type': 'application/json', authorization: 'Bearer fake-bridge-test' },
         body: JSON.stringify({ bridgeId: 'test-summary-bridge', account: 'account-A', server: 'Broker', terminalConnected: true }),
       });
@@ -262,7 +270,7 @@ test('Telegram numbering covers all alert kinds, shared styles, retries, restart
       assert.fail('Daily summary was not delivered');
     };
     const secondaryHeartbeat = async () => {
-      const response = await fetch(`${base}/api/mt5/heartbeat?terminal=secondary`, {
+      const response = await dashboardFetch(`${base}/api/mt5/heartbeat?terminal=secondary`, {
         method: 'POST', headers: { 'Content-Type': 'application/json', authorization: 'Bearer fake-bridge-test' },
         body: JSON.stringify({ bridgeId: 'second-summary-bridge', account: 'account-B', server: 'Broker', terminalConnected: true }),
       });
@@ -290,7 +298,7 @@ test('Telegram numbering covers all alert kinds, shared styles, retries, restart
     await new Promise(resolve => setTimeout(resolve, 100));
     assert.equal((await messages()).filter(text => text.startsWith('DAILY TRADE SUMMARY')).length, 1,
       'both terminal heartbeats and a restart still produce only one daily summary');
-    const switched = await fetch(`${base}/api/mt5/heartbeat`, {
+    const switched = await dashboardFetch(`${base}/api/mt5/heartbeat`, {
       method: 'POST', headers: { 'Content-Type': 'application/json', authorization: 'Bearer fake-bridge-test' },
       body: JSON.stringify({ bridgeId: 'test-summary-bridge', account: 'account-C', server: 'Broker', terminalConnected: true }),
     });
@@ -299,17 +307,17 @@ test('Telegram numbering covers all alert kinds, shared styles, retries, restart
     assert.equal((await messages()).filter(text => text.startsWith('DAILY TRADE SUMMARY')).length, 1,
       'switching the primary login cannot send a second report for the same day');
     const stateBeforeDemos = await readFile(path.join(workspace, 'data', 'telegram-alerts.json'), 'utf8');
-    const denied = await fetch(`${base}/api/telegram/demo`, {
+    const denied = await dashboardFetch(`${base}/api/telegram/demo`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}',
     });
     assert.equal(denied.status, 400);
     await writeFile(failOnceFile, 'fail');
-    const failedDemo = await fetch(`${base}/api/telegram/demo`, {
+    const failedDemo = await dashboardFetch(`${base}/api/telegram/demo`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ confirmDemo: true }),
     });
     assert.equal(failedDemo.status, 502);
     assert.equal((await failedDemo.json()).sent, 0);
-    const demo = await fetch(`${base}/api/telegram/demo`, {
+    const demo = await dashboardFetch(`${base}/api/telegram/demo`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ confirmDemo: true }),
     });
     assert.equal(demo.status, 200, await demo.text());

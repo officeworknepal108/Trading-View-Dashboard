@@ -1,4 +1,7 @@
 import 'dotenv/config';
+import { DashboardAuth } from './src/server/authentication';
+import { denyPrivateFiles, privateFilePatterns } from './src/server/privateFiles';
+import { clientVisibleTrades } from './src/server/clientJournal';
 import { telegramFetch } from './src/services/telegramTransport';
 import { journalDashboardTrades, journalPendingImageTrades } from './src/services/journalPayload';
 import express from 'express';
@@ -1461,7 +1464,11 @@ async function startServer() {
   const app = express();
   const port = Number(process.env.PORT || 3000);
   app.disable('x-powered-by');
+  app.use(denyPrivateFiles);
   app.use(express.json({ limit: '12mb' }));
+  const authentication = new DashboardAuth();
+  app.use('/api/auth', authentication.router);
+  app.use('/api', authentication.guard);
   app.use('/api', (req, res, next) => {
     const selected = req.get('x-mt5-terminal') ?? req.query.terminal ?? 'primary';
     if (selected !== 'primary' && selected !== 'secondary') {
@@ -1534,7 +1541,8 @@ async function startServer() {
     res.setHeader('Cache-Control', 'no-store');
     return res.json({
       ok: true,
-      source: `MetaTrader 5 · ${mt5Context().mt5BridgeHeartbeat?.server || 'broker'} · ${mt5Context().mt5BridgeHeartbeat?.brokerSymbol || 'XAUUSD'}`,
+      source: res.locals.dashboardUser?.role === 'client' ? 'Broker candles'
+        : `MetaTrader 5 · ${mt5Context().mt5BridgeHeartbeat?.server || 'broker'} · ${mt5Context().mt5BridgeHeartbeat?.brokerSymbol || 'XAUUSD'}`,
       granularity: timeframe,
       fetchedAt: new Date(mt5Context().mt5MarketDataUpdatedAt[timeframe] ?? Date.now()).toISOString(),
       candles,
@@ -1544,6 +1552,15 @@ async function startServer() {
   app.get('/api/mt5/status', async (_req, res) => {
     try {
       const [config, signals] = await Promise.all([readMt5Config(), readMt5Signals()]);
+      if (res.locals.dashboardUser?.role === 'client') {
+        return res.json({ ok: true, config: {
+          enabled: false, dryRun: true, scalpingEnabled: config.scalpingEnabled,
+          intradayEnabled: config.intradayEnabled, tradingTimeEnabled: config.tradingTimeEnabled,
+          telegramMessagesEnabled: config.telegramMessagesEnabled,
+          mtfLtfFibRequired: config.mtfLtfFibRequired, enabledTimeframes: config.enabledTimeframes,
+        }, bridge: { connected: false }, positions: [], recentSignals: [], counts: {},
+        marketData: { fresh: false, timeframes: {} } });
+      }
       const counts = signals.reduce<Record<string, number>>((summary, signal) => {
         summary[signal.status] = (summary[signal.status] ?? 0) + 1;
         return summary;
@@ -1623,7 +1640,6 @@ async function startServer() {
   });
 
   app.put('/api/mt5/config', async (req, res) => {
-    if (!isLoopbackRequest(req)) return res.status(403).json({ ok: false, error: 'MT5 settings are local-only.' });
     try {
       const config = await serializeMt5Mutation(async () => {
         const current = await readMt5Config();
@@ -1654,7 +1670,6 @@ async function startServer() {
   });
 
   app.post('/api/mt5/signals', async (req, res) => {
-    if (!isLoopbackRequest(req)) return res.status(403).json({ ok: false, error: 'MT5 signals are local-only.' });
     try {
       const error = validateMt5Signal(req.body);
       if (error) return res.status(400).json({ ok: false, error });
@@ -1780,7 +1795,6 @@ async function startServer() {
   });
 
   app.post('/api/mt5/bridge/start', async (req, res) => {
-    if (!isLoopbackRequest(req)) return res.status(403).json({ ok: false, error: 'MT5 bridge controls are local-only.' });
     const heartbeatConnected = mt5Context().mt5BridgeHeartbeat !== undefined
       && Date.now() - mt5Context().mt5BridgeHeartbeat.lastHeartbeatAt < 15_000;
     if (heartbeatConnected && mt5Context().mt5BridgeHeartbeat?.processId !== mt5Context().managedMt5BridgeProcessId) {
@@ -1796,7 +1810,6 @@ async function startServer() {
   });
 
   app.post('/api/mt5/bridge/stop', (req, res) => {
-    if (!isLoopbackRequest(req)) return res.status(403).json({ ok: false, error: 'MT5 bridge controls are local-only.' });
     const stopped = stopManagedMt5Bridge();
     return res.json({ ok: true, stopped });
   });
@@ -1993,7 +2006,16 @@ async function startServer() {
 
   app.get('/api/journal/trades', async (req, res) => {
     try {
-      const trades = deduplicateTradeRecords(await readJournalTrades());
+      const allTrades = deduplicateTradeRecords(await readJournalTrades());
+      let trades = allTrades;
+      if (res.locals.dashboardUser?.role === 'client') {
+        let personal: StoredJournalTrade[] = [];
+        try { personal = JSON.parse(await readFile(path.resolve('.dashboard-auth', `journal-${res.locals.dashboardUser.id}.json`), 'utf8')); }
+        catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error; }
+        const merged = new Map(clientVisibleTrades(allTrades).map(trade => [trade.id, trade]));
+        for (const trade of clientVisibleTrades(personal)) merged.set(trade.id, trade);
+        trades = [...merged.values()];
+      }
       res.setHeader('Cache-Control', 'no-store');
       return res.json({ ok: true, trades: req.query.view === 'dashboard'
         ? journalDashboardTrades(trades)
@@ -2011,6 +2033,25 @@ async function startServer() {
       const incoming = Array.isArray(req.body?.trades) ? req.body.trades : [];
       if (incoming.length === 0 || incoming.length > 2_000) {
         return res.status(400).json({ ok: false, error: 'One or more journal trades are required.' });
+      }
+      if (res.locals.dashboardUser?.role === 'client') {
+        const file = path.resolve('.dashboard-auth', `journal-${res.locals.dashboardUser.id}.json`);
+        const trades = await serializeJournalMutation(async () => {
+          let existing: StoredJournalTrade[] = [];
+          try { existing = JSON.parse(await readFile(file, 'utf8')); }
+          catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error; }
+          const merged = new Map(existing.map(trade => [trade.id, trade]));
+          for (const trade of clientVisibleTrades(incoming.filter(candidate => candidate && typeof candidate.id === 'string'
+            && candidate.id.length <= 500 && Number.isFinite(candidate.completedAt)))) {
+            merged.set(trade.id, { ...merged.get(trade.id), ...trade });
+          }
+          await mkdir(path.dirname(file), { recursive: true });
+          const temporary = `${file}.tmp`;
+          await writeFile(temporary, JSON.stringify([...merged.values()]), { mode: 0o600 });
+          await rename(temporary, file);
+          return [...merged.values()];
+        });
+        return res.json({ ok: true, trades: req.query.view === 'dashboard' ? journalDashboardTrades(trades) : trades });
       }
       const trades = await serializeJournalMutation(async () => {
         const existing = await readJournalTrades();
@@ -2039,7 +2080,6 @@ async function startServer() {
   });
 
   app.post('/api/telegram/demo', async (req, res) => {
-    if (!isLoopbackRequest(req)) return res.status(403).json({ ok: false, error: 'Demos are local-only.' });
     if (req.body?.confirmDemo !== true) return res.status(400).json({ ok: false, error: 'Confirm demo messages explicitly.' });
     let sent = 0;
     try {
@@ -2056,9 +2096,6 @@ async function startServer() {
   });
 
   app.post('/api/telegram/alerts', async (req, res) => {
-    if (!['127.0.0.1', '::1', '::ffff:127.0.0.1'].includes(req.socket.remoteAddress ?? '')) {
-      return res.status(403).json({ ok: false, error: 'Local dashboard only.' });
-    }
     const origin = req.get('origin');
     if (origin && origin !== `http://${req.get('host')}`
       && origin !== `https://${req.get('host')}`) {
@@ -2190,7 +2227,7 @@ async function startServer() {
       };
       const [knowledge, memory] = await Promise.all([
         retrieveProjectKnowledge(question, provider === 'ollama' ? 2 : 12),
-        readAgentMemory(),
+        res.locals.dashboardUser?.role === 'client' ? Promise.resolve([]) : readAgentMemory(),
       ]);
       const knowledgeText = knowledge.map((chunk) => (
         `SOURCE ${chunk.source}:${chunk.startLine}-${chunk.endLine}\n${chunk.content.slice(0, provider === 'ollama' ? 2_500 : 6_000)}`
@@ -2309,7 +2346,7 @@ async function startServer() {
   });
 
   if (process.env.NODE_ENV !== 'production') {
-    const vite = await createViteServer({ server: { middlewareMode: true }, appType: 'spa' });
+    const vite = await createViteServer({ server: { middlewareMode: true, fs: { deny: privateFilePatterns } }, appType: 'spa' });
     app.use(vite.middlewares);
   } else {
     const distPath = path.resolve(process.cwd(), 'dist');

@@ -1,4 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import type { UserRole } from '../services/authTypes';
+import { userStorage } from '../services/userStorage';
 import {
   CandlestickSeries,
   ColorType,
@@ -207,6 +209,7 @@ interface ChartDrawingTextEditor {
 
 const CHART_DRAWINGS_STORAGE_KEY = 'oanda-dashboard-chart-drawings-v1';
 const MARKET_SYMBOL_STORAGE_KEY = 'oanda-dashboard-market-symbol-v1';
+const TRENDLINE_TIMEFRAMES_STORAGE_KEY = 'oanda-dashboard-trendline-timeframes-v1';
 const CHART_DRAWING_COLORS = ['#2563eb', '#dc2626', '#16a34a', '#d97706', '#7c3aed', '#0f172a'] as const;
 
 const CHART_DRAWING_TOOLS: Array<{
@@ -224,7 +227,7 @@ const CHART_DRAWING_TOOLS: Array<{
 
 function loadStoredChartDrawings(): ChartDrawing[] {
   try {
-    const parsed = JSON.parse(window.localStorage.getItem(CHART_DRAWINGS_STORAGE_KEY) || '[]');
+    const parsed = JSON.parse(userStorage.getItem(CHART_DRAWINGS_STORAGE_KEY) || '[]');
     if (!Array.isArray(parsed)) return [];
     return parsed.filter((drawing): drawing is ChartDrawing => (
       drawing && typeof drawing.id === 'string' && typeof drawing.scope === 'string'
@@ -254,7 +257,7 @@ function loadStoredChartDrawings(): ChartDrawing[] {
 
 function loadStoredMarketSymbol(): OandaMarketSymbol {
   try {
-    return normalizeOandaMarketSymbol(window.localStorage.getItem(MARKET_SYMBOL_STORAGE_KEY)) ?? 'XAUUSD';
+    return normalizeOandaMarketSymbol(userStorage.getItem(MARKET_SYMBOL_STORAGE_KEY)) ?? 'XAUUSD';
   } catch {
     return 'XAUUSD';
   }
@@ -605,7 +608,7 @@ const RETAINED_CHART_TRADES_STORAGE_KEY = 'oanda-dashboard-retained-chart-trades
 function loadStoredRetainedChartTrades(storageKey = RETAINED_CHART_TRADES_STORAGE_KEY): Map<string, TradeOverlay> {
   try {
     const parsed = JSON.parse(
-      window.localStorage.getItem(storageKey) || '[]',
+      userStorage.getItem(storageKey) || '[]',
     );
     if (!Array.isArray(parsed)) return new Map();
     const entries = parsed.filter((overlay): overlay is TradeOverlay => (
@@ -682,6 +685,20 @@ const TIMEFRAMES: Array<{ value: OandaGranularity; label: string }> = [
   { value: 'W', label: '1W' },
 ];
 const DRAWING_TIMEFRAME_ORDER: OandaGranularity[] = ['M1', 'M5', 'M15', 'M30', 'H1', 'H4', 'D', 'W'];
+
+function loadStoredTrendlineTimeframes(granularity: OandaGranularity): Set<OandaGranularity> {
+  try {
+    const raw = userStorage.getItem(TRENDLINE_TIMEFRAMES_STORAGE_KEY);
+    if (raw !== null) {
+      const saved: unknown = JSON.parse(raw);
+      if (Array.isArray(saved) && saved.every(timeframe => DRAWING_TIMEFRAME_ORDER.includes(timeframe))) {
+        // An empty array means the user deliberately unchecked every timeframe.
+        return new Set(saved as OandaGranularity[]);
+      }
+    }
+  } catch { /* Missing/unavailable storage or invalid data uses the normal defaults. */ }
+  return new Set(DRAWING_TIMEFRAME_ORDER.filter(timeframe => TIMEFRAME_SECONDS[timeframe] >= TIMEFRAME_SECONDS[granularity]));
+}
 
 const TREND_TABLE_GRANULARITIES: OandaGranularity[] = ['M1', 'M5', 'M15', 'H1', 'H4', 'D'];
 const AUTOMATION_GRANULARITIES: TradeTimeframe[] = ['M1', 'M5', 'M15', 'M30', 'H1'];
@@ -1799,7 +1816,7 @@ async function resizeJournalScreenshot(dataUrl: string, maximumWidth = 1200): Pr
 
 function readPendingJournalScreenshot(tradeId: string): string | undefined {
   try {
-    return window.localStorage.getItem(`${JOURNAL_SCREENSHOT_PREFIX}${tradeId}`) || undefined;
+    return userStorage.getItem(`${JOURNAL_SCREENSHOT_PREFIX}${tradeId}`) || undefined;
   } catch {
     return undefined;
   }
@@ -1849,6 +1866,7 @@ const EngulfingAccuracyTable: React.FC<{
   records: AccuracyTradeRecord[];
   allRecords: AccuracyTradeRecord[];
   mt5Records: AccuracyTradeRecord[];
+  canViewMt5?: boolean;
   timeframe: OandaGranularity;
   showAllTrades: boolean;
   historyAsOf: number;
@@ -1857,7 +1875,7 @@ const EngulfingAccuracyTable: React.FC<{
   entryArrowsVisible: boolean;
   onClose: () => void;
   onVisibleRecordIdsChange: (ids: string[]) => void;
-}> = ({ records, allRecords, mt5Records, timeframe, showAllTrades, historyAsOf, timeZone, marketSymbol, entryArrowsVisible, onClose, onVisibleRecordIdsChange }) => {
+}> = ({ records, allRecords, mt5Records, canViewMt5 = false, timeframe, showAllTrades, historyAsOf, timeZone, marketSymbol, entryArrowsVisible, onClose, onVisibleRecordIdsChange }) => {
   const [activeTab, setActiveTab] = useState<'SETUPS' | 'MT5'>('SETUPS');
   const [filters, setFilters] = useState<TradeRecordFilters>(() => ({
     ...DEFAULT_TRADE_RECORD_FILTERS,
@@ -1998,14 +2016,14 @@ const EngulfingAccuracyTable: React.FC<{
           className={`rounded px-2 py-1 ${activeTab === 'SETUPS' ? 'bg-indigo-600 text-white' : 'text-indigo-700 hover:bg-indigo-50'}`}>
           ALL SETUPS
         </button>
-        <button type="button" onClick={() => {
+        {canViewMt5 && <button type="button" onClick={() => {
           setActiveTab('MT5');
           setFilters((current) => ({ ...current, timeframes: 'ALL' }));
         }}
           aria-pressed={activeTab === 'MT5'}
           className={`rounded px-2 py-1 ${activeTab === 'MT5' ? 'bg-indigo-600 text-white' : 'text-indigo-700 hover:bg-indigo-50'}`}>
           EXECUTED IN MT5
-        </button>
+        </button>}
         {activeTab === 'MT5' && <span className="ml-1 text-slate-500">
           {summaryRecords.length} closed · {filteredAllRecords.length - summaryRecords.length} open · accuracy uses closed trades
         </span>}
@@ -2183,11 +2201,16 @@ const EngulfingAccuracyTable: React.FC<{
 export const OandaProChart: React.FC<{
   terminalId?: 'primary' | 'secondary';
   onTerminalChange?: (id: 'primary' | 'secondary') => void;
-}> = ({ terminalId = 'primary', onTerminalChange }) => {
+  userRole?: UserRole;
+}> = ({ terminalId = 'primary', onTerminalChange, userRole = 'client' }) => {
+  const canAdmin = userRole !== 'client';
   const terminalFetch = useCallback((url: string, options?: RequestInit) => {
+    if (!canAdmin && (url.startsWith('/api/telegram/') || (url.startsWith('/api/mt5/') && options?.method && options.method !== 'GET'))) {
+      return Promise.resolve(Response.json({ ok: false, error: 'Admins only.' }, { status: 403 }));
+    }
     const scoped = url.startsWith('/api/mt5/') || url.startsWith('/api/journal/') || url.startsWith('/api/telegram/');
     return fetch(scoped ? `${url}${url.includes('?') ? '&' : '?'}terminal=${terminalId}` : url, options);
-  }, [terminalId]);
+  }, [terminalId, canAdmin]);
   const retainedStorageKey = terminalId === 'primary' ? RETAINED_CHART_TRADES_STORAGE_KEY
     : `${RETAINED_CHART_TRADES_STORAGE_KEY}:secondary`;
   const [terminalAccounts, setTerminalAccounts] = useState<Array<{
@@ -2304,9 +2327,7 @@ export const OandaProChart: React.FC<{
   const [showStructureOptions, setShowStructureOptions] = useState(false);
   const [showTrendlines, setShowTrendlines] = useState(true);
   const [showAllTrendlines, setShowAllTrendlines] = useState(false);
-  const [trendlineTimeframes, setTrendlineTimeframes] = useState<Set<OandaGranularity>>(() => new Set(
-    DRAWING_TIMEFRAME_ORDER.filter((timeframe) => TIMEFRAME_SECONDS[timeframe] >= TIMEFRAME_SECONDS[granularity]),
-  ));
+  const [trendlineTimeframes, setTrendlineTimeframes] = useState<Set<OandaGranularity>>(() => loadStoredTrendlineTimeframes(granularity));
   const [showTrendlineOptions, setShowTrendlineOptions] = useState(false);
   const [shortenedTrendlineIds, setShortenedTrendlineIds] = useState<Set<string>>(() => new Set());
   const [hiddenHtfTrendlineIds, setHiddenHtfTrendlineIds] = useState<Set<string>>(() => new Set());
@@ -2418,15 +2439,22 @@ export const OandaProChart: React.FC<{
   hasChartDrawingLayerRef.current = chartDrawings.length > 0 || drawingDraft !== null;
 
   useEffect(() => {
-    window.localStorage.setItem(CHART_DRAWINGS_STORAGE_KEY, JSON.stringify(chartDrawings));
+    userStorage.setItem(CHART_DRAWINGS_STORAGE_KEY, JSON.stringify(chartDrawings));
   }, [chartDrawings]);
 
   useEffect(() => {
-    window.localStorage.setItem(MARKET_SYMBOL_STORAGE_KEY, marketSymbol);
+    userStorage.setItem(MARKET_SYMBOL_STORAGE_KEY, marketSymbol);
   }, [marketSymbol]);
 
   useEffect(() => {
-    window.localStorage.setItem(
+    try {
+      userStorage.setItem(TRENDLINE_TIMEFRAMES_STORAGE_KEY,
+        JSON.stringify(DRAWING_TIMEFRAME_ORDER.filter(timeframe => trendlineTimeframes.has(timeframe))));
+    } catch { /* Keep the controls usable if browser storage is unavailable. */ }
+  }, [trendlineTimeframes]);
+
+  useEffect(() => {
+    userStorage.setItem(
       retainedStorageKey,
       JSON.stringify([...retainedChartTradeOverlays.values()]),
     );
@@ -2519,7 +2547,7 @@ export const OandaProChart: React.FC<{
     try {
       const [response, accountsResponse] = await Promise.all([
         terminalFetch('/api/mt5/status', { cache: 'no-store' }),
-        terminalFetch('/api/mt5/accounts', { cache: 'no-store' }),
+        canAdmin ? terminalFetch('/api/mt5/accounts', { cache: 'no-store' }) : Promise.resolve(Response.json({ accounts: [] })),
       ]);
       if (accountsResponse.ok) {
         const accountsPayload = await accountsResponse.json();
@@ -2615,7 +2643,7 @@ export const OandaProChart: React.FC<{
   }, [mt5JournalLifecycleSignature]);
 
   const updateMt5Config = useCallback(async (changes: Record<string, unknown>) => {
-    if (!mt5Status) return;
+    if (!canAdmin || !mt5Status) return;
     const response = await terminalFetch('/api/mt5/config', {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
@@ -4041,7 +4069,7 @@ export const OandaProChart: React.FC<{
         saved = payload.trades;
         for (const record of batch) {
           if (!record.screenshotDataUrl) continue;
-          try { window.localStorage.removeItem(`${JOURNAL_SCREENSHOT_PREFIX}${record.id}`); }
+          try { userStorage.removeItem(`${JOURNAL_SCREENSHOT_PREFIX}${record.id}`); }
           catch { /* The server copy remains durable. */ }
         }
       }
@@ -6551,7 +6579,7 @@ export const OandaProChart: React.FC<{
     if (!overlay || !pane || capturedTradeSetupsRef.current.has(overlay.id)) return undefined;
     const storageKey = `${JOURNAL_SCREENSHOT_PREFIX}${overlay.id}`;
     try {
-      if (window.localStorage.getItem(storageKey)) {
+      if (userStorage.getItem(storageKey)) {
         capturedTradeSetupsRef.current.add(overlay.id);
         return undefined;
       }
@@ -6587,7 +6615,7 @@ export const OandaProChart: React.FC<{
             ),
           });
           const resized = await resizeJournalScreenshot(screenshot);
-          window.localStorage.setItem(storageKey, resized);
+          userStorage.setItem(storageKey, resized);
         } catch {
           capturedTradeSetupsRef.current.delete(overlay.id);
         } finally {
@@ -8059,7 +8087,7 @@ export const OandaProChart: React.FC<{
             ))}
           </div>
 
-          <select
+          {canAdmin && <><select
             aria-label="MT5 account"
             value={terminalId}
             onChange={(event) => onTerminalChange?.(event.target.value as 'primary' | 'secondary')}
@@ -8347,6 +8375,7 @@ export const OandaProChart: React.FC<{
             )}
           </div>
 
+          </>}
           <div className="relative flex items-center border-l border-slate-200 pl-1">
             <button
               type="button"
@@ -8599,7 +8628,7 @@ export const OandaProChart: React.FC<{
                   <button
                     type="button"
                     onClick={() => void updateMt5Config({ mtfLtfFibRequired: !mtfLtfFibRequired })}
-                    disabled={!mt5Status}
+                    disabled={!canAdmin || !mt5Status}
                     className={`mb-1.5 w-full whitespace-nowrap rounded-full border px-1.5 py-0.5 text-[8px] font-black transition ${
                       mtfLtfFibRequired
                         ? 'border-fuchsia-200 bg-fuchsia-50 text-fuchsia-700'
@@ -8780,6 +8809,7 @@ export const OandaProChart: React.FC<{
                   : 'border-slate-200 bg-white text-slate-500'
               }`}
               title="Restrict dashboard and MT5 entries to the three Nepal trading sessions"
+              disabled={!canAdmin}
             >
               TRADING TIME {tradingTimeEnabled ? 'ON' : 'OFF'}
             </button>
@@ -8789,7 +8819,7 @@ export const OandaProChart: React.FC<{
                 setTelegramMessagesEnabled(enabled);
                 void updateMt5Config({ telegramMessagesEnabled: enabled });
               }}
-              disabled={!mt5Status}
+              disabled={!canAdmin || !mt5Status}
               className={`whitespace-nowrap rounded-full border px-1.5 py-0.5 text-[8px] font-black transition ${
                 telegramMessagesEnabled
                   ? 'border-sky-200 bg-sky-50 text-sky-700'
@@ -10225,6 +10255,7 @@ export const OandaProChart: React.FC<{
           </div>
           {showAccuracyTable && (
             <EngulfingAccuracyTable
+              canViewMt5={canAdmin}
               records={timeframeAccuracyRecords}
               allRecords={replayVisibleAccuracyRecords}
               mt5Records={executedMt5Trades.filter((trade) => (

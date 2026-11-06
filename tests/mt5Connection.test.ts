@@ -6,6 +6,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createServer } from 'node:net';
+import { seedDashboardSession } from './helpers/dashboardSession';
 
 test('MT5 account handshake resets old candles and queues while preserving automation settings', async () => {
   const workspace = await mkdtemp(path.join(tmpdir(), 'mt5-connection-test-'));
@@ -29,9 +30,10 @@ test('MT5 account handshake resets old candles and queues while preserving autom
   ] }));
   const serverPath = fileURLToPath(new URL('../server.ts', import.meta.url));
   const tsxPath = new URL('../node_modules/tsx/dist/loader.mjs', import.meta.url).href;
+  const cookie = await seedDashboardSession(workspace);
   const child = spawn(process.execPath, ['--import', tsxPath, serverPath], {
     cwd: workspace, windowsHide: true,
-    env: { ...process.env, PORT: String(port), NODE_ENV: 'production', MT5_BRIDGE_TOKEN: 'isolated-test-token' },
+    env: { ...process.env, PORT: String(port), NODE_ENV: 'production', MT5_BRIDGE_TOKEN: 'isolated-test-token', AUTH_PUBLIC_URL: `http://127.0.0.1:${port}` },
     stdio: ['ignore', 'pipe', 'pipe'],
   });
   let output = '';
@@ -40,7 +42,7 @@ test('MT5 account handshake resets old candles and queues while preserving autom
   const base = `http://127.0.0.1:${port}`;
   const request = async (route: string, body?: unknown, method = 'POST') => fetch(`${base}${route}`, {
     method: body === undefined ? 'GET' : method,
-    headers: { 'Content-Type': 'application/json', Authorization: 'Bearer isolated-test-token' },
+    headers: { 'Content-Type': 'application/json', Authorization: 'Bearer isolated-test-token', Cookie: cookie, Origin: base },
     ...(body === undefined ? {} : { body: JSON.stringify(body) }),
   });
   try {
@@ -52,7 +54,7 @@ test('MT5 account handshake resets old candles and queues while preserving autom
       await new Promise((resolve) => setTimeout(resolve, 100));
     }
     assert.ok(ready, output);
-    const first = { bridgeId: 'test-bridge', account: '123', server: 'Broker-A', brokerSymbol: 'XAUUSD.x',
+    const first = { bridgeId: 'test-bridge', account: '123', server: 'Broker-A', brokerSymbol: 'XAUUSD.x', balance: 12345, equity: 12400,
       terminalConnected: true, symbolResolved: true, symbolCandidates: ['XAUUSD.x'] };
     assert.equal((await request('/api/mt5/heartbeat', first)).status, 200);
     let status = await (await request('/api/mt5/status')).json();
@@ -199,6 +201,37 @@ test('MT5 account handshake resets old candles and queues while preserving autom
       'a repeated poll cannot claim the same order twice');
 
 
+    const clientRequest = (route: string, body?: unknown, method?: string) => fetch(`${base}${route}`, {
+      method: method ?? (body === undefined ? 'GET' : 'POST'),
+      headers: { Cookie: 'dashboard_session=isolated-client-test-session', Origin: base, 'Content-Type': 'application/json' },
+      ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+    });
+    const clientStatus = await (await clientRequest('/api/mt5/status')).json();
+    assert.equal(clientStatus.bridge.balance, undefined);
+    assert.equal(clientStatus.bridge.equity, undefined);
+    assert.equal(clientStatus.bridge.account, undefined);
+    assert.equal(clientStatus.config.riskPercent, undefined);
+    assert.deepEqual(clientStatus.recentSignals, []);
+    assert.deepEqual(clientStatus.positions, []);
+    assert.equal((await clientRequest('/api/mt5/accounts')).status, 403);
+    assert.equal((await clientRequest('/api/mt5/config', {}, 'PUT')).status, 403);
+    assert.equal((await clientRequest('/api/mt5/bridge/start', {})).status, 403);
+    assert.equal((await clientRequest('/api/telegram/alerts', {})).status, 403);
+    const bridgeStatus = await fetch(`${base}/api/mt5/status`, { headers: { Authorization: 'Bearer isolated-test-token' } });
+    assert.equal(bridgeStatus.status, 200, 'the existing Python bridge can still synchronize configuration');
+    const bridgeOnly = await fetch(`${base}/api/mt5/accounts`, { headers: { Authorization: 'Bearer isolated-test-token' } });
+    assert.equal(bridgeOnly.status, 401, 'a bridge token cannot access unrelated browser APIs');
+    await writeFile(path.join(dataPath, 'trade-journal.json'), JSON.stringify({ trades: [
+      { id: 'chart-only', completedAt: now, zoneName: 'TJL', signalAt: now - 60, result: 'tp' },
+      { id: 'MT5:private', completedAt: now, zoneName: 'QML', mt5Managed: true, brokerTicket: 42, realizedProfit: 300 },
+    ] }));
+    const clientJournal = await (await clientRequest('/api/journal/trades')).json();
+    assert.deepEqual(clientJournal.trades.map((trade: any) => trade.id), ['chart-only']);
+    assert.equal((await clientRequest('/api/journal/trades', { trades: [{ id: 'chart-only', completedAt: now, reason: 'My personal note' }] })).status, 200);
+    assert.equal((await (await clientRequest('/api/journal/trades')).json()).trades[0].reason, 'My personal note');
+    const shared = await (await request('/api/journal/trades')).json();
+    assert.equal(shared.trades.find((trade: any) => trade.id === 'chart-only').reason, undefined, 'client notes never change the shared journal');
+    assert.ok(shared.trades.some((trade: any) => trade.id === 'MT5:private'), 'admins retain broker history');
   } finally {
     const exited = new Promise<void>((resolve) => {
       if (child.exitCode !== null) resolve(); else child.once('exit', () => resolve());

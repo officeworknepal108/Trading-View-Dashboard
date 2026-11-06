@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { userStorage } from '../services/userStorage';
 import { Bot, Check, LoaderCircle, Maximize2, Send, Trash2, X } from 'lucide-react';
 import chatbotRobotIcon from '../assets/chatbot-robot.png';
 
@@ -43,7 +44,7 @@ const WELCOME: ChatMessage = {
 
 function loadMessages(): ChatMessage[] {
   try {
-    const parsed = JSON.parse(window.localStorage.getItem(CHAT_STORAGE_KEY) || '[]');
+    const parsed = JSON.parse(userStorage.getItem(CHAT_STORAGE_KEY) || '[]');
     return Array.isArray(parsed) && parsed.length > 0
       ? parsed.slice(-40).map((message) => message?.id === 'welcome' ? WELCOME : message)
       : [WELCOME];
@@ -63,7 +64,7 @@ export const AiTradeAssistant: React.FC<AiTradeAssistantProps> = ({ context }) =
   const scrollRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
-    window.localStorage.setItem(CHAT_STORAGE_KEY, JSON.stringify(messages.slice(-40)));
+    userStorage.setItem(CHAT_STORAGE_KEY, JSON.stringify(messages.slice(-40)));
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' });
   }, [messages, open]);
 

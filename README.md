@@ -8,6 +8,11 @@ automation is disabled and in Dry Run mode by default.
 
 ## Setup
 
+The dashboard now opens with a login panel. Configure Google sign-in and the
+verification email sender using [Login setup](docs/LOGIN_SETUP.md) before signing
+in. The super-admin account is `tradingviewfx108@gmail.com`; clients need admin approval.
+Trading calculations and the MT5 execution engine retain their existing rules.
+
 1. Run `npm install` and `npm run dev`.
 2. Open `http://127.0.0.1:3002`.
 
