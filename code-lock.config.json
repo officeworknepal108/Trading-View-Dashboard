@@ -10,6 +10,13 @@
     {
       "paths": [
         "src/components/OandaProChart.tsx",
+        "src/services/autoTrendlines.ts",
+        "src/services/trendlineStudy.ts",
+        "src/services/trendlineStudy.worker.ts",
+        "src/services/trendlineStudyHistory.ts",
+        "tests/trendlineStudyHistory.test.ts",
+        "src/components/TrendlineStudy.tsx",
+        "tests/trendlineStudy.test.ts",
         "server.ts",
         "src/services/telegramTradeNumbers.ts",
         "src/services/telegramTransport.ts",
