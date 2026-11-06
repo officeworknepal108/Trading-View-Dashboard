@@ -44,6 +44,7 @@ export interface StudySupport {
   secondTime: number;
   confirmedAt: number;
 }
+export type StudyTrendlineType = 'all' | StudySupport['kind'];
 export interface TrendlineStudyRecord {
   id: string;
   symbol: string;
@@ -283,6 +284,15 @@ export function studyAccuracy(records: TrendlineStudyRecord[]) {
     pending: records.filter(r => r.outcome === 'pending' || r.outcome === 'active').length,
     ambiguous: records.filter(r => r.outcome === 'ambiguous').length,
     cancelled: records.filter(r => r.outcome === 'cancelled').length };
+}
+
+/** Filter recorded entry evidence without changing prices, outcomes or groups. */
+export function filterStudyTrendlineType(records: TrendlineStudyRecord[], kind: StudyTrendlineType): TrendlineStudyRecord[] {
+  if (kind === 'all') return records;
+  return records.flatMap(record => {
+    const support = record.support.filter(line => line.kind === kind);
+    return support.length ? [{ ...record, support }] : [];
+  });
 }
 
 export interface StudyTrendlineBreakdown {

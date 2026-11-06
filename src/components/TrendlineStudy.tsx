@@ -4,9 +4,9 @@ import type { TradeTimeframe } from '../services/tradeLevels';
 import { userStorage } from '../services/userStorage';
 import { readStudySnapshot, studyAccuracy, studyCloseTime, studyJournalCsv, studyLookbackWindow,
   studyDateWindow, studyLocalDateStart, studyLocalDateValue, STUDY_MAX_LOOKBACK,
-  studyTimeframes, studyEntryTimeframes, studyTrendlineBreakdown,
+  studyTimeframes, studyEntryTimeframes, studyTrendlineBreakdown, filterStudyTrendlineType,
   type StudyTimeframe, type TrendlineStudyInput, type TrendlineStudyRecord,
-  type TrendlineStudyResult, type StudySnapshot, type StudySupport } from '../services/trendlineStudy';
+  type TrendlineStudyResult, type StudySnapshot, type StudySupport, type StudyTrendlineType } from '../services/trendlineStudy';
 import { loadStudyDateHistory, mergeStudyCandles, type StudyCandles } from '../services/trendlineStudyHistory';
 
 interface Props {
@@ -45,6 +45,7 @@ export function TrendlineStudy(props: Props) {
   const [storageNotice, setStorageNotice] = useState('');
   const [minimized, setMinimized] = useState(false);
   const [group, setGroup] = useState('All');
+  const [trendlineType, setTrendlineType] = useState<StudyTrendlineType>('all');
   const [breakdownKey, setBreakdownKey] = useState<string | null>(null);
   const [selected, setSelected] = useState<TrendlineStudyRecord | null>(null);
   const [positions, setPositions] = useState<Array<{ record: TrendlineStudyRecord; x: number; y: number }>>([]);
@@ -73,7 +74,8 @@ export function TrendlineStudy(props: Props) {
   const datePreview = useMemo(() => fromTime === undefined ? undefined
     : studyDateWindow(studyCandles[zoneTf] ?? [], zoneTf, cutoff, fromTime),
   [fromTime, studyCandles, zoneTf, cutoff]);
-  const groupRecords = useMemo(() => (result?.records ?? []).filter(r => group === 'All' || r.fibGroup === group), [result, group]);
+  const typeRecords = useMemo(() => filterStudyTrendlineType(result?.records ?? [], trendlineType), [result, trendlineType]);
+  const groupRecords = useMemo(() => typeRecords.filter(r => group === 'All' || r.fibGroup === group), [typeRecords, group]);
   const breakdown = useMemo(() => studyTrendlineBreakdown(groupRecords), [groupRecords]);
   const selectedBreakdown = breakdown.find(row => row.key === breakdownKey);
   const visible = useMemo(() => {
@@ -246,11 +248,26 @@ export function TrendlineStudy(props: Props) {
             disabled={running} onChange={e => { setStartDate(e.target.value); setResult(null); setSelected(null); setError(''); }} /></label>}
           <button type="button" className={button} disabled={running || !cutoff || !validDate || rangeMode === 'bars' && !preview.bars} onClick={() => void run()}>Run study</button>
           {running && <button type="button" className={button} onClick={cancel}>Cancel</button>}
-          <select aria-label="Study FIB filter" className="rounded border p-1" value={group} onChange={e => { setGroup(e.target.value); setSelected(null); setBreakdownKey(null); }}>
-            <option value="All">All</option>{(['With FIB', 'No FIB', 'FIB only'] as const).map(g => <option key={g} value={g}>{groupLabels[g]}</option>)}
-          </select>
+          <label>Trendline type<select aria-label="Study trendline type" className="ml-2 rounded border p-1" value={trendlineType}
+            onChange={e => {
+              const kind = e.target.value as StudyTrendlineType;
+              setTrendlineType(kind); setSelected(null); setBreakdownKey(null);
+              if (kind !== 'all' && group === 'FIB only') setGroup('All');
+            }}>
+            <option value="all">All</option><option value="continuation">Continuation</option><option value="breakout">Breakout</option>
+          </select></label>
+          <label>FIB group<select aria-label="Study FIB filter" className="ml-2 rounded border p-1" value={group} onChange={e => { setGroup(e.target.value); setSelected(null); setBreakdownKey(null); }}>
+            <option value="All">All</option>{(['With FIB', 'No FIB', 'FIB only'] as const).map(g => <option key={g} value={g}
+              disabled={g === 'FIB only' && trendlineType !== 'all'}>{groupLabels[g]}</option>)}
+          </select></label>
           <button type="button" className={button} disabled={!visible.length} onClick={exportJournal}>Export study journal</button>
         </div>
+        <p aria-label="Study trendline type filter description" className="text-slate-500">
+          {trendlineType === 'all' ? 'Showing all trendline types, including the FIB-only comparison.'
+            : `Showing recorded entries with ${trendlineType} support. Choose All to see FIB-only entries, which have no matching trendline.`}
+          {' '}The filter updates accuracy, journal, arrows and export. Trades supported by both types count once in each selection.
+          {result ? ` ${typeRecords.length} of ${result.records.length} captured entries match this type selection.` : ''}
+        </p>
         <div aria-label="Selected study date range" className="space-y-1 rounded border border-violet-200 bg-violet-50 p-2">
           {rangeMode === 'date' ? datePreview && validDate ? <>
             <p className="font-semibold">Study starts: <time dateTime={new Date(datePreview.from * 1000).toISOString()}>{when(datePreview.from)}</time></p>
@@ -274,10 +291,10 @@ export function TrendlineStudy(props: Props) {
           {!!result.missingTimeframes.length && <p className="text-amber-700">Insufficient history: {result.missingTimeframes.join(', ')}. Signals requiring unavailable data cannot be assessed. Accuracy covers loaded candles only.</p>}
           {!!result.historyWarnings?.length && <div className="text-amber-700" role="status"><p>Historical coverage notes:</p>
             <ul className="list-inside list-disc">{result.historyWarnings.map((warning, i) => <li key={i}>{warning}</li>)}</ul></div>}
-          <div className="overflow-x-auto"><table className="w-full text-left"><thead className="bg-violet-50"><tr>
+          <div className="overflow-x-auto"><table aria-label="Trendline group accuracy" className="w-full text-left"><thead className="bg-violet-50"><tr>
             {['Group', 'Entries', 'Done', 'TP', 'SL', 'RF', 'Open', 'Unclear', 'Cancelled', 'TP %', 'Total R', 'Avg R'].map(h => <th key={h} className="px-2 py-1">{h}</th>)}
-          </tr></thead><tbody>{(['With FIB', 'No FIB', 'FIB only', 'All'] as const).map(g => {
-            const stats = studyAccuracy(result.records.filter(r => g === 'All' || r.fibGroup === g));
+          </tr></thead><tbody>{(['With FIB', 'No FIB', ...(trendlineType === 'all' ? ['FIB only' as const] : []), 'All'] as const).map(g => {
+            const stats = studyAccuracy(typeRecords.filter(r => g === 'All' || r.fibGroup === g));
             return <tr key={g} className="border-b"><th className="px-2 py-1">{g === 'All' ? 'All' : groupLabels[g]}</th>
               {[stats.total, stats.completed, stats.tp, stats.sl, stats.rf, stats.pending, stats.ambiguous,
                 stats.cancelled, stats.accuracy === undefined ? '—' : `${stats.accuracy.toFixed(1)}%`,
@@ -287,7 +304,7 @@ export function TrendlineStudy(props: Props) {
           <p className="text-slate-500">TP % = TP ÷ (TP + SL + RF). Open, pending, cancelled and ambiguous candles are excluded. R is theoretical, before fees and slippage. One entry per zone within the chosen sample; historical broker positions are not reconstructed.</p>
           <section aria-label="Trendline timeframe and type accuracy" className="space-y-2 rounded border border-violet-200 p-2">
             <h3 className="font-bold text-violet-900">Accuracy by trendline timeframe and type</h3>
-            <p>Compare continuation and breakout support at each timeframe, with and without FIB. This table follows the FIB filter above.</p>
+            <p>Compare continuation and breakout support at each timeframe, with and without FIB. This table follows the FIB and trendline-type filters above.</p>
             <div className="max-h-64 overflow-auto"><table aria-label="Trendline timeframe breakdown" className="w-full min-w-[1050px] text-left">
               <thead className="sticky top-0 bg-violet-50"><tr>{['Trendline TF', 'Type', 'Group', 'Entries', 'Done', 'TP', 'SL', 'RF', 'Open', 'Unclear', 'Cancelled', 'TP %', 'Avg R', 'Details'].map(h => <th key={h} className="p-1">{h}</th>)}</tr></thead>
               <tbody>{breakdown.map(row => <tr key={row.key} className={`border-b ${row.key === breakdownKey ? 'bg-violet-100' : ''}`}>

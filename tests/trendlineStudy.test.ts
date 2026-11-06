@@ -5,7 +5,7 @@ import { type StructureCandle, type StructureZone } from '../src/services/market
 import { collectStudySupport, evaluateStudyOutcome, readStudySnapshot, runTrendlineStudy, studyAccuracy,
   studyCandleRule, studyClosedCandles, studyEntryLevels, studyFibSources,
   studyJournalCsv, studyLookbackWindow, studyDateWindow, studyLocalDateStart, studyLocalDateValue,
-  studyTimeframes, studyEntryTimeframes, studyComparisonGroup, studyTrendlineBreakdown, STUDY_SECONDS,
+  studyTimeframes, studyEntryTimeframes, studyComparisonGroup, studyTrendlineBreakdown, filterStudyTrendlineType, STUDY_SECONDS,
   trendlineSupportsBuy, type TrendlineStudyRecord } from '../src/services/trendlineStudy';
 
 const candle = (time: number, open = 100, high = 102, low = 99, close = 101): StructureCandle => (
@@ -264,6 +264,53 @@ test('FIB-only breakdown has no invented timeframe and filtered rows retain exac
   assert.deepEqual(entries.filter(r => row.recordIds.includes(r.id)), [fibOnly]);
   assert.equal(studyTrendlineBreakdown(entries.filter(r => r.fibGroup === 'FIB only')).length, 1);
   assert.deepEqual(studyTrendlineBreakdown([]), []);
+});
+
+test('trendline type selector keeps both-type trades once and preserves original outcomes and levels', () => {
+  const continuation = { ...record('sl', -1), id: 'continuation-only' };
+  const breakout: TrendlineStudyRecord = { ...record('tp', 2), id: 'breakout-only',
+    support: [{ ...record('tp').support[0], kind: 'breakout' }] };
+  const both: TrendlineStudyRecord = { ...record('tp', 2), id: 'both',
+    support: [...continuation.support, ...breakout.support] };
+  const fibOnly: TrendlineStudyRecord = { ...record('tp', 2), id: 'fib-only', fibGroup: 'FIB only',
+    fibSources: ['Day 0.5-0.618'], support: [] };
+  const source = [continuation, breakout, both, fibOnly];
+  const before = JSON.stringify(source);
+  assert.equal(filterStudyTrendlineType(source, 'all'), source);
+  const cont = filterStudyTrendlineType(source, 'continuation');
+  const brk = filterStudyTrendlineType(source, 'breakout');
+  assert.deepEqual(cont.map(r => r.id), ['continuation-only', 'both']);
+  assert.deepEqual(brk.map(r => r.id), ['breakout-only', 'both']);
+  assert.equal(cont[1].levels, both.levels);
+  assert.equal(cont[1].signal, both.signal);
+  assert.equal(cont[1].returnR, 2);
+  assert.equal(cont[1].support.length, 1);
+  assert.equal(cont[1].support[0].kind, 'continuation');
+  assert.equal(brk[1].support[0].kind, 'breakout');
+  assert.equal(studyAccuracy(cont).accuracy, 50);
+  assert.equal(studyAccuracy(brk).accuracy, 100);
+  assert.equal(JSON.stringify(source), before, 'filtering must not overwrite saved entry evidence');
+});
+
+test('type-filtered breakdown and journal export include only the chosen support type', () => {
+  const both: TrendlineStudyRecord = { ...record('tp', 2),
+    support: [record('tp').support[0], { ...record('tp').support[0], kind: 'breakout' }] };
+  const selected = filterStudyTrendlineType([both], 'continuation');
+  const rows = studyTrendlineBreakdown(selected);
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].kind, 'continuation');
+  assert.match(studyJournalCsv(selected), /green continuation/);
+  assert.doesNotMatch(studyJournalCsv(selected), /green breakout/);
+  assert.equal(studyTrendlineBreakdown(filterStudyTrendlineType([both], 'breakout'))[0].kind, 'breakout');
+});
+
+test('FIB-only has no trendline type and remains available under All', () => {
+  const only: TrendlineStudyRecord = { ...record('tp', 2), fibGroup: 'FIB only', fibSources: ['Day 0.5-0.618'], support: [] };
+  assert.equal(filterStudyTrendlineType([only], 'all').length, 1);
+  assert.equal(filterStudyTrendlineType([only], 'continuation').length, 0);
+  assert.equal(filterStudyTrendlineType([only], 'breakout').length, 0);
+  assert.equal(studyAccuracy(filterStudyTrendlineType([only], 'breakout')).accuracy, undefined);
+  assert.deepEqual(filterStudyTrendlineType([], 'all'), []);
 });
 
 test('missing source history does not become a No FIB result; future data cannot change the sample', () => {
