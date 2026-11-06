@@ -12,6 +12,8 @@
         "src/components/OandaProChart.tsx",
         "server.ts",
         "src/services/telegramTradeNumbers.ts",
+        "src/services/telegramTransport.ts",
+        "tests/telegramTransport.test.ts",
         "tests/telegramTradeNumbers.test.ts",
         "tests/telegramAlerts.test.ts"
       ],

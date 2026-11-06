@@ -1,4 +1,5 @@
 import 'dotenv/config';
+import { telegramFetch } from './src/services/telegramTransport';
 import { journalDashboardTrades, journalPendingImageTrades } from './src/services/journalPayload';
 import express from 'express';
 import { AsyncLocalStorage } from 'node:async_hooks';
@@ -1346,7 +1347,7 @@ async function sendTelegramText(message: string): Promise<void> {
   const token = process.env.TELEGRAM_BOT_TOKEN?.trim();
   const chatId = process.env.TELEGRAM_CHAT_ID?.trim();
   if (!token || !chatId) throw new Error('Telegram bot token and chat ID are not configured.');
-  const response = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+  const response = await telegramFetch(`https://api.telegram.org/bot${token}/sendMessage`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ chat_id: chatId, text: message }),
