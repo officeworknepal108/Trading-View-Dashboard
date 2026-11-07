@@ -7,7 +7,7 @@ import { collectStudySupport, evaluateStudyOutcome, readStudySnapshot, runTrendl
   studyJournalCsv, studyLookbackWindow, studyDateWindow, studyLocalDateStart, studyLocalDateValue,
   studyTimeframes, studyEntryTimeframes, studyComparisonGroup, studyTrendlineBreakdown, filterStudyTrendlineType, STUDY_SECONDS,
   trendlineSupportsBuy, type TrendlineStudyRecord, type EntryArrowStudyInput, type EntryArrowStudyEntry } from '../src/services/trendlineStudy';
-import { measureStudySupportDistance, studyEntryAtr, studySupportPriceAt, studyDistanceBand,
+import { bestTrendlineSetupRank, preEntryTrendlineMarks, measureStudySupportDistance, studyEntryAtr, studySupportPriceAt, studyDistanceBand,
   studyDistanceBreakdown, studyRecordDistanceBand, filterStudyDistance, type StudySupport } from '../src/services/trendlineStudy';
 
 const candle = (time: number, open = 100, high = 102, low = 99, close = 101): StructureCandle => (
@@ -33,6 +33,147 @@ const arrowEntry = (id: string, trade: TradeLevels): EntryArrowStudyEntry => ({
 const arrowInput = (entries: EntryArrowStudyEntry[]): EntryArrowStudyInput => ({
   kind: 'entry-arrows', symbol: 'XAUUSD', pipSize: .1, cutoff: 3600,
   candles: { M15: [candle(0, 100, 200, 0), candle(900, 100, 200, 0), candle(1800, 100, 200, 0)] }, entries,
+});
+
+test('preferred trendline badges require the exact nearest timeframe/type with FIB and Far distance', () => {
+  const entry = { ...arrowEntry('preferred', levels), fib: 'ZONE FIB 0.618-0.786' };
+  const line = (timeframe: StudySupport['timeframe'], kind: StudySupport['kind'], pips = 20,
+    band: NonNullable<StudySupport['distance']>['band'] = 'Far'): StudySupport => ({
+    timeframe, kind, color: 'green', firstTime: 0, secondTime: 100, confirmedAt: 200,
+    distance: { linePrice: 102, pips, atrRatio: band === 'Far' ? 1 : band === 'Near' ? .2 : .4, band },
+  });
+  for (const [tf, kind, expected] of [['H1', 'continuation', 1], ['M30', 'breakout', 2],
+    ['M15', 'continuation', 3]] as const) {
+    const matching = line(tf, kind);
+    assert.equal(bestTrendlineSetupRank(entry, [matching], 3600), expected);
+    for (const band of ['Near', 'Medium', 'Unknown'] as const) {
+      assert.equal(bestTrendlineSetupRank(entry, [line(tf, kind, 20, band)], 3600), undefined);
+    }
+    assert.equal(bestTrendlineSetupRank(entry, [matching, line('H4', 'breakout', 10)], 3600), undefined,
+      'a farther matching line must not override the nearest supporting line');
+  }
+  assert.equal(bestTrendlineSetupRank(entry, [line('H1', 'breakout')], 3600), undefined);
+  assert.equal(bestTrendlineSetupRank(entry, [line('H4', 'continuation')], 3600), undefined);
+  assert.equal(bestTrendlineSetupRank(entry, [line('H1', 'continuation'), line('M30', 'breakout')], 3600), undefined,
+    'conflicting nearest-line ties must not produce an arbitrary badge');
+  assert.equal(bestTrendlineSetupRank(entry, [], 3600), undefined);
+});
+
+test('preferred trendline badges exclude missing FIB, unfinished confirmation, unfilled and blocked entries', () => {
+  const support: StudySupport[] = [{ timeframe: 'H1', kind: 'continuation', color: 'green',
+    firstTime: 0, secondTime: 100, confirmedAt: 200,
+    distance: { linePrice: 102, pips: 20, atrRatio: 1, band: 'Far' } }];
+  const entry = { ...arrowEntry('preferred', levels), fib: 'ZONE FIB 0.618-0.786' };
+  for (const fib of ['', 'Not recorded', 'No FIB', 'none']) {
+    assert.equal(bestTrendlineSetupRank({ ...entry, fib }, support, 3600), undefined);
+  }
+  for (const timeframe of ['M1', 'M5', 'M30', 'H1'] as const) {
+    assert.equal(bestTrendlineSetupRank({ ...entry,
+      trade: { ...levels, signal: { ...signal, timeframe } } }, support, 3600), undefined);
+  }
+  assert.equal(bestTrendlineSetupRank(entry, support, 1799), undefined);
+  assert.equal(bestTrendlineSetupRank(entry, support, 1800), 1);
+  assert.equal(bestTrendlineSetupRank({ ...entry, tradingTimeBlocked: true }, support, 3600), undefined);
+  assert.equal(bestTrendlineSetupRank({ ...entry, trade: { ...levels, filledAt: undefined } }, support, 3600), undefined);
+  assert.equal(bestTrendlineSetupRank({ ...entry, trade: { ...levels, status: 'pending' } }, support, 3600), undefined);
+  assert.equal(bestTrendlineSetupRank({ ...entry, trade: { ...levels, filledAt: 4000 } }, support, 3600), undefined);
+  assert.equal(bestTrendlineSetupRank(entry, support.map(({ distance, ...s }) => s), 3600), undefined);
+});
+
+test('second-best trendline ranks are Weekly #1, Daily #2 and H4 #3 without changing primary ranks', () => {
+  const entry = { ...arrowEntry('second-best', levels), fib: 'ZONE FIB 0.618-0.786' };
+  const line = (timeframe: StudySupport['timeframe'], kind: StudySupport['kind'] = 'continuation',
+    pips = 20): StudySupport => ({ timeframe, kind, color: 'green',
+    firstTime: 0, secondTime: 100, confirmedAt: 200,
+    distance: { linePrice: 102, pips, atrRatio: 1, band: 'Far' } });
+  for (const [tf, expected] of [['W', 1], ['D', 2], ['H4', 3]] as const) {
+    const support = [line(tf)];
+    const before = JSON.stringify({ entry, support });
+    assert.equal(bestTrendlineSetupRank(entry, support, 3600, 'second'), expected);
+    assert.equal(bestTrendlineSetupRank(entry, support, 3600), undefined);
+    assert.equal(bestTrendlineSetupRank(entry, [line(tf, 'breakout')], 3600, 'second'), undefined);
+    assert.equal(bestTrendlineSetupRank(entry, [line(tf), line('H1', 'continuation', 10)], 3600, 'second'), undefined);
+    assert.equal(JSON.stringify({ entry, support }), before, 'classification must not change trade levels or evidence');
+  }
+  for (const tf of ['M15', 'M30', 'H1'] as const) {
+    assert.equal(bestTrendlineSetupRank(entry, [line(tf)], 3600, 'second'), undefined);
+  }
+  assert.equal(bestTrendlineSetupRank(entry, [line('W'), line('D')], 3600, 'second'), undefined);
+});
+
+test('second-best trendline labels keep the M15, FIB, Far, closed-candle and filled-entry requirements', () => {
+  const entry = { ...arrowEntry('second-best', levels), fib: 'ZONE FIB 0.618-0.786' };
+  const support: StudySupport[] = [{ timeframe: 'W', kind: 'continuation', color: 'green',
+    firstTime: 0, secondTime: 100, confirmedAt: 200,
+    distance: { linePrice: 102, pips: 20, atrRatio: 1, band: 'Far' } }];
+  for (const fib of ['', 'Not recorded', 'No FIB', 'none']) {
+    assert.equal(bestTrendlineSetupRank({ ...entry, fib }, support, 3600, 'second'), undefined);
+  }
+  for (const band of ['Near', 'Medium', 'Unknown'] as const) {
+    assert.equal(bestTrendlineSetupRank(entry, support.map(s => ({ ...s,
+      distance: { ...s.distance!, band } })), 3600, 'second'), undefined);
+  }
+  assert.equal(bestTrendlineSetupRank(entry, support, 1799, 'second'), undefined);
+  assert.equal(bestTrendlineSetupRank(entry, support, 1800, 'second'), 1);
+  for (const trade of [{ ...levels, filledAt: undefined }, { ...levels, filledAt: 4000 },
+    { ...levels, status: 'pending' as const }, { ...levels, signal: { ...signal, timeframe: 'M5' as const } }]) {
+    assert.equal(bestTrendlineSetupRank({ ...entry, trade }, support, 3600, 'second'), undefined);
+  }
+  assert.equal(bestTrendlineSetupRank({ ...entry, tradingTimeBlocked: true }, support, 3600, 'second'), undefined);
+  assert.equal(bestTrendlineSetupRank(entry, support.map(({ distance, ...s }) => s), 3600, 'second'), undefined);
+});
+
+function preEntryInput(timeframe: 'M15' | 'H1' | 'H4' | 'D' | 'W' = 'H4') {
+  const end = 40 * STUDY_SECONDS[timeframe];
+  const source = Array.from({ length: 40 }, (_, i) => {
+    const low = 100 + i * .2 + ([5, 15, 25].includes(i) ? 0 : 6);
+    return candle(i * STUDY_SECONDS[timeframe], low + .3, low + 1, low, low + .6);
+  });
+  const forming = { ...candle(end, 115, 116, 114, 115), complete: false };
+  const m15 = Array.from({ length: 20 }, (_, i) => candle(end - (20 - i) * 900, 115, 116, 114, 115));
+  return { zones: [{ zone: { ...zone, top: 116, bottom: 114, tapTime: end,
+    fibStatus: 'a-plus' as const, fibBand: '0.71-0.79' as const }, timeframe: 'M15' as const }],
+    candles: { M15: [...m15, forming], [timeframe]: [...source, forming] },
+    at: end + 60, price: 115, pipSize: .1 };
+}
+
+test('pre-confirmation line stars require a tapped numerical FIB zone and Far distance from current M15 price', () => {
+  for (const [tf, label] of [['M15', '★ BEST TL #3'], ['H1', '★ BEST TL #1'],
+    ['W', '☆ 2nd BEST TL #1'], ['D', '☆ 2nd BEST TL #2'], ['H4', '☆ 2nd BEST TL #3']] as const) {
+    const input = preEntryInput(tf);
+    const before = JSON.stringify(input);
+    const marks = preEntryTrendlineMarks(input);
+    assert.ok(marks.length > 0, `${tf} should be recognized before the forming M15 candle closes`);
+    assert.ok(marks.every(mark => mark.label === label && mark.support.distance?.band === 'Far'
+      && mark.referencePrice === 115 && mark.support.confirmedAt <= input.at));
+    assert.equal(JSON.stringify(input), before, 'line marks must not create trades or mutate candles/zones');
+  }
+  const input = preEntryInput();
+  for (const change of [{ fibStatus: undefined, fibBand: undefined }, { active: false },
+    { tapTime: undefined }, { isBuy: false }, { confirmationRouteDisabled: true },
+    { startTime: input.at + 900 }, { tapTime: input.at + 900 }]) {
+    assert.deepEqual(preEntryTrendlineMarks({ ...input,
+      zones: input.zones.map(item => ({ ...item, zone: { ...item.zone, ...change } })) }), []);
+  }
+  assert.deepEqual(preEntryTrendlineMarks({ ...input, price: 117 }), []);
+  const priceAtLine = 108 + .2 * 60 / STUDY_SECONDS.H4;
+  assert.deepEqual(preEntryTrendlineMarks({ ...input, price: priceAtLine,
+    zones: input.zones.map(item => ({ ...item, zone: { ...item.zone, bottom: 107, top: 109 } })) }), []);
+});
+
+test('pre-confirmation stars reject unavailable ATR, stale prices, invalid pips and exemption-only zones', () => {
+  const input = preEntryInput();
+  assert.deepEqual(preEntryTrendlineMarks({ ...input, candles: { ...input.candles, M15: input.candles.M15.slice(-1) } }), []);
+  assert.deepEqual(preEntryTrendlineMarks({ ...input, at: input.at + 901 }), []);
+  assert.deepEqual(preEntryTrendlineMarks({ ...input, pipSize: 0 }), []);
+  for (const change of [{ name: 'DB' as const, fibStatus: undefined, fibBand: undefined },
+    { majorLiquidity: true, fibStatus: undefined, fibBand: undefined }, { fibBand: 'DB/DT' as const }]) {
+    assert.deepEqual(preEntryTrendlineMarks({ ...input,
+      zones: input.zones.map(item => ({ ...item, zone: { ...item.zone, ...change } })) }), []);
+  }
+  const future = { ...candle(input.at + 86400, 500, 600, 100, 550), complete: true };
+  assert.deepEqual(preEntryTrendlineMarks({ ...input, candles: { ...input.candles,
+    M15: [...input.candles.M15, future], H4: [...input.candles.H4, future] } }), preEntryTrendlineMarks(input));
 });
 
 test('entry-arrow study copies exact SL/TP and final results instead of resimulating ambiguous candles', () => {

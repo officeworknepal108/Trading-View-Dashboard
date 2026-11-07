@@ -1,7 +1,7 @@
 import { detectAutoTrendlines, type AutoTrendline } from '../services/autoTrendlines';
 export { detectAutoTrendlines } from '../services/autoTrendlines';
 import { TrendlineStudy } from './TrendlineStudy';
-import { collectStudySupport, measureStudySupportDistance, studyClosedCandles, studyTimeframes, type EntryArrowStudyEntry } from '../services/trendlineStudy';
+import { bestTrendlineSetupRank, collectStudySupport, measureStudySupportDistance, preEntryTrendlineMarks, studyClosedCandles, studyTimeframes, trendlineSupportsBuy, type EntryArrowStudyEntry } from '../services/trendlineStudy';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { UserRole } from '../services/authTypes';
 import { userStorage } from '../services/userStorage';
@@ -169,7 +169,7 @@ type ChartDrawingVisibility = 'all' | 'current-only' | 'current-and-above' | 'cu
 
 // Scrolling can fire every frame; rebuilding all zone DOM at that rate stalls
 // the chart. Keep data/setting redraws immediate and limit scroll redraws.
-const SCROLL_OVERLAY_REDRAW_INTERVAL_MS = 80;
+const SCROLL_OVERLAY_REDRAW_INTERVAL_MS = 32;
 const DRAWING_REDRAW_INTERVAL_MS = 80;
 
 interface ChartDrawingPoint {
@@ -2279,7 +2279,15 @@ export const OandaProChart: React.FC<{
   const marketConfig = oandaMarketSymbolConfig(marketSymbol);
   const mtfLtfFibRequired = mt5Status?.config.mtfLtfFibRequired === true;
   const drawingScope = `${liveChartDataSource}:${marketSymbol}`;
-  hasChartDrawingLayerRef.current = chartDrawings.length > 0 || drawingDraft !== null;
+  hasChartDrawingLayerRef.current = drawingDraft !== null || chartDrawings.some(drawing => (
+    drawing.scope === drawingScope && !drawing.hidden
+    && ((drawing.visibility ?? 'all') === 'all'
+      || (drawing.visibilityTimeframe ?? granularity) === granularity
+      || (drawing.visibility === 'current-and-above'
+        && DRAWING_TIMEFRAME_ORDER.indexOf(granularity) >= DRAWING_TIMEFRAME_ORDER.indexOf(drawing.visibilityTimeframe ?? granularity))
+      || (drawing.visibility === 'current-and-below'
+        && DRAWING_TIMEFRAME_ORDER.indexOf(granularity) <= DRAWING_TIMEFRAME_ORDER.indexOf(drawing.visibilityTimeframe ?? granularity)))
+  ));
 
   useEffect(() => {
     userStorage.setItem(CHART_DRAWINGS_STORAGE_KEY, JSON.stringify(chartDrawings));
@@ -2572,11 +2580,6 @@ export const OandaProChart: React.FC<{
         }));
       });
   }, [displayCandles, granularity, htfTrendlineCutoff, marketConfig.pipSize, marketSymbol, replayIndex, trendlineTimeframes, vipCandles]);
-  const nearbyHtfTrendlines = useMemo(() => htfTrendlines.filter((trendline) => (
-    showAllTrendlines || Math.abs(trendline.currentPrice - (displayCandles.at(-1)?.close ?? 0))
-      <= 400 * marketConfig.pipSize
-  )), [displayCandles, htfTrendlines, marketConfig.pipSize, showAllTrendlines]);
-
   const vipSupportGranularities = VIP_SUPPORT_GRANULARITIES[granularity];
   const mtfLowerGranularities = useMemo(() => MTF_MAPPINGS
     .filter((mapping) => mapping.higher === granularity)
@@ -3223,8 +3226,11 @@ export const OandaProChart: React.FC<{
     }
     return data;
   }, [displayCandles, granularity, replayIndex, structure, swingFibMoves, vipCandles]);
-  const tradeDisplayAsOf = replayIndex === null ? Date.now() / 1000
-    : (displayCandles.at(-1)?.time ?? 0) + (displayCandles.at(-1)?.complete ? TIMEFRAME_SECONDS[granularity] : 0);
+  // Mouse/viewport renders must not invalidate the market-data calculation graph.
+  // Refresh the display cutoff when candle inputs (including auxiliary feeds) change.
+  const tradeDisplayAsOf = useMemo(() => replayIndex === null ? Date.now() / 1000
+    : (displayCandles.at(-1)?.time ?? 0) + (displayCandles.at(-1)?.complete ? TIMEFRAME_SECONDS[granularity] : 0),
+  [replayIndex, displayCandles, granularity, tableTimeframeData]);
   const hasTradeDisplayExpired = useCallback((trade: TradeDisplayState | undefined) => {
     const timeframe = trade?.signal?.timeframe ?? trade?.signalTimeframe;
     return tradeDisplayExpired(trade, timeframe ? tableTimeframeData[timeframe]?.candles ?? [] : [], tradeDisplayAsOf);
@@ -4718,6 +4724,44 @@ export const OandaProChart: React.FC<{
     return Array.from(entries.values());
   }, [blockedGoldHistoricalTrade, chartEntryRecords, displayCandles, granularity, marketSymbol, replayIndex,
     retainedDirectChartTradesForTimeframe, tradingTimeEnabled, visibleAccuracyRecordIds]);
+  const trendlineSetupLabel = useMemo(() => {
+    const records = new Map<string, JournalTradeRecord>(chartEntryRecords.map(record => [record.id, record] as const));
+    const key = (trade: TradeLevels) => `${trade.signal.time}:${tradeOverlayExecutionKey(trade)}`;
+    const entries = new Map<string, EntryHover>(entryHovers.map(entry => [key(entry.trade), entry] as const));
+    const labels = new Map<string, string | undefined>();
+    const trendCache = new Map<string, AutoTrendline[]>();
+    const candles = { ...vipCandles, [granularity]: displayCandles };
+    const cutoff = replayResultCutoff ?? Date.now() / 1000;
+    return (trade: TradeLevels | undefined) => {
+      if (marketSymbol !== 'XAUUSD' || !trade || trade.signal.timeframe !== 'M15') return undefined;
+      const tradeKey = key(trade);
+      if (!labels.has(tradeKey)) {
+        const entry = entries.get(tradeKey);
+        let label: string | undefined;
+        if (entry && !entry.tradingTimeBlocked && entry.trade.filledAt !== undefined
+          && entry.trade.signal.time + TIMEFRAME_SECONDS.M15 <= cutoff
+          && entry.fib.trim() && !/^(not recorded|no fib|none)$/i.test(entry.fib.trim())) {
+          const zoneTimeframe = records.get(entry.id)?.zoneTimeframe ?? entry.trade.signal.timeframe;
+          const evidence = collectStudySupport(candles, zoneTimeframe,
+            entry.trade.signal.direction === 'bullish', entry.trade.signal.time + TIMEFRAME_SECONDS.M15,
+            marketConfig.pipSize, trendCache);
+          const measured = measureStudySupportDistance(evidence, candles, entry.trade, marketConfig.pipSize);
+          const rank = bestTrendlineSetupRank(entry, measured.support, cutoff);
+          const secondRank = bestTrendlineSetupRank(entry, measured.support, cutoff, 'second');
+          label = rank ? `⭐ BEST TL #${rank}` : secondRank ? `2nd BEST TL #${secondRank}` : undefined;
+        }
+        labels.set(tradeKey, label);
+      }
+      return labels.get(tradeKey);
+    };
+  }, [chartEntryRecords, entryHovers, vipCandles, granularity, displayCandles,
+    replayResultCutoff, marketSymbol, marketConfig.pipSize]);
+  const bestTrendlineBadge = (trade: TradeLevels | undefined) => {
+    const label = trendlineSetupLabel(trade);
+    return label ? <span className="ml-1 rounded bg-amber-100 px-1 py-0.5 text-[8px] font-black text-amber-900">
+      {label}
+    </span> : null;
+  };
   const entryArrowStudyEntries = useMemo<EntryArrowStudyEntry[]>(() => {
     if (!showTrendlineStudy) return [];
     const records = new Map<string, JournalTradeRecord>(chartEntryRecords.map(record => [record.id, record] as const));
@@ -4881,16 +4925,19 @@ export const OandaProChart: React.FC<{
     const bullish = trade.signal.direction === 'bullish';
     const projectedScalp = (granularity === 'M15' || granularity === 'H1') && style === 'SCALPING'
       && (trade.signal.timeframe === 'M1' || trade.signal.timeframe === 'M5');
+    const setupLabel = trendlineSetupLabel(trade);
+    const secondSetupLabel = setupLabel?.startsWith('2nd BEST TL') ? setupLabel : undefined;
     return {
       time: candleTime as UTCTimestamp,
       position: bullish ? 'belowBar' as const : 'aboveBar' as const,
       color: bullish ? '#059669' : '#e11d48',
       shape: bullish ? 'arrowUp' as const : 'arrowDown' as const,
-      text: trade.result?.toUpperCase(),
+      text: secondSetupLabel ? [trade.result?.toUpperCase(), secondSetupLabel].filter(Boolean).join(' · ')
+        : trade.result?.toUpperCase(),
       size: projectedScalp ? 1 : 2,
     };
   }).sort((first, second) => Number(first.time) - Number(second.time) || second.size - first.size),
-  [granularity, entryHovers]);
+  [granularity, entryHovers, trendlineSetupLabel]);
   const replayDirectHistoryByZone = useMemo(() => {
     const entries = new Map<string, EntryHover>();
     if (replayIndex === null) return entries;
@@ -5037,6 +5084,32 @@ export const OandaProChart: React.FC<{
     displayCandles.map((candle) => [Number(candle.time), candle]),
   ), [displayCandles]);
 
+  const preEntryTrendlineMarkMap = useMemo(() => {
+    const marks = new Map<string, ReturnType<typeof preEntryTrendlineMarks>[number]>();
+    if (marketSymbol !== 'XAUUSD') return marks;
+    const at = replayResultCutoff ?? Date.now() / 1000;
+    const candles = { ...vipCandles, [granularity]: displayCandles };
+    const price = candles.M15?.filter(candle => candle.time <= at).at(-1)?.close;
+    if (price === undefined) return marks;
+    const zones = AUTOMATION_GRANULARITIES.filter(timeframe => (
+      isGoldIntradayCandleRoute(timeframe, 'M15')
+      || MTF_MAPPINGS.some(mapping => mapping.higher === timeframe && mapping.lower === 'M15')
+    )).flatMap(timeframe => (timeframe === granularity ? consolidatedDisplayZones
+      : tableTimeframeData[timeframe]?.structure.zones ?? []).map(zone => ({ zone, timeframe })));
+    for (const mark of preEntryTrendlineMarks({ zones, candles, at, price, pipSize: marketConfig.pipSize })) {
+      const line = mark.support;
+      marks.set(`${line.timeframe}:${line.kind}:${line.firstTime}:${line.secondTime}`, mark);
+    }
+    return marks;
+  }, [marketSymbol, replayResultCutoff, vipCandles, granularity, displayCandles,
+    consolidatedDisplayZones, tableTimeframeData, marketConfig.pipSize]);
+
+  const nearbyHtfTrendlines = useMemo(() => htfTrendlines.filter((trendline) => (
+    showAllTrendlines
+    || preEntryTrendlineMarkMap.has(`${trendline.timeframe}:${trendline.line.kind}:${trendline.sourceCandles[trendline.line.firstIndex].time}:${trendline.sourceCandles[trendline.line.secondIndex].time}`)
+    || Math.abs(trendline.currentPrice - (displayCandles.at(-1)?.close ?? 0)) <= 400 * marketConfig.pipSize
+  )), [displayCandles, htfTrendlines, marketConfig.pipSize, preEntryTrendlineMarkMap, showAllTrendlines]);
+
   const redrawZones = useCallback(() => {
     const layer = zoneLayerRef.current;
     const host = hostRef.current;
@@ -5049,6 +5122,17 @@ export const OandaProChart: React.FC<{
     }
 
     const fragment = document.createDocumentFragment();
+    // Panning changes coordinates, not the candle timestamps. Use binary lookups
+    // instead of repeatedly copying/reversing and scanning the entire history.
+    const candleIndexAtOrAfter = (time: number) => {
+      const prior = findReplayIndexAtOrBefore(displayCandles, time);
+      return prior === null ? 0 : displayCandles[prior].time === time ? prior : prior + 1;
+    };
+    const candleContainingTime = (time: number) => {
+      const index = findReplayIndexAtOrBefore(displayCandles, time);
+      const candle = index === null ? undefined : displayCandles[index];
+      return candle && time < marketCandleCloseTime(candle.time, granularity) ? candle : undefined;
+    };
     const livePrice = displayCandles[displayCandles.length - 1].close;
     const touchesLivePrice = (zone: StructureZone) => (
       zone.active && livePrice >= zone.bottom && livePrice <= zone.top
@@ -5257,7 +5341,7 @@ export const OandaProChart: React.FC<{
       if (shownLtfConfirmations.has(key)) continue;
       shownLtfConfirmations.add(key);
       const confirmedAt = line.toTime + TIMEFRAME_SECONDS[comparisonTimeframe!];
-      const chartCandle = [...displayCandles].reverse().find((candle) => candle.time < confirmedAt);
+      const chartCandle = displayCandles[candleIndexAtOrAfter(confirmedAt) - 1];
       if (!chartCandle || confirmedAt > chartCandle.time + TIMEFRAME_SECONDS[granularity]) continue;
       if (visibleTimeRange && (chartCandle.time < Number(visibleTimeRange.from)
         || chartCandle.time > Number(visibleTimeRange.to))) continue;
@@ -5320,15 +5404,17 @@ export const OandaProChart: React.FC<{
     for (const { zone, label, timeframe, endTime } of mtfDrawingZones) {
       const sameTimeframe = timeframe === granularity;
       const key = zoneKey(`${sameTimeframe ? 'mtf' : 'mtf-higher'}:${label}`, zone.id);
-      const first = displayCandles.find(candle => candle.time >= zone.startTime);
-      const last = [...displayCandles].reverse().find(candle => candle.time <= endTime);
+      const firstIndex = candleIndexAtOrAfter(zone.startTime);
+      const first = displayCandles[firstIndex];
+      const lastIndex = findReplayIndexAtOrBefore(displayCandles, endTime);
+      const last = lastIndex === null ? undefined : displayCandles[lastIndex];
       if (!first || !last || first.time > last.time) continue;
       if (visibleTimeRange && (zoneLengthModes[key] === undefined && last.time < Number(visibleTimeRange.from)
         || first.time > Number(visibleTimeRange.to))) continue;
       const sourceLeft = chart.timeScale().timeToCoordinate(first.time as UTCTimestamp);
       const left = Math.max(0, sameTimeframe ? sourceLeft ?? 0 : zoneStartCoordinate(key, sourceLeft) ?? 0);
       const mtfEnd = zoneLengthModes[key] === 'left'
-        ? sameTimeframe ? chart.timeScale().logicalToCoordinate(displayCandles.indexOf(first) + 10)
+        ? sameTimeframe ? chart.timeScale().logicalToCoordinate(firstIndex + 10)
           : zoneEndCoordinate(key, chart.timeScale().logicalToCoordinate(displayCandles.length - 1 + 10))
         : chart.timeScale().logicalToCoordinate(displayCandles.length - 1 + 10);
       const right = Math.min(rightEdge, mtfEnd ?? rightEdge);
@@ -5639,12 +5725,32 @@ export const OandaProChart: React.FC<{
       if (showTrendlinesRef.current) {
         const scale = chart.timeScale();
         const endIndex = displayCandles.length - 1 + 8;
+        const appendSetupLabel = (mark: ReturnType<typeof preEntryTrendlineMarks>[number], x: number, y: number, color: string) => {
+          const label = document.createElementNS(namespace, 'text');
+          const directionalLabel = `${mark.support.color === 'green' ? '↑' : '↓'} ${mark.label}`;
+          const halfWidth = directionalLabel.length * 2.8;
+          label.setAttribute('x', String(Math.max(halfWidth + 4, Math.min(rightEdge - halfWidth - 4, x))));
+          label.setAttribute('y', String(Math.max(12, Math.min(host.clientHeight - 8, y + 12))));
+          label.setAttribute('text-anchor', 'middle');
+          label.setAttribute('fill', color);
+          label.setAttribute('stroke', 'white');
+          label.setAttribute('stroke-width', '3');
+          label.setAttribute('paint-order', 'stroke');
+          label.setAttribute('font-size', '9');
+          label.setAttribute('font-weight', '800');
+          label.textContent = directionalLabel;
+          const title = document.createElementNS(namespace, 'title');
+          title.textContent = `FIB aligned · Far from current 15m price ${formatPrice(mark.referencePrice)}. Entry still requires 15m confirmation and fill.`;
+          label.appendChild(title);
+          svg.appendChild(label);
+        };
         for (const trendline of autoTrendlines) {
           const trendlineId = `${marketSymbol}:${granularity}:${displayCandles[trendline.firstIndex].time}:${displayCandles[trendline.secondIndex].time}:${trendline.firstPrice.toFixed(6)}:${trendline.slope.toFixed(9)}`;
           const shortened = shortenedTrendlineIds.has(trendlineId);
           const currentLinePrice = trendline.firstPrice
             + trendline.slope * (displayCandles.length - 1 - trendline.firstIndex);
-          if (!showAllTrendlinesRef.current
+          const setupMark = preEntryTrendlineMarkMap.get(`${granularity}:${trendline.kind}:${displayCandles[trendline.firstIndex].time}:${displayCandles[trendline.secondIndex].time}`);
+          if (!showAllTrendlinesRef.current && !setupMark
             && Math.abs(currentLinePrice - livePrice) > 400 * marketConfig.pipSize) continue;
           const drawnEndIndex = shortened ? trendline.secondIndex : endIndex;
           const endPrice = trendline.firstPrice + trendline.slope * (drawnEndIndex - trendline.firstIndex);
@@ -5654,10 +5760,10 @@ export const OandaProChart: React.FC<{
           const y2 = series.priceToCoordinate(endPrice);
           if (x1 === null || x2 === null || y1 === null || y2 === null
             || (!shortened && x2 <= 0) || x1 >= rightEdge) continue;
-          const color = trendline.direction === 'up'
-            ? trendline.kind === 'breakout' ? '#dc2626' : '#089981'
-            : trendline.kind === 'breakout' ? '#089981' : '#dc2626';
-          const labelText = trendline.kind === 'breakout' ? 'Breakout Trendline' : 'Continuation Trendline';
+          const supportsBuy = trendlineSupportsBuy(trendline);
+          const color = supportsBuy ? '#089981' : '#dc2626';
+          const baseLabel = `${supportsBuy ? '↑' : '↓'} ${trendline.kind === 'breakout' ? 'Breakout' : 'Continuation'} Trendline`;
+          const labelText = setupMark ? `${baseLabel} · ${setupMark.label}` : baseLabel;
           const labelWidth = labelText.length * 5.2 + 12;
           const visibleStartX = Math.max(0, x1);
           const visibleEndX = Math.min(rightEdge, x2);
@@ -5674,7 +5780,7 @@ export const OandaProChart: React.FC<{
             line.setAttribute('x2', String(x1 + (x2 - x1) * end));
             line.setAttribute('y2', String(y1 + (y2 - y1) * end));
             line.setAttribute('stroke', color);
-            line.setAttribute('stroke-width', '1.7');
+            line.setAttribute('stroke-width', setupMark ? '3' : '1.7');
             line.setAttribute('stroke-opacity', shortened ? '0.55' : '0.7');
             if (trendline.kind === 'breakout') line.setAttribute('stroke-dasharray', '6 3');
             svg.appendChild(line);
@@ -5720,9 +5826,15 @@ export const OandaProChart: React.FC<{
             label.setAttribute('font-size', '9');
             label.setAttribute('font-weight', '700');
             label.textContent = labelText;
+            if (setupMark) {
+              const title = document.createElementNS(namespace, 'title');
+              title.textContent = `FIB aligned · Far from current 15m price ${formatPrice(setupMark.referencePrice)}. Entry still requires 15m confirmation and fill.`;
+              label.appendChild(title);
+            }
             svg.appendChild(label);
           }
 
+          if (setupMark && !showInlineLabel) appendSetupLabel(setupMark, labelX, labelY, color);
           const toggle = document.createElement('button');
           toggle.type = 'button';
           toggle.textContent = shortened ? '✓' : '×';
@@ -5776,8 +5888,12 @@ export const OandaProChart: React.FC<{
           const y2 = series.priceToCoordinate(endPrice);
           if (x1 === null || x2 === null || y1 === null || y2 === null || x2 <= 0 || x1 >= rightEdge
             || (y1 < 0 && y2 < 0) || (y1 > host.clientHeight && y2 > host.clientHeight)) continue;
-          const labelText = `${GRANULARITY_LABELS[timeframe].toUpperCase()} ${line.kind === 'breakout'
+          const setupMark = preEntryTrendlineMarkMap.get(`${timeframe}:${line.kind}:${sourceCandles[line.firstIndex].time}:${sourceCandles[line.secondIndex].time}`);
+          const supportsBuy = trendlineSupportsBuy(line);
+          const color = supportsBuy ? '#089981' : '#dc2626';
+          const baseLabel = `${supportsBuy ? '↑' : '↓'} ${GRANULARITY_LABELS[timeframe].toUpperCase()} ${line.kind === 'breakout'
             ? 'Breakout' : 'Continuation'} Trendline`;
+          const labelText = setupMark ? `${baseLabel} · ${setupMark.label}` : baseLabel;
           const labelWidth = labelText.length * 4.5 + 12;
           let visibleStartX = Math.max(0, x1);
           let visibleEndX = Math.min(rightEdge, x2);
@@ -5799,8 +5915,8 @@ export const OandaProChart: React.FC<{
             segment.setAttribute('y1', String(y1 + (y2 - y1) * start));
             segment.setAttribute('x2', String(x1 + (x2 - x1) * end));
             segment.setAttribute('y2', String(y1 + (y2 - y1) * end));
-            segment.setAttribute('stroke', '#64748b');
-            segment.setAttribute('stroke-width', '1.2');
+            segment.setAttribute('stroke', color);
+            segment.setAttribute('stroke-width', setupMark ? '2.7' : '1.2');
             segment.setAttribute('stroke-opacity', '0.45');
             segment.setAttribute('stroke-dasharray', '5 4');
             svg.appendChild(segment);
@@ -5816,13 +5932,19 @@ export const OandaProChart: React.FC<{
             label.setAttribute('text-anchor', 'middle');
             label.setAttribute('dominant-baseline', 'middle');
             label.setAttribute('transform', `rotate(${Math.atan2(y2 - y1, x2 - x1) * 180 / Math.PI} ${labelX} ${labelY})`);
-            label.setAttribute('fill', '#64748b');
+            label.setAttribute('fill', color);
             label.setAttribute('fill-opacity', '0.8');
             label.setAttribute('font-size', '8');
             label.textContent = labelText;
+            if (setupMark) {
+              const title = document.createElementNS(namespace, 'title');
+              title.textContent = `FIB aligned · Far from current 15m price ${formatPrice(setupMark.referencePrice)}. Entry still requires 15m confirmation and fill.`;
+              label.appendChild(title);
+            }
             svg.appendChild(label);
           } else appendFadedSegment(0, 1);
 
+          if (setupMark && !showInlineLabel) appendSetupLabel(setupMark, labelX, labelY, color);
           const close = document.createElement('button');
           close.type = 'button';
           close.textContent = '×';
@@ -6227,9 +6349,7 @@ export const OandaProChart: React.FC<{
         const { trade } = overlay;
         if (hasTradeDrawingExpired(trade)) continue;
         if (isSlTpTradeDisplayFinished(trade)) {
-          const exitCandle = displayCandles.find(candle => trade.resolvedAt !== undefined
-            && trade.resolvedAt >= candle.time
-            && trade.resolvedAt < marketCandleCloseTime(candle.time, granularity));
+          const exitCandle = trade.resolvedAt === undefined ? undefined : candleContainingTime(trade.resolvedAt);
           const exitX = exitCandle ? chart.timeScale().timeToCoordinate(exitCandle.time as UTCTimestamp) : null;
           const exitY = series.priceToCoordinate(trade.result === 'tp' || trade.status === 'tp-hit'
             ? trade.takeProfit : trade.stopLoss);
@@ -6249,10 +6369,8 @@ export const OandaProChart: React.FC<{
         const completedReplayReference = isCompletedTrade(trade);
         const drawingKey = `${marketSymbol}:${tradeOverlayEntryEventKey(trade.signal)}:${tradeOverlayExecutionKey(trade)}`;
         if (completedReplayReference && hiddenCompletedTradeDrawings.has(drawingKey)) continue;
-        const anchor = displayCandles.find((candle) => (
-          trade.calculatedAt >= candle.time
-          && trade.calculatedAt < marketCandleCloseTime(candle.time, granularity)
-        )) ?? displayCandles.find((candle) => candle.time >= trade.calculatedAt);
+        const anchor = candleContainingTime(trade.calculatedAt)
+          ?? displayCandles[candleIndexAtOrAfter(trade.calculatedAt)];
         if (!anchor) continue;
         const rawLeft = chart.timeScale().timeToCoordinate(anchor.time as UTCTimestamp);
         const entryY = series.priceToCoordinate(trade.entry);
@@ -6263,10 +6381,7 @@ export const OandaProChart: React.FC<{
         const resolutionTime = completedReplayReference ? trade.resolvedAt : undefined;
         const latestTradeCandle = resolutionTime === undefined
           ? displayCandles[displayCandles.length - 1]
-          : displayCandles.find((candle) => (
-            resolutionTime >= candle.time
-            && resolutionTime < marketCandleCloseTime(candle.time, granularity)
-          )) ?? displayCandles[displayCandles.length - 1];
+          : candleContainingTime(resolutionTime) ?? displayCandles[displayCandles.length - 1];
         const latestCandleX = latestTradeCandle
           ? chart.timeScale().timeToCoordinate(latestTradeCandle.time as UTCTimestamp)
           : null;
@@ -6377,7 +6492,7 @@ export const OandaProChart: React.FC<{
     // Swap the complete overlay in one operation so the browser does not
     // perform layout work for every individual zone, line, and label.
     layer.replaceChildren(fragment);
-  }, [autoTrendlines, hasTradeDrawingExpired, zoneLengthModes, hiddenCompletedTradeDrawings, hiddenHtfTrendlineIds, nearbyHtfTrendlines, shortenedTrendlineIds, comparisonTimeframe, directZoneTrades, displayCandles, extremeAPlusTjl2Selection, granularity, latestCandle?.time, ltfChochContext, marketConfig.pipSize, marketSymbol, mtfRows, mtfDrawingZones, oneMinuteScalpingZones, overlayCandlesByTime, repeatedLtfChochLabels, replayIndex, scalpingEnabled, tableTimeframeData, visibleComparisonZones, zoneDrawingEndIndices, zoneTableRows]);
+  }, [autoTrendlines, hasTradeDrawingExpired, zoneLengthModes, hiddenCompletedTradeDrawings, hiddenHtfTrendlineIds, nearbyHtfTrendlines, shortenedTrendlineIds, comparisonTimeframe, directZoneTrades, displayCandles, extremeAPlusTjl2Selection, granularity, latestCandle?.time, ltfChochContext, marketConfig.pipSize, marketSymbol, mtfRows, mtfDrawingZones, oneMinuteScalpingZones, overlayCandlesByTime, preEntryTrendlineMarkMap, repeatedLtfChochLabels, replayIndex, scalpingEnabled, tableTimeframeData, visibleComparisonZones, zoneDrawingEndIndices, zoneTableRows]);
 
   redrawZonesRef.current = redrawZones;
 
@@ -6953,11 +7068,6 @@ export const OandaProChart: React.FC<{
       value: candle.volume,
       color: candle.close >= candle.open ? 'rgba(8, 153, 129, 0.3)' : 'rgba(242, 54, 69, 0.3)',
     })));
-    markersRef.current?.setMarkers([
-      ...(showStructure ? structure.markers : []),
-      ...(showInternal ? structure.internalMarkers : []),
-      ...(showEntryArrows ? entryMarkers : []),
-    ].sort((a: any, b: any) => Number(a.time) - Number(b.time)));
     if (displayCandles.length === 0) {
       scheduleOverlayRedraw();
       scheduleDrawingRedraw();
@@ -6985,7 +7095,16 @@ export const OandaProChart: React.FC<{
     pendingMarketSymbolFitRef.current = false;
     scheduleOverlayRedraw();
     scheduleDrawingRedraw();
-  }, [displayCandles, entryMarkers, granularity, replayIndex, restorePresentChartView, scheduleDrawingRedraw, scheduleOverlayRedraw, showEntryArrows, showInternal, showIss, showStructure, structure.internalMarkers, structure.issMarkers, structure.markers]);
+  }, [displayCandles, granularity, replayIndex, restorePresentChartView, scheduleDrawingRedraw, scheduleOverlayRedraw]);
+
+  // Marker/filter changes do not replace the entire candle and volume history.
+  useEffect(() => {
+    markersRef.current?.setMarkers([
+      ...(showStructure ? structure.markers : []),
+      ...(showInternal ? structure.internalMarkers : []),
+      ...(showEntryArrows ? entryMarkers : []),
+    ].sort((a: any, b: any) => Number(a.time) - Number(b.time)));
+  }, [entryMarkers, showEntryArrows, showInternal, showStructure, structure.internalMarkers, structure.markers]);
 
   useEffect(() => {
     const label = livePriceLabelRef.current;
@@ -9743,6 +9862,7 @@ export const OandaProChart: React.FC<{
                         </td>
                         <td className={`whitespace-nowrap px-2 py-1 text-right font-black ${trade.status === 'sl-hit' ? 'text-rose-700' : 'text-emerald-700'}`}>
                           {zoneTableCompletedStatus(trade) ?? <TradeStatusText trade={trade} />}
+                          {bestTrendlineBadge(trade)}
                         </td>
                       </tr>
                       <TradeDetailsRow trade={trade} colSpan={5} />
@@ -9866,6 +9986,7 @@ export const OandaProChart: React.FC<{
                                : marketSymbol === 'XAUUSD' && (displayedTapCount(zone) ?? 0) > 1
                                  ? `${zone.lastTapBarsAgo ?? zone.tapBarsAgo} bars · TAP ${displayedTapCount(zone)} · NO NEW ENTRY`
                                : `${zone.lastTapBarsAgo ?? zone.tapBarsAgo} bars · ${confirmationLabel} CONFIRMED · TRADE`}
+                        {!outsideTimePreview && bestTrendlineBadge(displayedTrade)}
                       </td>
                     </tr>
                     {displayedTrade
@@ -10102,6 +10223,9 @@ export const OandaProChart: React.FC<{
                                 : 'TRADE'}
                         </span>
                       </>}
+                      {!outsideTimePreview && !historicalEntry?.tradingTimeBlocked
+                        && (!repeatedTap || completedStatus) && !extremeAPlusBlocked
+                        && bestTrendlineBadge(engulfingTrade)}
                     </td>
                   </tr>
                   {engulfingTrade && !historicalTrade
@@ -10148,6 +10272,7 @@ export const OandaProChart: React.FC<{
                           {completedStatus ?? <>{zone.tapBarsAgo} bars · {mt5Signal
                             ? mt5SignalStatusLabel(mt5Signal)
                             : <TradeStatusText trade={trade} />}</>}
+                          {bestTrendlineBadge(trade)}
                         </td>
                       </tr>
                       <TradeDetailsRow trade={trade} colSpan={5} mt5Signal={mt5Signal} />

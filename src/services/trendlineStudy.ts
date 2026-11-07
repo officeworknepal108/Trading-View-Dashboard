@@ -336,6 +336,86 @@ export function studyRecordDistanceBand(record: TrendlineStudyRecord): StudyDist
   return studyDistanceBand(distances.length ? Math.min(...distances) : undefined);
 }
 
+function trendlineSetupRank(line: StudySupport, group: 'best' | 'second'): 1 | 2 | 3 | undefined {
+  return line.distance?.band !== 'Far' ? undefined
+    : group === 'second' ? line.kind !== 'continuation' ? undefined
+      : line.timeframe === 'W' ? 1 : line.timeframe === 'D' ? 2 : line.timeframe === 'H4' ? 3 : undefined
+    : line.timeframe === 'H1' && line.kind === 'continuation' ? 1
+      : line.timeframe === 'M30' && line.kind === 'breakout' ? 2
+        : line.timeframe === 'M15' && line.kind === 'continuation' ? 3 : undefined;
+}
+
+/** User-selected Gold study setups, classified by the nearest supporting line. */
+export function bestTrendlineSetupRank(entry: Pick<EntryArrowStudyEntry, 'trade' | 'fib' | 'tradingTimeBlocked'>,
+  support: readonly StudySupport[], cutoff: number, group: 'best' | 'second' = 'best'): 1 | 2 | 3 | undefined {
+  const { trade } = entry;
+  if (trade.signal.timeframe !== 'M15' || entry.tradingTimeBlocked
+    || !entry.fib.trim() || /^(not recorded|no fib|none)$/i.test(entry.fib.trim())
+    || trade.status === 'pending' || trade.filledAt === undefined
+    || trade.filledAt > cutoff || studyCloseTime(trade.signal.time, 'M15') > cutoff) return undefined;
+  const measured = support.filter(line => line.distance && Number.isFinite(line.distance.pips)
+    && line.distance.pips >= 0);
+  if (!measured.length) return undefined;
+  const nearestPips = Math.min(...measured.map(line => line.distance!.pips));
+  const nearest = measured.filter(line => Math.abs(line.distance!.pips - nearestPips) < 1e-9);
+  const rank = (line: StudySupport) => trendlineSetupRank(line, group);
+  const selected = rank(nearest[0]);
+  return selected && nearest.every(line => rank(line) === selected) ? selected : undefined;
+}
+
+export interface PreEntryTrendlineMark {
+  support: StudySupport;
+  label: string;
+  referencePrice: number;
+}
+
+/** Before confirmation, distance uses the current M15 price inside an eligible FIB zone.
+ * This does not create a trade or change the confirmed-entry badge requirements. */
+export function preEntryTrendlineMarks(input: {
+  zones: Array<{ zone: StructureZone; timeframe: TradeTimeframe }>;
+  candles: Partial<Record<StudyTimeframe, StructureCandle[]>>;
+  at: number;
+  price: number;
+  pipSize: number;
+}): PreEntryTrendlineMark[] {
+  const { zones, candles, at, price, pipSize } = input;
+  if (!Number.isFinite(at) || !Number.isFinite(price) || !Number.isFinite(pipSize) || pipSize <= 0) return [];
+  const atr = studyEntryAtr(candles.M15 ?? [], 'M15', at);
+  if (atr === undefined) return [];
+  const current = (candles.M15 ?? []).filter(c => c.time <= at).at(-1);
+  if (!current || at > studyCloseTime(current.time, 'M15')) return [];
+  const marks = new Map<string, PreEntryTrendlineMark>();
+  const cache = new Map<string, AutoTrendline[]>();
+  for (const { zone, timeframe } of zones) {
+    if (!isZoneEligibleForEngulfingEntry(zone) || zone.startTime > at
+      || zone.tapTime === undefined || zone.tapTime > at
+      || price < zone.bottom || price > zone.top
+      || !studyFibSources(zone, [current]).some(source => source !== 'Structure DB/DT')) continue;
+    const support = collectStudySupport(candles, timeframe, zone.isBuy, at, pipSize, cache)
+      .map(line => {
+        const linePrice = studySupportPriceAt(line, candles[line.timeframe] ?? [], at);
+        if (linePrice === undefined) return line;
+        const gap = Math.abs(price - linePrice);
+        return { ...line, distance: { linePrice, pips: gap / pipSize,
+          atrRatio: gap / atr, band: studyDistanceBand(gap / atr) } };
+      });
+    // An unmeasurable supporting line could be the nearest; do not guess.
+    if (!support.length || support.some(line => !line.distance)) continue;
+    const nearestPips = Math.min(...support.map(line => line.distance!.pips));
+    const nearest = support.filter(line => Math.abs(line.distance!.pips - nearestPips) < 1e-9);
+    for (const group of ['best', 'second'] as const) {
+      const rank = trendlineSetupRank(nearest[0], group);
+      if (!rank || !nearest.every(line => trendlineSetupRank(line, group) === rank)) continue;
+      for (const line of nearest) {
+        const key = `${line.timeframe}:${line.kind}:${line.firstTime}:${line.secondTime}`;
+        marks.set(key, { support: line, label: `${group === 'best' ? '★ BEST TL' : '☆ 2nd BEST TL'} #${rank}`,
+          referencePrice: price });
+      }
+    }
+  }
+  return [...marks.values()];
+}
+
 export function filterStudyDistance(records: TrendlineStudyRecord[], band: StudyDistanceBand | 'All'): TrendlineStudyRecord[] {
   return band === 'All' ? records : records.filter(record => studyRecordDistanceBand(record) === band);
 }
