@@ -36,6 +36,15 @@ const SUPPORT: Record<StudyTimeframe, StudyTimeframe[]> = {
   H1: ['H4', 'D'], H4: ['D', 'W'], D: ['W', 'MO'], W: ['MO'], MO: [],
 };
 export type StudyOutcome = 'pending' | 'active' | 'tp' | 'sl' | 'rf' | 'ambiguous' | 'cancelled';
+export type StudyDistanceBand = 'Near' | 'Medium' | 'Far' | 'Unknown' | 'No trendline';
+export const STUDY_DISTANCE_BANDS: StudyDistanceBand[] = ['Near', 'Medium', 'Far', 'Unknown', 'No trendline'];
+export interface StudyDistanceContext {
+  timeframe: TradeTimeframe;
+  measuredAt?: number;
+  atrPips?: number;
+  nearPips?: number;
+  mediumPips?: number;
+}
 export interface StudySupport {
   timeframe: StudyTimeframe;
   kind: AutoTrendline['kind'];
@@ -43,6 +52,8 @@ export interface StudySupport {
   firstTime: number;
   secondTime: number;
   confirmedAt: number;
+  geometry?: { time: number; price: number; slope: number };
+  distance?: { linePrice: number; pips: number; atrRatio?: number; band: StudyDistanceBand };
 }
 export type StudyTrendlineType = 'all' | StudySupport['kind'];
 export interface TrendlineStudyRecord {
@@ -52,7 +63,7 @@ export interface TrendlineStudyRecord {
   zoneName: string;
   zoneTimeframe: TradeTimeframe;
   signal: EngulfingTradeSignal;
-  fibGroup: 'With FIB' | 'No FIB' | 'FIB only';
+  fibGroup: 'With FIB' | 'No FIB' | 'FIB only' | 'No recorded support';
   fibSources: string[];
   support: StudySupport[];
   style: 'INTRADAY' | 'SCALPING';
@@ -61,6 +72,65 @@ export interface TrendlineStudyRecord {
   filledAt?: number;
   resolvedAt?: number;
   returnR?: number;
+  distanceContext?: StudyDistanceContext;
+  arrowDetails?: { source: string; mainZone: string; entryZone: string; fib: string; style: string;
+    tradingTimeBlocked: boolean; unavailable: StudyTimeframe[] };
+}
+export interface EntryArrowStudyEntry {
+  id: string;
+  trade: TradeLevels;
+  zoneTimeframe: TradeTimeframe;
+  mainZone: string;
+  entryZone: string;
+  source: string;
+  fib: string;
+  style: string;
+  tradingTimeBlocked: boolean;
+}
+export interface EntryArrowStudyInput {
+  kind: 'entry-arrows';
+  symbol: string;
+  pipSize: number;
+  cutoff: number;
+  candles: Partial<Record<StudyTimeframe, StructureCandle[]>>;
+  entries: EntryArrowStudyEntry[];
+}
+
+/** Study the arrow's recorded levels and outcome without running a new simulation. */
+export function runEntryArrowStudy(input: EntryArrowStudyInput,
+  progress: (done: number, total: number) => void = () => undefined): TrendlineStudyResult {
+  const records: TrendlineStudyRecord[] = [];
+  const cache = new Map<string, AutoTrendline[]>();
+  const seen = new Set<string>();
+  for (const [index, entry] of input.entries.entries()) {
+    progress(index + 1, input.entries.length);
+    if (seen.has(entry.id)) continue;
+    seen.add(entry.id);
+    const { trade } = entry;
+    const confirmedAt = studyCloseTime(trade.signal.time, trade.signal.timeframe);
+    if (confirmedAt > input.cutoff || (trade.filledAt ?? confirmedAt) > input.cutoff) continue;
+    const support = collectStudySupport(input.candles, entry.zoneTimeframe,
+      trade.signal.direction === 'bullish', confirmedAt, input.pipSize, cache);
+    const unavailable = studyTimeframes(entry.zoneTimeframe).filter(tf => (
+      studyClosedCandles(input.candles[tf] ?? [], tf, confirmedAt).length < 9
+    ));
+    const fibSources = entry.fib && !/^(not recorded|no fib|none)$/i.test(entry.fib.trim()) ? [entry.fib] : [];
+    // RF status can describe a still-open position. Only a final result closes it.
+    const outcome: StudyOutcome = trade.result ?? (trade.status === 'tp-hit' ? 'tp'
+      : trade.status === 'sl-hit' ? 'sl' : trade.status === 'pending' ? 'pending' : 'active');
+    records.push({ id: entry.id, symbol: input.symbol, zoneId: entry.id,
+      zoneName: entry.mainZone, zoneTimeframe: entry.zoneTimeframe,
+      signal: { ...trade.signal }, levels: { ...trade, signal: { ...trade.signal } },
+      style: entry.style === 'SCALPING' ? 'SCALPING' : 'INTRADAY',
+      fibGroup: studyComparisonGroup(fibSources, support) ?? 'No recorded support', fibSources, support,
+      outcome, filledAt: trade.filledAt, resolvedAt: trade.resolvedAt,
+      returnR: outcome === 'tp' ? trade.rewardRisk : outcome === 'sl' ? -1 : outcome === 'rf' ? 0 : undefined,
+      arrowDetails: { source: entry.source, mainZone: entry.mainZone, entryZone: entry.entryZone,
+        fib: entry.fib, style: entry.style, tradingTimeBlocked: entry.tradingTimeBlocked, unavailable } });
+  }
+  return { records: records.map(record => measureStudyRecordDistance(record, input.candles, input.pipSize)), scanned: input.entries.length,
+    from: records.length ? Math.min(...records.map(r => r.signal.time)) : undefined,
+    to: input.cutoff, missingTimeframes: [...new Set(records.flatMap(r => r.arrowDetails!.unavailable))] };
 }
 export interface TrendlineStudyInput {
   symbol: string;
@@ -112,10 +182,16 @@ export function readStudySnapshot(raw: string | null, symbol: string): StudySnap
           .every(key => finite(r.levels[key])) || typeof r.levels.pendingAtCreation !== 'boolean'
         || !['pending', 'active', 'tp', 'sl', 'rf', 'ambiguous', 'cancelled'].includes(r.outcome)
         || !optionalTime(r.returnR) || !optionalTime(r.filledAt) || !optionalTime(r.resolvedAt)
+        || (r.distanceContext !== undefined && (!r.distanceContext || !tf(r.distanceContext.timeframe)
+          || !['measuredAt', 'atrPips', 'nearPips', 'mediumPips'].every(key => optionalTime(r.distanceContext[key]))))
         || !Array.isArray(r.support) || studyComparisonGroup(r.fibSources, r.support) !== r.fibGroup
         || !r.support.every((s: StudySupport) => s
           && tf(s.timeframe) && ['green', 'red'].includes(s.color) && ['continuation', 'breakout'].includes(s.kind)
-          && finite(s.firstTime) && finite(s.secondTime) && finite(s.confirmedAt))) return undefined;
+          && finite(s.firstTime) && finite(s.secondTime) && finite(s.confirmedAt)
+          && (s.geometry === undefined || s.geometry && finite(s.geometry.time) && finite(s.geometry.price) && finite(s.geometry.slope))
+          && (s.distance === undefined || s.distance && finite(s.distance.linePrice) && finite(s.distance.pips)
+            && s.distance.pips >= 0 && optionalTime(s.distance.atrRatio)
+            && s.distance.band === studyDistanceBand(s.distance.atrRatio)))) return undefined;
     }
     return saved;
   } catch { return undefined; }
@@ -186,10 +262,106 @@ export function collectStudySupport(candles: Partial<Record<StudyTimeframe, Stru
     for (const line of lines.filter(l => trendlineSupportsBuy(l) === isBuy)) {
       support.push({ timeframe: tf, kind: line.kind, color: isBuy ? 'green' : 'red',
         firstTime: history[line.firstIndex].time, secondTime: history[line.secondIndex].time,
-        confirmedAt: studyCloseTime(history[line.thirdTouchIndex!].time, tf) });
+        confirmedAt: studyCloseTime(history[line.thirdTouchIndex!].time, tf),
+        geometry: { time: history.at(-1)!.time, slope: line.slope,
+          price: line.firstPrice + line.slope * (history.length - 1 - line.firstIndex) } });
     }
   }
   return support;
+}
+
+/** Wilder ATR(14), using only candles closed at the measurement time. */
+export function studyEntryAtr(candles: StructureCandle[], timeframe: TradeTimeframe, at: number): number | undefined {
+  const closed = studyClosedCandles(candles, timeframe, at);
+  if (closed.length < 15) return undefined;
+  let atr = 0;
+  for (let i = 1; i < closed.length; i++) {
+    const c = closed[i];
+    const tr = Math.max(c.high - c.low, Math.abs(c.high - closed[i - 1].close), Math.abs(c.low - closed[i - 1].close));
+    if (!Number.isFinite(tr) || tr < 0) return undefined;
+    atr = i <= 14 ? atr + tr : (atr * 13 + tr) / 14;
+    if (i === 14) atr /= 14;
+  }
+  return atr > 0 && Number.isFinite(atr) ? atr : undefined;
+}
+
+export function studyDistanceBand(atrRatio: number | undefined): StudyDistanceBand {
+  return atrRatio === undefined || !Number.isFinite(atrRatio) || atrRatio < 0 ? 'Unknown'
+    : atrRatio <= .25 + 1e-12 ? 'Near' : atrRatio <= .5 + 1e-12 ? 'Medium' : 'Far';
+}
+
+/** Project the line frozen at confirmation to entry time in actual candle steps.
+ * Only timestamps after confirmation are used; gaps do not become phantom bars. */
+export function studySupportPriceAt(support: StudySupport, candles: StructureCandle[], at: number): number | undefined {
+  const base = support.geometry;
+  if (!base || at < base.time || at < support.confirmedAt) return undefined;
+  const bars = candles.filter(c => c.time >= base.time && c.time <= at);
+  const last = bars.at(-1);
+  if (bars[0]?.time !== base.time || !last || at > studyCloseTime(last.time, support.timeframe)) return undefined;
+  const fraction = (at - last.time) / (studyCloseTime(last.time, support.timeframe) - last.time);
+  const price = base.price + base.slope * (bars.length - 1 + fraction);
+  return Number.isFinite(price) ? price : undefined;
+}
+
+export function measureStudySupportDistance(support: StudySupport[],
+  candles: Partial<Record<StudyTimeframe, StructureCandle[]>>, trade: TradeLevels, pipSize: number,
+  filledAt = trade.filledAt): { support: StudySupport[]; distanceContext: StudyDistanceContext } {
+  const at = filledAt ?? (trade.pendingAtCreation ? undefined
+    : Math.max(trade.calculatedAt, studyCloseTime(trade.signal.time, trade.signal.timeframe)));
+  const atr = at === undefined ? undefined : studyEntryAtr(candles[trade.signal.timeframe] ?? [], trade.signal.timeframe, at);
+  const validPip = Number.isFinite(pipSize) && pipSize > 0;
+  const atrPips = validPip && atr !== undefined ? atr / pipSize : undefined;
+  return { distanceContext: { timeframe: trade.signal.timeframe, measuredAt: at, atrPips,
+    nearPips: atrPips === undefined ? undefined : atrPips * .25,
+    mediumPips: atrPips === undefined ? undefined : atrPips * .5 },
+    support: support.map(line => {
+      const { distance: _previous, ...original } = line;
+      const linePrice = at === undefined ? undefined : studySupportPriceAt(line, candles[line.timeframe] ?? [], at);
+      if (linePrice === undefined || !validPip) return original;
+      const pips = Math.abs(trade.entry - linePrice) / pipSize;
+      const atrRatio = atrPips === undefined ? undefined : pips / atrPips;
+      return { ...original, distance: { linePrice, pips, atrRatio, band: studyDistanceBand(atrRatio) } };
+    }) };
+}
+
+function measureStudyRecordDistance(record: TrendlineStudyRecord,
+  candles: Partial<Record<StudyTimeframe, StructureCandle[]>>, pipSize: number): TrendlineStudyRecord {
+  return { ...record, ...measureStudySupportDistance(record.support, candles, record.levels, pipSize, record.filledAt) };
+}
+
+/** Nearest measured supporting line; one trade contributes once to the summary. */
+export function studyRecordDistanceBand(record: TrendlineStudyRecord): StudyDistanceBand {
+  if (!record.support.length) return 'No trendline';
+  const distances = record.support.flatMap(line => line.distance?.atrRatio === undefined ? [] : [line.distance.atrRatio]);
+  return studyDistanceBand(distances.length ? Math.min(...distances) : undefined);
+}
+
+export function filterStudyDistance(records: TrendlineStudyRecord[], band: StudyDistanceBand | 'All'): TrendlineStudyRecord[] {
+  return band === 'All' ? records : records.filter(record => studyRecordDistanceBand(record) === band);
+}
+
+export function studyDistanceBreakdown(records: TrendlineStudyRecord[], byTimeframe = false) {
+  const buckets = new Map<string, { key: string; band: StudyDistanceBand; timeframe?: StudyTimeframe;
+    kind?: StudySupport['kind']; records: Map<string, TrendlineStudyRecord> }>();
+  for (const record of records) {
+    const pairs: Array<{ timeframe?: StudyTimeframe; kind?: StudySupport['kind'] }> = byTimeframe ? [...new Map(record.support.map(line => [
+      `${line.timeframe}:${line.kind}`, { timeframe: line.timeframe, kind: line.kind },
+    ])).values()] : [{}];
+    if (!pairs.length) pairs.push({});
+    for (const pair of pairs) {
+      const subset = pair.timeframe ? record.support.filter(line => line.timeframe === pair.timeframe && line.kind === pair.kind) : record.support;
+      const band = studyRecordDistanceBand({ ...record, support: subset });
+      const key = `${pair.timeframe ? `${pair.timeframe}:${pair.kind}` : 'all'}:${band}`;
+      let bucket = buckets.get(key);
+      if (!bucket) { bucket = { key, band, ...pair, records: new Map() }; buckets.set(key, bucket); }
+      bucket.records.set(record.id, record);
+    }
+  }
+  return [...buckets.values()].map(({ records: trades, ...row }) => ({ ...row,
+    recordIds: [...trades.keys()], stats: studyAccuracy([...trades.values()]) })).sort((a, b) => (
+    (a.timeframe ? STUDY_SECONDS[a.timeframe] : 0) - (b.timeframe ? STUDY_SECONDS[b.timeframe] : 0)
+    || (a.kind ?? '').localeCompare(b.kind ?? '') || STUDY_DISTANCE_BANDS.indexOf(a.band) - STUDY_DISTANCE_BANDS.indexOf(b.band)
+  ));
 }
 
 export function studyFibSources(zone: StructureZone, pattern: StructureCandle[]): string[] {
@@ -312,7 +484,7 @@ export function studyTrendlineBreakdown(records: TrendlineStudyRecord[]): StudyT
   for (const record of records) {
     const matches: Array<{ timeframe?: StudyTimeframe; kind?: StudySupport['kind'] }> = record.support.length
       ? record.support.map(({ timeframe, kind }) => ({ timeframe, kind }))
-      : record.fibGroup === 'FIB only' ? [{}] : [];
+      : record.fibGroup === 'FIB only' || record.fibGroup === 'No recorded support' ? [{}] : [];
     for (const match of matches) {
       const key = `${match.timeframe ?? 'none'}:${match.kind ?? 'none'}:${record.fibGroup}`;
       let bucket = buckets.get(key);
@@ -323,7 +495,7 @@ export function studyTrendlineBreakdown(records: TrendlineStudyRecord[]): StudyT
       bucket.records.set(record.id, record);
     }
   }
-  const groups = ['With FIB', 'No FIB', 'FIB only'];
+  const groups = ['With FIB', 'No FIB', 'FIB only', 'No recorded support'];
   return [...buckets.values()].sort((a, b) => (
     (a.timeframe ? STUDY_SECONDS[a.timeframe] : Infinity) - (b.timeframe ? STUDY_SECONDS[b.timeframe] : Infinity)
     || (a.kind === b.kind ? 0 : a.kind === 'continuation' ? -1 : 1)
@@ -452,7 +624,7 @@ export function runTrendlineStudy(input: TrendlineStudyInput,
           }) });
     }
   }
-  return { records, scanned, from, to: cutoff,
+  return { records: records.map(record => measureStudyRecordDistance(record, all, input.pipSize)), scanned, from, to: cutoff,
     ...(input.historyWarnings?.length ? { historyWarnings: input.historyWarnings } : {}),
     missingTimeframes: studyTimeframes(zoneTimeframe).filter(tf => all[tf].length < 12) };
 }
@@ -460,13 +632,24 @@ export function runTrendlineStudy(input: TrendlineStudyInput,
 export function studyJournalCsv(records: TrendlineStudyRecord[]): string {
   const header = ['Study ID', 'Symbol', 'Zone', 'Zone TF', 'Engulfing TF', 'Engulfing type', 'Direction',
     'Signal UTC', 'FIB group', 'FIB sources', 'Trendline support', 'Style', 'Entry', 'SL', 'TP', 'RR',
-    'Outcome', 'Return R', 'Filled UTC', 'Resolved UTC'];
+    'Outcome', 'Return R', 'Filled UTC', 'Resolved UTC', 'Source', 'Main zone', 'Entry zone',
+    'Recorded FIB', 'Risk-free price', 'Risk pips', 'Arrow status', 'Confirmation UTC',
+    'Outside trading hours', 'Insufficient trendline history', 'Risk-free enabled',
+    'Nearest measured trendline distance group', 'Distance measured UTC', 'ATR timeframe', 'ATR14 pips',
+    'Near limit pips', 'Medium limit pips', 'Trendline distances'];
   const iso = (t?: number) => t === undefined ? '' : new Date(t * 1000).toISOString();
   const rows = records.map(r => [r.id, r.symbol, r.zoneName, r.zoneTimeframe, r.signal.timeframe,
     r.signal.type, r.signal.direction, iso(r.signal.time), r.fibGroup, r.fibSources.join('; '),
     r.support.length ? r.support.map(s => `${s.timeframe} ${s.color} ${s.kind} confirmed ${iso(s.confirmedAt)}`).join('; ')
       : 'No matching trendline',
-    r.style, r.levels.entry, r.levels.stopLoss, r.levels.takeProfit, r.levels.rewardRisk,
-    r.outcome, r.returnR ?? '', iso(r.filledAt), iso(r.resolvedAt)]);
+    r.arrowDetails?.style ?? r.style, r.levels.entry, r.levels.stopLoss, r.levels.takeProfit, r.levels.rewardRisk,
+    r.outcome, r.returnR ?? '', iso(r.filledAt), iso(r.resolvedAt),
+    r.arrowDetails?.source ?? 'Historical study', r.arrowDetails?.mainZone ?? r.zoneName,
+    r.arrowDetails?.entryZone ?? '', r.arrowDetails?.fib ?? r.fibSources.join('; '),
+    r.levels.riskFree, r.levels.riskPips, r.levels.status, iso(studyCloseTime(r.signal.time, r.signal.timeframe)),
+    r.arrowDetails?.tradingTimeBlocked ?? '', r.arrowDetails?.unavailable.join('; ') ?? '', r.levels.riskFreeEnabled !== false,
+    studyRecordDistanceBand(r), iso(r.distanceContext?.measuredAt), r.distanceContext?.timeframe ?? '',
+    r.distanceContext?.atrPips ?? '', r.distanceContext?.nearPips ?? '', r.distanceContext?.mediumPips ?? '',
+    r.support.map(s => `${s.timeframe} ${s.kind}: ${s.distance ? `${s.distance.pips.toFixed(2)} pips, ${s.distance.band}, line price ${s.distance.linePrice}, ATR ratio ${s.distance.atrRatio ?? 'unknown'}` : 'distance unknown'}`).join('; ')]);
   return [header, ...rows].map(row => row.map(v => `"${String(v).replaceAll('"', '""')}"`).join(',')).join('\r\n');
 }

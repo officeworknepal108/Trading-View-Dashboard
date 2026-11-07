@@ -2,11 +2,13 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { calculateTradeLevels, getDirectTradeRule, type EngulfingTradeSignal, type TradeLevels } from '../src/services/tradeLevels';
 import { type StructureCandle, type StructureZone } from '../src/services/marketStructure';
-import { collectStudySupport, evaluateStudyOutcome, readStudySnapshot, runTrendlineStudy, studyAccuracy,
+import { collectStudySupport, evaluateStudyOutcome, readStudySnapshot, runTrendlineStudy, runEntryArrowStudy, studyAccuracy,
   studyCandleRule, studyClosedCandles, studyEntryLevels, studyFibSources,
   studyJournalCsv, studyLookbackWindow, studyDateWindow, studyLocalDateStart, studyLocalDateValue,
   studyTimeframes, studyEntryTimeframes, studyComparisonGroup, studyTrendlineBreakdown, filterStudyTrendlineType, STUDY_SECONDS,
-  trendlineSupportsBuy, type TrendlineStudyRecord } from '../src/services/trendlineStudy';
+  trendlineSupportsBuy, type TrendlineStudyRecord, type EntryArrowStudyInput, type EntryArrowStudyEntry } from '../src/services/trendlineStudy';
+import { measureStudySupportDistance, studyEntryAtr, studySupportPriceAt, studyDistanceBand,
+  studyDistanceBreakdown, studyRecordDistanceBand, filterStudyDistance, type StudySupport } from '../src/services/trendlineStudy';
 
 const candle = (time: number, open = 100, high = 102, low = 99, close = 101): StructureCandle => (
   { time, open, high, low, close, complete: true }
@@ -22,6 +24,189 @@ const record = (outcome: TrendlineStudyRecord['outcome'], returnR?: number): Tre
   zoneTimeframe: 'M15', signal, levels, outcome, returnR, fibGroup: 'No FIB', fibSources: [],
   style: 'INTRADAY', support: [{ timeframe: 'H4', color: 'green', kind: 'continuation',
     firstTime: 0, secondTime: 100, confirmedAt: 200 }],
+});
+
+const arrowEntry = (id: string, trade: TradeLevels): EntryArrowStudyEntry => ({
+  id, trade, zoneTimeframe: 'M15', mainZone: 'Internal QML', entryZone: 'TJL2',
+  source: 'M1 SCALPING ENTRY', fib: 'Not recorded', style: 'SCALPING', tradingTimeBlocked: false,
+});
+const arrowInput = (entries: EntryArrowStudyEntry[]): EntryArrowStudyInput => ({
+  kind: 'entry-arrows', symbol: 'XAUUSD', pipSize: .1, cutoff: 3600,
+  candles: { M15: [candle(0, 100, 200, 0), candle(900, 100, 200, 0), candle(1800, 100, 200, 0)] }, entries,
+});
+
+test('entry-arrow study copies exact SL/TP and final results instead of resimulating ambiguous candles', () => {
+  const entries = [arrowEntry('winner', { ...levels, status: 'tp-hit', result: 'tp', resolvedAt: 2700 }),
+    arrowEntry('loser', { ...levels, status: 'sl-hit', result: 'sl', resolvedAt: 2700 }),
+    arrowEntry('closed-rf', { ...levels, status: 'risk-free', result: 'rf', resolvedAt: 2700 })];
+  const before = JSON.stringify(entries);
+  const result = runEntryArrowStudy(arrowInput(entries));
+  assert.deepEqual(result.records.map(r => [r.outcome, r.returnR]), [['tp', 2], ['sl', -1], ['rf', 0]]);
+  for (const [i, row] of result.records.entries()) {
+    assert.deepEqual(row.levels, entries[i].trade);
+    assert.equal(row.filledAt, entries[i].trade.filledAt);
+    assert.equal(row.resolvedAt, 2700);
+    assert.equal(row.arrowDetails?.entryZone, 'TJL2');
+  }
+  assert.equal(JSON.stringify(entries), before, 'must not mutate the arrow records');
+});
+
+test('entry-arrow study retains unsupported trades and distinct entries while deduplicating arrow IDs', () => {
+  const first = arrowEntry('same-zone:first', levels);
+  const second = arrowEntry('same-zone:second', { ...levels, signal: { ...signal, timeframe: 'M1', time: 1740 } });
+  const result = runEntryArrowStudy(arrowInput([first, first, second]));
+  assert.equal(result.records.length, 2);
+  assert.ok(result.records.every(r => r.fibGroup === 'No recorded support'));
+  assert.equal(result.records[1].signal.timeframe, 'M1', 'lower-timeframe scalp routes are copied');
+  assert.equal(studyAccuracy(result.records).pending, 2);
+  const rows = studyTrendlineBreakdown(result.records);
+  assert.equal(rows[0].stats.total, 2, 'unsupported entries also appear in breakdowns');
+  assert.ok(result.missingTimeframes.includes('H4'));
+});
+
+test('an open RF arrow stays open and future entries are excluded from replay snapshots', () => {
+  const entries = [arrowEntry('open-rf', { ...levels, status: 'risk-free' }),
+    arrowEntry('future-confirmation', { ...levels, signal: { ...signal, time: 3600 } }),
+    arrowEntry('future-fill', { ...levels, filledAt: 4000 })];
+  const result = runEntryArrowStudy(arrowInput(entries));
+  assert.equal(result.records.length, 1);
+  assert.equal(result.records[0].outcome, 'active');
+  assert.equal(result.records[0].levels.status, 'risk-free');
+  assert.equal(result.records[0].returnR, undefined);
+  assert.equal(studyAccuracy(result.records).completed, 0);
+});
+
+test('entry-arrow trendline evidence matches hover rules at confirmation, never future lines', () => {
+  const candles = Array.from({ length: 40 }, (_, i) => {
+    const low = 100 + i * .2 + ([5, 15, 25].includes(i) ? 0 : 6);
+    return candle(i * 14400, low + .3, low + 1, low, low + .6);
+  });
+  const confirmedAt = 40 * 14400;
+  const entry = arrowEntry('supported', { ...levels, signal: { ...signal, time: confirmedAt - 900 }, filledAt: confirmedAt });
+  const input = { ...arrowInput([entry]), cutoff: confirmedAt, candles: { H4: candles, M5: candles } };
+  const row = runEntryArrowStudy(input).records[0];
+  const hoverEvidence = collectStudySupport(input.candles, 'M15', true, confirmedAt, .1);
+  assert.deepEqual(row.support, measureStudySupportDistance(hoverEvidence, input.candles, entry.trade, .1).support);
+  assert.ok(row.support.some(s => s.timeframe === 'H4' && s.kind === 'continuation'));
+  assert.ok(row.support.every(s => s.timeframe !== 'M5' && s.confirmedAt <= confirmedAt));
+  const early = { ...entry, trade: { ...entry.trade, signal: { ...signal, time: 25 * 14400 - 900 }, filledAt: 25 * 14400 } };
+  assert.equal(runEntryArrowStudy({ ...input, entries: [early] }).records[0].support.length, 0);
+});
+
+test('entry-arrow CSV retains setup details, exact levels, status and missing-history notes', () => {
+  const entry = { ...arrowEntry('csv', { ...levels, riskFreeEnabled: false }),
+    mainZone: 'Internal "QML"', fib: 'Day FIB · deep', tradingTimeBlocked: true };
+  const row = runEntryArrowStudy(arrowInput([entry])).records[0];
+  const csv = studyJournalCsv([row]);
+  assert.match(csv, /"Internal ""QML"""/);
+  assert.match(csv, /"M1 SCALPING ENTRY"/);
+  assert.match(csv, /"Day FIB · deep"/);
+  assert.match(csv, /"100","90","120","2"/);
+  assert.match(csv, /"Risk-free enabled"/);
+  assert.match(csv, /"true"/);
+  assert.match(csv, /"false"/);
+  assert.equal(row.fibGroup, 'FIB only');
+});
+
+test('entry ATR uses Wilder smoothing and ignores unfinished and future candles', () => {
+  const bars = Array.from({ length: 16 }, (_, i) => candle(i * 900, 100, 102, 98, 100));
+  bars[15] = candle(15 * 900, 100, 104, 96, 100);
+  assert.equal(studyEntryAtr(bars, 'M15', 15 * 900), 4);
+  assert.ok(Math.abs(studyEntryAtr(bars, 'M15', 16 * 900)! - (4 * 13 + 8) / 14) < 1e-12);
+  assert.equal(studyEntryAtr(bars.slice(0, 14), 'M15', 16 * 900), undefined);
+  assert.equal(studyEntryAtr([...bars.slice(0, 15), { ...bars[15], complete: false }], 'M15', 16 * 900), 4);
+  const gap = bars.slice(0, 15).map(c => ({ ...c }));
+  gap[14] = candle(14 * 900, 110, 112, 108, 110);
+  assert.ok(Math.abs(studyEntryAtr(gap, 'M15', 15 * 900)! - (13 * 4 + 12) / 14) < 1e-12);
+});
+
+test('distance groups include exact boundaries and keep unknown measurements separate', () => {
+  assert.equal(studyDistanceBand(0), 'Near');
+  assert.equal(studyDistanceBand(.25), 'Near');
+  assert.equal(studyDistanceBand(.25001), 'Medium');
+  assert.equal(studyDistanceBand(.5), 'Medium');
+  assert.equal(studyDistanceBand(.50001), 'Far');
+  for (const value of [undefined, NaN, Infinity, -1]) assert.equal(studyDistanceBand(value), 'Unknown');
+});
+
+test('line projection uses actual bars across market gaps and freezes the original slope', () => {
+  const line: StudySupport = { ...record('tp').support[0], timeframe: 'H1', confirmedAt: 3600,
+    geometry: { time: 0, price: 100, slope: 2 } };
+  const bars = [candle(0), candle(3600), candle(3 * 86400)];
+  assert.equal(studySupportPriceAt(line, bars, 5400), 103);
+  assert.equal(studySupportPriceAt(line, bars, 3 * 86400), 104, 'weekend hours do not add phantom bars');
+  assert.equal(studySupportPriceAt(line, bars, 2 * 86400), undefined, 'uncovered periods are unknown');
+  assert.equal(studySupportPriceAt(line, bars.slice(1), 5400), undefined, 'missing reference history is unknown');
+  assert.equal(studySupportPriceAt(line, bars, 1800), undefined, 'line was not confirmed yet');
+});
+
+test('pips and distance limits use the entry timeframe ATR even for a higher-timeframe line', () => {
+  const bars = Array.from({ length: 16 }, (_, i) => candle(i * 900, 100, 102, 98, 100));
+  const line: StudySupport = { ...record('tp').support[0], geometry: { time: 0, price: 100, slope: 0 } };
+  const trade = { ...levels, signal: { ...signal, time: 14 * 900 }, calculatedAt: 15 * 900, filledAt: 15 * 900, entry: 101 };
+  const input = { M15: bars, H4: [candle(0, 100, 200, 0)] };
+  const measured = measureStudySupportDistance([line], input, trade, .1);
+  assert.equal(measured.distanceContext.timeframe, 'M15');
+  assert.equal(measured.distanceContext.atrPips, 40);
+  assert.equal(measured.distanceContext.nearPips, 10);
+  assert.equal(measured.distanceContext.mediumPips, 20);
+  assert.equal(measured.support[0].distance?.pips, 10);
+  assert.equal(measured.support[0].distance?.band, 'Near');
+  assert.equal(measureStudySupportDistance([line], input, { ...trade, entry: 101.5 }, .1).support[0].distance?.band, 'Medium');
+  assert.equal(measureStudySupportDistance([line], input, { ...trade, entry: 103 }, .1).support[0].distance?.band, 'Far');
+  const forex = measureStudySupportDistance([{ ...line, geometry: { time: 0, price: 1, slope: 0 } }], input,
+    { ...trade, entry: 1.001 }, .0001);
+  assert.ok(Math.abs(forex.support[0].distance!.pips - 10) < 1e-8);
+  assert.equal(measureStudySupportDistance([line], input, trade, 0).support[0].distance, undefined);
+});
+
+test('pending entries and missing ATR do not become near trades; fill time changes projection', () => {
+  const line: StudySupport = { ...record('tp').support[0], timeframe: 'M15', confirmedAt: 900,
+    geometry: { time: 0, price: 100, slope: 1 } };
+  const bars = [candle(0), candle(900), candle(1800), candle(2700)];
+  const trade = { ...levels, entry: 103, pendingAtCreation: true, filledAt: undefined };
+  const pending = measureStudySupportDistance([line], { M15: bars }, trade, .1);
+  assert.equal(pending.distanceContext.measuredAt, undefined);
+  assert.equal(pending.support[0].distance, undefined);
+  const filled = measureStudySupportDistance([line], { M15: bars }, trade, .1, 2700);
+  assert.equal(filled.distanceContext.measuredAt, 2700);
+  assert.equal(filled.support[0].distance?.linePrice, 103);
+  assert.equal(filled.support[0].distance?.pips, 0);
+  assert.equal(filled.support[0].distance?.band, 'Unknown', 'zero distance still needs ATR to classify');
+});
+
+test('distance statistics deduplicate trades and use nearest support within each timeframe/type', () => {
+  const measuredLine = (ratio: number, kind: StudySupport['kind'] = 'continuation'): StudySupport => ({
+    ...record('tp').support[0], kind, distance: { linePrice: 100, pips: ratio * 40, atrRatio: ratio, band: studyDistanceBand(ratio) },
+  });
+  const winner = { ...record('tp', 2), support: [measuredLine(.1), measuredLine(.7), measuredLine(.8, 'breakout')] };
+  const loser = { ...record('sl', -1), support: [measuredLine(.6)] };
+  const unknown = { ...record('active'), id: 'unknown', support: record('active').support };
+  const noLine = { ...record('rf', 0), support: [] };
+  const rows = studyDistanceBreakdown([winner, winner, loser, unknown, noLine]);
+  assert.equal(rows.find(r => r.band === 'Near')?.stats.total, 1);
+  assert.equal(rows.find(r => r.band === 'Far')?.stats.totalR, -1);
+  assert.equal(rows.find(r => r.band === 'Unknown')?.stats.completed, 0);
+  assert.equal(rows.find(r => r.band === 'No trendline')?.stats.rf, 1);
+  const detail = studyDistanceBreakdown([winner, winner, loser], true);
+  assert.equal(detail.find(r => r.kind === 'continuation' && r.band === 'Near')?.stats.tp, 1);
+  assert.equal(detail.find(r => r.kind === 'breakout' && r.band === 'Far')?.stats.tp, 1);
+  assert.equal(detail.find(r => r.kind === 'continuation' && r.band === 'Far')?.stats.sl, 1);
+  assert.deepEqual(filterStudyDistance([winner, loser], 'Near'), [winner]);
+  assert.equal(studyRecordDistanceBand(filterStudyTrendlineType([winner], 'breakout')[0]), 'Far');
+});
+
+test('distance metadata exports in pips and malformed saved distance measurements are rejected', () => {
+  const row = { ...record('tp', 2), distanceContext: { timeframe: 'M15' as const, measuredAt: 1800, atrPips: 40, nearPips: 10, mediumPips: 20 },
+    support: [{ ...record('tp').support[0], distance: { linePrice: 99, pips: 10, atrRatio: .25, band: 'Near' as const } }] };
+  const csv = studyJournalCsv([row]);
+  assert.match(csv, /"ATR14 pips"/);
+  assert.match(csv, /10.00 pips, Near/);
+  const snapshot = { version: 3, symbol: 'XAUUSD', zoneTimeframe: 'M15', lookback: 200,
+    tradingTimeEnabled: false, result: { records: [row], scanned: 1, to: 3600, missingTimeframes: [] } };
+  assert.ok(readStudySnapshot(JSON.stringify(snapshot), 'XAUUSD'));
+  row.support[0].distance.pips = -10;
+  assert.equal(readStudySnapshot(JSON.stringify(snapshot), 'XAUUSD'), undefined);
 });
 
 test('study uses trendline colors, including the reversed breakout slope', () => {

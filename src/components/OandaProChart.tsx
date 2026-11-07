@@ -1,6 +1,7 @@
 import { detectAutoTrendlines, type AutoTrendline } from '../services/autoTrendlines';
 export { detectAutoTrendlines } from '../services/autoTrendlines';
 import { TrendlineStudy } from './TrendlineStudy';
+import { collectStudySupport, measureStudySupportDistance, studyClosedCandles, studyTimeframes, type EntryArrowStudyEntry } from '../services/trendlineStudy';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { UserRole } from '../services/authTypes';
 import { userStorage } from '../services/userStorage';
@@ -4625,6 +4626,21 @@ export const OandaProChart: React.FC<{
       })?.context
     ));
   }, [chartEntryRecords, hoveredEntry?.entry.id, mt5Status?.recentSignals, savedChartMtfEntryQualification]);
+  const hoveredTrendlineSupport = useMemo(() => {
+    const entry = hoveredEntry?.entry;
+    if (!entry) return undefined;
+    const record = chartEntryRecords.find(candidate => candidate.id === entry.id);
+    const zoneTimeframe = record?.zoneTimeframe ?? entry.trade.signal.timeframe;
+    const confirmedAt = entry.trade.signal.time + TIMEFRAME_SECONDS[entry.trade.signal.timeframe];
+    const candles = { ...vipCandles, [granularity]: displayCandles };
+    const evidence = collectStudySupport(candles, zoneTimeframe,
+      entry.trade.signal.direction === 'bullish', confirmedAt, marketConfig.pipSize);
+    const { support: matches, distanceContext } = measureStudySupportDistance(evidence, candles, entry.trade, marketConfig.pipSize);
+    const unavailable = studyTimeframes(zoneTimeframe).filter(timeframe => (
+      studyClosedCandles(candles[timeframe] ?? [], timeframe, confirmedAt).length < 9
+    ));
+    return { matches, unavailable, distanceContext };
+  }, [hoveredEntry?.entry, chartEntryRecords, vipCandles, granularity, displayCandles, marketConfig.pipSize]);
   const zoneTableTrade = (trade: TradeLevels | undefined, zone?: DisplayStructureZone, zoneName?: string, recordId?: string) => (
     resolveZoneTableTrade(trade, visibleCanonicalTradeRecords, tradeDisplayAsOf,
       zone ? displayZoneMembers(zone).map(member => member.id)
@@ -4702,6 +4718,23 @@ export const OandaProChart: React.FC<{
     return Array.from(entries.values());
   }, [blockedGoldHistoricalTrade, chartEntryRecords, displayCandles, granularity, marketSymbol, replayIndex,
     retainedDirectChartTradesForTimeframe, tradingTimeEnabled, visibleAccuracyRecordIds]);
+  const entryArrowStudyEntries = useMemo<EntryArrowStudyEntry[]>(() => {
+    if (!showTrendlineStudy) return [];
+    const records = new Map<string, JournalTradeRecord>(chartEntryRecords.map(record => [record.id, record] as const));
+    return entryHovers.map(entry => {
+      const record = records.get(entry.id);
+      const zones = record ? resolveArrowTradeZones(record, mt5Status?.recentSignals ?? [], id => (
+        savedChartMtfEntryQualification({ id, signalTime: record.signalAt!, direction: record.direction,
+          engulfingType: record.engulfingType as EngulfingTradeSignal['type'],
+          zoneName: record.zoneName, goldScalping: record.tradeStyle === 'SCALPING' })?.context
+      )) : undefined;
+      return { id: entry.id, trade: entry.trade,
+        zoneTimeframe: record?.zoneTimeframe ?? entry.trade.signal.timeframe,
+        mainZone: zones?.mainZone ?? (record?.source === 'MTF' ? 'Name unavailable in saved history' : entry.zone),
+        entryZone: zones?.entryZone ?? entry.zone, source: entry.source, fib: entry.fib,
+        style: entry.style, tradingTimeBlocked: entry.tradingTimeBlocked };
+    });
+  }, [showTrendlineStudy, chartEntryRecords, entryHovers, mt5Status?.recentSignals, savedChartMtfEntryQualification]);
   const latestCandle = displayCandles[displayCandles.length - 1] || null;
   const previousCandle = displayCandles.length > 1 ? displayCandles[displayCandles.length - 2] : null;
   const headerCandlesByTime = useMemo(() => new Map(displayCandles.map((candle, index) => (
@@ -9195,6 +9228,7 @@ export const OandaProChart: React.FC<{
           <div ref={hostRef} className="absolute inset-0" />
           {showTrendlineStudy && <TrendlineStudy
             symbol={marketSymbol} pipSize={marketConfig.pipSize} timeframe={granularity}
+            entryArrows={entryArrowStudyEntries}
             chartCandles={displayCandles} candles={vipCandles} tradingTimeEnabled={tradingTimeEnabled}
             chartRef={chartRef} seriesRef={candleSeriesRef} hostRef={hostRef}
             onClose={() => setShowTrendlineStudy(false)}
@@ -9218,7 +9252,7 @@ export const OandaProChart: React.FC<{
             const timeZoneLabel = chartTimeZone === 'Asia/Kathmandu' ? 'Nepal' : chartTimeZone;
             return (
             <div
-              className="pointer-events-none absolute z-40 w-80 max-w-[calc(100%_-_16px)] rounded-xl border border-slate-200 bg-white/95 p-3 text-[11px] leading-relaxed text-slate-700 shadow-xl"
+              className="pointer-events-auto absolute z-40 max-h-[calc(100%_-_16px)] w-80 max-w-[calc(100%_-_16px)] overflow-y-auto rounded-xl border border-slate-200 bg-white/95 p-3 text-[11px] leading-relaxed text-slate-700 shadow-xl"
               style={{
                 left: Math.max(8, Math.min(x + 16, (chartPaneRef.current?.clientWidth ?? 340) - 328)),
                 top: Math.max(8, Math.min(y + 16, (chartPaneRef.current?.clientHeight ?? 440) - 420)),
@@ -9246,6 +9280,32 @@ export const OandaProChart: React.FC<{
                   <span>Take profit</span><b>{formatPrice(trade.takeProfit)}</b>
                   <span>Risk/reward</span><b>1:{trade.rewardRisk}</b>
                 </div>
+              </div>
+              <div className="mt-3 border-t border-slate-100 pt-2">
+                <div className="mb-1 font-bold text-slate-900">Supporting trend lines at confirmation</div>
+                <div aria-label="Entry supporting trend lines">
+                  {hoveredTrendlineSupport?.matches.length ? hoveredTrendlineSupport.matches.map((line, index) => (
+                    <div key={`${line.timeframe}:${line.kind}:${index}`}>
+                      <b>{line.timeframe.startsWith('H') ? `${line.timeframe.slice(1)}H`
+                        : line.timeframe === 'D' ? '1D' : line.timeframe === 'W' ? '1W'
+                        : formatTradeTimeframe(line.timeframe)}</b>
+                      {' · '}{line.kind === 'continuation' ? 'Continuation' : 'Breakout'}
+                      {' · '}{line.color === 'green' ? 'Green' : 'Red'}
+                      <div className="pl-2 text-[10px]">{line.distance
+                        ? `${line.distance.pips.toFixed(2)} pips from entry · ${line.distance.band}` : 'Distance unknown'}
+                      </div>
+                    </div>
+                  )) : <div>No supporting trend line found in available history.</div>}
+                </div>
+                <div className="mt-1 text-[10px] text-slate-500">
+                  {hoveredTrendlineSupport?.distanceContext.atrPips !== undefined
+                    ? `${formatTradeTimeframe(hoveredTrendlineSupport.distanceContext.timeframe)} entry ATR(14): ${hoveredTrendlineSupport.distanceContext.atrPips.toFixed(2)} pips. Near: up to ${hoveredTrendlineSupport.distanceContext.nearPips!.toFixed(2)}; Medium: up to ${hoveredTrendlineSupport.distanceContext.mediumPips!.toFixed(2)}; Far: above that.`
+                    : 'Distance group unknown: entry-timeframe ATR history or entry fill is unavailable.'}
+                  {' '}Measured at entry using lines confirmed before entry. Study labels only.
+                </div>
+                {!!hoveredTrendlineSupport?.unavailable.length && <div className="mt-1 text-[10px] text-slate-500">
+                  History unavailable or insufficient: {hoveredTrendlineSupport.unavailable.join(', ')}.
+                </div>}
               </div>
               <div className="mt-3 border-t border-slate-100 pt-2">
                 <div className="font-bold text-slate-900">🕒 {trade.filledAt !== undefined ? 'Entry time' : 'Confirmation time'}</div>
