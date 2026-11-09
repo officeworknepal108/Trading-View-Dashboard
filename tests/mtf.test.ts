@@ -94,6 +94,31 @@ test('Gold H1/M1 CHOCH route needs lower-timeframe Fib on a 50 pip zone', () => 
   assert.equal(buildMtfRows(data).length, 0);
 });
 
+test('MTF Fib fallback rejects only a prior complete candle entirely beyond 0.79', () => {
+  const candles = [candle(100, 140, 145, 135, 142), candle(200, 142, 150, 140, 148),
+    candle(300, 190, 200, 180, 195), candle(400, 125, 126, 114, 123),
+    candle(500, 122, 131, 115, 130)];
+  const qml = zone({ id: 'deep-qml', chochTime: 300, startTime: 100, activeFromTime: 300,
+    tjlPairTime: 50, bottom: 113, top: 116, tapTime: 400,
+    fibSourcePrice: 100, fibZeroPrice: 200, fibZeroTime: 300 });
+  const rbs = zone({ id: 'rbs', name: 'RBS', chochTime: 300, startTime: 150,
+    activeFromTime: 300, tjlPairTime: 50, bottom: 160, top: 162 });
+  const db = zone({ id: 'db', name: 'DB', chochTime: 300, startTime: 100,
+    activeFromTime: 300, bottom: 99, top: 100 });
+  const build = (history: StructureCandle[]) => buildMtfRows({
+    H1: { candles: history, structure: structure([zone({ id: 'htf', bottom: 110, top: 160 })]) },
+    M5: { candles: history, structure: structure([qml, rbs, db]) },
+  }, true).find((row) => row.higherTimeframe === 'H1');
+  const result = build(candles);
+  assert.equal(result?.engulfingType, 'T1');
+  assert.equal(result?.entryZone?.id, 'deep-qml');
+  assert.equal(result?.engulfingDeepDiscount, true);
+  const straddling = build([...candles.slice(0, 3), candle(350, 125, 127, 117, 118), ...candles.slice(3)]);
+  assert.equal(straddling?.engulfingType, 'T1', 'a crossing close does not invalidate the deep band');
+  const invalid = build([...candles.slice(0, 3), candle(350, 119, 120, 117, 118), ...candles.slice(3)]);
+  assert.equal(invalid?.engulfingType, undefined);
+});
+
 test('a newer CHOCH in the same HTF zone cannot replace the first CHOCH entry', () => {
   const lowerCandles = [
     candle(100, 104, 105, 101, 102),

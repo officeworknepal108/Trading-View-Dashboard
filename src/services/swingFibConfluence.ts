@@ -1,5 +1,6 @@
 import type { SeriesMarker, UTCTimestamp } from 'lightweight-charts';
 import {
+  classifyMoveFibZone,
   detectEngulfingPatternAt,
   type EngulfingDirection,
   type FibBand,
@@ -14,10 +15,6 @@ export type SwingFibBand = Extract<FibBand, '0.5-0.618' | '0.71-0.79'>;
 export interface SwingFibConfluenceResult {
   zones: StructureZone[];
   engulfingMarkers: SeriesMarker<UTCTimestamp>[];
-}
-
-function overlaps(bottom: number, top: number, first: number, second: number): boolean {
-  return bottom <= Math.max(first, second) && top >= Math.min(first, second);
 }
 
 function clearSwingConfluence(zone: StructureZone): StructureZone {
@@ -54,13 +51,8 @@ export function applySwingFibConfluence(
     return { zones: nextZones, engulfingMarkers: [] };
   }
   const contexts = [...moves].reverse().map((move, index) => {
-    const level = (ratio: number) => (
-      move.zeroPrice + (move.sourcePrice - move.zeroPrice) * ratio
-    );
     return {
       move,
-      primary: [level(0.5), level(0.618)] as const,
-      deep: [level(0.71), level(0.79)] as const,
       allowDeep: index === 0,
       requiredDirection: (move.direction === 'up' ? 'bullish' : 'bearish') as EngulfingDirection,
       requiredIsBuy: move.direction === 'up',
@@ -73,11 +65,8 @@ export function applySwingFibConfluence(
     if (!zone.active || zone.status !== 'valid') continue;
     const match = contexts.flatMap((context) => {
       if (zone.isBuy !== context.requiredIsBuy) return [];
-      const band: SwingFibBand | undefined = overlaps(zone.bottom, zone.top, ...context.primary)
-        ? '0.5-0.618'
-        : context.allowDeep && overlaps(zone.bottom, zone.top, ...context.deep)
-          ? '0.71-0.79'
-          : undefined;
+      const band = classifyMoveFibZone(candles, zone, context.move.sourcePrice,
+        context.move.zeroPrice, context.move.zeroTime, context.allowDeep);
       return band ? [{ ...context, band }] : [];
     })[0];
     if (!match) continue;
@@ -160,11 +149,8 @@ export function applyPostChochH1SwingFibConfluence(
     .sort((first, second) => first.toTime - second.toTime).at(-1);
   if (!choch || moves.length === 0) return nextZones;
   const contexts = [...moves].slice(-2).reverse().map((move) => {
-    const level = (ratio: number) => move.zeroPrice + (move.sourcePrice - move.zeroPrice) * ratio;
     return {
       move,
-      primary: [level(0.5), level(0.618)] as const,
-      deep: [level(0.71), level(0.79)] as const,
       // The post-CHoCH M15 setup can revisit either band of the prior H1 swing.
       allowDeep: true,
     };
@@ -175,10 +161,8 @@ export function applyPostChochH1SwingFibConfluence(
       || zone.isBuy === (choch.direction === 'bullish')) continue;
     const match = contexts.flatMap((context) => {
       if (zone.isBuy !== (context.move.direction === 'up')) return [];
-      const band: SwingFibBand | undefined = overlaps(zone.bottom, zone.top, ...context.primary)
-        ? '0.5-0.618'
-        : context.allowDeep && overlaps(zone.bottom, zone.top, ...context.deep)
-          ? '0.71-0.79' : undefined;
+      const band = classifyMoveFibZone(candles, zone, context.move.sourcePrice,
+        context.move.zeroPrice, context.move.zeroTime, context.allowDeep);
       return band ? [{ ...context, band }] : [];
     })[0];
     if (!match) continue;

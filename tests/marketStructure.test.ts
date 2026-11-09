@@ -265,7 +265,7 @@ test('overlapping ISS paths emit one canonical zone per structure ID', () => {
   assert.equal(result.find((item) => item.id === 'same-internal-qml')?.tapTime, 200);
 });
 
-test('FIB overlap accepts primary for TJL1 and both primary and deep for TJL2', () => {
+test('FIB overlap respects the caller deep-band flag and full-candle validity', () => {
   const levels = { level50: 50, level618: 61.8, level71: 71, level79: 79 };
   assert.equal(classifyFibOverlap({
     zoneBottom: 55, zoneTop: 57, ...levels, acceptDeep: false,
@@ -275,7 +275,7 @@ test('FIB overlap accepts primary for TJL1 and both primary and deep for TJL2', 
   }), '0.5-0.618', 'TJL2 accepts the primary band');
   assert.equal(classifyFibOverlap({
     zoneBottom: 73, zoneTop: 75, ...levels, acceptDeep: false,
-  }), undefined, 'TJL1 does not accept the deep band');
+  }), undefined, 'a caller can explicitly disable the deep band');
   assert.equal(classifyFibOverlap({
     zoneBottom: 73, zoneTop: 75, ...levels, acceptDeep: true,
   }), '0.71-0.79', 'TJL2 accepts the deep band as well as the primary band');
@@ -286,7 +286,7 @@ test('FIB overlap accepts primary for TJL1 and both primary and deep for TJL2', 
   assert.equal(classifyFibOverlap({
     zoneBottom: 82, zoneTop: 88, ...levels, acceptDeep: true,
     sourcePrice: 100, deepBandValid: false,
-  }), undefined, 'a completed close through 0.79 invalidates the deep setup');
+  }), undefined, 'a completed candle entirely beyond 0.79 invalidates the deep setup');
 });
 
 test('an external zone can qualify against any of the latest four CHoCH FIB moves', () => {
@@ -584,24 +584,137 @@ test('ISS FIB runs from Point 0 and extends beyond Point 5 to the latest complet
   assert.equal(bearishIss.fibZeroPrice, 94);
 });
 
-test('deep FIB invalidation requires a completed close beyond 0.79, not a wick or live close', () => {
-  const wickAndLiveOnly: StructureCandle[] = [
-    { time: 1, open: 120, high: 125, low: 118, close: 123, complete: true },
-    { time: 2, open: 123, high: 124, low: 99, close: 105, complete: true },
-    { time: 3, open: 105, high: 106, low: 95, close: 98, complete: false },
-  ];
-  assert.equal(findDeepFibInvalidationTime(wickAndLiveOnly, 1, 100, false), undefined);
+test('ISS L4 qualifies its own zone against the shared ISS move in both directions', () => {
+  for (const isBuy of [true, false]) {
+    const price = (value: number) => isBuy ? value : 300 - value;
+    const makeZone = (bottom: number, top: number) => zone({
+      name: 'ISS L4', category: 'iss', isBuy,
+      bottom: Math.min(price(bottom), price(top)),
+      top: Math.max(price(bottom), price(top)),
+      issPoint0Time: 100, issPoint0Price: price(100),
+      issPoint5Time: 500, issPoint5Price: price(180),
+      issDirection: isBuy ? 'bullish' : 'bearish',
+    });
+    const candles: StructureCandle[] = [{
+      time: 600, open: price(190), close: price(195),
+      high: isBuy ? 200 : 110, low: isBuy ? 190 : 100, complete: true,
+    }, {
+      time: 700, open: price(195), close: price(210),
+      high: isBuy ? 220 : 110, low: isBuy ? 190 : 80, complete: false,
+    }];
+    const primary = makeZone(140, 145);
+    const deep = makeZone(123, 126);
+    const outside = makeZone(165, 170);
+    applyFibConfluence(candles, [primary, deep, outside]);
+    for (const candidate of [primary, deep, outside]) {
+      assert.equal(candidate.fibSourcePrice, price(100));
+      assert.equal(candidate.fibZeroPrice, price(200), 'only completed extensions move the anchor');
+      assert.equal(candidate.fibLevel50, price(150));
+    }
+    assert.equal(primary.fibBand, '0.5-0.618');
+    assert.equal(primary.fibStatus, 'a-plus');
+    assert.equal(deep.fibBand, '0.71-0.79');
+    assert.equal(deep.fibStatus, 'a-plus');
+    assert.equal(outside.fibBand, undefined);
+    assert.equal(outside.fibStatus, 'not-valid');
+    const engulfingCandles: StructureCandle[] = [...candles, {
+      time: 800, open: price(129), close: price(125),
+      high: isBuy ? 130 : 176, low: isBuy ? 124 : 170, complete: true,
+    }, {
+      time: 900, open: price(124), close: price(131),
+      high: isBuy ? 132 : 177, low: isBuy ? 123 : 168, complete: true,
+    }];
+    applyFibConfluence(engulfingCandles, [deep, outside]);
+    const confirmation = findTradeableZoneEngulfingPattern(engulfingCandles, deep);
+    assert.equal(confirmation?.type, 'T1', 'deep ISS L4 can qualify without touching Fib 0.5');
+    assert.equal(confirmation?.direction, isBuy ? 'bullish' : 'bearish');
+    assert.equal(findTradeableZoneEngulfingPattern(engulfingCandles, outside), undefined);
+    const invalidation: StructureCandle = {
+      time: 800, open: price(120), close: price(119),
+      high: isBuy ? 120.5 : 182, low: isBuy ? 118 : 179.5, complete: true,
+    };
+    applyFibConfluence([...candles, invalidation], [deep]);
+    assert.equal(deep.fibDeepInvalidatedAt, 800);
+    assert.equal(deep.fibBand, undefined);
+    assert.equal(deep.fibStatus, 'not-valid');
+  }
+});
 
-  const closedOutside = [
-    ...wickAndLiveOnly,
-    { time: 4, open: 105, high: 106, low: 97, close: 99, complete: true },
+test('ISS L3 and L4 plus external and internal TJL1 accept zones deeper than 0.79', () => {
+  for (const isBuy of [false, true]) {
+    const price = (value: number) => isBuy ? 300 - value : value;
+    const bar = (time: number, open: number, high: number, low: number, close: number,
+      complete = true): StructureCandle => ({ time, open: price(open), close: price(close),
+      high: price(isBuy ? low : high), low: price(isBuy ? high : low), complete });
+    const candles = [bar(500, 102, 103, 100, 101), bar(600, 175, 186, 174, 177),
+      bar(700, 178, 185, 169, 170), bar(800, 177, 190, 176, 183, false)];
+    const candidates = (['ISS L3', 'ISS L4', 'TJL1', 'Internal TJL1'] as const).map((name) => zone({
+      id: name, name, isBuy, startTime: 200, activeFromTime: 500,
+      category: name.startsWith('ISS') ? 'iss' : name.startsWith('Internal') ? 'internal' : 'mg',
+      bottom: price(isBuy ? 187 : 184), top: price(isBuy ? 184 : 187),
+      tjlPairTime: 400, issPoint0Time: 100, issPoint0Price: price(200),
+      issPoint5Time: 500, issPoint5Price: price(100), issDirection: isBuy ? 'bullish' : 'bearish',
+    }));
+    const anchors = (['TJL2', 'Internal TJL2'] as const).map((name) => zone({
+      id: name, name, isBuy, startTime: 100, tjlPairTime: 400,
+      category: name === 'TJL2' ? 'mg' : 'internal',
+      bottom: price(isBuy ? 200 : 199), top: price(isBuy ? 199 : 200),
+    }));
+    applyFibConfluence(candles, [...candidates, ...anchors]);
+    for (const candidate of candidates) {
+      assert.equal(candidate.fibBand, 'deep', candidate.name);
+      assert.equal(candidate.fibStatus, 'a-plus');
+      assert.equal(findTradeableZoneEngulfingPattern(candles, candidate)?.type, 'T1');
+    }
+    const straddling = [...candles.slice(0, 1), bar(550, 177, 190, 176, 182), ...candles.slice(1)];
+    applyFibConfluence(straddling, [...candidates, ...anchors]);
+    for (const candidate of candidates) {
+      assert.equal(candidate.fibStatus, 'a-plus', 'a close beyond 0.79 with a wick inside stays valid');
+      assert.equal(findTradeableZoneEngulfingPattern(straddling, candidate)?.type, 'T1');
+    }
+    const invalidated = [...candles.slice(0, 1), bar(550, 181, 190, 180, 182), ...candles.slice(1)];
+    applyFibConfluence(invalidated, [...candidates, ...anchors]);
+    for (const candidate of candidates) {
+      assert.equal(candidate.fibBand, undefined, candidate.name);
+      assert.equal(findTradeableZoneEngulfingPattern(invalidated, candidate), undefined);
+    }
+  }
+});
+
+test('deep FIB invalidates only when a completed candle including wicks is strictly beyond 0.79', () => {
+  for (const isSell of [true, false]) {
+    const price = (value: number) => isSell ? value : 200 - value;
+    const bar = (time: number, open: number, high: number, low: number, close: number,
+      complete = true): StructureCandle => ({ time, open: price(open), close: price(close),
+      high: price(isSell ? high : low), low: price(isSell ? low : high), complete });
+    const valid = [bar(1, 102, 105, 101, 104), // Ignore the anchor candle itself.
+      bar(2, 98, 103, 97, 99), // Wick beyond the boundary.
+      bar(3, 99, 105, 98, 104), // Close beyond, but body crosses the boundary.
+      bar(4, 102, 105, 99, 104), // Whole body beyond, but wick reaches inside.
+      bar(5, 102, 105, 100, 104), // Exact boundary touch.
+      bar(6, 102, 105, 101, 104, false)]; // Whole live candle beyond.
+    assert.equal(findDeepFibInvalidationTime(valid, 1, 100, isSell), undefined);
+    assert.equal(findDeepFibInvalidationTime([
+      ...valid, bar(7, 102, 105, 101, 104),
+    ], 1, 100, isSell), 7);
+  }
+});
+
+test('reported H1 ISS L4 remains deep-discount when the 4123.865 close straddles Fib 0.79', () => {
+  const candidate = zone({ name: 'ISS L4', category: 'iss', isBuy: false,
+    bottom: 4126.965, top: 4128.13,
+    issPoint0Time: 1793847600, issPoint0Price: 4146.92,
+    issPoint5Time: 1793941200, issPoint5Price: 4035.775, issDirection: 'bearish' });
+  const candles: StructureCandle[] = [
+    { time: 1793973600, open: 4040, high: 4045, low: 4029.83, close: 4035, complete: true },
+    { time: 1794186000, open: 4105.19, high: 4127.015, low: 4099.645, close: 4123.865, complete: true },
+    { time: 1794189600, open: 4123.915, high: 4134.135, low: 4119.375, close: 4120.06, complete: true },
   ];
-  assert.equal(findDeepFibInvalidationTime(closedOutside, 1, 100, false), 4);
-  assert.equal(findDeepFibInvalidationTime([
-    { time: 1, open: 80, high: 82, low: 75, close: 78, complete: true },
-    { time: 2, open: 78, high: 101, low: 77, close: 99, complete: true },
-    { time: 3, open: 99, high: 102, low: 98, close: 101, complete: true },
-  ], 1, 100, true), 3);
+  applyFibConfluence(candles, [candidate]);
+  assert.equal(candidate.fibZeroPrice, 4029.83);
+  assert.equal(candidate.fibDeepInvalidatedAt, undefined);
+  assert.equal(candidate.fibBand, 'deep');
+  assert.equal(candidate.fibStatus, 'a-plus');
 });
 
 test('Type 1 requires a close beyond the first candle while the wick sweep remains optional', () => {

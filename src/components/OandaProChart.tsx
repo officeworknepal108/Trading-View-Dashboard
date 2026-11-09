@@ -821,6 +821,18 @@ function isDefaultDeepDiscountZoneName(name: string | undefined): boolean {
   return name === 'DB' || name === 'DT';
 }
 
+export function isDeepDiscountZoneDisplay(
+  zone: StructureZone,
+  signal?: EngulfingTradeSignal,
+): boolean {
+  if (isDefaultDeepDiscountZoneName(zone.name)) return true;
+  if (signal) return isDeepDiscountTradeSignal(zone, signal);
+  return (zone.fibStatus === 'a-plus' && (zone.fibBand === 'deep' || zone.fibBand === '0.71-0.79'))
+    || (zone.swingFibStatus === 'a-plus' && zone.swingFibBand === '0.71-0.79')
+    || (zone.h1SwingFibStatus === 'aligned' && zone.h1SwingFibBand === '0.71-0.79')
+    || (zone.dayFibStatus === 'a-plus' && zone.dayFibBand === '0.71-0.79');
+}
+
 function displayConfluenceZoneName(
   zone: DisplayStructureZone,
   uppercaseSecondary = false,
@@ -9840,7 +9852,8 @@ export const OandaProChart: React.FC<{
                       <tr className={`border-t ${bullish ? 'border-emerald-200 bg-emerald-50' : 'border-rose-200 bg-rose-50'}`}>
                         <td className="px-2 py-1 font-black text-slate-800">
                           <span>{zoneLabel ?? 'OPEN CHART TRADE'}</span>
-                          {isDefaultDeepDiscountZoneName(zoneLabel) && (
+                          {(sourceZone ? isDeepDiscountZoneDisplay(sourceZone, trade.signal)
+                            : isDefaultDeepDiscountZoneName(zoneLabel)) && (
                             <span className="ml-1 rounded bg-fuchsia-100 px-1 py-0.5 text-[8px] font-black text-fuchsia-800">
                               DEEP DISCOUNT
                             </span>
@@ -9911,6 +9924,11 @@ export const OandaProChart: React.FC<{
                         <span className="ml-1 rounded bg-violet-100 px-1 py-0.5 text-[8px] font-black text-violet-800">
                           DOUBLE CHoCH
                         </span>
+                        {displayZoneMembers(zone).some(member => isDeepDiscountZoneDisplay(member, displayedTrade?.signal)) && (
+                          <span className="ml-1 rounded bg-fuchsia-100 px-1 py-0.5 text-[8px] font-black text-fuchsia-800">
+                            DEEP DISCOUNT
+                          </span>
+                        )}
                         <span className={`ml-1 rounded px-1 py-0.5 text-[8px] font-black ${
                           pending ? 'bg-amber-100 text-amber-800' : 'bg-emerald-100 text-emerald-800'
                         }`}>
@@ -10021,9 +10039,9 @@ export const OandaProChart: React.FC<{
                   const engulfingTrade = zoneTableTrade(trade ?? outsideTimePreview ?? historicalTrade, zone);
                   if (hasZoneTableTradeExpired(engulfingTrade, zone)) return null;
                   const scalpEngulfingTrade = scalpTrade ?? (!trade ? scalpPreview : undefined);
-                  const deepDiscount = historicalEntry
-                    ? isDeepDiscountTradeSignal(zone, historicalEntry.trade.signal)
-                    : zone.fibBand === 'DB/DT';
+                  const deepDiscount = displayZoneMembers(zone).some(member => (
+                    isDeepDiscountZoneDisplay(member, engulfingTrade?.signal)
+                  ));
                   const mt5Signal = confluenceMapValue<Mt5StoredSignal>(zone, directZoneMt5Signals);
                   const completedStatus = zoneTableCompletedStatus(engulfingTrade, mt5Signal);
                   const measurement = confluenceFirstValue(zone, (member) => (
@@ -10253,7 +10271,14 @@ export const OandaProChart: React.FC<{
                   return (
                     <React.Fragment key={`retained-trade-${zone.id}`}>
                       <tr className="border-t border-slate-200 bg-slate-50 text-slate-600">
-                        <td className="px-2 py-1 font-black">{displayZoneName(zone.name, zone.oneMinuteGenesisQml)}</td>
+                        <td className="px-2 py-1 font-black">
+                          {displayZoneName(zone.name, zone.oneMinuteGenesisQml)}
+                          {isDeepDiscountZoneDisplay(zone, trade.signal) && (
+                            <span className="ml-1 rounded bg-fuchsia-100 px-1 py-0.5 text-[8px] font-black text-fuchsia-800">
+                              DEEP DISCOUNT
+                            </span>
+                          )}
+                        </td>
                         <td className={`px-2 py-1 font-bold ${zone.isBuy ? 'text-emerald-700' : 'text-rose-700'}`}>
                           {zone.isBuy ? 'BUY' : 'SELL'}
                         </td>

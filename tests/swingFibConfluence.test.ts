@@ -4,6 +4,8 @@ import { applyPostChochH1SwingFibConfluence, applySwingFibConfluence } from '../
 import type { StructureCandle, StructureLine, StructureZone } from '../src/services/marketStructure';
 import { resolveZoneEngulfingSignal } from '../src/services/tradeLevels';
 import type { SwingFibMove } from '../src/services/swingFib';
+import { applyDayFibConfluence } from '../src/services/dayFibConfluence';
+import { isDeepDiscountTradeSignal } from '../src/services/tradeLevels';
 
 function zone(overrides: Partial<StructureZone>): StructureZone {
   return {
@@ -25,6 +27,72 @@ const previousBuyMove: SwingFibMove = {
   sourceTime: -10, sourcePrice: 100,
   zeroTime: 0, zeroPrice: 120,
 };
+
+test('all zone types beyond 0.79 qualify through Swing and Day Fib only while the Fib remains valid', () => {
+  const names: StructureZone['name'][] = ['TJL1', 'TJL2', 'QML', 'QML A+', 'QML A++',
+    'SBR', 'RBS', 'DB', 'DT', 'DBD', 'DTD', 'ISS L3', 'ISS L4',
+    'Internal TJL1', 'Internal TJL2', 'Internal QML', 'Internal QML A+', 'Internal QML A++',
+    'Internal SBR', 'Internal RBS', 'Internal DB', 'Internal DT', 'Internal DBD', 'Internal DTD',
+    'SUPPLY', 'DEMAND'];
+  for (const isBuy of [false, true]) {
+    const price = (value: number) => isBuy ? 300 - value : value;
+    const bar = (time: number, open: number, high: number, low: number, close: number,
+      complete = true): StructureCandle => ({ time, open: price(open), close: price(close),
+      high: price(isBuy ? low : high), low: price(isBuy ? high : low), complete });
+    const candles = [bar(2, 102, 103, 100, 101), bar(3, 175, 186, 174, 177),
+      bar(4, 178, 185, 169, 170), bar(5, 177, 189, 176, 183, false)];
+    const move: SwingFibMove = { direction: isBuy ? 'up' : 'down', startedAt: 0,
+      sourceTime: 0, sourcePrice: price(200), zeroTime: 2, zeroPrice: price(100) };
+    const candidates = names.map((name) => zone({ id: name, name, isBuy,
+      category: name.startsWith('Internal') ? 'internal' : name.startsWith('ISS') ? 'iss'
+        : name === 'SUPPLY' || name === 'DEMAND' ? 'supplyDemand' : 'mg',
+      bottom: price(isBuy ? 187 : 184), top: price(isBuy ? 184 : 187) }));
+    const dayMove = { ...move, sessionDate: '2026-11-09', activationTime: 1 };
+    for (const route of ['swing', 'day'] as const) {
+      const apply = (history: StructureCandle[]) => route === 'swing'
+        ? applySwingFibConfluence(history, candidates, move)
+        : applyDayFibConfluence(history, candidates, dayMove);
+      for (const candidate of apply(candles).zones) {
+        assert.equal(route === 'swing' ? candidate.swingFibBand : candidate.dayFibBand, '0.71-0.79');
+        const signal = resolveZoneEngulfingSignal(candidate, 'M15');
+        assert.equal(signal?.time, 4, `${route} ${candidate.name} requires completed engulfing`);
+        assert.equal(isDeepDiscountTradeSignal(candidate, signal!), true);
+      }
+      const straddling = apply([candles[0], bar(2.5, 181, 188, 176, 182), ...candles.slice(1)]);
+      assert.ok(straddling.zones.every((candidate) => (route === 'swing'
+        ? candidate.swingFibStatus : candidate.dayFibStatus) === 'a-plus'),
+      'even a whole body beyond 0.79 stays valid when its wick reaches inside');
+      const invalid = apply([candles[0], bar(2.5, 181, 188, 180, 182), ...candles.slice(1)]);
+      assert.ok(invalid.zones.every((candidate) => (route === 'swing'
+        ? candidate.swingFibStatus : candidate.dayFibStatus) === undefined),
+      'a completed candle entirely beyond 0.79 blocks the deeper zone');
+      const unconfirmed = apply(candles.slice(0, 2));
+      assert.ok(unconfirmed.zones.every((candidate) => !resolveZoneEngulfingSignal(candidate, 'M15')));
+    }
+  }
+});
+
+test('post-CHoCH H1 Swing Fib accepts a deeper TJL with zone-touching engulfing', () => {
+  const choch: StructureLine = { id: 'choch', type: 'choch', direction: 'bullish', label: 'CHoCH',
+    fromTime: 0, toTime: 1800, fromPrice: 100, toPrice: 100 };
+  const move = { ...sellMove, sourcePrice: 200 };
+  const candles: StructureCandle[] = [
+    { time: 3600, open: 175, high: 186, low: 174, close: 177, complete: true },
+    { time: 4500, open: 178, high: 185, low: 169, close: 170, complete: true },
+  ];
+  const candidates = [zone({ name: 'TJL1', startTime: 900, bottom: 184, top: 187 })];
+  const [result] = applyPostChochH1SwingFibConfluence(candles, candidates, [choch], [move]);
+  assert.equal(result.h1SwingFibBand, '0.71-0.79');
+  assert.equal(resolveZoneEngulfingSignal(result, 'M15')?.time, 4500);
+  const [straddling] = applyPostChochH1SwingFibConfluence([
+    { time: 2700, open: 177, high: 188, low: 176, close: 182, complete: true }, ...candles,
+  ], candidates, [choch], [move]);
+  assert.equal(straddling.h1SwingFibStatus, 'aligned');
+  const [invalid] = applyPostChochH1SwingFibConfluence([
+    { time: 2700, open: 181, high: 188, low: 180, close: 182, complete: true }, ...candles,
+  ], candidates, [choch], [move]);
+  assert.equal(invalid.h1SwingFibStatus, undefined);
+});
 
 test('1H swing qualifies only a pre-existing M15 TJL after opposite CHoCH and completed engulfing', () => {
   const choch: StructureLine = {

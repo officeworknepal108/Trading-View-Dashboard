@@ -103,8 +103,8 @@ export interface StructureZone {
   fibRelevant?: boolean;
   fibBand?: FibBand;
   fibStatus?: 'a-plus' | 'not-valid';
-  // A deep 0.71-0.79 setup remains usable until a completed candle closes
-  // through 0.79 toward the originating DB/DT side. Wicks do not invalidate it.
+  // A deep setup remains usable until a completed candle is entirely beyond
+  // 0.79 toward the origin, including its wicks. Touching 0.79 remains valid.
   fibDeepInvalidatedAt?: number;
   // Anchors for the visible Fibonacci retracement overlay. The originating
   // structure price is level 1 and the completed move extreme is level 0.
@@ -817,9 +817,9 @@ export function classifyFibOverlap(options: {
   if (overlaps(options.level50, options.level618)) return '0.5-0.618';
   if (options.acceptDeep && options.deepBandValid !== false) {
     if (overlaps(options.level71, options.level79)) return '0.71-0.79';
-    // A QML can sit deeper than 0.79 without overlapping the band itself. It
+    // Any zone can sit deeper than 0.79 without overlapping the band itself. It
     // remains A+ while it is between 0.79 and the originating DB/DT and the
-    // completed-close invalidation below/above 0.79 has not occurred.
+    // full-candle invalidation below/above 0.79 has not occurred.
     if (options.sourcePrice !== undefined && overlaps(options.level79, options.sourcePrice)) {
       return 'deep';
     }
@@ -836,8 +836,31 @@ export function findDeepFibInvalidationTime(
   return candles.find((candle) => (
     candle.time > zeroTime
     && candle.complete !== false
-    && (isSell ? candle.close > level79 : candle.close < level79)
+    && (isSell ? candle.low > level79 : candle.high < level79)
   ))?.time;
+}
+
+/** Shared Swing/Day qualification; deeper zones keep the existing deep-band label. */
+export function classifyMoveFibZone(
+  candles: StructureCandle[],
+  zone: StructureZone,
+  sourcePrice: number,
+  zeroPrice: number,
+  zeroTime: number,
+  acceptDeep = true,
+): '0.5-0.618' | '0.71-0.79' | undefined {
+  if (sourcePrice === zeroPrice) return undefined;
+  const level = (ratio: number) => zeroPrice + (sourcePrice - zeroPrice) * ratio;
+  const band = classifyFibOverlap({
+    zoneBottom: zone.bottom, zoneTop: zone.top,
+    level50: level(0.5), level618: level(0.618),
+    level71: level(0.71), level79: level(0.79),
+    sourcePrice, acceptDeep,
+    deepBandValid: findDeepFibInvalidationTime(
+      candles, zeroTime, level(0.79), sourcePrice > zeroPrice,
+    ) === undefined,
+  });
+  return band === 'deep' ? '0.71-0.79' : band === 'DB/DT' ? undefined : band;
 }
 
 function candleIsBullish(candle: StructureCandle): boolean {
@@ -1238,9 +1261,8 @@ export function applyFibConfluence(candles: StructureCandle[], zones: StructureZ
       source.startTime,
       zone.isBuy ? source.bottom : source.top,
       !zone.isBuy,
-      // TJL1 accepts the primary band only. TJL2 always accepts both primary
-      // and deep bands, matching the supplied Pine reference.
-      isTjl2,
+      // All zone types accept a valid deep retracement toward the origin.
+      true,
     );
   }
 
@@ -1376,7 +1398,7 @@ export function applyIssFibAnchors(
 ): void {
   const completed = candles.filter((candle) => candle.complete !== false);
   for (const zone of zones) {
-    if (zone.name !== 'ISS L3'
+    if ((zone.name !== 'ISS L3' && zone.name !== 'ISS L4')
       || zone.issPoint0Time === undefined || zone.issPoint0Price === undefined
       || zone.issPoint5Time === undefined || zone.issPoint5Price === undefined
       || zone.issDirection === undefined) continue;
@@ -1397,6 +1419,25 @@ export function applyIssFibAnchors(
     zone.fibZeroTime = zeroTime;
     zone.fibZeroPrice = zeroPrice;
     zone.fibLevel50 = zeroPrice + (zone.issPoint0Price - zeroPrice) * 0.5;
+    {
+      // Both ISS levels qualify their own zone against the completed ISS move.
+      const level = (ratio: number) => zeroPrice + (zone.issPoint0Price! - zeroPrice) * ratio;
+      zone.fibDeepInvalidatedAt = findDeepFibInvalidationTime(
+        candles, zeroTime, level(0.79), zone.issDirection === 'bearish',
+      );
+      zone.fibBand = classifyFibOverlap({
+        zoneBottom: zone.bottom,
+        zoneTop: zone.top,
+        level50: zone.fibLevel50,
+        level618: level(0.618),
+        level71: level(0.71),
+        level79: level(0.79),
+        acceptDeep: true,
+        sourcePrice: zone.issPoint0Price,
+        deepBandValid: zone.fibDeepInvalidatedAt === undefined,
+      });
+      zone.fibStatus = zone.fibBand ? 'a-plus' : 'not-valid';
+    }
   }
 }
 

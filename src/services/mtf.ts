@@ -1,5 +1,6 @@
 import {
   detectEngulfingPatternAt,
+  findDeepFibInvalidationTime,
   isGoldZoneEntryBlocked,
   type EngulfingDirection,
   type EngulfingType,
@@ -110,6 +111,7 @@ interface ConfirmationEvent {
   sourceStructureTime?: number;
   fibSourcePrice?: number;
   fibZeroPrice?: number;
+  fibZeroTime?: number;
 }
 
 function zoneWasUsableAt(zone: StructureZone, time: number): boolean {
@@ -242,6 +244,7 @@ function buildChochEvents(zones: readonly StructureZone[]): ConfirmationEvent[] 
       sourceStructureTime: hasMatchingSourcePair ? sourceTjl1.tjlPairTime : undefined,
       fibSourcePrice: fibZone?.fibSourcePrice ?? (anchor?.isBuy ? anchor.bottom : anchor?.top),
       fibZeroPrice: fibZone?.fibZeroPrice,
+      fibZeroTime: fibZone?.fibZeroTime,
     };
   }).filter((event) => event.zones.length > 0 && event.sourceStructureTime !== undefined);
 }
@@ -301,7 +304,7 @@ function fibBandForZone(
   );
   const bands: Array<{ range: [number, number]; deepDiscount: boolean }> = [
     { range: [level(0.5), level(0.618)], deepDiscount: false },
-    { range: [level(0.71), level(0.79)], deepDiscount: true },
+    { range: [level(0.71), event.fibSourcePrice], deepDiscount: true },
   ];
   return bands.find(({ range: [first, second] }) => (
     overlaps(zone.bottom, zone.top, first, second)
@@ -371,10 +374,16 @@ function findMtfEngulfing(
 
   const fibBand = fibBandForZone(event, zone);
   if (requireLtfFib && !fibBand) return undefined;
+  const deepInvalidatedAt = fibBand?.deepDiscount && event.fibSourcePrice !== undefined
+    && event.fibZeroPrice !== undefined
+    ? findDeepFibInvalidationTime(candles, event.fibZeroTime ?? event.time,
+      event.fibZeroPrice + (event.fibSourcePrice - event.fibZeroPrice) * 0.79, !event.isBuy)
+    : undefined;
 
   for (let endIndex = 1; endIndex < candles.length; endIndex += 1) {
     const finalCandle = candles[endIndex];
     if (finalCandle.complete === false || finalCandle.time < midlineTouchTime) continue;
+    if (requireLtfFib && deepInvalidatedAt !== undefined && finalCandle.time >= deepInvalidatedAt) break;
     if (zone.invalidatedAt !== undefined && finalCandle.time >= zone.invalidatedAt) break;
     const pattern = detectEngulfingPatternAt(candles, endIndex);
     if (!pattern || pattern.direction !== requiredDirection

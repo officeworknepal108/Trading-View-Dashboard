@@ -1,5 +1,6 @@
 import type { SeriesMarker, UTCTimestamp } from 'lightweight-charts';
 import {
+  classifyMoveFibZone,
   detectEngulfingPatternAt,
   type EngulfingDirection,
   type FibBand,
@@ -13,10 +14,6 @@ export type DayFibBand = Extract<FibBand, '0.5-0.618' | '0.71-0.79'>;
 export interface DayFibConfluenceResult {
   zones: StructureZone[];
   engulfingMarkers: SeriesMarker<UTCTimestamp>[];
-}
-
-function overlaps(bottom: number, top: number, first: number, second: number): boolean {
-  return bottom <= Math.max(first, second) && top >= Math.min(first, second);
 }
 
 function clearDayConfluence(zone: StructureZone): StructureZone {
@@ -47,11 +44,6 @@ export function applyDayFibConfluence(
     return { zones: nextZones, engulfingMarkers: [] };
   }
 
-  const level = (ratio: number) => (
-    move.zeroPrice + (move.sourcePrice - move.zeroPrice) * ratio
-  );
-  const primary = [level(0.5), level(0.618)] as const;
-  const deep = [level(0.71), level(0.79)] as const;
   const requiredDirection: EngulfingDirection = move.direction === 'up' ? 'bullish' : 'bearish';
   const requiredIsBuy = move.direction === 'up';
   const markerKeys = new Set<string>();
@@ -59,9 +51,7 @@ export function applyDayFibConfluence(
 
   for (const zone of nextZones) {
     if (!zone.active || zone.status !== 'valid' || zone.isBuy !== requiredIsBuy) continue;
-    const band: DayFibBand | undefined = overlaps(zone.bottom, zone.top, ...primary)
-      ? '0.5-0.618'
-      : overlaps(zone.bottom, zone.top, ...deep) ? '0.71-0.79' : undefined;
+    const band = classifyMoveFibZone(candles, zone, move.sourcePrice, move.zeroPrice, move.zeroTime);
     if (!band) continue;
 
     zone.dayFibBand = band;
