@@ -2,11 +2,46 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { INDICATOR_FIB_LEVELS, indicatorFibPrice } from '../src/services/indicatorFib';
 
+test('H1 zone entry labels show the lower-timeframe confirmation rather than native H1 engulfing', async () => {
+  const { displayEngulfingLabel } = await import('../src/components/OandaProChart');
+  const zone = { id: 'iss-l4', name: 'ISS L4' as const, category: 'iss' as const, isBuy: false,
+    startTime: 100, endTime: 200, bottom: 184, top: 187, active: true, status: 'valid' as const,
+    fibStatus: 'a-plus' as const, fibBand: 'deep' as const,
+    engulfingType: 'T3' as const, engulfingDirection: 'bearish' as const, engulfingTime: 1794193200,
+    fallbackEngulfingType: 'T4' as const, fallbackEngulfingDirection: 'bearish' as const,
+    fallbackEngulfingTime: 1794192300, fallbackEngulfingTimeframe: 'M15' };
+  assert.equal(displayEngulfingLabel(zone, 'H1'), '15M T4 BEAR');
+  assert.equal(displayEngulfingLabel({ ...zone, fallbackEngulfingType: 'T1',
+    fallbackEngulfingTime: 1794191400, fallbackEngulfingTimeframe: 'M30' }, 'H1'), '30M T1 BEAR');
+  assert.equal(displayEngulfingLabel({ ...zone, fallbackEngulfingType: undefined }, 'H1'), undefined,
+    'a native H1 T3 is not an intraday entry confirmation');
+  assert.equal(displayEngulfingLabel({ ...zone, fibStatus: 'not-valid' }, 'H1'), undefined);
+});
+
 test('manual Fib uses the exact indicator level set', () => {
   assert.deepEqual(
     INDICATOR_FIB_LEVELS.map((level) => level.ratio),
     [0, 0.5, 0.618, 0.71, 0.79, 1],
   );
+});
+
+test('used-zone entry reference displays levels without claiming a new trade or an outside-session block', async () => {
+  const { TradeDetailsRow } = await import('../src/components/OandaProChart');
+  const { createElement } = await import('react');
+  const { renderToStaticMarkup } = await import('react-dom/server');
+  const trade = { entry: 4120.01, stopLoss: 4136.135, takeProfit: 4087.76, riskFree: 4103.885,
+    riskFreeEnabled: false, riskPips: 161.25, rewardRisk: 2, status: 'active' as const,
+    pendingAtCreation: false, calculatedAt: 1794193200, filledAt: 1794193200,
+    signal: { type: 'T4' as const, direction: 'bearish' as const, time: 1794192300,
+      candleCount: 4, timeframe: 'M15' as const } };
+  const html = renderToStaticMarkup(createElement(TradeDetailsRow, {
+    trade, colSpan: 5, referenceOnly: true, hideReferenceStatus: true,
+  }));
+  assert.match(html, /ENTRY/);
+  assert.match(html, /4,120\.010/);
+  assert.match(html, /4,136\.135/);
+  assert.match(html, /4,087\.760/);
+  assert.doesNotMatch(html, /OUTSIDE TRADING TIME|MT5 ACTIVE|PENDING/);
 });
 
 test('deep-discount display includes qualified live ISS L4 and uses the entry Fib source for trades', async () => {

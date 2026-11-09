@@ -4,7 +4,8 @@ import type { TradeTimeframe } from '../services/tradeLevels';
 import { userStorage } from '../services/userStorage';
 import { readStudySnapshot, studyAccuracy, studyCloseTime, studyJournalCsv, studyLookbackWindow,
   studyDateWindow, studyLocalDateStart, studyLocalDateValue, STUDY_MAX_LOOKBACK,
-  studyTimeframes, studyEntryTimeframes, studyTrendlineBreakdown, filterStudyTrendlineType,
+  studyTimeframes, studyDataTimeframes, studyEntryTimeframes, studyTrendlineBreakdown, filterStudyTrendlineType,
+  studySetupKind, filterStudySetup, studyDeepDiscountBreakdown, STUDY_SETUP_KINDS, type StudySetupKind,
   studyDistanceBreakdown, filterStudyDistance, studyRecordDistanceBand, STUDY_DISTANCE_BANDS, type StudyDistanceBand,
   type StudyTimeframe, type TrendlineStudyInput, type TrendlineStudyRecord, type EntryArrowStudyEntry,
   type TrendlineStudyResult, type StudySnapshot, type StudySupport, type StudyTrendlineType } from '../services/trendlineStudy';
@@ -53,6 +54,7 @@ export function TrendlineStudy(props: Props) {
   const [storageNotice, setStorageNotice] = useState('');
   const [minimized, setMinimized] = useState(false);
   const [group, setGroup] = useState('All');
+  const [setupFilter, setSetupFilter] = useState<StudySetupKind | 'All'>('All');
   const [trendlineType, setTrendlineType] = useState<StudyTrendlineType>('all');
   const [distanceFilter, setDistanceFilter] = useState<StudyDistanceBand | 'All'>('All');
   const [breakdownKey, setBreakdownKey] = useState<string | null>(null);
@@ -70,12 +72,12 @@ export function TrendlineStudy(props: Props) {
   const validDate = rangeMode !== 'date' || fromTime !== undefined && fromTime < cutoff;
   const studyCandles = useMemo(() => {
     const next: StudyCandles = {};
-    for (const tf of studyTimeframes(zoneTf)) {
+    for (const tf of studyDataTimeframes(props.symbol, zoneTf)) {
       next[tf] = mergeStudyCandles(history[tf] ?? [],
         tf === props.timeframe ? props.chartCandles : props.candles[tf] ?? []);
     }
     return next;
-  }, [props.candles, props.chartCandles, props.timeframe, history, zoneTf]);
+  }, [props.candles, props.chartCandles, props.timeframe, props.symbol, history, zoneTf]);
   const preview = useMemo(() => studyLookbackWindow(
     studyCandles[zoneTf] ?? [],
     zoneTf, cutoff, lookback,
@@ -85,7 +87,9 @@ export function TrendlineStudy(props: Props) {
   [fromTime, studyCandles, zoneTf, cutoff]);
   const typeRecords = useMemo(() => filterStudyTrendlineType(result?.records ?? [], trendlineType), [result, trendlineType]);
   const distanceRecords = useMemo(() => filterStudyDistance(typeRecords, distanceFilter), [typeRecords, distanceFilter]);
-  const groupRecords = useMemo(() => distanceRecords.filter(r => group === 'All' || r.fibGroup === group), [distanceRecords, group]);
+  const setupRecords = useMemo(() => filterStudySetup(distanceRecords, setupFilter), [distanceRecords, setupFilter]);
+  const groupRecords = useMemo(() => setupRecords.filter(r => group === 'All' || r.fibGroup === group), [setupRecords, group]);
+  const deepComparison = useMemo(() => studyDeepDiscountBreakdown(groupRecords), [groupRecords]);
   const breakdown = useMemo(() => studyTrendlineBreakdown(groupRecords), [groupRecords]);
   const distanceSummary = useMemo(() => studyDistanceBreakdown(groupRecords), [groupRecords]);
   const distanceByTimeframe = useMemo(() => studyDistanceBreakdown(groupRecords, true), [groupRecords]);
@@ -106,6 +110,7 @@ export function TrendlineStudy(props: Props) {
     cancel(); setResult(null); setSelected(null); setError(''); setStorageNotice(''); completedInput.current = null;
     setBreakdownKey(null);
     setDistanceFilter('All');
+    setSetupFilter('All');
     setHistory({});
     restoredKey.current = '';
   }, [props.symbol]);
@@ -152,7 +157,7 @@ export function TrendlineStudy(props: Props) {
     }
     if (!validDate) { setError('Choose a valid start date before the study end time.'); return; }
     if (!studyEntryTimeframes(props.symbol, zoneTf).length) {
-      setError(`No existing engulfing entry SL/TP rule uses ${timeframeLabels[zoneTf]} zones with confirmations at that timeframe or higher.${props.symbol === 'XAUUSD' ? ' Select M15 for this Gold study.' : ''}`);
+      setError(`No existing engulfing entry SL/TP rule uses ${timeframeLabels[zoneTf]} zones. Select a supported zone timeframe.`);
       return;
     }
     const request = new AbortController();
@@ -245,12 +250,12 @@ export function TrendlineStudy(props: Props) {
     <div className="pointer-events-none absolute inset-0 z-30 overflow-hidden" aria-label="Trendline study arrows">
       {positions.map(({ record, x, y }, index) => <button key={record.id} type="button"
         aria-label={`Trendline study ${record.signal.direction === 'bullish' ? 'buy' : 'sell'} ${record.fibGroup} ${record.zoneName}`}
-        title={`${groupLabels[record.fibGroup]} · ${record.zoneName} · ${record.outcome}\n${supportLabels(record.support).join('\n') || 'No matching trendline'}\nClick for details`}
+        title={`${studySetupKind(record)} · ${groupLabels[record.fibGroup]} · ${record.zoneName} · ${record.outcome}\n${supportLabels(record.support).join('\n') || 'No matching trendline'}\nClick for details`}
         onClick={() => { setSelected(record); setMinimized(false); }}
         className="pointer-events-auto absolute rounded border-2 border-white px-1 text-xs font-black shadow"
         style={{ left: x, top: y, transform: `translate(-50%, ${record.signal.direction === 'bullish' ? '8px' : '-110%'})`,
           background: record.fibGroup === 'No recorded support' ? '#64748b' : record.fibGroup === 'FIB only' ? '#b45309' : record.fibGroup === 'With FIB' ? '#7c3aed' : '#0284c7', color: 'white', zIndex: index }}>
-        {record.signal.direction === 'bullish' ? '⬆' : '⬇'} {record.fibGroup === 'No recorded support' ? 'NO TL' : record.fibGroup === 'FIB only' ? 'FIB ONLY' : `TL ${record.fibGroup === 'With FIB' ? 'F' : 'N'}`}
+        {record.signal.direction === 'bullish' ? '⬆' : '⬇'} {studySetupKind(record) === 'Deep Discount' ? 'DD ' : ''}{record.fibGroup === 'No recorded support' ? 'NO TL' : record.fibGroup === 'FIB only' ? 'FIB ONLY' : `TL ${record.fibGroup === 'With FIB' ? 'F' : 'N'}`}
       </button>)}
     </div>
     <section aria-label="Trendline study" className="absolute bottom-8 right-3 z-50 w-[min(760px,calc(100%_-_24px))] rounded-xl border-2 border-violet-200 bg-white text-slate-800 shadow-xl">
@@ -272,6 +277,7 @@ export function TrendlineStudy(props: Props) {
           ? `Study the ${props.entryArrows.length} entry-arrow trades currently included by the chart and its trade filters. Entry, SL, TP and results are copied directly from the arrows. Includes scalping and MTF entries, and entries without matching support. Capture again after changing chart filters or loading more history.`
           : 'Compare zone + engulfing entries with FIB and trendline, trendline without FIB, or FIB without a matching trendline.'}
           {' '}Trendline support means green for BUY or red for SELL on the zone timeframe or higher at confirmation. Both continuation and breakout lines count; no line touch is required.</p>
+        <p className="text-slate-500">Deep Discount includes 0.71–0.79 and valid deeper zones toward the Fib origin, plus inherent DB/DT entries. Historical Fib invalidation requires a completed candle entirely beyond 0.79, including its wicks. Unknown means the recorded arrow has insufficient Fib detail.</p>
         <div className="flex flex-wrap items-end gap-2">
           {source === 'historical' && <>
           <label>Zone timeframe<select aria-label="Study zone timeframe" className="ml-2 rounded border p-1" value={zoneTf}
@@ -308,6 +314,10 @@ export function TrendlineStudy(props: Props) {
               ...(source === 'arrows' ? ['No recorded support' as const] : [])] as const).map(g => <option key={g} value={g}
               disabled={(g === 'FIB only' || g === 'No recorded support') && trendlineType !== 'all'}>{groupLabels[g]}</option>)}
           </select></label>
+          <label>Setup<select aria-label="Study setup filter" className="ml-2 rounded border p-1" value={setupFilter}
+            onChange={e => { setSetupFilter(e.target.value as StudySetupKind | 'All'); setSelected(null); setBreakdownKey(null); }}>
+            <option value="All">All setups</option>{STUDY_SETUP_KINDS.map(kind => <option key={kind}>{kind}</option>)}
+          </select></label>
           <label>Entry distance<select aria-label="Study entry distance filter" className="ml-2 rounded border p-1" value={distanceFilter}
             onChange={e => { setDistanceFilter(e.target.value as StudyDistanceBand | 'All'); setSelected(null); setBreakdownKey(null); }}>
             <option value="All">All distances</option>{STUDY_DISTANCE_BANDS.map(band => <option key={band}>{band}</option>)}
@@ -333,12 +343,20 @@ export function TrendlineStudy(props: Props) {
               {preview.bars < preview.requested ? ' More candle history is needed for the full selection.' : ''}</p>
           </> : <p>Waiting for completed {timeframeLabels[zoneTf]} candle history to show the study start date.</p>}
         </div>
-        <p className="text-slate-500">Study timeframes: {studyTimeframes(zoneTf).map(tf => timeframeLabels[tf]).join(', ')}. Entry confirmations and trendline evidence use the selected timeframe or higher. Each journal row lists the supporting timeframe and type.</p>
+        <p className="text-slate-500">Entry confirmations: {studyEntryTimeframes(props.symbol, zoneTf).map(tf => timeframeLabels[tf]).join(', ')}. Trendline evidence: {studyTimeframes(zoneTf).map(tf => timeframeLabels[tf]).join(', ')}. Each journal row lists the supporting timeframe and type.</p>
         <p className="text-slate-500">Candle entry routes use the existing buffers, capped pending entries and RR. Gold keeps its fixed SL/TP. This study excludes lower-timeframe scalping and CHoCH-only entries. Trading-time filter for this {result ? 'snapshot' : 'run'}: {(result ? completedInput.current?.tradingTimeEnabled : props.tradingTimeEnabled) ? 'ON' : 'OFF'}.</p></>}
         {running && <p role="status">{progress}</p>}
         {error && <p role="alert" className="text-red-700">{error}</p>}
         {storageNotice && <p className="text-slate-500">{storageNotice}</p>}
         {result && <>
+          <section aria-label="Deep Discount comparison" className="overflow-auto rounded border border-fuchsia-200">
+            <strong className="block bg-fuchsia-50 px-2 py-1 text-fuchsia-900">DEEP DISCOUNT · current filters</strong>
+            <table className="w-full text-left"><thead><tr>{['Support', 'Entries', 'Done', 'TP', 'SL', 'RF', 'Open', 'TP %', 'Total R', 'Avg R'].map(label => <th key={label} className="p-1">{label}</th>)}</tr></thead>
+              <tbody>{deepComparison.map(({ label, stats }) => <tr key={label} className="border-t">
+                <td className="p-1">{label}</td>{[stats.total, stats.completed, stats.tp, stats.sl, stats.rf, stats.pending,
+                  number(stats.accuracy), number(stats.totalR), number(stats.averageR)].map((value, i) => <td key={i} className="p-1">{value}</td>)}
+              </tr>)}</tbody></table>
+          </section>
           <p>{when(result.from)} → {when(result.to)} · {result.scanned} {source === 'arrows' ? 'entry arrows read' : 'engulfing patterns checked'} · {result.records.length} study entries. Snapshot as of this run; run again for updated results.</p>
           {!!result.missingTimeframes.length && <p className="text-amber-700">Insufficient history: {result.missingTimeframes.join(', ')}.
             {source === 'arrows' ? ' Some entries lack enough history to assess these trend lines. Their recorded prices and results are still included; no match does not prove there was no support.'
@@ -349,7 +367,7 @@ export function TrendlineStudy(props: Props) {
             {['Group', 'Entries', 'Done', 'TP', 'SL', 'RF', 'Open', 'Unclear', 'Cancelled', 'TP %', 'Total R', 'Avg R'].map(h => <th key={h} className="px-2 py-1">{h}</th>)}
           </tr></thead><tbody>{(['With FIB', 'No FIB', ...(trendlineType === 'all' ? ['FIB only' as const,
             ...(source === 'arrows' ? ['No recorded support' as const] : [])] : []), 'All'] as const).map(g => {
-            const stats = studyAccuracy(distanceRecords.filter(r => g === 'All' || r.fibGroup === g));
+            const stats = studyAccuracy(setupRecords.filter(r => g === 'All' || r.fibGroup === g));
             return <tr key={g} className="border-b"><th className="px-2 py-1">{g === 'All' ? 'All' : groupLabels[g]}</th>
               {[stats.total, stats.completed, stats.tp, stats.sl, stats.rf, stats.pending, stats.ambiguous,
                 stats.cancelled, stats.accuracy === undefined ? '—' : `${stats.accuracy.toFixed(1)}%`,
@@ -419,7 +437,7 @@ export function TrendlineStudy(props: Props) {
             {['Entry time', 'Zone / engulfing', 'Direction', 'Entry', 'SL', 'TP', 'Nearest distance', 'Supporting trendline: timeframe / type', 'Group', 'Result', 'R'].map(h => <th key={h} className="p-1">{h}</th>)}
           </tr></thead><tbody>{visible.map(r => <tr key={r.id} className="cursor-pointer border-b hover:bg-violet-50" onClick={() => setSelected(r)}>
             <td className="p-1"><button type="button" className="text-left underline" onClick={() => setSelected(r)}>{when(r.filledAt ?? r.levels.calculatedAt)}</button></td>
-            <td className="p-1">{r.zoneTimeframe} {r.zoneName} / {r.signal.timeframe} {r.signal.type}</td>
+            <td className="p-1">{r.zoneTimeframe} {r.zoneName} / {r.signal.timeframe} {r.signal.type}<div className="font-semibold text-fuchsia-800">{studySetupKind(r)}</div></td>
             <td className="p-1">{r.signal.direction === 'bullish' ? 'BUY' : 'SELL'}</td>
             <td className="p-1 tabular-nums">{r.levels.entry.toFixed(5)}</td>
             <td className="p-1 tabular-nums">{r.levels.stopLoss.toFixed(5)}</td>
@@ -433,6 +451,7 @@ export function TrendlineStudy(props: Props) {
         </>}
         {selected && <div className="space-y-1 rounded border border-violet-200 bg-violet-50 p-2" aria-label="Trendline arrow details">
           <strong>{selected.signal.direction === 'bullish' ? 'BUY' : 'SELL'} · {selected.zoneTimeframe} {selected.zoneName} · {selected.signal.timeframe} {selected.signal.type} · {selected.arrowDetails?.style ?? selected.style}</strong>
+          <p className="font-semibold text-fuchsia-800">Setup: {studySetupKind(selected)}</p>
           {selected.arrowDetails && <>
             <p>Source: {selected.arrowDetails.source} · Arrow status: {selected.levels.status}</p>
             <p>Main zone: {selected.zoneTimeframe} {selected.arrowDetails.mainZone} · Entry zone: {selected.signal.timeframe} {selected.arrowDetails.entryZone}</p>

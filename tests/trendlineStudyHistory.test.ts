@@ -15,15 +15,31 @@ const options = () => ({ symbol: 'EURUSD', zoneTimeframe: 'M15' as const, fromTi
   signal: new AbortController().signal, candles: seed() });
 const response = (tf: string, candles: StructureCandle[], symbol = 'EURUSD') => Response.json({ ok: true, symbol, granularity: tf, candles });
 
-test('history requirements include only the selected timeframe and higher for every market', () => {
+test('history requirements include H1 entry candles while retaining higher-timeframe trendline context', () => {
   assert.deepEqual(studyHistoryRequirements('EURUSD', 'M15').mandatory, ['M15', 'M30', 'H1', 'H4']);
   assert.deepEqual(studyHistoryRequirements('XAUUSD', 'M15'), studyHistoryRequirements('EURUSD', 'M15'));
   for (const selected of ['M1', 'M5', 'M15', 'H1'] as const) {
     const { mandatory, optional } = studyHistoryRequirements('XAUUSD', selected);
-    assert.ok([...mandatory, ...optional].every(tf => STUDY_SECONDS[tf] >= STUDY_SECONDS[selected]));
+    assert.ok([...mandatory, ...optional].every(tf => STUDY_SECONDS[tf] >= STUDY_SECONDS[selected]
+      || selected === 'H1' && (tf === 'M15' || tf === 'M30')));
   }
   assert.ok(studyHistoryRequirements('EURUSD', 'M1').mandatory.includes('D'));
   assert.ok(studyHistoryRequirements('EURUSD', 'M15').optional.includes('W'));
+});
+
+test('H1 date loading requires and preserves both 15M and 30M entry histories', async () => {
+  const opts = options();
+  delete opts.candles.M15; delete opts.candles.M30;
+  const requested: string[] = [];
+  const result = await loadStudyDateHistory({ ...opts, symbol: 'XAUUSD', zoneTimeframe: 'H1', fetcher: async url => {
+    const tf = new URL(String(url), 'http://test').searchParams.get('granularity')!;
+    requested.push(tf);
+    return response(tf, context(tf as StudyTimeframe), 'XAUUSD');
+  } });
+  assert.deepEqual(requested, ['M15', 'M30']);
+  assert.ok(result.candles.M15!.length && result.candles.M30!.length);
+  await assert.rejects(loadStudyDateHistory({ ...opts, symbol: 'XAUUSD', zoneTimeframe: 'H1',
+    fetcher: async () => { throw new Error('Missing entry history'); } }), /Cannot study the full selected period/);
 });
 
 test('Gold M15 date loading succeeds when M1/M5 history is unavailable and never requests it', async () => {

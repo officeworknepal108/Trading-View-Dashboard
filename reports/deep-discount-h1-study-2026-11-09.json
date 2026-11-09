@@ -1,0 +1,5555 @@
+{
+  "summary": {
+    "symbol": "XAUUSD",
+    "zoneTimeframe": "H1",
+    "confirmations": [
+      "M15",
+      "M30"
+    ],
+    "lookback": 500,
+    "tradingTimeEnabled": false,
+    "from": 1791453600,
+    "to": 1794200400,
+    "missingTimeframes": [],
+    "scanned": 777,
+    "allEntries": 18,
+    "deepStats": {
+      "total": 6,
+      "tp": 2,
+      "sl": 3,
+      "rf": 0,
+      "completed": 5,
+      "accuracy": 40,
+      "totalR": 1,
+      "averageR": 0.2,
+      "pending": 1,
+      "ambiguous": 0,
+      "cancelled": 0
+    },
+    "comparison": [
+      {
+        "label": "Deep Discount + trendline",
+        "recordIds": [
+          "TL:XAUUSD:H1:Internal TJL1-1790830800-4193.09:1791525600:M30",
+          "TL:XAUUSD:H1:Internal TJL1-1791522000-4207.485:1791868500:M15",
+          "TL:XAUUSD:H1:Internal DB-1791374400-4066.535:1791984600:M15",
+          "TL:XAUUSD:H1:iss-l4-1791475200:1791984600:M15",
+          "TL:XAUUSD:H1:iss-l4-1793019600:1793091600:M15",
+          "TL:XAUUSD:H1:iss-l4-1793894400:1794192300:M15"
+        ],
+        "stats": {
+          "total": 6,
+          "tp": 2,
+          "sl": 3,
+          "rf": 0,
+          "completed": 5,
+          "accuracy": 40,
+          "totalR": 1,
+          "averageR": 0.2,
+          "pending": 1,
+          "ambiguous": 0,
+          "cancelled": 0
+        }
+      },
+      {
+        "label": "Deep Discount without trendline",
+        "recordIds": [],
+        "stats": {
+          "total": 0,
+          "tp": 0,
+          "sl": 0,
+          "rf": 0,
+          "completed": 0,
+          "totalR": 0,
+          "pending": 0,
+          "ambiguous": 0,
+          "cancelled": 0
+        }
+      }
+    ],
+    "categories": {
+      "Deep Discount": 6,
+      "No FIB": 7,
+      "Other FIB": 5
+    },
+    "uniqueExecutionStats": {
+      "total": 5,
+      "tp": 2,
+      "sl": 2,
+      "rf": 0,
+      "completed": 4,
+      "accuracy": 50,
+      "totalR": 2,
+      "averageR": 0.5,
+      "pending": 1,
+      "ambiguous": 0,
+      "cancelled": 0
+    },
+    "methodology": {
+      "provider": "TradingView WebSocket, OANDA:XAUUSD",
+      "zoneSetups": true,
+      "overlap": "Independent zone rows can share identical entry, SL and TP. Unique execution totals merge those rows.",
+      "trendlines": "Same-direction continuation or breakout evidence on H1 or higher, confirmed by the signal close. No touch or proximity required.",
+      "tradingHours": "All sessions; trading-time filter disabled.",
+      "invalidation": "Completed candle entirely beyond Fib 0.79, including wicks.",
+      "costs": "No spread, slippage or commission model.",
+      "sample": "500 completed H1 bars; 15M/30M entry confirmations; history is reconstructed at each confirmation."
+    }
+  },
+  "result": {
+    "records": [
+      {
+        "id": "TL:XAUUSD:H1:Internal TJL1-1790830800-4193.09:1791525600:M30",
+        "symbol": "XAUUSD",
+        "zoneId": "Internal TJL1-1790830800-4193.09",
+        "zoneName": "Internal QML",
+        "zoneTimeframe": "H1",
+        "signal": {
+          "type": "T1",
+          "direction": "bearish",
+          "time": 1791525600,
+          "candleCount": 2,
+          "timeframe": "M30"
+        },
+        "fibGroup": "With FIB",
+        "fibSources": [
+          "Structure 0.71-0.79"
+        ],
+        "support": [
+          {
+            "timeframe": "H1",
+            "kind": "continuation",
+            "color": "red",
+            "firstTime": 1790755200,
+            "secondTime": 1790942400,
+            "confirmedAt": 1791525600,
+            "geometry": {
+              "time": 1791522000,
+              "slope": -0.05505000000001019,
+              "price": 4193.692099999998
+            },
+            "distance": {
+              "linePrice": 4193.609524999998,
+              "pips": 29.345249999978478,
+              "atrRatio": 0.302615399554644,
+              "band": "Medium"
+            }
+          },
+          {
+            "timeframe": "H1",
+            "kind": "continuation",
+            "color": "red",
+            "firstTime": 1790830800,
+            "secondTime": 1790917200,
+            "confirmedAt": 1791525600,
+            "geometry": {
+              "time": 1791522000,
+              "slope": -0.03521739130436523,
+              "price": 4188.229999999998
+            },
+            "distance": {
+              "linePrice": 4188.177173913041,
+              "pips": 24.978260869593214,
+              "atrRatio": 0.257581938924958,
+              "band": "Medium"
+            }
+          },
+          {
+            "timeframe": "H1",
+            "kind": "breakout",
+            "color": "red",
+            "firstTime": 1790812800,
+            "secondTime": 1790902800,
+            "confirmedAt": 1790953200,
+            "geometry": {
+              "time": 1791522000,
+              "slope": 0.5133333333333212,
+              "price": 4212.671666666665
+            },
+            "distance": {
+              "linePrice": 4213.441666666666,
+              "pips": 227.66666666665515,
+              "atrRatio": 2.3477543826907024,
+              "band": "Far"
+            }
+          },
+          {
+            "timeframe": "H1",
+            "kind": "breakout",
+            "color": "red",
+            "firstTime": 1791374400,
+            "secondTime": 1791417600,
+            "confirmedAt": 1791525600,
+            "geometry": {
+              "time": 1791522000,
+              "slope": 3.547727272727322,
+              "price": 4204.896363636365
+            },
+            "distance": {
+              "linePrice": 4210.217954545456,
+              "pips": 195.42954545456269,
+              "atrRatio": 2.0153172994797566,
+              "band": "Far"
+            }
+          },
+          {
+            "timeframe": "H4",
+            "kind": "continuation",
+            "color": "red",
+            "firstTime": 1787605200,
+            "secondTime": 1789707600,
+            "confirmedAt": 1790341200,
+            "geometry": {
+              "time": 1791507600,
+              "slope": -2.7039545454545406,
+              "price": 4159.018045454546
+            },
+            "distance": {
+              "linePrice": 4155.300107954547,
+              "pips": 353.74892045453635,
+              "atrRatio": 3.647945439396564,
+              "band": "Far"
+            }
+          },
+          {
+            "timeframe": "H4",
+            "kind": "continuation",
+            "color": "red",
+            "firstTime": 1790758800,
+            "secondTime": 1790931600,
+            "confirmedAt": 1791522000,
+            "geometry": {
+              "time": 1791507600,
+              "slope": -1.5262499999999666,
+              "price": 4158.365000000002
+            },
+            "distance": {
+              "linePrice": 4156.266406250002,
+              "pips": 344.08593749998545,
+              "atrRatio": 3.548298394383034,
+              "band": "Far"
+            }
+          },
+          {
+            "timeframe": "H4",
+            "kind": "breakout",
+            "color": "red",
+            "firstTime": 1786021200,
+            "secondTime": 1790542800,
+            "confirmedAt": 1790946000,
+            "geometry": {
+              "time": 1791507600,
+              "slope": 0.01708715596330025,
+              "price": 4228.169793577981
+            },
+            "distance": {
+              "linePrice": 4228.19328841743,
+              "pips": 375.18288417430085,
+              "atrRatio": 3.868977718729711,
+              "band": "Far"
+            }
+          },
+          {
+            "timeframe": "H4",
+            "kind": "breakout",
+            "color": "red",
+            "firstTime": 1788310800,
+            "secondTime": 1788886800,
+            "confirmedAt": 1789146000,
+            "geometry": {
+              "time": 1791507600,
+              "slope": 2.609999999999997,
+              "price": 4705.445
+            },
+            "distance": {
+              "linePrice": 4709.03375,
+              "pips": 5183.587499999994,
+              "atrRatio": 53.45442286026212,
+              "band": "Far"
+            }
+          },
+          {
+            "timeframe": "D",
+            "kind": "continuation",
+            "color": "red",
+            "firstTime": 1775077200,
+            "secondTime": 1778101200,
+            "confirmedAt": 1787605200,
+            "geometry": {
+              "time": 1791406800,
+              "slope": -1.4956250000000182,
+              "price": 4600.386249999998
+            },
+            "distance": {
+              "linePrice": 4598.298606770831,
+              "pips": 4076.236067708305,
+              "atrRatio": 42.0351438924359,
+              "band": "Far"
+            }
+          },
+          {
+            "timeframe": "D",
+            "kind": "breakout",
+            "color": "red",
+            "firstTime": 1753822800,
+            "secondTime": 1755464400,
+            "confirmedAt": 1774299600,
+            "geometry": {
+              "time": 1791406800,
+              "slope": 5.072500000000009,
+              "price": 4830.450000000003
+            },
+            "distance": {
+              "linePrice": 4837.5303645833355,
+              "pips": 6468.553645833354,
+              "atrRatio": 66.70530822112421,
+              "band": "Far"
+            }
+          },
+          {
+            "timeframe": "D",
+            "kind": "breakout",
+            "color": "red",
+            "firstTime": 1758142800,
+            "secondTime": 1763676000,
+            "confirmedAt": 1770069600,
+            "geometry": {
+              "time": 1791406800,
+              "slope": 8.571739130434787,
+              "price": 5959.473043478262
+            },
+            "distance": {
+              "linePrice": 5971.437762681161,
+              "pips": 17807.62762681161,
+              "atrRatio": 183.63661408275155,
+              "band": "Far"
+            }
+          },
+          {
+            "timeframe": "W",
+            "kind": "continuation",
+            "color": "red",
+            "firstTime": 1769378400,
+            "secondTime": 1772402400,
+            "confirmedAt": 1787518800,
+            "geometry": {
+              "time": 1790542800,
+              "slope": -36.513000000000105,
+              "price": 4324.269999999997
+            },
+            "distance": {
+              "linePrice": 4264.827705357139,
+              "pips": 741.5270535713898,
+              "atrRatio": 7.646808447610725,
+              "band": "Far"
+            }
+          },
+          {
+            "timeframe": "W",
+            "kind": "breakout",
+            "color": "red",
+            "firstTime": 1755464400,
+            "secondTime": 1774213200,
+            "confirmedAt": 1788123600,
+            "geometry": {
+              "time": 1790542800,
+              "slope": 25.405322580645162,
+              "price": 4785.068709677419
+            },
+            "distance": {
+              "linePrice": 4826.427969950077,
+              "pips": 6357.529699500765,
+              "atrRatio": 65.5604021160614,
+              "band": "Far"
+            }
+          },
+          {
+            "timeframe": "W",
+            "kind": "breakout",
+            "color": "red",
+            "firstTime": 1769983200,
+            "secondTime": 1774213200,
+            "confirmedAt": 1788123600,
+            "geometry": {
+              "time": 1790542800,
+              "slope": 9.979999999999952,
+              "price": 4741.699999999999
+            },
+            "distance": {
+              "linePrice": 4757.947202380951,
+              "pips": 5672.722023809511,
+              "atrRatio": 58.49849777387492,
+              "band": "Far"
+            }
+          }
+        ],
+        "style": "INTRADAY",
+        "levels": {
+          "entry": 4190.675,
+          "stopLoss": 4209.485,
+          "takeProfit": 4153.055000000001,
+          "riskFree": 4171.865000000001,
+          "riskFreeEnabled": false,
+          "riskPips": 188.1,
+          "rewardRisk": 2,
+          "status": "active",
+          "pendingAtCreation": false,
+          "calculatedAt": 1791527400,
+          "filledAt": 1791527400,
+          "signal": {
+            "type": "T1",
+            "direction": "bearish",
+            "time": 1791525600,
+            "candleCount": 2,
+            "timeframe": "M30"
+          }
+        },
+        "outcome": "sl",
+        "filledAt": 1791527400,
+        "resolvedAt": 1791763200,
+        "returnR": -1,
+        "distanceContext": {
+          "timeframe": "M30",
+          "measuredAt": 1791527400,
+          "atrPips": 96.97209739876286,
+          "nearPips": 24.243024349690714,
+          "mediumPips": 48.48604869938143
+        }
+      },
+      {
+        "id": "TL:XAUUSD:H1:Internal TJL2-1791313200-4184.385:1791783900:M15",
+        "symbol": "XAUUSD",
+        "zoneId": "Internal TJL2-1791313200-4184.385",
+        "zoneName": "Internal RBS",
+        "zoneTimeframe": "H1",
+        "signal": {
+          "type": "T2",
+          "direction": "bullish",
+          "time": 1791783900,
+          "candleCount": 3,
+          "timeframe": "M15"
+        },
+        "fibGroup": "No FIB",
+        "fibSources": [],
+        "support": [
+          {
+            "timeframe": "H1",
+            "kind": "continuation",
+            "color": "green",
+            "firstTime": 1791374400,
+            "secondTime": 1791471600,
+            "confirmedAt": 1791784800,
+            "geometry": {
+              "time": 1791781200,
+              "slope": 1.9889423076922936,
+              "price": 4189.849423076922
+            },
+            "distance": {
+              "linePrice": 4191.838365384614,
+              "pips": 6.183653846137531,
+              "atrRatio": 0.09802474485099254,
+              "band": "Near"
+            }
+          },
+          {
+            "timeframe": "H1",
+            "kind": "continuation",
+            "color": "green",
+            "firstTime": 1791374400,
+            "secondTime": 1791460800,
+            "confirmedAt": 1791784800,
+            "geometry": {
+              "time": 1791781200,
+              "slope": 2.0393478260869453,
+              "price": 4192.974565217391
+            },
+            "distance": {
+              "linePrice": 4195.013913043477,
+              "pips": 37.93913043477005,
+              "atrRatio": 0.6014200783667453,
+              "band": "Far"
+            }
+          },
+          {
+            "timeframe": "H1",
+            "kind": "breakout",
+            "color": "green",
+            "firstTime": 1790334000,
+            "secondTime": 1791522000,
+            "confirmedAt": 1791784800,
+            "geometry": {
+              "time": 1791781200,
+              "slope": -0.5464955357142856,
+              "price": 4180.810602678572
+            },
+            "distance": {
+              "linePrice": 4180.264107142857,
+              "pips": 109.55892857143226,
+              "atrRatio": 1.7367540755973787,
+              "band": "Far"
+            }
+          },
+          {
+            "timeframe": "H1",
+            "kind": "breakout",
+            "color": "green",
+            "firstTime": 1790352000,
+            "secondTime": 1791522000,
+            "confirmedAt": 1791784800,
+            "geometry": {
+              "time": 1791781200,
+              "slope": -0.4886529680365312,
+              "price": 4182.14098173516
+            },
+            "distance": {
+              "linePrice": 4181.652328767123,
+              "pips": 95.67671232876819,
+              "atrRatio": 1.516689896875046,
+              "band": "Far"
+            }
+          },
+          {
+            "timeframe": "H4",
+            "kind": "breakout",
+            "color": "green",
+            "firstTime": 1790931600,
+            "secondTime": 1791234000,
+            "confirmedAt": 1791378000,
+            "geometry": {
+              "time": 1791766800,
+              "slope": -8.460555555555503,
+              "price": 3939.8711111111124
+            },
+            "distance": {
+              "linePrice": 3929.295416666668,
+              "pips": 2619.2458333333207,
+              "atrRatio": 41.52090509964384,
+              "band": "Far"
+            }
+          },
+          {
+            "timeframe": "H4",
+            "kind": "breakout",
+            "color": "green",
+            "firstTime": 1789016400,
+            "secondTime": 1789117200,
+            "confirmedAt": 1789592400,
+            "geometry": {
+              "time": 1791766800,
+              "slope": -6.64142857142854,
+              "price": 3565.0178571428614
+            },
+            "distance": {
+              "linePrice": 3556.7160714285756,
+              "pips": 6345.039285714247,
+              "atrRatio": 100.5830650498268,
+              "band": "Far"
+            }
+          },
+          {
+            "timeframe": "D",
+            "kind": "continuation",
+            "color": "green",
+            "firstTime": 1782766800,
+            "secondTime": 1784149200,
+            "confirmedAt": 1791406800,
+            "geometry": {
+              "time": 1791493200,
+              "slope": 2.2704166666666574,
+              "price": 4107.840416666666
+            },
+            "distance": {
+              "linePrice": 4110.962239583333,
+              "pips": 802.5776041666722,
+              "atrRatio": 12.722650204732881,
+              "band": "Far"
+            }
+          },
+          {
+            "timeframe": "D",
+            "kind": "continuation",
+            "color": "green",
+            "firstTime": 1757538000,
+            "secondTime": 1782248400,
+            "confirmedAt": 1791406800,
+            "geometry": {
+              "time": 1791493200,
+              "slope": 1.722611940298507,
+              "price": 4091.721119402985
+            },
+            "distance": {
+              "linePrice": 4094.0897108208956,
+              "pips": 971.3028917910469,
+              "atrRatio": 15.3973234126487,
+              "band": "Far"
+            }
+          },
+          {
+            "timeframe": "D",
+            "kind": "breakout",
+            "color": "green",
+            "firstTime": 1779742800,
+            "secondTime": 1785963600,
+            "confirmedAt": 1791406800,
+            "geometry": {
+              "time": 1791493200,
+              "slope": -5.306442307692298,
+              "price": 4060.2136538461546
+            },
+            "distance": {
+              "linePrice": 4052.9172956730777,
+              "pips": 1383.027043269226,
+              "atrRatio": 21.924072144363244,
+              "band": "Far"
+            }
+          },
+          {
+            "timeframe": "D",
+            "kind": "breakout",
+            "color": "green",
+            "firstTime": 1781643600,
+            "secondTime": 1785877200,
+            "confirmedAt": 1791406800,
+            "geometry": {
+              "time": 1791493200,
+              "slope": -3.866857142857147,
+              "price": 4065.5327142857136
+            },
+            "distance": {
+              "linePrice": 4060.215785714285,
+              "pips": 1310.0421428571508,
+              "atrRatio": 20.76709822265229,
+              "band": "Far"
+            }
+          },
+          {
+            "timeframe": "W",
+            "kind": "continuation",
+            "color": "green",
+            "firstTime": 1751230800,
+            "secondTime": 1783890000,
+            "confirmedAt": 1791752400,
+            "geometry": {
+              "time": 1791147600,
+              "slope": 13.247870370370375,
+              "price": 4118.774444444445
+            },
+            "distance": {
+              "linePrice": 4132.732022156086,
+              "pips": 584.8797784391445,
+              "atrRatio": 9.271652727749897,
+              "band": "Far"
+            }
+          },
+          {
+            "timeframe": "W",
+            "kind": "continuation",
+            "color": "green",
+            "firstTime": 1761512400,
+            "secondTime": 1780866000,
+            "confirmedAt": 1791752400,
+            "geometry": {
+              "time": 1791147600,
+              "slope": 4.293906249999992,
+              "price": 4096.86640625
+            },
+            "distance": {
+              "linePrice": 4101.390343191964,
+              "pips": 898.2965680803591,
+              "atrRatio": 14.240009883735818,
+              "band": "Far"
+            }
+          },
+          {
+            "timeframe": "W",
+            "kind": "breakout",
+            "color": "green",
+            "firstTime": 1760907600,
+            "secondTime": 1765144800,
+            "confirmedAt": 1774818000,
+            "geometry": {
+              "time": 1791147600,
+              "slope": -11.72285714285707,
+              "price": 3795.2971428571464
+            },
+            "distance": {
+              "linePrice": 3782.9462755102077,
+              "pips": 4082.737244897926,
+              "atrRatio": 64.72051746149154,
+              "band": "Far"
+            }
+          },
+          {
+            "timeframe": "W",
+            "kind": "breakout",
+            "color": "green",
+            "firstTime": 1646604000,
+            "secondTime": 1673820000,
+            "confirmedAt": 1696798800,
+            "geometry": {
+              "time": 1791147600,
+              "slope": -2.9566666666666706,
+              "price": 1363.9866666666658
+            },
+            "distance": {
+              "linePrice": 1360.8716071428562,
+              "pips": 28303.48392857144,
+              "atrRatio": 448.6735285522767,
+              "band": "Far"
+            }
+          }
+        ],
+        "style": "INTRADAY",
+        "levels": {
+          "entry": 4191.22,
+          "stopLoss": 4177.525,
+          "takeProfit": 4218.6100000000015,
+          "riskFree": 4204.915000000001,
+          "riskFreeEnabled": false,
+          "riskPips": 136.95,
+          "rewardRisk": 2,
+          "status": "active",
+          "pendingAtCreation": false,
+          "calculatedAt": 1791784800,
+          "filledAt": 1791784800,
+          "signal": {
+            "type": "T2",
+            "direction": "bullish",
+            "time": 1791783900,
+            "candleCount": 3,
+            "timeframe": "M15"
+          }
+        },
+        "outcome": "sl",
+        "filledAt": 1791784800,
+        "resolvedAt": 1791792000,
+        "returnR": -1,
+        "distanceContext": {
+          "timeframe": "M15",
+          "measuredAt": 1791784800,
+          "atrPips": 63.08258037842696,
+          "nearPips": 15.77064509460674,
+          "mediumPips": 31.54129018921348
+        }
+      },
+      {
+        "id": "TL:XAUUSD:H1:Internal TJL2-1791547200-4168.57:1791795600:M15",
+        "symbol": "XAUUSD",
+        "zoneId": "Internal TJL2-1791547200-4168.57",
+        "zoneName": "Internal TJL2",
+        "zoneTimeframe": "H1",
+        "signal": {
+          "type": "T1",
+          "direction": "bullish",
+          "time": 1791795600,
+          "candleCount": 2,
+          "timeframe": "M15"
+        },
+        "fibGroup": "No FIB",
+        "fibSources": [],
+        "support": [
+          {
+            "timeframe": "H1",
+            "kind": "continuation",
+            "color": "green",
+            "firstTime": 1791374400,
+            "secondTime": 1791475200,
+            "confirmedAt": 1791795600,
+            "geometry": {
+              "time": 1791792000,
+              "slope": 1.6770370370370276,
+              "price": 4175.542407407406
+            },
+            "distance": {
+              "linePrice": 4177.638703703703,
+              "pips": 9.262962962966412,
+              "atrRatio": 0.18084857895744105,
+              "band": "Near"
+            }
+          },
+          {
+            "timeframe": "H1",
+            "kind": "continuation",
+            "color": "green",
+            "firstTime": 1791374400,
+            "secondTime": 1791471600,
+            "confirmedAt": 1791795600,
+            "geometry": {
+              "time": 1791792000,
+              "slope": 1.707115384615393,
+              "price": 4177.4975
+            },
+            "distance": {
+              "linePrice": 4179.63139423077,
+              "pips": 10.66394230770129,
+              "atrRatio": 0.20820107131404345,
+              "band": "Near"
+            }
+          },
+          {
+            "timeframe": "H1",
+            "kind": "breakout",
+            "color": "green",
+            "firstTime": 1791288000,
+            "secondTime": 1791507600,
+            "confirmedAt": 1791795600,
+            "geometry": {
+              "time": 1791792000,
+              "slope": -0.0753448275862207,
+              "price": 4173.054655172413
+            },
+            "distance": {
+              "linePrice": 4172.96047413793,
+              "pips": 56.045258620697496,
+              "atrRatio": 1.09421849351857,
+              "band": "Far"
+            }
+          },
+          {
+            "timeframe": "H1",
+            "kind": "breakout",
+            "color": "green",
+            "firstTime": 1790942400,
+            "secondTime": 1791270000,
+            "confirmedAt": 1791378000,
+            "geometry": {
+              "time": 1791792000,
+              "slope": -2.0534146341463315,
+              "price": 3952.3724390243915
+            },
+            "distance": {
+              "linePrice": 3949.8056707317087,
+              "pips": 2287.593292682909,
+              "atrRatio": 44.66259855170467,
+              "band": "Far"
+            }
+          },
+          {
+            "timeframe": "H4",
+            "kind": "breakout",
+            "color": "green",
+            "firstTime": 1790931600,
+            "secondTime": 1791234000,
+            "confirmedAt": 1791378000,
+            "geometry": {
+              "time": 1791781200,
+              "slope": -8.460555555555503,
+              "price": 3931.410555555557
+            },
+            "distance": {
+              "linePrice": 3922.4212152777795,
+              "pips": 2561.4378472222006,
+              "atrRatio": 50.00909499584077,
+              "band": "Far"
+            }
+          },
+          {
+            "timeframe": "H4",
+            "kind": "breakout",
+            "color": "green",
+            "firstTime": 1789016400,
+            "secondTime": 1789117200,
+            "confirmedAt": 1789592400,
+            "geometry": {
+              "time": 1791781200,
+              "slope": -6.64142857142854,
+              "price": 3558.376428571433
+            },
+            "distance": {
+              "linePrice": 3551.31991071429,
+              "pips": 6272.450892857096,
+              "atrRatio": 122.46230877622601,
+              "band": "Far"
+            }
+          },
+          {
+            "timeframe": "D",
+            "kind": "continuation",
+            "color": "green",
+            "firstTime": 1782766800,
+            "secondTime": 1784149200,
+            "confirmedAt": 1791406800,
+            "geometry": {
+              "time": 1791493200,
+              "slope": 2.2704166666666574,
+              "price": 4107.840416666666
+            },
+            "distance": {
+              "linePrice": 4111.269691840277,
+              "pips": 672.9530815972248,
+              "atrRatio": 13.138626268771608,
+              "band": "Far"
+            }
+          },
+          {
+            "timeframe": "D",
+            "kind": "continuation",
+            "color": "green",
+            "firstTime": 1757538000,
+            "secondTime": 1782248400,
+            "confirmedAt": 1791406800,
+            "geometry": {
+              "time": 1791493200,
+              "slope": 1.722611940298507,
+              "price": 4091.721119402985
+            },
+            "distance": {
+              "linePrice": 4094.322981187811,
+              "pips": 842.4201881218869,
+              "atrRatio": 16.447274432166576,
+              "band": "Far"
+            }
+          },
+          {
+            "timeframe": "D",
+            "kind": "breakout",
+            "color": "green",
+            "firstTime": 1779742800,
+            "secondTime": 1785963600,
+            "confirmedAt": 1791406800,
+            "geometry": {
+              "time": 1791493200,
+              "slope": -5.306442307692298,
+              "price": 4060.2136538461546
+            },
+            "distance": {
+              "linePrice": 4052.198714943911,
+              "pips": 1263.662850560886,
+              "atrRatio": 24.671547507954134,
+              "band": "Far"
+            }
+          },
+          {
+            "timeframe": "D",
+            "kind": "breakout",
+            "color": "green",
+            "firstTime": 1781643600,
+            "secondTime": 1785877200,
+            "confirmedAt": 1791406800,
+            "geometry": {
+              "time": 1791493200,
+              "slope": -3.866857142857147,
+              "price": 4065.5327142857136
+            },
+            "distance": {
+              "linePrice": 4059.692148809523,
+              "pips": 1188.7285119047647,
+              "atrRatio": 23.208541694883788,
+              "band": "Far"
+            }
+          },
+          {
+            "timeframe": "W",
+            "kind": "continuation",
+            "color": "green",
+            "firstTime": 1751230800,
+            "secondTime": 1783890000,
+            "confirmedAt": 1791752400,
+            "geometry": {
+              "time": 1791147600,
+              "slope": 13.247870370370375,
+              "price": 4118.774444444445
+            },
+            "distance": {
+              "linePrice": 4132.988305362655,
+              "pips": 455.7669463734419,
+              "atrRatio": 8.898319567609837,
+              "band": "Far"
+            }
+          },
+          {
+            "timeframe": "W",
+            "kind": "continuation",
+            "color": "green",
+            "firstTime": 1761512400,
+            "secondTime": 1780866000,
+            "confirmedAt": 1791752400,
+            "geometry": {
+              "time": 1791147600,
+              "slope": 4.293906249999992,
+              "price": 4096.86640625
+            },
+            "distance": {
+              "linePrice": 4101.473409830729,
+              "pips": 770.915901692706,
+              "atrRatio": 15.051236399651117,
+              "band": "Far"
+            }
+          },
+          {
+            "timeframe": "W",
+            "kind": "breakout",
+            "color": "green",
+            "firstTime": 1760907600,
+            "secondTime": 1765144800,
+            "confirmedAt": 1774818000,
+            "geometry": {
+              "time": 1791147600,
+              "slope": -11.72285714285707,
+              "price": 3795.2971428571464
+            },
+            "distance": {
+              "linePrice": 3782.7194940476224,
+              "pips": 3958.4550595237715,
+              "atrRatio": 77.28423132467216,
+              "band": "Far"
+            }
+          },
+          {
+            "timeframe": "W",
+            "kind": "breakout",
+            "color": "green",
+            "firstTime": 1646604000,
+            "secondTime": 1673820000,
+            "confirmedAt": 1696798800,
+            "geometry": {
+              "time": 1791147600,
+              "slope": -2.9566666666666706,
+              "price": 1363.9866666666658
+            },
+            "distance": {
+              "linePrice": 1360.8144097222214,
+              "pips": 28177.505902777782,
+              "atrRatio": 550.1330321038387,
+              "band": "Far"
+            }
+          }
+        ],
+        "style": "INTRADAY",
+        "levels": {
+          "entry": 4178.565,
+          "stopLoss": 4170.96,
+          "takeProfit": 4193.774999999999,
+          "riskFree": 4186.169999999999,
+          "riskFreeEnabled": false,
+          "riskPips": 76.05,
+          "rewardRisk": 2,
+          "status": "active",
+          "pendingAtCreation": false,
+          "calculatedAt": 1791796500,
+          "filledAt": 1791796500,
+          "signal": {
+            "type": "T1",
+            "direction": "bullish",
+            "time": 1791795600,
+            "candleCount": 2,
+            "timeframe": "M15"
+          }
+        },
+        "outcome": "sl",
+        "filledAt": 1791796500,
+        "resolvedAt": 1791797400,
+        "returnR": -1,
+        "distanceContext": {
+          "timeframe": "M15",
+          "measuredAt": 1791796500,
+          "atrPips": 51.21944013254457,
+          "nearPips": 12.804860033136142,
+          "mediumPips": 25.609720066272285
+        }
+      },
+      {
+        "id": "TL:XAUUSD:H1:Internal TJL1-1791522000-4207.485:1791868500:M15",
+        "symbol": "XAUUSD",
+        "zoneId": "Internal TJL1-1791522000-4207.485",
+        "zoneName": "Internal QML",
+        "zoneTimeframe": "H1",
+        "signal": {
+          "type": "T1",
+          "direction": "bearish",
+          "time": 1791868500,
+          "candleCount": 2,
+          "timeframe": "M15"
+        },
+        "fibGroup": "With FIB",
+        "fibSources": [
+          "Structure 0.71-0.79"
+        ],
+        "support": [
+          {
+            "timeframe": "H1",
+            "kind": "continuation",
+            "color": "red",
+            "firstTime": 1790769600,
+            "secondTime": 1790942400,
+            "confirmedAt": 1791770400,
+            "geometry": {
+              "time": 1791864000,
+              "slope": -0.03641304347826482,
+              "price": 4212.168804347825
+            },
+            "distance": {
+              "linePrice": 4212.1141847826075,
+              "pips": 180.09184782607917,
+              "atrRatio": 2.9616620339238464,
+              "band": "Far"
+            }
+          },
+          {
+            "timeframe": "H1",
+            "kind": "continuation",
+            "color": "red",
+            "firstTime": 1790164800,
+            "secondTime": 1790330400,
+            "confirmedAt": 1791770400,
+            "geometry": {
+              "time": 1791864000,
+              "slope": -0.36988636363637606,
+              "price": 4203.080681818178
+            },
+            "distance": {
+              "linePrice": 4202.525852272724,
+              "pips": 84.20852272724005,
+              "atrRatio": 1.3848332820424585,
+              "band": "Far"
+            }
+          },
+          {
+            "timeframe": "H1",
+            "kind": "breakout",
+            "color": "red",
+            "firstTime": 1790812800,
+            "secondTime": 1790902800,
+            "confirmedAt": 1790953200,
+            "geometry": {
+              "time": 1791864000,
+              "slope": 0.5133333333333212,
+              "price": 4235.771666666665
+            },
+            "distance": {
+              "linePrice": 4236.541666666664,
+              "pips": 424.3666666666468,
+              "atrRatio": 6.978831414641201,
+              "band": "Far"
+            }
+          },
+          {
+            "timeframe": "H1",
+            "kind": "breakout",
+            "color": "red",
+            "firstTime": 1791374400,
+            "secondTime": 1791417600,
+            "confirmedAt": 1791525600,
+            "geometry": {
+              "time": 1791864000,
+              "slope": 3.547727272727322,
+              "price": 4364.544090909095
+            },
+            "distance": {
+              "linePrice": 4369.865681818186,
+              "pips": 1757.6068181818664,
+              "atrRatio": 28.904347680423573,
+              "band": "Far"
+            }
+          },
+          {
+            "timeframe": "H4",
+            "kind": "continuation",
+            "color": "red",
+            "firstTime": 1790758800,
+            "secondTime": 1790931600,
+            "confirmedAt": 1791781200,
+            "geometry": {
+              "time": 1791853200,
+              "slope": -0.1395833333333485,
+              "price": 4212.156666666666
+            },
+            "distance": {
+              "linePrice": 4211.999635416666,
+              "pips": 178.9463541666646,
+              "atrRatio": 2.9428240625101436,
+              "band": "Far"
+            }
+          },
+          {
+            "timeframe": "H4",
+            "kind": "continuation",
+            "color": "red",
+            "firstTime": 1788440400,
+            "secondTime": 1789707600,
+            "confirmedAt": 1791781200,
+            "geometry": {
+              "time": 1791853200,
+              "slope": -1.8540624999999977,
+              "price": 4205.009687500001
+            },
+            "distance": {
+              "linePrice": 4202.923867187501,
+              "pips": 88.18867187501382,
+              "atrRatio": 1.4502879750927506,
+              "band": "Far"
+            }
+          },
+          {
+            "timeframe": "H4",
+            "kind": "breakout",
+            "color": "red",
+            "firstTime": 1786021200,
+            "secondTime": 1790542800,
+            "confirmedAt": 1790946000,
+            "geometry": {
+              "time": 1791853200,
+              "slope": 0.01708715596330025,
+              "price": 4228.374839449541
+            },
+            "distance": {
+              "linePrice": 4228.3940625,
+              "pips": 342.890625,
+              "atrRatio": 5.638934566497685,
+              "band": "Far"
+            }
+          },
+          {
+            "timeframe": "H4",
+            "kind": "breakout",
+            "color": "red",
+            "firstTime": 1788310800,
+            "secondTime": 1788886800,
+            "confirmedAt": 1789146000,
+            "geometry": {
+              "time": 1791853200,
+              "slope": 2.609999999999997,
+              "price": 4736.764999999999
+            },
+            "distance": {
+              "linePrice": 4739.701249999999,
+              "pips": 5455.962499999996,
+              "atrRatio": 89.72486644907572,
+              "band": "Far"
+            }
+          },
+          {
+            "timeframe": "D",
+            "kind": "continuation",
+            "color": "red",
+            "firstTime": 1775077200,
+            "secondTime": 1778101200,
+            "confirmedAt": 1787605200,
+            "geometry": {
+              "time": 1791752400,
+              "slope": -1.4956250000000182,
+              "price": 4597.394999999998
+            },
+            "distance": {
+              "linePrice": 4595.369674479164,
+              "pips": 4012.6467447916457,
+              "atrRatio": 65.98912534383238,
+              "band": "Far"
+            }
+          },
+          {
+            "timeframe": "D",
+            "kind": "breakout",
+            "color": "red",
+            "firstTime": 1753822800,
+            "secondTime": 1755464400,
+            "confirmedAt": 1774299600,
+            "geometry": {
+              "time": 1791752400,
+              "slope": 5.072500000000009,
+              "price": 4840.595000000003
+            },
+            "distance": {
+              "linePrice": 4847.464010416669,
+              "pips": 6533.590104166697,
+              "atrRatio": 107.44676114056136,
+              "band": "Far"
+            }
+          },
+          {
+            "timeframe": "D",
+            "kind": "breakout",
+            "color": "red",
+            "firstTime": 1758142800,
+            "secondTime": 1763676000,
+            "confirmedAt": 1770069600,
+            "geometry": {
+              "time": 1791752400,
+              "slope": 8.571739130434787,
+              "price": 5976.616521739132
+            },
+            "distance": {
+              "linePrice": 5988.224085144929,
+              "pips": 17941.19085144929,
+              "atrRatio": 295.0480237141784,
+              "band": "Far"
+            }
+          },
+          {
+            "timeframe": "W",
+            "kind": "continuation",
+            "color": "red",
+            "firstTime": 1769378400,
+            "secondTime": 1772402400,
+            "confirmedAt": 1787518800,
+            "geometry": {
+              "time": 1791147600,
+              "slope": -36.513000000000105,
+              "price": 4287.756999999997
+            },
+            "distance": {
+              "linePrice": 4244.180473214283,
+              "pips": 500.7547321428319,
+              "atrRatio": 8.235055036624301,
+              "band": "Far"
+            }
+          },
+          {
+            "timeframe": "W",
+            "kind": "breakout",
+            "color": "red",
+            "firstTime": 1755464400,
+            "secondTime": 1774213200,
+            "confirmedAt": 1788123600,
+            "geometry": {
+              "time": 1791147600,
+              "slope": 25.405322580645162,
+              "price": 4810.474032258065
+            },
+            "distance": {
+              "linePrice": 4840.7940749807985,
+              "pips": 6466.89074980799,
+              "atrRatio": 106.34987114872682,
+              "band": "Far"
+            }
+          },
+          {
+            "timeframe": "W",
+            "kind": "breakout",
+            "color": "red",
+            "firstTime": 1769983200,
+            "secondTime": 1774213200,
+            "confirmedAt": 1788123600,
+            "geometry": {
+              "time": 1791147600,
+              "slope": 9.979999999999952,
+              "price": 4751.6799999999985
+            },
+            "distance": {
+              "linePrice": 4763.590654761903,
+              "pips": 5694.856547619038,
+              "atrRatio": 93.65354750546086,
+              "band": "Far"
+            }
+          }
+        ],
+        "style": "INTRADAY",
+        "levels": {
+          "entry": 4194.105,
+          "stopLoss": 4202.625,
+          "takeProfit": 4177.064999999999,
+          "riskFree": 4185.584999999999,
+          "riskFreeEnabled": false,
+          "riskPips": 85.2,
+          "rewardRisk": 2,
+          "status": "active",
+          "pendingAtCreation": false,
+          "calculatedAt": 1791869400,
+          "filledAt": 1791869400,
+          "signal": {
+            "type": "T1",
+            "direction": "bearish",
+            "time": 1791868500,
+            "candleCount": 2,
+            "timeframe": "M15"
+          }
+        },
+        "outcome": "tp",
+        "filledAt": 1791869400,
+        "resolvedAt": 1791896400,
+        "returnR": 2,
+        "distanceContext": {
+          "timeframe": "M15",
+          "measuredAt": 1791869400,
+          "atrPips": 60.80769708469373,
+          "nearPips": 15.201924271173432,
+          "mediumPips": 30.403848542346864
+        }
+      },
+      {
+        "id": "TL:XAUUSD:H1:iss-l3-1791424800:1791963900:M15",
+        "symbol": "XAUUSD",
+        "zoneId": "iss-l3-1791424800",
+        "zoneName": "ISS L3",
+        "zoneTimeframe": "H1",
+        "signal": {
+          "type": "T2",
+          "direction": "bullish",
+          "time": 1791963900,
+          "candleCount": 3,
+          "timeframe": "M15"
+        },
+        "fibGroup": "With FIB",
+        "fibSources": [
+          "4H Swing 0.5-0.618"
+        ],
+        "support": [
+          {
+            "timeframe": "H1",
+            "kind": "continuation",
+            "color": "green",
+            "firstTime": 1791439200,
+            "secondTime": 1791939600,
+            "confirmedAt": 1791961200,
+            "geometry": {
+              "time": 1791961200,
+              "slope": 0.34500000000000375,
+              "price": 4146.525
+            },
+            "distance": {
+              "linePrice": 4146.87,
+              "pips": 24.849999999996726,
+              "atrRatio": 0.3612912422523092,
+              "band": "Medium"
+            }
+          },
+          {
+            "timeframe": "H1",
+            "kind": "continuation",
+            "color": "green",
+            "firstTime": 1791475200,
+            "secondTime": 1791939600,
+            "confirmedAt": 1791961200,
+            "geometry": {
+              "time": 1791961200,
+              "slope": 0.50590909090909,
+              "price": 4147.490454545455
+            },
+            "distance": {
+              "linePrice": 4147.996363636364,
+              "pips": 13.586363636359238,
+              "atrRatio": 0.19753055114174956,
+              "band": "Near"
+            }
+          },
+          {
+            "timeframe": "H1",
+            "kind": "breakout",
+            "color": "green",
+            "firstTime": 1790334000,
+            "secondTime": 1791514800,
+            "confirmedAt": 1791810000,
+            "geometry": {
+              "time": 1791961200,
+              "slope": -0.6098648648648664,
+              "price": 4135.8848648648645
+            },
+            "distance": {
+              "linePrice": 4135.275,
+              "pips": 140.79999999999927,
+              "atrRatio": 2.047074724713544,
+              "band": "Far"
+            }
+          },
+          {
+            "timeframe": "H1",
+            "kind": "breakout",
+            "color": "green",
+            "firstTime": 1790352000,
+            "secondTime": 1791514800,
+            "confirmedAt": 1791810000,
+            "geometry": {
+              "time": 1791961200,
+              "slope": -0.5529493087557635,
+              "price": 4140.039700460829
+            },
+            "distance": {
+              "linePrice": 4139.486751152073,
+              "pips": 98.68248847926225,
+              "atrRatio": 1.434733152966863,
+              "band": "Far"
+            }
+          },
+          {
+            "timeframe": "H4",
+            "kind": "breakout",
+            "color": "green",
+            "firstTime": 1790931600,
+            "secondTime": 1791234000,
+            "confirmedAt": 1791378000,
+            "geometry": {
+              "time": 1791939600,
+              "slope": -8.460555555555503,
+              "price": 3838.3444444444467
+            },
+            "distance": {
+              "linePrice": 3823.5384722222248,
+              "pips": 3258.165277777748,
+              "atrRatio": 47.37008372924819,
+              "band": "Far"
+            }
+          },
+          {
+            "timeframe": "H4",
+            "kind": "breakout",
+            "color": "green",
+            "firstTime": 1789016400,
+            "secondTime": 1789117200,
+            "confirmedAt": 1789592400,
+            "geometry": {
+              "time": 1791939600,
+              "slope": -6.64142857142854,
+              "price": 3485.320714285719
+            },
+            "distance": {
+              "linePrice": 3473.698214285719,
+              "pips": 6756.567857142804,
+              "atrRatio": 98.23294947563251,
+              "band": "Far"
+            }
+          },
+          {
+            "timeframe": "D",
+            "kind": "continuation",
+            "color": "green",
+            "firstTime": 1782766800,
+            "secondTime": 1784149200,
+            "confirmedAt": 1791406800,
+            "geometry": {
+              "time": 1791838800,
+              "slope": 2.2704166666666574,
+              "price": 4112.381249999999
+            },
+            "distance": {
+              "linePrice": 4115.692274305555,
+              "pips": 336.62725694444816,
+              "atrRatio": 4.894184299294285,
+              "band": "Far"
+            }
+          },
+          {
+            "timeframe": "D",
+            "kind": "continuation",
+            "color": "green",
+            "firstTime": 1757538000,
+            "secondTime": 1782248400,
+            "confirmedAt": 1791406800,
+            "geometry": {
+              "time": 1791838800,
+              "slope": 1.722611940298507,
+              "price": 4095.166343283582
+            },
+            "distance": {
+              "linePrice": 4097.678485696518,
+              "pips": 516.7651430348178,
+              "atrRatio": 7.513187946871877,
+              "band": "Far"
+            }
+          },
+          {
+            "timeframe": "D",
+            "kind": "breakout",
+            "color": "green",
+            "firstTime": 1779742800,
+            "secondTime": 1785963600,
+            "confirmedAt": 1791406800,
+            "geometry": {
+              "time": 1791838800,
+              "slope": -5.306442307692298,
+              "price": 4049.6007692307703
+            },
+            "distance": {
+              "linePrice": 4041.8622075320523,
+              "pips": 1074.927924679473,
+              "atrRatio": 15.628251317472621,
+              "band": "Far"
+            }
+          },
+          {
+            "timeframe": "D",
+            "kind": "breakout",
+            "color": "green",
+            "firstTime": 1781643600,
+            "secondTime": 1785877200,
+            "confirmedAt": 1791406800,
+            "geometry": {
+              "time": 1791838800,
+              "slope": -3.866857142857147,
+              "price": 4057.7989999999995
+            },
+            "distance": {
+              "linePrice": 4052.1598333333327,
+              "pips": 971.9516666666686,
+              "atrRatio": 14.131091551680052,
+              "band": "Far"
+            }
+          },
+          {
+            "timeframe": "W",
+            "kind": "continuation",
+            "color": "green",
+            "firstTime": 1751230800,
+            "secondTime": 1783890000,
+            "confirmedAt": 1791752400,
+            "geometry": {
+              "time": 1791147600,
+              "slope": 13.247870370370375,
+              "price": 4118.774444444445
+            },
+            "distance": {
+              "linePrice": 4136.674840718696,
+              "pips": 126.80159281303531,
+              "atrRatio": 1.8435535206035831,
+              "band": "Far"
+            }
+          },
+          {
+            "timeframe": "W",
+            "kind": "continuation",
+            "color": "green",
+            "firstTime": 1761512400,
+            "secondTime": 1780866000,
+            "confirmedAt": 1791752400,
+            "geometry": {
+              "time": 1791147600,
+              "slope": 4.293906249999992,
+              "price": 4096.86640625
+            },
+            "distance": {
+              "linePrice": 4102.668291480655,
+              "pips": 466.8670851934439,
+              "atrRatio": 6.787725922586569,
+              "band": "Far"
+            }
+          },
+          {
+            "timeframe": "W",
+            "kind": "breakout",
+            "color": "green",
+            "firstTime": 1760907600,
+            "secondTime": 1765144800,
+            "confirmedAt": 1774818000,
+            "geometry": {
+              "time": 1791147600,
+              "slope": -11.72285714285707,
+              "price": 3795.2971428571464
+            },
+            "distance": {
+              "linePrice": 3779.4573299319763,
+              "pips": 3698.976700680232,
+              "atrRatio": 53.77898942661107,
+              "band": "Far"
+            }
+          },
+          {
+            "timeframe": "W",
+            "kind": "breakout",
+            "color": "green",
+            "firstTime": 1646604000,
+            "secondTime": 1673820000,
+            "confirmedAt": 1696798800,
+            "geometry": {
+              "time": 1791147600,
+              "slope": -2.9566666666666706,
+              "price": 1363.9866666666658
+            },
+            "distance": {
+              "linePrice": 1359.991646825396,
+              "pips": 27893.633531746036,
+              "atrRatio": 405.5422740288338,
+              "band": "Far"
+            }
+          }
+        ],
+        "style": "INTRADAY",
+        "levels": {
+          "entry": 4149.355,
+          "stopLoss": 4141.255,
+          "takeProfit": 4165.5549999999985,
+          "riskFree": 4157.454999999999,
+          "riskFreeEnabled": false,
+          "riskPips": 81,
+          "rewardRisk": 2,
+          "status": "active",
+          "pendingAtCreation": false,
+          "calculatedAt": 1791964800,
+          "filledAt": 1791964800,
+          "signal": {
+            "type": "T2",
+            "direction": "bullish",
+            "time": 1791963900,
+            "candleCount": 3,
+            "timeframe": "M15"
+          }
+        },
+        "outcome": "sl",
+        "filledAt": 1791964800,
+        "resolvedAt": 1791968400,
+        "returnR": -1,
+        "distanceContext": {
+          "timeframe": "M15",
+          "measuredAt": 1791964800,
+          "atrPips": 68.78107491640395,
+          "nearPips": 17.195268729100988,
+          "mediumPips": 34.390537458201976
+        }
+      },
+      {
+        "id": "TL:XAUUSD:H1:Internal TJL1-1791252000-4103.515:1791984600:M15",
+        "symbol": "XAUUSD",
+        "zoneId": "Internal TJL1-1791252000-4103.515",
+        "zoneName": "Internal QML",
+        "zoneTimeframe": "H1",
+        "signal": {
+          "type": "T2",
+          "direction": "bullish",
+          "time": 1791984600,
+          "candleCount": 3,
+          "timeframe": "M15"
+        },
+        "fibGroup": "With FIB",
+        "fibSources": [
+          "4H Swing 0.5-0.618"
+        ],
+        "support": [
+          {
+            "timeframe": "H1",
+            "kind": "continuation",
+            "color": "green",
+            "firstTime": 1791399600,
+            "secondTime": 1791475200,
+            "confirmedAt": 1791982800,
+            "geometry": {
+              "time": 1791979200,
+              "slope": 0.2599999999999909,
+              "price": 4128.379999999999
+            },
+            "distance": {
+              "linePrice": 4128.834999999999,
+              "pips": 311.04999999999563,
+              "atrRatio": 2.6013906998496283,
+              "band": "Far"
+            }
+          },
+          {
+            "timeframe": "H1",
+            "kind": "breakout",
+            "color": "green",
+            "firstTime": 1790334000,
+            "secondTime": 1790942400,
+            "confirmedAt": 1791507600,
+            "geometry": {
+              "time": 1791979200,
+              "slope": -0.760905172413796,
+              "price": 4087.5234482758615
+            },
+            "distance": {
+              "linePrice": 4086.191864224137,
+              "pips": 115.38135775862429,
+              "atrRatio": 0.9649638032770044,
+              "band": "Far"
+            }
+          },
+          {
+            "timeframe": "H1",
+            "kind": "breakout",
+            "color": "green",
+            "firstTime": 1791766800,
+            "secondTime": 1791842400,
+            "confirmedAt": 1791982800,
+            "geometry": {
+              "time": 1791979200,
+              "slope": -2.138500000000022,
+              "price": 4095.500499999999
+            },
+            "distance": {
+              "linePrice": 4091.7581249999994,
+              "pips": 59.71875000000182,
+              "atrRatio": 0.49944317909227426,
+              "band": "Medium"
+            }
+          },
+          {
+            "timeframe": "H4",
+            "kind": "breakout",
+            "color": "green",
+            "firstTime": 1790326800,
+            "secondTime": 1790946000,
+            "confirmedAt": 1791507600,
+            "geometry": {
+              "time": 1791968400,
+              "slope": -2.9158064516129136,
+              "price": 4088.3620967741927
+            },
+            "distance": {
+              "linePrice": 4084.8995766129024,
+              "pips": 128.30423387097198,
+              "atrRatio": 1.073041121180784,
+              "band": "Far"
+            }
+          },
+          {
+            "timeframe": "H4",
+            "kind": "breakout",
+            "color": "green",
+            "firstTime": 1790326800,
+            "secondTime": 1790931600,
+            "confirmedAt": 1791507600,
+            "geometry": {
+              "time": 1791968400,
+              "slope": -2.9421666666666777,
+              "price": 4086.305999999999
+            },
+            "distance": {
+              "linePrice": 4082.8121770833322,
+              "pips": 149.1782291666732,
+              "atrRatio": 1.2476156822833167,
+              "band": "Far"
+            }
+          },
+          {
+            "timeframe": "D",
+            "kind": "continuation",
+            "color": "green",
+            "firstTime": 1782766800,
+            "secondTime": 1784149200,
+            "confirmedAt": 1791406800,
+            "geometry": {
+              "time": 1791838800,
+              "slope": 2.2704166666666574,
+              "price": 4112.381249999999
+            },
+            "distance": {
+              "linePrice": 4116.2362282986105,
+              "pips": 185.0622829861095,
+              "atrRatio": 1.547723201584993,
+              "band": "Far"
+            }
+          },
+          {
+            "timeframe": "D",
+            "kind": "continuation",
+            "color": "green",
+            "firstTime": 1757538000,
+            "secondTime": 1782248400,
+            "confirmedAt": 1791406800,
+            "geometry": {
+              "time": 1791838800,
+              "slope": 1.722611940298507,
+              "price": 4095.166343283582
+            },
+            "distance": {
+              "linePrice": 4098.091194807214,
+              "pips": 3.6119480721481523,
+              "atrRatio": 0.030207645469301173,
+              "band": "Near"
+            }
+          },
+          {
+            "timeframe": "D",
+            "kind": "breakout",
+            "color": "green",
+            "firstTime": 1779742800,
+            "secondTime": 1785963600,
+            "confirmedAt": 1791406800,
+            "geometry": {
+              "time": 1791838800,
+              "slope": -5.306442307692298,
+              "price": 4049.6007692307703
+            },
+            "distance": {
+              "linePrice": 4040.5908723958346,
+              "pips": 571.3912760416497,
+              "atrRatio": 4.77869137267314,
+              "band": "Far"
+            }
+          },
+          {
+            "timeframe": "D",
+            "kind": "breakout",
+            "color": "green",
+            "firstTime": 1781643600,
+            "secondTime": 1785877200,
+            "confirmedAt": 1791406800,
+            "geometry": {
+              "time": 1791838800,
+              "slope": -3.866857142857147,
+              "price": 4057.7989999999995
+            },
+            "distance": {
+              "linePrice": 4051.2333988095234,
+              "pips": 464.9660119047621,
+              "atrRatio": 3.888629670841462,
+              "band": "Far"
+            }
+          },
+          {
+            "timeframe": "W",
+            "kind": "continuation",
+            "color": "green",
+            "firstTime": 1751230800,
+            "secondTime": 1783890000,
+            "confirmedAt": 1791752400,
+            "geometry": {
+              "time": 1791147600,
+              "slope": 13.247870370370375,
+              "price": 4118.774444444445
+            },
+            "distance": {
+              "linePrice": 4137.128264853396,
+              "pips": 393.9826485339654,
+              "atrRatio": 3.2949776492473775,
+              "band": "Far"
+            }
+          },
+          {
+            "timeframe": "W",
+            "kind": "continuation",
+            "color": "green",
+            "firstTime": 1761512400,
+            "secondTime": 1780866000,
+            "confirmedAt": 1791752400,
+            "geometry": {
+              "time": 1791147600,
+              "slope": 4.293906249999992,
+              "price": 4096.86640625
+            },
+            "distance": {
+              "linePrice": 4102.815255533855,
+              "pips": 50.85255533855161,
+              "atrRatio": 0.42529292564313964,
+              "band": "Medium"
+            }
+          },
+          {
+            "timeframe": "W",
+            "kind": "breakout",
+            "color": "green",
+            "firstTime": 1760907600,
+            "secondTime": 1765144800,
+            "confirmedAt": 1774818000,
+            "geometry": {
+              "time": 1791147600,
+              "slope": -11.72285714285707,
+              "price": 3795.2971428571464
+            },
+            "distance": {
+              "linePrice": 3779.0561011904797,
+              "pips": 3186.7389880951987,
+              "atrRatio": 26.65151315376686,
+              "band": "Far"
+            }
+          },
+          {
+            "timeframe": "W",
+            "kind": "breakout",
+            "color": "green",
+            "firstTime": 1646604000,
+            "secondTime": 1673820000,
+            "confirmedAt": 1696798800,
+            "geometry": {
+              "time": 1791147600,
+              "slope": -2.9566666666666706,
+              "price": 1363.9866666666658
+            },
+            "distance": {
+              "linePrice": 1359.890451388888,
+              "pips": 27378.395486111112,
+              "atrRatio": 228.97252337044043,
+              "band": "Far"
+            }
+          }
+        ],
+        "style": "INTRADAY",
+        "levels": {
+          "entry": 4097.73,
+          "stopLoss": 4077.73,
+          "takeProfit": 4137.729999999999,
+          "riskFree": 4117.73,
+          "riskFreeEnabled": false,
+          "riskPips": 200,
+          "rewardRisk": 2,
+          "status": "pending",
+          "pendingAtCreation": true,
+          "calculatedAt": 1791985500,
+          "signal": {
+            "type": "T2",
+            "direction": "bullish",
+            "time": 1791984600,
+            "candleCount": 3,
+            "timeframe": "M15"
+          }
+        },
+        "outcome": "sl",
+        "filledAt": 1791985500,
+        "resolvedAt": 1791993600,
+        "returnR": -1,
+        "distanceContext": {
+          "timeframe": "M15",
+          "measuredAt": 1791985500,
+          "atrPips": 119.57065888563977,
+          "nearPips": 29.892664721409943,
+          "mediumPips": 59.78532944281989
+        }
+      },
+      {
+        "id": "TL:XAUUSD:H1:Internal DB-1791374400-4066.535:1791984600:M15",
+        "symbol": "XAUUSD",
+        "zoneId": "Internal DB-1791374400-4066.535",
+        "zoneName": "Internal DB",
+        "zoneTimeframe": "H1",
+        "signal": {
+          "type": "T2",
+          "direction": "bullish",
+          "time": 1791984600,
+          "candleCount": 3,
+          "timeframe": "M15"
+        },
+        "fibGroup": "With FIB",
+        "fibSources": [
+          "Structure deep"
+        ],
+        "support": [
+          {
+            "timeframe": "H1",
+            "kind": "continuation",
+            "color": "green",
+            "firstTime": 1791399600,
+            "secondTime": 1791475200,
+            "confirmedAt": 1791982800,
+            "geometry": {
+              "time": 1791979200,
+              "slope": 0.2599999999999909,
+              "price": 4128.379999999999
+            },
+            "distance": {
+              "linePrice": 4128.834999999999,
+              "pips": 311.04999999999563,
+              "atrRatio": 2.6013906998496283,
+              "band": "Far"
+            }
+          },
+          {
+            "timeframe": "H1",
+            "kind": "breakout",
+            "color": "green",
+            "firstTime": 1790334000,
+            "secondTime": 1790942400,
+            "confirmedAt": 1791507600,
+            "geometry": {
+              "time": 1791979200,
+              "slope": -0.760905172413796,
+              "price": 4087.5234482758615
+            },
+            "distance": {
+              "linePrice": 4086.191864224137,
+              "pips": 115.38135775862429,
+              "atrRatio": 0.9649638032770044,
+              "band": "Far"
+            }
+          },
+          {
+            "timeframe": "H1",
+            "kind": "breakout",
+            "color": "green",
+            "firstTime": 1791766800,
+            "secondTime": 1791842400,
+            "confirmedAt": 1791982800,
+            "geometry": {
+              "time": 1791979200,
+              "slope": -2.138500000000022,
+              "price": 4095.500499999999
+            },
+            "distance": {
+              "linePrice": 4091.7581249999994,
+              "pips": 59.71875000000182,
+              "atrRatio": 0.49944317909227426,
+              "band": "Medium"
+            }
+          },
+          {
+            "timeframe": "H4",
+            "kind": "breakout",
+            "color": "green",
+            "firstTime": 1790326800,
+            "secondTime": 1790946000,
+            "confirmedAt": 1791507600,
+            "geometry": {
+              "time": 1791968400,
+              "slope": -2.9158064516129136,
+              "price": 4088.3620967741927
+            },
+            "distance": {
+              "linePrice": 4084.8995766129024,
+              "pips": 128.30423387097198,
+              "atrRatio": 1.073041121180784,
+              "band": "Far"
+            }
+          },
+          {
+            "timeframe": "H4",
+            "kind": "breakout",
+            "color": "green",
+            "firstTime": 1790326800,
+            "secondTime": 1790931600,
+            "confirmedAt": 1791507600,
+            "geometry": {
+              "time": 1791968400,
+              "slope": -2.9421666666666777,
+              "price": 4086.305999999999
+            },
+            "distance": {
+              "linePrice": 4082.8121770833322,
+              "pips": 149.1782291666732,
+              "atrRatio": 1.2476156822833167,
+              "band": "Far"
+            }
+          },
+          {
+            "timeframe": "D",
+            "kind": "continuation",
+            "color": "green",
+            "firstTime": 1782766800,
+            "secondTime": 1784149200,
+            "confirmedAt": 1791406800,
+            "geometry": {
+              "time": 1791838800,
+              "slope": 2.2704166666666574,
+              "price": 4112.381249999999
+            },
+            "distance": {
+              "linePrice": 4116.2362282986105,
+              "pips": 185.0622829861095,
+              "atrRatio": 1.547723201584993,
+              "band": "Far"
+            }
+          },
+          {
+            "timeframe": "D",
+            "kind": "continuation",
+            "color": "green",
+            "firstTime": 1757538000,
+            "secondTime": 1782248400,
+            "confirmedAt": 1791406800,
+            "geometry": {
+              "time": 1791838800,
+              "slope": 1.722611940298507,
+              "price": 4095.166343283582
+            },
+            "distance": {
+              "linePrice": 4098.091194807214,
+              "pips": 3.6119480721481523,
+              "atrRatio": 0.030207645469301173,
+              "band": "Near"
+            }
+          },
+          {
+            "timeframe": "D",
+            "kind": "breakout",
+            "color": "green",
+            "firstTime": 1779742800,
+            "secondTime": 1785963600,
+            "confirmedAt": 1791406800,
+            "geometry": {
+              "time": 1791838800,
+              "slope": -5.306442307692298,
+              "price": 4049.6007692307703
+            },
+            "distance": {
+              "linePrice": 4040.5908723958346,
+              "pips": 571.3912760416497,
+              "atrRatio": 4.77869137267314,
+              "band": "Far"
+            }
+          },
+          {
+            "timeframe": "D",
+            "kind": "breakout",
+            "color": "green",
+            "firstTime": 1781643600,
+            "secondTime": 1785877200,
+            "confirmedAt": 1791406800,
+            "geometry": {
+              "time": 1791838800,
+              "slope": -3.866857142857147,
+              "price": 4057.7989999999995
+            },
+            "distance": {
+              "linePrice": 4051.2333988095234,
+              "pips": 464.9660119047621,
+              "atrRatio": 3.888629670841462,
+              "band": "Far"
+            }
+          },
+          {
+            "timeframe": "W",
+            "kind": "continuation",
+            "color": "green",
+            "firstTime": 1751230800,
+            "secondTime": 1783890000,
+            "confirmedAt": 1791752400,
+            "geometry": {
+              "time": 1791147600,
+              "slope": 13.247870370370375,
+              "price": 4118.774444444445
+            },
+            "distance": {
+              "linePrice": 4137.128264853396,
+              "pips": 393.9826485339654,
+              "atrRatio": 3.2949776492473775,
+              "band": "Far"
+            }
+          },
+          {
+            "timeframe": "W",
+            "kind": "continuation",
+            "color": "green",
+            "firstTime": 1761512400,
+            "secondTime": 1780866000,
+            "confirmedAt": 1791752400,
+            "geometry": {
+              "time": 1791147600,
+              "slope": 4.293906249999992,
+              "price": 4096.86640625
+            },
+            "distance": {
+              "linePrice": 4102.815255533855,
+              "pips": 50.85255533855161,
+              "atrRatio": 0.42529292564313964,
+              "band": "Medium"
+            }
+          },
+          {
+            "timeframe": "W",
+            "kind": "breakout",
+            "color": "green",
+            "firstTime": 1760907600,
+            "secondTime": 1765144800,
+            "confirmedAt": 1774818000,
+            "geometry": {
+              "time": 1791147600,
+              "slope": -11.72285714285707,
+              "price": 3795.2971428571464
+            },
+            "distance": {
+              "linePrice": 3779.0561011904797,
+              "pips": 3186.7389880951987,
+              "atrRatio": 26.65151315376686,
+              "band": "Far"
+            }
+          },
+          {
+            "timeframe": "W",
+            "kind": "breakout",
+            "color": "green",
+            "firstTime": 1646604000,
+            "secondTime": 1673820000,
+            "confirmedAt": 1696798800,
+            "geometry": {
+              "time": 1791147600,
+              "slope": -2.9566666666666706,
+              "price": 1363.9866666666658
+            },
+            "distance": {
+              "linePrice": 1359.890451388888,
+              "pips": 27378.395486111112,
+              "atrRatio": 228.97252337044043,
+              "band": "Far"
+            }
+          }
+        ],
+        "style": "INTRADAY",
+        "levels": {
+          "entry": 4097.73,
+          "stopLoss": 4077.73,
+          "takeProfit": 4137.729999999999,
+          "riskFree": 4117.73,
+          "riskFreeEnabled": false,
+          "riskPips": 200,
+          "rewardRisk": 2,
+          "status": "pending",
+          "pendingAtCreation": true,
+          "calculatedAt": 1791985500,
+          "signal": {
+            "type": "T2",
+            "direction": "bullish",
+            "time": 1791984600,
+            "candleCount": 3,
+            "timeframe": "M15"
+          }
+        },
+        "outcome": "sl",
+        "filledAt": 1791985500,
+        "resolvedAt": 1791993600,
+        "returnR": -1,
+        "distanceContext": {
+          "timeframe": "M15",
+          "measuredAt": 1791985500,
+          "atrPips": 119.57065888563977,
+          "nearPips": 29.892664721409943,
+          "mediumPips": 59.78532944281989
+        }
+      },
+      {
+        "id": "TL:XAUUSD:H1:iss-l4-1791475200:1791984600:M15",
+        "symbol": "XAUUSD",
+        "zoneId": "iss-l4-1791475200",
+        "zoneName": "ISS L4",
+        "zoneTimeframe": "H1",
+        "signal": {
+          "type": "T2",
+          "direction": "bullish",
+          "time": 1791984600,
+          "candleCount": 3,
+          "timeframe": "M15"
+        },
+        "fibGroup": "With FIB",
+        "fibSources": [
+          "Structure 0.71-0.79"
+        ],
+        "support": [
+          {
+            "timeframe": "H1",
+            "kind": "continuation",
+            "color": "green",
+            "firstTime": 1791399600,
+            "secondTime": 1791475200,
+            "confirmedAt": 1791982800,
+            "geometry": {
+              "time": 1791979200,
+              "slope": 0.2599999999999909,
+              "price": 4128.379999999999
+            },
+            "distance": {
+              "linePrice": 4128.834999999999,
+              "pips": 311.04999999999563,
+              "atrRatio": 2.6013906998496283,
+              "band": "Far"
+            }
+          },
+          {
+            "timeframe": "H1",
+            "kind": "breakout",
+            "color": "green",
+            "firstTime": 1790334000,
+            "secondTime": 1790942400,
+            "confirmedAt": 1791507600,
+            "geometry": {
+              "time": 1791979200,
+              "slope": -0.760905172413796,
+              "price": 4087.5234482758615
+            },
+            "distance": {
+              "linePrice": 4086.191864224137,
+              "pips": 115.38135775862429,
+              "atrRatio": 0.9649638032770044,
+              "band": "Far"
+            }
+          },
+          {
+            "timeframe": "H1",
+            "kind": "breakout",
+            "color": "green",
+            "firstTime": 1791766800,
+            "secondTime": 1791842400,
+            "confirmedAt": 1791982800,
+            "geometry": {
+              "time": 1791979200,
+              "slope": -2.138500000000022,
+              "price": 4095.500499999999
+            },
+            "distance": {
+              "linePrice": 4091.7581249999994,
+              "pips": 59.71875000000182,
+              "atrRatio": 0.49944317909227426,
+              "band": "Medium"
+            }
+          },
+          {
+            "timeframe": "H4",
+            "kind": "breakout",
+            "color": "green",
+            "firstTime": 1790326800,
+            "secondTime": 1790946000,
+            "confirmedAt": 1791507600,
+            "geometry": {
+              "time": 1791968400,
+              "slope": -2.9158064516129136,
+              "price": 4088.3620967741927
+            },
+            "distance": {
+              "linePrice": 4084.8995766129024,
+              "pips": 128.30423387097198,
+              "atrRatio": 1.073041121180784,
+              "band": "Far"
+            }
+          },
+          {
+            "timeframe": "H4",
+            "kind": "breakout",
+            "color": "green",
+            "firstTime": 1790326800,
+            "secondTime": 1790931600,
+            "confirmedAt": 1791507600,
+            "geometry": {
+              "time": 1791968400,
+              "slope": -2.9421666666666777,
+              "price": 4086.305999999999
+            },
+            "distance": {
+              "linePrice": 4082.8121770833322,
+              "pips": 149.1782291666732,
+              "atrRatio": 1.2476156822833167,
+              "band": "Far"
+            }
+          },
+          {
+            "timeframe": "D",
+            "kind": "continuation",
+            "color": "green",
+            "firstTime": 1782766800,
+            "secondTime": 1784149200,
+            "confirmedAt": 1791406800,
+            "geometry": {
+              "time": 1791838800,
+              "slope": 2.2704166666666574,
+              "price": 4112.381249999999
+            },
+            "distance": {
+              "linePrice": 4116.2362282986105,
+              "pips": 185.0622829861095,
+              "atrRatio": 1.547723201584993,
+              "band": "Far"
+            }
+          },
+          {
+            "timeframe": "D",
+            "kind": "continuation",
+            "color": "green",
+            "firstTime": 1757538000,
+            "secondTime": 1782248400,
+            "confirmedAt": 1791406800,
+            "geometry": {
+              "time": 1791838800,
+              "slope": 1.722611940298507,
+              "price": 4095.166343283582
+            },
+            "distance": {
+              "linePrice": 4098.091194807214,
+              "pips": 3.6119480721481523,
+              "atrRatio": 0.030207645469301173,
+              "band": "Near"
+            }
+          },
+          {
+            "timeframe": "D",
+            "kind": "breakout",
+            "color": "green",
+            "firstTime": 1779742800,
+            "secondTime": 1785963600,
+            "confirmedAt": 1791406800,
+            "geometry": {
+              "time": 1791838800,
+              "slope": -5.306442307692298,
+              "price": 4049.6007692307703
+            },
+            "distance": {
+              "linePrice": 4040.5908723958346,
+              "pips": 571.3912760416497,
+              "atrRatio": 4.77869137267314,
+              "band": "Far"
+            }
+          },
+          {
+            "timeframe": "D",
+            "kind": "breakout",
+            "color": "green",
+            "firstTime": 1781643600,
+            "secondTime": 1785877200,
+            "confirmedAt": 1791406800,
+            "geometry": {
+              "time": 1791838800,
+              "slope": -3.866857142857147,
+              "price": 4057.7989999999995
+            },
+            "distance": {
+              "linePrice": 4051.2333988095234,
+              "pips": 464.9660119047621,
+              "atrRatio": 3.888629670841462,
+              "band": "Far"
+            }
+          },
+          {
+            "timeframe": "W",
+            "kind": "continuation",
+            "color": "green",
+            "firstTime": 1751230800,
+            "secondTime": 1783890000,
+            "confirmedAt": 1791752400,
+            "geometry": {
+              "time": 1791147600,
+              "slope": 13.247870370370375,
+              "price": 4118.774444444445
+            },
+            "distance": {
+              "linePrice": 4137.128264853396,
+              "pips": 393.9826485339654,
+              "atrRatio": 3.2949776492473775,
+              "band": "Far"
+            }
+          },
+          {
+            "timeframe": "W",
+            "kind": "continuation",
+            "color": "green",
+            "firstTime": 1761512400,
+            "secondTime": 1780866000,
+            "confirmedAt": 1791752400,
+            "geometry": {
+              "time": 1791147600,
+              "slope": 4.293906249999992,
+              "price": 4096.86640625
+            },
+            "distance": {
+              "linePrice": 4102.815255533855,
+              "pips": 50.85255533855161,
+              "atrRatio": 0.42529292564313964,
+              "band": "Medium"
+            }
+          },
+          {
+            "timeframe": "W",
+            "kind": "breakout",
+            "color": "green",
+            "firstTime": 1760907600,
+            "secondTime": 1765144800,
+            "confirmedAt": 1774818000,
+            "geometry": {
+              "time": 1791147600,
+              "slope": -11.72285714285707,
+              "price": 3795.2971428571464
+            },
+            "distance": {
+              "linePrice": 3779.0561011904797,
+              "pips": 3186.7389880951987,
+              "atrRatio": 26.65151315376686,
+              "band": "Far"
+            }
+          },
+          {
+            "timeframe": "W",
+            "kind": "breakout",
+            "color": "green",
+            "firstTime": 1646604000,
+            "secondTime": 1673820000,
+            "confirmedAt": 1696798800,
+            "geometry": {
+              "time": 1791147600,
+              "slope": -2.9566666666666706,
+              "price": 1363.9866666666658
+            },
+            "distance": {
+              "linePrice": 1359.890451388888,
+              "pips": 27378.395486111112,
+              "atrRatio": 228.97252337044043,
+              "band": "Far"
+            }
+          }
+        ],
+        "style": "INTRADAY",
+        "levels": {
+          "entry": 4097.73,
+          "stopLoss": 4077.73,
+          "takeProfit": 4137.729999999999,
+          "riskFree": 4117.73,
+          "riskFreeEnabled": false,
+          "riskPips": 200,
+          "rewardRisk": 2,
+          "status": "pending",
+          "pendingAtCreation": true,
+          "calculatedAt": 1791985500,
+          "signal": {
+            "type": "T2",
+            "direction": "bullish",
+            "time": 1791984600,
+            "candleCount": 3,
+            "timeframe": "M15"
+          }
+        },
+        "outcome": "sl",
+        "filledAt": 1791985500,
+        "resolvedAt": 1791993600,
+        "returnR": -1,
+        "distanceContext": {
+          "timeframe": "M15",
+          "measuredAt": 1791985500,
+          "atrPips": 119.57065888563977,
+          "nearPips": 29.892664721409943,
+          "mediumPips": 59.78532944281989
+        }
+      },
+      {
+        "id": "TL:XAUUSD:H1:iss-l4-1793019600:1793091600:M15",
+        "symbol": "XAUUSD",
+        "zoneId": "iss-l4-1793019600",
+        "zoneName": "ISS L4",
+        "zoneTimeframe": "H1",
+        "signal": {
+          "type": "T3",
+          "direction": "bullish",
+          "time": 1793091600,
+          "candleCount": 3,
+          "timeframe": "M15"
+        },
+        "fibGroup": "With FIB",
+        "fibSources": [
+          "Structure 0.71-0.79"
+        ],
+        "support": [
+          {
+            "timeframe": "H1",
+            "kind": "continuation",
+            "color": "green",
+            "firstTime": 1792774800,
+            "secondTime": 1793019600,
+            "confirmedAt": 1793091600,
+            "geometry": {
+              "time": 1793088000,
+              "slope": 0.11157894736843925,
+              "price": 3995.183421052632
+            },
+            "distance": {
+              "linePrice": 3995.322894736843,
+              "pips": 19.521052631571365,
+              "atrRatio": 0.2919478990526802,
+              "band": "Medium"
+            }
+          },
+          {
+            "timeframe": "H1",
+            "kind": "continuation",
+            "color": "green",
+            "firstTime": 1792764000,
+            "secondTime": 1793019600,
+            "confirmedAt": 1793084400,
+            "geometry": {
+              "time": 1793088000,
+              "slope": 0.5988636363636239,
+              "price": 3999.604545454545
+            },
+            "distance": {
+              "linePrice": 4000.3531249999996,
+              "pips": 30.781249999995453,
+              "atrRatio": 0.4603502401904342,
+              "band": "Medium"
+            }
+          },
+          {
+            "timeframe": "H1",
+            "kind": "breakout",
+            "color": "green",
+            "firstTime": 1792612800,
+            "secondTime": 1792663200,
+            "confirmedAt": 1792735200,
+            "geometry": {
+              "time": 1793088000,
+              "slope": -3.8207692307692716,
+              "price": 3836.563461538459
+            },
+            "distance": {
+              "linePrice": 3831.787499999997,
+              "pips": 1654.875000000029,
+              "atrRatio": 24.74955057820169,
+              "band": "Far"
+            }
+          },
+          {
+            "timeframe": "H1",
+            "kind": "breakout",
+            "color": "green",
+            "firstTime": 1792612800,
+            "secondTime": 1792983600,
+            "confirmedAt": 1793023200,
+            "geometry": {
+              "time": 1793088000,
+              "slope": -2.4141346153846213,
+              "price": 3949.0942307692308
+            },
+            "distance": {
+              "linePrice": 3946.0765625,
+              "pips": 511.9843750000018,
+              "atrRatio": 7.657003208285401,
+              "band": "Far"
+            }
+          },
+          {
+            "timeframe": "H4",
+            "kind": "breakout",
+            "color": "green",
+            "firstTime": 1790096400,
+            "secondTime": 1790931600,
+            "confirmedAt": 1791320400,
+            "geometry": {
+              "time": 1793077200,
+              "slope": -3.127173913043486,
+              "price": 3911.6854347826074
+            },
+            "distance": {
+              "linePrice": 3908.3628124999987,
+              "pips": 889.1218750000144,
+              "atrRatio": 13.29729847601661,
+              "band": "Far"
+            }
+          },
+          {
+            "timeframe": "H4",
+            "kind": "breakout",
+            "color": "green",
+            "firstTime": 1790931600,
+            "secondTime": 1791306000,
+            "confirmedAt": 1791507600,
+            "geometry": {
+              "time": 1793077200,
+              "slope": -3.0817857142856804,
+              "price": 3916.269642857146
+            },
+            "distance": {
+              "linePrice": 3912.9952455357175,
+              "pips": 842.7975446428263,
+              "atrRatio": 12.604493063416548,
+              "band": "Far"
+            }
+          },
+          {
+            "timeframe": "D",
+            "kind": "continuation",
+            "color": "green",
+            "firstTime": 1761598800,
+            "secondTime": 1782248400,
+            "confirmedAt": 1792789200,
+            "geometry": {
+              "time": 1792962000,
+              "slope": 0.43223214285714157,
+              "price": 3997.1164285714285
+            },
+            "distance": {
+              "linePrice": 3997.769279203869,
+              "pips": 4.942792038687003,
+              "atrRatio": 0.07392212799094461,
+              "band": "Near"
+            }
+          },
+          {
+            "timeframe": "D",
+            "kind": "continuation",
+            "color": "green",
+            "firstTime": 1763416800,
+            "secondTime": 1782248400,
+            "confirmedAt": 1792789200,
+            "geometry": {
+              "time": 1792962000,
+              "slope": 0.009901960784312894,
+              "price": 4000.3713725490197
+            },
+            "distance": {
+              "linePrice": 4000.386328635621,
+              "pips": 31.113286356207936,
+              "atrRatio": 0.4653160234622115,
+              "band": "Medium"
+            }
+          },
+          {
+            "timeframe": "D",
+            "kind": "breakout",
+            "color": "green",
+            "firstTime": 1778101200,
+            "secondTime": 1786050000,
+            "confirmedAt": 1790629200,
+            "geometry": {
+              "time": 1792962000,
+              "slope": -6.4086363636363535,
+              "price": 3983.051363636365
+            },
+            "distance": {
+              "linePrice": 3973.3716524621223,
+              "pips": 239.03347537877835,
+              "atrRatio": 3.574874893131082,
+              "band": "Far"
+            }
+          },
+          {
+            "timeframe": "D",
+            "kind": "breakout",
+            "color": "green",
+            "firstTime": 1762984800,
+            "secondTime": 1764280800,
+            "confirmedAt": 1782334800,
+            "geometry": {
+              "time": 1792962000,
+              "slope": -1.6618181818181588,
+              "price": 3839.711363636369
+            },
+            "distance": {
+              "linePrice": 3837.201325757581,
+              "pips": 1600.736742424192,
+              "atrRatio": 23.939883658289993,
+              "band": "Far"
+            }
+          },
+          {
+            "timeframe": "W",
+            "kind": "continuation",
+            "color": "green",
+            "firstTime": 1761512400,
+            "secondTime": 1782075600,
+            "confirmedAt": 1792962000,
+            "geometry": {
+              "time": 1792357200,
+              "slope": 2.135735294117641,
+              "price": 3995.3875
+            },
+            "distance": {
+              "linePrice": 3997.984071034664,
+              "pips": 7.090710346637934,
+              "atrRatio": 0.10604540787641997,
+              "band": "Near"
+            }
+          },
+          {
+            "timeframe": "W",
+            "kind": "continuation",
+            "color": "green",
+            "firstTime": 1751230800,
+            "secondTime": 1783890000,
+            "confirmedAt": 1791752400,
+            "geometry": {
+              "time": 1792357200,
+              "slope": 13.247870370370375,
+              "price": 4145.270185185185
+            },
+            "distance": {
+              "linePrice": 4161.376599013448,
+              "pips": 1641.0159901344787,
+              "atrRatio": 24.542281590736636,
+              "band": "Far"
+            }
+          },
+          {
+            "timeframe": "W",
+            "kind": "breakout",
+            "color": "green",
+            "firstTime": 1760907600,
+            "secondTime": 1765144800,
+            "confirmedAt": 1774818000,
+            "geometry": {
+              "time": 1792357200,
+              "slope": -11.72285714285707,
+              "price": 3771.851428571432
+            },
+            "distance": {
+              "linePrice": 3757.599085884357,
+              "pips": 2396.759141156431,
+              "atrRatio": 35.844829118705206,
+              "band": "Far"
+            }
+          },
+          {
+            "timeframe": "W",
+            "kind": "breakout",
+            "color": "green",
+            "firstTime": 1646604000,
+            "secondTime": 1673820000,
+            "confirmedAt": 1696798800,
+            "geometry": {
+              "time": 1792357200,
+              "slope": -2.9566666666666706,
+              "price": 1358.0733333333324
+            },
+            "distance": {
+              "linePrice": 1354.478695436507,
+              "pips": 26427.963045634933,
+              "atrRatio": 395.2444795388023,
+              "band": "Far"
+            }
+          }
+        ],
+        "style": "INTRADAY",
+        "levels": {
+          "entry": 3997.275,
+          "stopLoss": 3987.16,
+          "takeProfit": 4017.5050000000006,
+          "riskFree": 4007.3900000000003,
+          "riskFreeEnabled": false,
+          "riskPips": 101.15,
+          "rewardRisk": 2,
+          "status": "active",
+          "pendingAtCreation": false,
+          "calculatedAt": 1793092500,
+          "filledAt": 1793092500,
+          "signal": {
+            "type": "T3",
+            "direction": "bullish",
+            "time": 1793091600,
+            "candleCount": 3,
+            "timeframe": "M15"
+          }
+        },
+        "outcome": "tp",
+        "filledAt": 1793092500,
+        "resolvedAt": 1793102400,
+        "returnR": 2,
+        "distanceContext": {
+          "timeframe": "M15",
+          "measuredAt": 1793092500,
+          "atrPips": 66.86485052611702,
+          "nearPips": 16.716212631529256,
+          "mediumPips": 33.43242526305851
+        }
+      },
+      {
+        "id": "TL:XAUUSD:H1:Internal TJL1-1793034000-4030.065:1793168100:M15",
+        "symbol": "XAUUSD",
+        "zoneId": "Internal TJL1-1793034000-4030.065",
+        "zoneName": "Internal TJL1",
+        "zoneTimeframe": "H1",
+        "signal": {
+          "type": "T3",
+          "direction": "bullish",
+          "time": 1793168100,
+          "candleCount": 3,
+          "timeframe": "M15"
+        },
+        "fibGroup": "With FIB",
+        "fibSources": [
+          "Structure 0.5-0.618",
+          "4H Swing 0.5-0.618"
+        ],
+        "support": [
+          {
+            "timeframe": "H1",
+            "kind": "continuation",
+            "color": "green",
+            "firstTime": 1792774800,
+            "secondTime": 1793019600,
+            "confirmedAt": 1793091600,
+            "geometry": {
+              "time": 1793163600,
+              "slope": 0.11157894736843925,
+              "price": 3997.415000000001
+            },
+            "distance": {
+              "linePrice": 3997.5823684210536,
+              "pips": 352.17631578946566,
+              "atrRatio": 8.052292894114371,
+              "band": "Far"
+            }
+          },
+          {
+            "timeframe": "H1",
+            "kind": "continuation",
+            "color": "green",
+            "firstTime": 1792764000,
+            "secondTime": 1793019600,
+            "confirmedAt": 1793084400,
+            "geometry": {
+              "time": 1793163600,
+              "slope": 0.5988636363636239,
+              "price": 4011.5818181818177
+            },
+            "distance": {
+              "linePrice": 4012.480113636363,
+              "pips": 203.19886363637124,
+              "atrRatio": 4.646015908490034,
+              "band": "Far"
+            }
+          },
+          {
+            "timeframe": "H1",
+            "kind": "breakout",
+            "color": "green",
+            "firstTime": 1792612800,
+            "secondTime": 1792663200,
+            "confirmedAt": 1792735200,
+            "geometry": {
+              "time": 1793163600,
+              "slope": -3.8207692307692716,
+              "price": 3760.1480769230734
+            },
+            "distance": {
+              "linePrice": 3754.4169230769194,
+              "pips": 2783.830769230808,
+              "atrRatio": 63.65056284731768,
+              "band": "Far"
+            }
+          },
+          {
+            "timeframe": "H1",
+            "kind": "breakout",
+            "color": "green",
+            "firstTime": 1792612800,
+            "secondTime": 1792983600,
+            "confirmedAt": 1793023200,
+            "geometry": {
+              "time": 1793163600,
+              "slope": -2.4141346153846213,
+              "price": 3900.8115384615385
+            },
+            "distance": {
+              "linePrice": 3897.1903365384615,
+              "pips": 1356.0966346153873,
+              "atrRatio": 31.00630793461361,
+              "band": "Far"
+            }
+          },
+          {
+            "timeframe": "H4",
+            "kind": "breakout",
+            "color": "green",
+            "firstTime": 1790096400,
+            "secondTime": 1790931600,
+            "confirmedAt": 1791320400,
+            "geometry": {
+              "time": 1793149200,
+              "slope": -3.127173913043486,
+              "price": 3896.0495652173904
+            },
+            "distance": {
+              "linePrice": 3891.7497010869556,
+              "pips": 1410.5029891304457,
+              "atrRatio": 32.25027546512231,
+              "band": "Far"
+            }
+          },
+          {
+            "timeframe": "H4",
+            "kind": "breakout",
+            "color": "green",
+            "firstTime": 1790931600,
+            "secondTime": 1791306000,
+            "confirmedAt": 1791507600,
+            "geometry": {
+              "time": 1793149200,
+              "slope": -3.0817857142856804,
+              "price": 3900.8607142857177
+            },
+            "distance": {
+              "linePrice": 3896.623258928575,
+              "pips": 1361.7674107142511,
+              "atrRatio": 31.13596671073725,
+              "band": "Far"
+            }
+          },
+          {
+            "timeframe": "D",
+            "kind": "continuation",
+            "color": "green",
+            "firstTime": 1761598800,
+            "secondTime": 1782248400,
+            "confirmedAt": 1792789200,
+            "geometry": {
+              "time": 1793048400,
+              "slope": 0.43223214285714157,
+              "price": 3997.5486607142857
+            },
+            "distance": {
+              "linePrice": 3998.1519847470236,
+              "pips": 346.4801525297662,
+              "atrRatio": 7.922053656313914,
+              "band": "Far"
+            }
+          },
+          {
+            "timeframe": "D",
+            "kind": "continuation",
+            "color": "green",
+            "firstTime": 1763416800,
+            "secondTime": 1782248400,
+            "confirmedAt": 1792789200,
+            "geometry": {
+              "time": 1793048400,
+              "slope": 0.009901960784312894,
+              "price": 4000.381274509804
+            },
+            "distance": {
+              "linePrice": 4000.395095996732,
+              "pips": 324.04904003268257,
+              "atrRatio": 7.409180190185306,
+              "band": "Far"
+            }
+          },
+          {
+            "timeframe": "D",
+            "kind": "breakout",
+            "color": "green",
+            "firstTime": 1778101200,
+            "secondTime": 1786050000,
+            "confirmedAt": 1790629200,
+            "geometry": {
+              "time": 1793048400,
+              "slope": -6.4086363636363535,
+              "price": 3976.6427272727283
+            },
+            "distance": {
+              "linePrice": 3967.6973390151525,
+              "pips": 651.0266098484772,
+              "atrRatio": 14.885319396367736,
+              "band": "Far"
+            }
+          },
+          {
+            "timeframe": "D",
+            "kind": "breakout",
+            "color": "green",
+            "firstTime": 1762984800,
+            "secondTime": 1764280800,
+            "confirmedAt": 1782334800,
+            "geometry": {
+              "time": 1793048400,
+              "slope": -1.6618181818181588,
+              "price": 3838.0495454545508
+            },
+            "distance": {
+              "linePrice": 3835.7299242424297,
+              "pips": 1970.7007575757052,
+              "atrRatio": 45.058849772677775,
+              "band": "Far"
+            }
+          },
+          {
+            "timeframe": "W",
+            "kind": "continuation",
+            "color": "green",
+            "firstTime": 1761512400,
+            "secondTime": 1782075600,
+            "confirmedAt": 1792962000,
+            "geometry": {
+              "time": 1792357200,
+              "slope": 2.135735294117641,
+              "price": 3995.3875
+            },
+            "distance": {
+              "linePrice": 3998.2542161239494,
+              "pips": 345.4578387605079,
+              "atrRatio": 7.898679086444557,
+              "band": "Far"
+            }
+          },
+          {
+            "timeframe": "W",
+            "kind": "continuation",
+            "color": "green",
+            "firstTime": 1751230800,
+            "secondTime": 1783890000,
+            "confirmedAt": 1791752400,
+            "geometry": {
+              "time": 1792357200,
+              "slope": 13.247870370370375,
+              "price": 4145.270185185185
+            },
+            "distance": {
+              "linePrice": 4163.052296902558,
+              "pips": 1302.5229690255765,
+              "atrRatio": 29.781379319600262,
+              "band": "Far"
+            }
+          },
+          {
+            "timeframe": "W",
+            "kind": "breakout",
+            "color": "green",
+            "firstTime": 1760907600,
+            "secondTime": 1765144800,
+            "confirmedAt": 1774818000,
+            "geometry": {
+              "time": 1792357200,
+              "slope": -11.72285714285707,
+              "price": 3771.851428571432
+            },
+            "distance": {
+              "linePrice": 3756.116284013609,
+              "pips": 2766.8371598639123,
+              "atrRatio": 63.26201451565698,
+              "band": "Far"
+            }
+          },
+          {
+            "timeframe": "W",
+            "kind": "breakout",
+            "color": "green",
+            "firstTime": 1646604000,
+            "secondTime": 1673820000,
+            "confirmedAt": 1696798800,
+            "geometry": {
+              "time": 1792357200,
+              "slope": -2.9566666666666706,
+              "price": 1358.0733333333324
+            },
+            "distance": {
+              "linePrice": 1354.1047123015862,
+              "pips": 26786.95287698414,
+              "atrRatio": 612.4670531088788,
+              "band": "Far"
+            }
+          }
+        ],
+        "style": "INTRADAY",
+        "levels": {
+          "entry": 4032.8,
+          "stopLoss": 4026.695,
+          "takeProfit": 4045.01,
+          "riskFree": 4038.905,
+          "riskFreeEnabled": false,
+          "riskPips": 61.05,
+          "rewardRisk": 2,
+          "status": "active",
+          "pendingAtCreation": false,
+          "calculatedAt": 1793169000,
+          "filledAt": 1793169000,
+          "signal": {
+            "type": "T3",
+            "direction": "bullish",
+            "time": 1793168100,
+            "candleCount": 3,
+            "timeframe": "M15"
+          }
+        },
+        "outcome": "tp",
+        "filledAt": 1793169000,
+        "resolvedAt": 1793174400,
+        "returnR": 2,
+        "distanceContext": {
+          "timeframe": "M15",
+          "measuredAt": 1793169000,
+          "atrPips": 43.73615322002015,
+          "nearPips": 10.934038305005037,
+          "mediumPips": 21.868076610010075
+        }
+      },
+      {
+        "id": "TL:XAUUSD:H1:TJL1-1791374400-4087.9269:1793218500:M15",
+        "symbol": "XAUUSD",
+        "zoneId": "TJL1-1791374400-4087.9269",
+        "zoneName": "TJL1",
+        "zoneTimeframe": "H1",
+        "signal": {
+          "type": "T2",
+          "direction": "bearish",
+          "time": 1793218500,
+          "candleCount": 3,
+          "timeframe": "M15"
+        },
+        "fibGroup": "With FIB",
+        "fibSources": [
+          "4H Swing 0.5-0.618"
+        ],
+        "support": [
+          {
+            "timeframe": "H1",
+            "kind": "continuation",
+            "color": "red",
+            "firstTime": 1792141200,
+            "secondTime": 1792504800,
+            "confirmedAt": 1792584000,
+            "geometry": {
+              "time": 1793214000,
+              "slope": -0.7199019607843166,
+              "price": 4052.6240196078425
+            },
+            "distance": {
+              "linePrice": 4051.544166666666,
+              "pips": 132.80833333333703,
+              "atrRatio": 1.0781054836052424,
+              "band": "Far"
+            }
+          },
+          {
+            "timeframe": "H1",
+            "kind": "continuation",
+            "color": "red",
+            "firstTime": 1792368000,
+            "secondTime": 1792605600,
+            "confirmedAt": 1793149200,
+            "geometry": {
+              "time": 1793214000,
+              "slope": -0.7268750000000068,
+              "price": 4056.8724999999986
+            },
+            "distance": {
+              "linePrice": 4055.7821874999986,
+              "pips": 90.42812500001219,
+              "atrRatio": 0.7340733445540621,
+              "band": "Far"
+            }
+          },
+          {
+            "timeframe": "H1",
+            "kind": "breakout",
+            "color": "red",
+            "firstTime": 1793088000,
+            "secondTime": 1793156400,
+            "confirmedAt": 1793178000,
+            "geometry": {
+              "time": 1793214000,
+              "slope": 2.9761111111111203,
+              "price": 4090.347777777778
+            },
+            "distance": {
+              "linePrice": 4094.8119444444446,
+              "pips": 299.86944444444816,
+              "atrRatio": 2.4342666179673076,
+              "band": "Far"
+            }
+          },
+          {
+            "timeframe": "H1",
+            "kind": "breakout",
+            "color": "red",
+            "firstTime": 1792044000,
+            "secondTime": 1792414800,
+            "confirmedAt": 1792508400,
+            "geometry": {
+              "time": 1793214000,
+              "slope": 0.225283018867917,
+              "price": 4181.147264150942
+            },
+            "distance": {
+              "linePrice": 4181.485188679244,
+              "pips": 1166.6018867924413,
+              "atrRatio": 9.470188050462081,
+              "band": "Far"
+            }
+          },
+          {
+            "timeframe": "H4",
+            "kind": "continuation",
+            "color": "red",
+            "firstTime": 1792155600,
+            "secondTime": 1792616400,
+            "confirmedAt": 1793149200,
+            "geometry": {
+              "time": 1793192400,
+              "slope": -2.950500000000011,
+              "price": 4057.455999999999
+            },
+            "distance": {
+              "linePrice": 4051.9238124999993,
+              "pips": 129.0118750000056,
+              "atrRatio": 1.0472867657980516,
+              "band": "Far"
+            }
+          },
+          {
+            "timeframe": "H4",
+            "kind": "continuation",
+            "color": "red",
+            "firstTime": 1792386000,
+            "secondTime": 1792616400,
+            "confirmedAt": 1793149200,
+            "geometry": {
+              "time": 1793192400,
+              "slope": -3.1468750000000227,
+              "price": 4051.957499999999
+            },
+            "distance": {
+              "linePrice": 4046.057109374999,
+              "pips": 187.67890625000746,
+              "atrRatio": 1.5235313395381436,
+              "band": "Far"
+            }
+          },
+          {
+            "timeframe": "H4",
+            "kind": "breakout",
+            "color": "red",
+            "firstTime": 1791363600,
+            "secondTime": 1792645200,
+            "confirmedAt": 1793149200,
+            "geometry": {
+              "time": 1793192400,
+              "slope": 0.004076923076928114,
+              "price": 4066.9060000000004
+            },
+            "distance": {
+              "linePrice": 4066.9136442307695,
+              "pips": 20.886442307696598,
+              "atrRatio": 0.1695510170164895,
+              "band": "Near"
+            }
+          },
+          {
+            "timeframe": "H4",
+            "kind": "breakout",
+            "color": "red",
+            "firstTime": 1791464400,
+            "secondTime": 1791910800,
+            "confirmedAt": 1792170000,
+            "geometry": {
+              "time": 1793192400,
+              "slope": 2.495526315789472,
+              "price": 4315.124210526315
+            },
+            "distance": {
+              "linePrice": 4319.803322368421,
+              "pips": 2549.7832236842078,
+              "atrRatio": 20.698514968627872,
+              "band": "Far"
+            }
+          },
+          {
+            "timeframe": "D",
+            "kind": "continuation",
+            "color": "red",
+            "firstTime": 1775077200,
+            "secondTime": 1778101200,
+            "confirmedAt": 1787605200,
+            "geometry": {
+              "time": 1793048400,
+              "slope": -1.4956250000000182,
+              "price": 4580.943124999998
+            },
+            "distance": {
+              "linePrice": 4577.983033854164,
+              "pips": 5131.580338541644,
+              "atrRatio": 41.65691085556206,
+              "band": "Far"
+            }
+          },
+          {
+            "timeframe": "D",
+            "kind": "breakout",
+            "color": "red",
+            "firstTime": 1758142800,
+            "secondTime": 1763676000,
+            "confirmedAt": 1770069600,
+            "geometry": {
+              "time": 1793048400,
+              "slope": 8.571739130434787,
+              "price": 6070.905652173915
+            },
+            "distance": {
+              "linePrice": 6087.870552536234,
+              "pips": 20230.45552536234,
+              "atrRatio": 164.22587717430764,
+              "band": "Far"
+            }
+          },
+          {
+            "timeframe": "D",
+            "kind": "breakout",
+            "color": "red",
+            "firstTime": 1758142800,
+            "secondTime": 1763416800,
+            "confirmedAt": 1770069600,
+            "geometry": {
+              "time": 1793048400,
+              "slope": 8.605232558139537,
+              "price": 6080.451279069768
+            },
+            "distance": {
+              "linePrice": 6097.482468507753,
+              "pips": 20326.57468507753,
+              "atrRatio": 165.006148943161,
+              "band": "Far"
+            }
+          },
+          {
+            "timeframe": "W",
+            "kind": "continuation",
+            "color": "red",
+            "firstTime": 1769378400,
+            "secondTime": 1772402400,
+            "confirmedAt": 1787518800,
+            "geometry": {
+              "time": 1792357200,
+              "slope": -36.513000000000105,
+              "price": 4214.730999999996
+            },
+            "distance": {
+              "linePrice": 4162.678241071425,
+              "pips": 978.5324107142515,
+              "atrRatio": 7.943486160831743,
+              "band": "Far"
+            }
+          },
+          {
+            "timeframe": "W",
+            "kind": "breakout",
+            "color": "red",
+            "firstTime": 1755464400,
+            "secondTime": 1774213200,
+            "confirmedAt": 1788123600,
+            "geometry": {
+              "time": 1792357200,
+              "slope": 25.405322580645162,
+              "price": 4861.284677419355
+            },
+            "distance": {
+              "linePrice": 4897.502384312596,
+              "pips": 8326.773843125966,
+              "atrRatio": 67.59470822123023,
+              "band": "Far"
+            }
+          },
+          {
+            "timeframe": "W",
+            "kind": "breakout",
+            "color": "red",
+            "firstTime": 1769983200,
+            "secondTime": 1774213200,
+            "confirmedAt": 1788123600,
+            "geometry": {
+              "time": 1792357200,
+              "slope": 9.979999999999952,
+              "price": 4771.6399999999985
+            },
+            "distance": {
+              "linePrice": 4785.867440476189,
+              "pips": 7210.424404761889,
+              "atrRatio": 58.532457224531406,
+              "band": "Far"
+            }
+          }
+        ],
+        "style": "INTRADAY",
+        "levels": {
+          "entry": 4064.825,
+          "stopLoss": 4084.825,
+          "takeProfit": 4024.825,
+          "riskFree": 4044.825,
+          "riskFreeEnabled": false,
+          "riskPips": 200,
+          "rewardRisk": 2,
+          "status": "pending",
+          "pendingAtCreation": true,
+          "calculatedAt": 1793219400,
+          "signal": {
+            "type": "T2",
+            "direction": "bearish",
+            "time": 1793218500,
+            "candleCount": 3,
+            "timeframe": "M15"
+          }
+        },
+        "outcome": "tp",
+        "filledAt": 1793219400,
+        "resolvedAt": 1793252700,
+        "returnR": 2,
+        "distanceContext": {
+          "timeframe": "M15",
+          "measuredAt": 1793219400,
+          "atrPips": 123.18677100984485,
+          "nearPips": 30.79669275246121,
+          "mediumPips": 61.59338550492242
+        }
+      },
+      {
+        "id": "TL:XAUUSD:H1:Internal TJL2-1793210400-4024.665:1793255400:M15",
+        "symbol": "XAUUSD",
+        "zoneId": "Internal TJL2-1793210400-4024.665",
+        "zoneName": "Internal TJL2",
+        "zoneTimeframe": "H1",
+        "signal": {
+          "type": "T4",
+          "direction": "bullish",
+          "time": 1793255400,
+          "candleCount": 3,
+          "timeframe": "M15"
+        },
+        "fibGroup": "With FIB",
+        "fibSources": [
+          "4H Swing 0.5-0.618"
+        ],
+        "support": [
+          {
+            "timeframe": "H1",
+            "kind": "continuation",
+            "color": "green",
+            "firstTime": 1792764000,
+            "secondTime": 1793019600,
+            "confirmedAt": 1793084400,
+            "geometry": {
+              "time": 1793250000,
+              "slope": 0.5988636363636239,
+              "price": 4025.355681818181
+            },
+            "distance": {
+              "linePrice": 4026.4036931818173,
+              "pips": 44.61306818182493,
+              "atrRatio": 0.57745488052276,
+              "band": "Far"
+            }
+          },
+          {
+            "timeframe": "H1",
+            "kind": "continuation",
+            "color": "green",
+            "firstTime": 1793088000,
+            "secondTime": 1793210400,
+            "confirmedAt": 1793253600,
+            "geometry": {
+              "time": 1793250000,
+              "slope": 1.0759090909090943,
+              "price": 4035.424090909091
+            },
+            "distance": {
+              "linePrice": 4037.306931818182,
+              "pips": 64.41931818182184,
+              "atrRatio": 0.8338195779862617,
+              "band": "Far"
+            }
+          },
+          {
+            "timeframe": "H1",
+            "kind": "breakout",
+            "color": "green",
+            "firstTime": 1792731600,
+            "secondTime": 1793023200,
+            "confirmedAt": 1793106000,
+            "geometry": {
+              "time": 1793250000,
+              "slope": -0.056562499999998295,
+              "price": 4023.3562500000003
+            },
+            "distance": {
+              "linePrice": 4023.2572656250004,
+              "pips": 76.07734374999382,
+              "atrRatio": 0.9847167037827474,
+              "band": "Far"
+            }
+          },
+          {
+            "timeframe": "H1",
+            "kind": "breakout",
+            "color": "green",
+            "firstTime": 1792612800,
+            "secondTime": 1792663200,
+            "confirmedAt": 1792735200,
+            "geometry": {
+              "time": 1793250000,
+              "slope": -3.8207692307692716,
+              "price": 3672.27038461538
+            },
+            "distance": {
+              "linePrice": 3665.5840384615335,
+              "pips": 3652.8096153846627,
+              "atrRatio": 47.28060243307066,
+              "band": "Far"
+            }
+          },
+          {
+            "timeframe": "H4",
+            "kind": "breakout",
+            "color": "green",
+            "firstTime": 1790096400,
+            "secondTime": 1790931600,
+            "confirmedAt": 1791320400,
+            "geometry": {
+              "time": 1793235600,
+              "slope": -3.127173913043486,
+              "price": 3877.286521739129
+            },
+            "distance": {
+              "linePrice": 3872.791209239129,
+              "pips": 1580.737907608709,
+              "atrRatio": 20.460480679243112,
+              "band": "Far"
+            }
+          },
+          {
+            "timeframe": "H4",
+            "kind": "breakout",
+            "color": "green",
+            "firstTime": 1790931600,
+            "secondTime": 1791306000,
+            "confirmedAt": 1791507600,
+            "geometry": {
+              "time": 1793235600,
+              "slope": -3.0817857142856804,
+              "price": 3882.3700000000035
+            },
+            "distance": {
+              "linePrice": 3877.939933035718,
+              "pips": 1529.25066964282,
+              "atrRatio": 19.79404911423921,
+              "band": "Far"
+            }
+          },
+          {
+            "timeframe": "D",
+            "kind": "continuation",
+            "color": "green",
+            "firstTime": 1761598800,
+            "secondTime": 1782248400,
+            "confirmedAt": 1792789200,
+            "geometry": {
+              "time": 1793134800,
+              "slope": 0.43223214285714157,
+              "price": 3997.980892857143
+            },
+            "distance": {
+              "linePrice": 3998.5887193080357,
+              "pips": 322.76280691964075,
+              "atrRatio": 4.17772114097506,
+              "band": "Far"
+            }
+          },
+          {
+            "timeframe": "D",
+            "kind": "continuation",
+            "color": "green",
+            "firstTime": 1763416800,
+            "secondTime": 1782248400,
+            "confirmedAt": 1792789200,
+            "geometry": {
+              "time": 1793134800,
+              "slope": 0.009901960784312894,
+              "price": 4000.391176470588
+            },
+            "distance": {
+              "linePrice": 4000.405101102941,
+              "pips": 304.5989889705879,
+              "atrRatio": 3.9426154701241023,
+              "band": "Far"
+            }
+          },
+          {
+            "timeframe": "D",
+            "kind": "breakout",
+            "color": "green",
+            "firstTime": 1778101200,
+            "secondTime": 1786050000,
+            "confirmedAt": 1790629200,
+            "geometry": {
+              "time": 1793134800,
+              "slope": -6.4086363636363535,
+              "price": 3970.2340909090917
+            },
+            "distance": {
+              "linePrice": 3961.221946022728,
+              "pips": 696.4305397727185,
+              "atrRatio": 9.014336617643629,
+              "band": "Far"
+            }
+          },
+          {
+            "timeframe": "D",
+            "kind": "breakout",
+            "color": "green",
+            "firstTime": 1762984800,
+            "secondTime": 1764280800,
+            "confirmedAt": 1782334800,
+            "geometry": {
+              "time": 1793134800,
+              "slope": -1.6618181818181588,
+              "price": 3836.3877272727327
+            },
+            "distance": {
+              "linePrice": 3834.050795454551,
+              "pips": 1968.1420454544877,
+              "atrRatio": 25.474895048190152,
+              "band": "Far"
+            }
+          },
+          {
+            "timeframe": "W",
+            "kind": "continuation",
+            "color": "green",
+            "firstTime": 1761512400,
+            "secondTime": 1782075600,
+            "confirmedAt": 1792962000,
+            "geometry": {
+              "time": 1792357200,
+              "slope": 2.135735294117641,
+              "price": 3995.3875
+            },
+            "distance": {
+              "linePrice": 3998.562499343487,
+              "pips": 323.0250065651262,
+              "atrRatio": 4.181114955189761,
+              "band": "Far"
+            }
+          },
+          {
+            "timeframe": "W",
+            "kind": "continuation",
+            "color": "green",
+            "firstTime": 1751230800,
+            "secondTime": 1783890000,
+            "confirmedAt": 1791752400,
+            "geometry": {
+              "time": 1792357200,
+              "slope": 13.247870370370375,
+              "price": 4145.270185185185
+            },
+            "distance": {
+              "linePrice": 4164.964563905423,
+              "pips": 1340.9956390542357,
+              "atrRatio": 17.357346358147964,
+              "band": "Far"
+            }
+          },
+          {
+            "timeframe": "W",
+            "kind": "breakout",
+            "color": "green",
+            "firstTime": 1760907600,
+            "secondTime": 1765144800,
+            "confirmedAt": 1774818000,
+            "geometry": {
+              "time": 1792357200,
+              "slope": -11.72285714285707,
+              "price": 3771.851428571432
+            },
+            "distance": {
+              "linePrice": 3754.4241454081666,
+              "pips": 2764.4085459183316,
+              "atrRatio": 35.78147102757881,
+              "band": "Far"
+            }
+          },
+          {
+            "timeframe": "W",
+            "kind": "breakout",
+            "color": "green",
+            "firstTime": 1646604000,
+            "secondTime": 1673820000,
+            "confirmedAt": 1696798800,
+            "geometry": {
+              "time": 1792357200,
+              "slope": -2.9566666666666706,
+              "price": 1358.0733333333324
+            },
+            "distance": {
+              "linePrice": 1353.677931547618,
+              "pips": 26771.87068452382,
+              "atrRatio": 346.52508822068864,
+              "band": "Far"
+            }
+          }
+        ],
+        "style": "INTRADAY",
+        "levels": {
+          "entry": 4030.865,
+          "stopLoss": 4022.145,
+          "takeProfit": 4048.3049999999994,
+          "riskFree": 4039.5849999999996,
+          "riskFreeEnabled": false,
+          "riskPips": 87.2,
+          "rewardRisk": 2,
+          "status": "active",
+          "pendingAtCreation": false,
+          "calculatedAt": 1793256300,
+          "filledAt": 1793256300,
+          "signal": {
+            "type": "T4",
+            "direction": "bullish",
+            "time": 1793255400,
+            "candleCount": 3,
+            "timeframe": "M15"
+          }
+        },
+        "outcome": "sl",
+        "filledAt": 1793256300,
+        "resolvedAt": 1793263500,
+        "returnR": -1,
+        "distanceContext": {
+          "timeframe": "M15",
+          "measuredAt": 1793256300,
+          "atrPips": 77.25810221127145,
+          "nearPips": 19.314525552817862,
+          "mediumPips": 38.629051105635725
+        }
+      },
+      {
+        "id": "TL:XAUUSD:H1:Internal TJL2-1793088000-3989.16:1793330100:M15",
+        "symbol": "XAUUSD",
+        "zoneId": "Internal TJL2-1793088000-3989.16",
+        "zoneName": "Internal TJL2",
+        "zoneTimeframe": "H1",
+        "signal": {
+          "type": "T1",
+          "direction": "bullish",
+          "time": 1793330100,
+          "candleCount": 2,
+          "timeframe": "M15"
+        },
+        "fibGroup": "No FIB",
+        "fibSources": [],
+        "support": [
+          {
+            "timeframe": "H1",
+            "kind": "continuation",
+            "color": "green",
+            "firstTime": 1792774800,
+            "secondTime": 1793019600,
+            "confirmedAt": 1793091600,
+            "geometry": {
+              "time": 1793325600,
+              "slope": 0.11157894736843925,
+              "price": 4002.2128947368437
+            },
+            "distance": {
+              "linePrice": 4002.3802631578965,
+              "pips": 16.152631578966066,
+              "atrRatio": 0.19520154277813814,
+              "band": "Near"
+            }
+          },
+          {
+            "timeframe": "H1",
+            "kind": "continuation",
+            "color": "green",
+            "firstTime": 1792764000,
+            "secondTime": 1793088000,
+            "confirmedAt": 1793296800,
+            "geometry": {
+              "time": 1793325600,
+              "slope": 0.3377499999999941,
+              "price": 4010.4382499999997
+            },
+            "distance": {
+              "linePrice": 4010.9448749999997,
+              "pips": 101.79874999999811,
+              "atrRatio": 1.2302189247454862,
+              "band": "Far"
+            }
+          },
+          {
+            "timeframe": "H1",
+            "kind": "breakout",
+            "color": "green",
+            "firstTime": 1792612800,
+            "secondTime": 1792663200,
+            "confirmedAt": 1792735200,
+            "geometry": {
+              "time": 1793325600,
+              "slope": -3.8207692307692716,
+              "price": 3595.8549999999946
+            },
+            "distance": {
+              "linePrice": 3590.1238461538405,
+              "pips": 4106.411538461593,
+              "atrRatio": 49.62521826062475,
+              "band": "Far"
+            }
+          },
+          {
+            "timeframe": "H1",
+            "kind": "breakout",
+            "color": "green",
+            "firstTime": 1792648800,
+            "secondTime": 1793109600,
+            "confirmedAt": 1793170800,
+            "geometry": {
+              "time": 1793325600,
+              "slope": -0.8020454545454507,
+              "price": 3995.390909090909
+            },
+            "distance": {
+              "linePrice": 3994.187840909091,
+              "pips": 65.77159090908935,
+              "atrRatio": 0.7948374203708927,
+              "band": "Far"
+            }
+          },
+          {
+            "timeframe": "H4",
+            "kind": "breakout",
+            "color": "green",
+            "firstTime": 1790096400,
+            "secondTime": 1790931600,
+            "confirmedAt": 1791320400,
+            "geometry": {
+              "time": 1793307600,
+              "slope": -3.127173913043486,
+              "price": 3861.650652173912
+            },
+            "distance": {
+              "linePrice": 3856.568994565216,
+              "pips": 1441.9600543478373,
+              "atrRatio": 17.42581856443004,
+              "band": "Far"
+            }
+          },
+          {
+            "timeframe": "H4",
+            "kind": "breakout",
+            "color": "green",
+            "firstTime": 1790931600,
+            "secondTime": 1791306000,
+            "confirmedAt": 1791507600,
+            "geometry": {
+              "time": 1793307600,
+              "slope": -3.0817857142856804,
+              "price": 3866.961071428575
+            },
+            "distance": {
+              "linePrice": 3861.9531696428608,
+              "pips": 1388.1183035713912,
+              "atrRatio": 16.77515103907619,
+              "band": "Far"
+            }
+          },
+          {
+            "timeframe": "D",
+            "kind": "continuation",
+            "color": "green",
+            "firstTime": 1761598800,
+            "secondTime": 1782248400,
+            "confirmedAt": 1792789200,
+            "geometry": {
+              "time": 1793221200,
+              "slope": 0.43223214285714157,
+              "price": 3998.413125
+            },
+            "distance": {
+              "linePrice": 3998.962420014881,
+              "pips": 18.02579985118882,
+              "atrRatio": 0.21783843230498676,
+              "band": "Near"
+            }
+          },
+          {
+            "timeframe": "D",
+            "kind": "continuation",
+            "color": "green",
+            "firstTime": 1763416800,
+            "secondTime": 1782248400,
+            "confirmedAt": 1792789200,
+            "geometry": {
+              "time": 1793221200,
+              "slope": 0.009901960784312894,
+              "price": 4000.4010784313723
+            },
+            "distance": {
+              "linePrice": 4000.4136621732023,
+              "pips": 3.513378267975895,
+              "atrRatio": 0.04245852169160766,
+              "band": "Near"
+            }
+          },
+          {
+            "timeframe": "D",
+            "kind": "breakout",
+            "color": "green",
+            "firstTime": 1778101200,
+            "secondTime": 1786050000,
+            "confirmedAt": 1790629200,
+            "geometry": {
+              "time": 1793221200,
+              "slope": -6.4086363636363535,
+              "price": 3963.8254545454556
+            },
+            "distance": {
+              "linePrice": 3955.6811458333345,
+              "pips": 450.8385416666533,
+              "atrRatio": 5.448299767560837,
+              "band": "Far"
+            }
+          },
+          {
+            "timeframe": "D",
+            "kind": "breakout",
+            "color": "green",
+            "firstTime": 1762984800,
+            "secondTime": 1764280800,
+            "confirmedAt": 1782334800,
+            "geometry": {
+              "time": 1793221200,
+              "slope": -1.6618181818181588,
+              "price": 3834.7259090909147
+            },
+            "distance": {
+              "linePrice": 3832.6140151515206,
+              "pips": 1681.509848484793,
+              "atrRatio": 20.320733189277338,
+              "band": "Far"
+            }
+          },
+          {
+            "timeframe": "W",
+            "kind": "continuation",
+            "color": "green",
+            "firstTime": 1761512400,
+            "secondTime": 1782075600,
+            "confirmedAt": 1792962000,
+            "geometry": {
+              "time": 1792357200,
+              "slope": 2.135735294117641,
+              "price": 3995.3875
+            },
+            "distance": {
+              "linePrice": 3998.826288077731,
+              "pips": 19.387119222687943,
+              "atrRatio": 0.23428972324363662,
+              "band": "Near"
+            }
+          },
+          {
+            "timeframe": "W",
+            "kind": "continuation",
+            "color": "green",
+            "firstTime": 1751230800,
+            "secondTime": 1783890000,
+            "confirmedAt": 1791752400,
+            "geometry": {
+              "time": 1792357200,
+              "slope": 13.247870370370375,
+              "price": 4145.270185185185
+            },
+            "distance": {
+              "linePrice": 4166.600833608906,
+              "pips": 1658.3583360890634,
+              "atrRatio": 20.04095147598806,
+              "band": "Far"
+            }
+          },
+          {
+            "timeframe": "W",
+            "kind": "breakout",
+            "color": "green",
+            "firstTime": 1760907600,
+            "secondTime": 1765144800,
+            "confirmedAt": 1774818000,
+            "geometry": {
+              "time": 1792357200,
+              "slope": -11.72285714285707,
+              "price": 3771.851428571432
+            },
+            "distance": {
+              "linePrice": 3752.9762329932005,
+              "pips": 2477.887670067994,
+              "atrRatio": 29.944810767432827,
+              "band": "Far"
+            }
+          },
+          {
+            "timeframe": "W",
+            "kind": "breakout",
+            "color": "green",
+            "firstTime": 1646604000,
+            "secondTime": 1673820000,
+            "confirmedAt": 1696798800,
+            "geometry": {
+              "time": 1792357200,
+              "slope": -2.9566666666666706,
+              "price": 1358.0733333333324
+            },
+            "distance": {
+              "linePrice": 1353.312748015872,
+              "pips": 26474.522519841274,
+              "atrRatio": 319.9396714351591,
+              "band": "Far"
+            }
+          }
+        ],
+        "style": "INTRADAY",
+        "levels": {
+          "entry": 4000.765,
+          "stopLoss": 3990.285,
+          "takeProfit": 4021.725,
+          "riskFree": 4011.245,
+          "riskFreeEnabled": false,
+          "riskPips": 104.8,
+          "rewardRisk": 2,
+          "status": "active",
+          "pendingAtCreation": false,
+          "calculatedAt": 1793331000,
+          "filledAt": 1793331000,
+          "signal": {
+            "type": "T1",
+            "direction": "bullish",
+            "time": 1793330100,
+            "candleCount": 2,
+            "timeframe": "M15"
+          }
+        },
+        "outcome": "sl",
+        "filledAt": 1793331000,
+        "resolvedAt": 1793332800,
+        "returnR": -1,
+        "distanceContext": {
+          "timeframe": "M15",
+          "measuredAt": 1793331000,
+          "atrPips": 82.74848317835684,
+          "nearPips": 20.68712079458921,
+          "mediumPips": 41.37424158917842
+        }
+      },
+      {
+        "id": "TL:XAUUSD:H1:Internal TJL2-1793304000-4032.61:1793806200:M15",
+        "symbol": "XAUUSD",
+        "zoneId": "Internal TJL2-1793304000-4032.61",
+        "zoneName": "Internal RBS",
+        "zoneTimeframe": "H1",
+        "signal": {
+          "type": "T3",
+          "direction": "bullish",
+          "time": 1793806200,
+          "candleCount": 3,
+          "timeframe": "M15"
+        },
+        "fibGroup": "No FIB",
+        "fibSources": [],
+        "support": [
+          {
+            "timeframe": "H1",
+            "kind": "breakout",
+            "color": "green",
+            "firstTime": 1792612800,
+            "secondTime": 1792663200,
+            "confirmedAt": 1792735200,
+            "geometry": {
+              "time": 1793800800,
+              "slope": -3.8207692307692716,
+              "price": 3290.1934615384525
+            },
+            "distance": {
+              "linePrice": 3283.507115384606,
+              "pips": 7564.97884615394,
+              "atrRatio": 74.9109105488552,
+              "band": "Far"
+            }
+          },
+          {
+            "timeframe": "H1",
+            "kind": "breakout",
+            "color": "green",
+            "firstTime": 1793347200,
+            "secondTime": 1793624400,
+            "confirmedAt": 1793696400,
+            "geometry": {
+              "time": 1793800800,
+              "slope": -2.2937037037037147,
+              "price": 3829.6509259259255
+            },
+            "distance": {
+              "linePrice": 3825.636944444444,
+              "pips": 2143.680555555561,
+              "atrRatio": 21.227430453977384,
+              "band": "Far"
+            }
+          },
+          {
+            "timeframe": "H4",
+            "kind": "breakout",
+            "color": "green",
+            "firstTime": 1790096400,
+            "secondTime": 1790931600,
+            "confirmedAt": 1791320400,
+            "geometry": {
+              "time": 1793786400,
+              "slope": -3.127173913043486,
+              "price": 3795.9799999999987
+            },
+            "distance": {
+              "linePrice": 3791.4846874999985,
+              "pips": 2485.2031250000164,
+              "atrRatio": 24.60929934883565,
+              "band": "Far"
+            }
+          },
+          {
+            "timeframe": "H4",
+            "kind": "breakout",
+            "color": "green",
+            "firstTime": 1790931600,
+            "secondTime": 1791306000,
+            "confirmedAt": 1791507600,
+            "geometry": {
+              "time": 1793786400,
+              "slope": -3.0817857142856804,
+              "price": 3802.2435714285757
+            },
+            "distance": {
+              "linePrice": 3797.81350446429,
+              "pips": 2421.9149553571015,
+              "atrRatio": 23.982599061718325,
+              "band": "Far"
+            }
+          },
+          {
+            "timeframe": "D",
+            "kind": "continuation",
+            "color": "green",
+            "firstTime": 1762207200,
+            "secondTime": 1782766800,
+            "confirmedAt": 1793394000,
+            "geometry": {
+              "time": 1793656800,
+              "slope": 0.08032934131736505,
+              "price": 3949.3296407185626
+            },
+            "distance": {
+              "linePrice": 3949.469380301896,
+              "pips": 905.3561969810426,
+              "atrRatio": 8.965135060672251,
+              "band": "Far"
+            }
+          },
+          {
+            "timeframe": "D",
+            "kind": "breakout",
+            "color": "green",
+            "firstTime": 1778101200,
+            "secondTime": 1785963600,
+            "confirmedAt": 1793394000,
+            "geometry": {
+              "time": 1793656800,
+              "slope": -7.086076923076913,
+              "price": 3857.887153846155
+            },
+            "distance": {
+              "linePrice": 3845.560332532052,
+              "pips": 1944.4466746794797,
+              "atrRatio": 19.254550987672303,
+              "band": "Far"
+            }
+          },
+          {
+            "timeframe": "D",
+            "kind": "breakout",
+            "color": "green",
+            "firstTime": 1762984800,
+            "secondTime": 1764280800,
+            "confirmedAt": 1782334800,
+            "geometry": {
+              "time": 1793656800,
+              "slope": -1.6618181818181588,
+              "price": 3829.74045454546
+            },
+            "distance": {
+              "linePrice": 3826.849583333339,
+              "pips": 2131.5541666666104,
+              "atrRatio": 21.107350959795767,
+              "band": "Far"
+            }
+          },
+          {
+            "timeframe": "W",
+            "kind": "continuation",
+            "color": "green",
+            "firstTime": 1761512400,
+            "secondTime": 1782680400,
+            "confirmedAt": 1793566800,
+            "geometry": {
+              "time": 1792962000,
+              "slope": 1.5895714285714218,
+              "price": 3969.122714285714
+            },
+            "distance": {
+              "linePrice": 3971.334394770408,
+              "pips": 686.7060522959218,
+              "atrRatio": 6.7999893592631055,
+              "band": "Far"
+            }
+          },
+          {
+            "timeframe": "W",
+            "kind": "continuation",
+            "color": "green",
+            "firstTime": 1707688800,
+            "secondTime": 1734300000,
+            "confirmedAt": 1793566800,
+            "geometry": {
+              "time": 1792962000,
+              "slope": 13.627499999999998,
+              "price": 3905.7825
+            },
+            "distance": {
+              "linePrice": 3924.7433816964285,
+              "pips": 1152.616183035716,
+              "atrRatio": 11.413584828257484,
+              "band": "Far"
+            }
+          },
+          {
+            "timeframe": "W",
+            "kind": "breakout",
+            "color": "green",
+            "firstTime": 1760907600,
+            "secondTime": 1765144800,
+            "confirmedAt": 1774818000,
+            "geometry": {
+              "time": 1792962000,
+              "slope": -11.72285714285707,
+              "price": 3760.128571428575
+            },
+            "distance": {
+              "linePrice": 3743.8177508503436,
+              "pips": 2961.872491496565,
+              "atrRatio": 29.329436311697926,
+              "band": "Far"
+            }
+          },
+          {
+            "timeframe": "W",
+            "kind": "breakout",
+            "color": "green",
+            "firstTime": 1646604000,
+            "secondTime": 1673820000,
+            "confirmedAt": 1696798800,
+            "geometry": {
+              "time": 1792962000,
+              "slope": -2.9566666666666706,
+              "price": 1355.1166666666659
+            },
+            "distance": {
+              "linePrice": 1351.0028521825388,
+              "pips": 26890.02147817461,
+              "atrRatio": 266.27384353261453,
+              "band": "Far"
+            }
+          }
+        ],
+        "style": "INTRADAY",
+        "levels": {
+          "entry": 4040.005,
+          "stopLoss": 4027.12,
+          "takeProfit": 4065.7750000000005,
+          "riskFree": 4052.8900000000003,
+          "riskFreeEnabled": false,
+          "riskPips": 128.85,
+          "rewardRisk": 2,
+          "status": "active",
+          "pendingAtCreation": false,
+          "calculatedAt": 1793807100,
+          "filledAt": 1793807100,
+          "signal": {
+            "type": "T3",
+            "direction": "bullish",
+            "time": 1793806200,
+            "candleCount": 3,
+            "timeframe": "M15"
+          }
+        },
+        "outcome": "tp",
+        "filledAt": 1793807100,
+        "resolvedAt": 1793810700,
+        "returnR": 2,
+        "distanceContext": {
+          "timeframe": "M15",
+          "measuredAt": 1793807100,
+          "atrPips": 100.9863421860322,
+          "nearPips": 25.24658554650805,
+          "mediumPips": 50.4931710930161
+        }
+      },
+      {
+        "id": "TL:XAUUSD:H1:Internal TJL1-1793145600-4070.84:1793816100:M15",
+        "symbol": "XAUUSD",
+        "zoneId": "Internal TJL1-1793145600-4070.84",
+        "zoneName": "Internal QML",
+        "zoneTimeframe": "H1",
+        "signal": {
+          "type": "T1",
+          "direction": "bearish",
+          "time": 1793816100,
+          "candleCount": 2,
+          "timeframe": "M15"
+        },
+        "fibGroup": "No FIB",
+        "fibSources": [],
+        "support": [
+          {
+            "timeframe": "H1",
+            "kind": "continuation",
+            "color": "red",
+            "firstTime": 1792432800,
+            "secondTime": 1792468800,
+            "confirmedAt": 1792508400,
+            "geometry": {
+              "time": 1793811600,
+              "slope": -0.2366666666666788,
+              "price": 4084.69833333333
+            },
+            "distance": {
+              "linePrice": 4084.34333333333,
+              "pips": 217.38333333330047,
+              "atrRatio": 2.4580091892763325,
+              "band": "Far"
+            }
+          },
+          {
+            "timeframe": "H1",
+            "kind": "continuation",
+            "color": "red",
+            "firstTime": 1792648800,
+            "secondTime": 1793217600,
+            "confirmedAt": 1793811600,
+            "geometry": {
+              "time": 1793811600,
+              "slope": -0.18905660377358458,
+              "price": 4061.839716981132
+            },
+            "distance": {
+              "linePrice": 4061.5561320754714,
+              "pips": 10.488679245286221,
+              "atrRatio": 0.11859819045444779,
+              "band": "Near"
+            }
+          },
+          {
+            "timeframe": "H1",
+            "kind": "breakout",
+            "color": "red",
+            "firstTime": 1793019600,
+            "secondTime": 1793084400,
+            "confirmedAt": 1793264400,
+            "geometry": {
+              "time": 1793811600,
+              "slope": 0.49205882352942565,
+              "price": 4069.5226470588254
+            },
+            "distance": {
+              "linePrice": 4070.2607352941195,
+              "pips": 76.55735294119495,
+              "atrRatio": 0.8656536550003393,
+              "band": "Far"
+            }
+          },
+          {
+            "timeframe": "H1",
+            "kind": "breakout",
+            "color": "red",
+            "firstTime": 1793606400,
+            "secondTime": 1793671200,
+            "confirmedAt": 1793786400,
+            "geometry": {
+              "time": 1793811600,
+              "slope": 3.3519117647058865,
+              "price": 4075.615147058824
+            },
+            "distance": {
+              "linePrice": 4080.6430147058827,
+              "pips": 180.38014705882688,
+              "atrRatio": 2.039604657059019,
+              "band": "Far"
+            }
+          },
+          {
+            "timeframe": "H4",
+            "kind": "continuation",
+            "color": "red",
+            "firstTime": 1790326800,
+            "secondTime": 1791766800,
+            "confirmedAt": 1792126800,
+            "geometry": {
+              "time": 1793800800,
+              "slope": -1.5374999999999943,
+              "price": 4055.957500000001
+            },
+            "distance": {
+              "linePrice": 4054.2278125000007,
+              "pips": 83.77187499999309,
+              "atrRatio": 0.9472301091141107,
+              "band": "Far"
+            }
+          },
+          {
+            "timeframe": "H4",
+            "kind": "continuation",
+            "color": "red",
+            "firstTime": 1788440400,
+            "secondTime": 1789750800,
+            "confirmedAt": 1792170000,
+            "geometry": {
+              "time": 1793800800,
+              "slope": -1.6997761194029883,
+              "price": 4062.189104477611
+            },
+            "distance": {
+              "linePrice": 4060.276856343283,
+              "pips": 23.281436567172022,
+              "atrRatio": 0.2632491835697532,
+              "band": "Medium"
+            }
+          },
+          {
+            "timeframe": "H4",
+            "kind": "breakout",
+            "color": "red",
+            "firstTime": 1793077200,
+            "secondTime": 1793278800,
+            "confirmedAt": 1793815200,
+            "geometry": {
+              "time": 1793800800,
+              "slope": 2.090357142857166,
+              "price": 4068.593571428572
+            },
+            "distance": {
+              "linePrice": 4070.945223214286,
+              "pips": 83.40223214286198,
+              "atrRatio": 0.9430504623783347,
+              "band": "Far"
+            }
+          },
+          {
+            "timeframe": "H4",
+            "kind": "breakout",
+            "color": "red",
+            "firstTime": 1793077200,
+            "secondTime": 1793264400,
+            "confirmedAt": 1793815200,
+            "geometry": {
+              "time": 1793800800,
+              "slope": 2.119230769230783,
+              "price": 4069.6907692307695
+            },
+            "distance": {
+              "linePrice": 4072.074903846154,
+              "pips": 94.69903846154011,
+              "atrRatio": 1.0707863532353,
+              "band": "Far"
+            }
+          },
+          {
+            "timeframe": "D",
+            "kind": "continuation",
+            "color": "red",
+            "firstTime": 1775077200,
+            "secondTime": 1778101200,
+            "confirmedAt": 1787605200,
+            "geometry": {
+              "time": 1793656800,
+              "slope": -1.4956250000000182,
+              "price": 4573.464999999997
+            },
+            "distance": {
+              "linePrice": 4570.691861979164,
+              "pips": 5080.86861979164,
+              "atrRatio": 57.45068660717088,
+              "band": "Far"
+            }
+          },
+          {
+            "timeframe": "D",
+            "kind": "breakout",
+            "color": "red",
+            "firstTime": 1758142800,
+            "secondTime": 1763676000,
+            "confirmedAt": 1770069600,
+            "geometry": {
+              "time": 1793656800,
+              "slope": 8.571739130434787,
+              "price": 6113.764347826089
+            },
+            "distance": {
+              "linePrice": 6129.657780797103,
+              "pips": 20670.527807971033,
+              "atrRatio": 233.72696756509598,
+              "band": "Far"
+            }
+          },
+          {
+            "timeframe": "D",
+            "kind": "breakout",
+            "color": "red",
+            "firstTime": 1758142800,
+            "secondTime": 1763416800,
+            "confirmedAt": 1770069600,
+            "geometry": {
+              "time": 1793656800,
+              "slope": 8.605232558139537,
+              "price": 6123.477441860466
+            },
+            "distance": {
+              "linePrice": 6139.432977228683,
+              "pips": 20768.279772286827,
+              "atrRatio": 234.83227413517068,
+              "band": "Far"
+            }
+          },
+          {
+            "timeframe": "W",
+            "kind": "continuation",
+            "color": "red",
+            "firstTime": 1769378400,
+            "secondTime": 1772402400,
+            "confirmedAt": 1787518800,
+            "geometry": {
+              "time": 1792962000,
+              "slope": -36.513000000000105,
+              "price": 4178.217999999996
+            },
+            "distance": {
+              "linePrice": 4126.817258928568,
+              "pips": 642.1225892856773,
+              "atrRatio": 7.26064505914136,
+              "band": "Far"
+            }
+          },
+          {
+            "timeframe": "W",
+            "kind": "breakout",
+            "color": "red",
+            "firstTime": 1755464400,
+            "secondTime": 1774213200,
+            "confirmedAt": 1788123600,
+            "geometry": {
+              "time": 1792962000,
+              "slope": 25.405322580645162,
+              "price": 4886.6900000000005
+            },
+            "distance": {
+              "linePrice": 4922.454040418587,
+              "pips": 8598.490404185872,
+              "atrRatio": 97.22533969514575,
+              "band": "Far"
+            }
+          },
+          {
+            "timeframe": "W",
+            "kind": "breakout",
+            "color": "red",
+            "firstTime": 1769983200,
+            "secondTime": 1774213200,
+            "confirmedAt": 1788123600,
+            "geometry": {
+              "time": 1792962000,
+              "slope": 9.979999999999952,
+              "price": 4781.619999999998
+            },
+            "distance": {
+              "linePrice": 4795.669226190475,
+              "pips": 7330.642261904745,
+              "atrRatio": 82.88945507810486,
+              "band": "Far"
+            }
+          }
+        ],
+        "style": "INTRADAY",
+        "levels": {
+          "entry": 4062.605,
+          "stopLoss": 4072.43,
+          "takeProfit": 4042.9550000000004,
+          "riskFree": 4052.78,
+          "riskFreeEnabled": false,
+          "riskPips": 98.25,
+          "rewardRisk": 2,
+          "status": "active",
+          "pendingAtCreation": false,
+          "calculatedAt": 1793817000,
+          "filledAt": 1793817000,
+          "signal": {
+            "type": "T1",
+            "direction": "bearish",
+            "time": 1793816100,
+            "candleCount": 2,
+            "timeframe": "M15"
+          }
+        },
+        "outcome": "sl",
+        "filledAt": 1793817000,
+        "resolvedAt": 1793837700,
+        "returnR": -1,
+        "distanceContext": {
+          "timeframe": "M15",
+          "measuredAt": 1793817000,
+          "atrPips": 88.4387797578986,
+          "nearPips": 22.10969493947465,
+          "mediumPips": 44.2193898789493
+        }
+      },
+      {
+        "id": "TL:XAUUSD:H1:TJL2-1793217600-4082.825:1793895300:M15",
+        "symbol": "XAUUSD",
+        "zoneId": "TJL2-1793217600-4082.825",
+        "zoneName": "RBS",
+        "zoneTimeframe": "H1",
+        "signal": {
+          "type": "T4",
+          "direction": "bullish",
+          "time": 1793895300,
+          "candleCount": 3,
+          "timeframe": "M15"
+        },
+        "fibGroup": "No FIB",
+        "fibSources": [],
+        "support": [
+          {
+            "timeframe": "H1",
+            "kind": "breakout",
+            "color": "green",
+            "firstTime": 1792432800,
+            "secondTime": 1792468800,
+            "confirmedAt": 1792508400,
+            "geometry": {
+              "time": 1793890800,
+              "slope": -0.2366666666666788,
+              "price": 4079.72833333333
+            },
+            "distance": {
+              "linePrice": 4078.3083333333298,
+              "pips": 159.86666666670317,
+              "atrRatio": 1.5290306720636226,
+              "band": "Far"
+            }
+          },
+          {
+            "timeframe": "H1",
+            "kind": "breakout",
+            "color": "green",
+            "firstTime": 1792612800,
+            "secondTime": 1792663200,
+            "confirmedAt": 1792735200,
+            "geometry": {
+              "time": 1793890800,
+              "slope": -3.8207692307692716,
+              "price": 3198.4949999999903
+            },
+            "distance": {
+              "linePrice": 3175.5703846153747,
+              "pips": 9187.246153846254,
+              "atrRatio": 87.87060776288321,
+              "band": "Far"
+            }
+          },
+          {
+            "timeframe": "H4",
+            "kind": "breakout",
+            "color": "green",
+            "firstTime": 1790096400,
+            "secondTime": 1790931600,
+            "confirmedAt": 1791320400,
+            "geometry": {
+              "time": 1793872800,
+              "slope": -3.127173913043486,
+              "price": 3777.2169565217378
+            },
+            "distance": {
+              "linePrice": 3768.617228260868,
+              "pips": 3256.777717391319,
+              "atrRatio": 31.149164024083877,
+              "band": "Far"
+            }
+          },
+          {
+            "timeframe": "H4",
+            "kind": "breakout",
+            "color": "green",
+            "firstTime": 1790931600,
+            "secondTime": 1791306000,
+            "confirmedAt": 1791507600,
+            "geometry": {
+              "time": 1793872800,
+              "slope": -3.0817857142856804,
+              "price": 3783.752857142862
+            },
+            "distance": {
+              "linePrice": 3775.2779464285763,
+              "pips": 3190.1705357142373,
+              "atrRatio": 30.512105493450335,
+              "band": "Far"
+            }
+          },
+          {
+            "timeframe": "D",
+            "kind": "continuation",
+            "color": "green",
+            "firstTime": 1762207200,
+            "secondTime": 1782766800,
+            "confirmedAt": 1793394000,
+            "geometry": {
+              "time": 1793743200,
+              "slope": 0.08032934131736505,
+              "price": 3949.40997005988
+            },
+            "distance": {
+              "linePrice": 3949.5672816866263,
+              "pips": 1447.2771831337377,
+              "atrRatio": 13.842355321030986,
+              "band": "Far"
+            }
+          },
+          {
+            "timeframe": "D",
+            "kind": "breakout",
+            "color": "green",
+            "firstTime": 1778101200,
+            "secondTime": 1785963600,
+            "confirmedAt": 1793394000,
+            "geometry": {
+              "time": 1793743200,
+              "slope": -7.086076923076913,
+              "price": 3850.8010769230777
+            },
+            "distance": {
+              "linePrice": 3836.924176282052,
+              "pips": 2573.7082371794804,
+              "atrRatio": 24.616006060817288,
+              "band": "Far"
+            }
+          },
+          {
+            "timeframe": "D",
+            "kind": "breakout",
+            "color": "green",
+            "firstTime": 1762984800,
+            "secondTime": 1764280800,
+            "confirmedAt": 1782334800,
+            "geometry": {
+              "time": 1793743200,
+              "slope": -1.6618181818181588,
+              "price": 3828.0786363636416
+            },
+            "distance": {
+              "linePrice": 3824.8242424242476,
+              "pips": 2694.707575757525,
+              "atrRatio": 25.77329359200077,
+              "band": "Far"
+            }
+          },
+          {
+            "timeframe": "W",
+            "kind": "continuation",
+            "color": "green",
+            "firstTime": 1761512400,
+            "secondTime": 1782680400,
+            "confirmedAt": 1793566800,
+            "geometry": {
+              "time": 1792962000,
+              "slope": 1.5895714285714218,
+              "price": 3969.122714285714
+            },
+            "distance": {
+              "linePrice": 3971.611150510204,
+              "pips": 1226.838494897961,
+              "atrRatio": 11.733988876356907,
+              "band": "Far"
+            }
+          },
+          {
+            "timeframe": "W",
+            "kind": "continuation",
+            "color": "green",
+            "firstTime": 1707688800,
+            "secondTime": 1734300000,
+            "confirmedAt": 1793566800,
+            "geometry": {
+              "time": 1792962000,
+              "slope": 13.627499999999998,
+              "price": 3905.7825
+            },
+            "distance": {
+              "linePrice": 3927.116026785714,
+              "pips": 1671.7897321428609,
+              "atrRatio": 15.989685848750282,
+              "band": "Far"
+            }
+          },
+          {
+            "timeframe": "W",
+            "kind": "breakout",
+            "color": "green",
+            "firstTime": 1760907600,
+            "secondTime": 1765144800,
+            "confirmedAt": 1774818000,
+            "geometry": {
+              "time": 1792962000,
+              "slope": -11.72285714285707,
+              "price": 3760.128571428575
+            },
+            "distance": {
+              "linePrice": 3741.7767176870784,
+              "pips": 3525.1828231292166,
+              "atrRatio": 33.71630105001151,
+              "band": "Far"
+            }
+          },
+          {
+            "timeframe": "W",
+            "kind": "breakout",
+            "color": "green",
+            "firstTime": 1646604000,
+            "secondTime": 1673820000,
+            "confirmedAt": 1696798800,
+            "geometry": {
+              "time": 1792962000,
+              "slope": -2.9566666666666706,
+              "price": 1355.1166666666659
+            },
+            "distance": {
+              "linePrice": 1350.4880753968246,
+              "pips": 27438.069246031755,
+              "atrRatio": 262.4289999544114,
+              "band": "Far"
+            }
+          }
+        ],
+        "style": "INTRADAY",
+        "levels": {
+          "entry": 4094.295,
+          "stopLoss": 4074.295,
+          "takeProfit": 4134.295,
+          "riskFree": 4114.295,
+          "riskFreeEnabled": false,
+          "riskPips": 200,
+          "rewardRisk": 2,
+          "status": "pending",
+          "pendingAtCreation": true,
+          "calculatedAt": 1793896200,
+          "signal": {
+            "type": "T4",
+            "direction": "bullish",
+            "time": 1793895300,
+            "candleCount": 3,
+            "timeframe": "M15"
+          }
+        },
+        "outcome": "sl",
+        "filledAt": 1793912400,
+        "resolvedAt": 1793920500,
+        "returnR": -1,
+        "distanceContext": {
+          "timeframe": "M15",
+          "measuredAt": 1793912400,
+          "atrPips": 104.55425753555528,
+          "nearPips": 26.13856438388882,
+          "mediumPips": 52.27712876777764
+        }
+      },
+      {
+        "id": "TL:XAUUSD:H1:iss-l3-1793890800:1793992500:M15",
+        "symbol": "XAUUSD",
+        "zoneId": "iss-l3-1793890800",
+        "zoneName": "ISS L3",
+        "zoneTimeframe": "H1",
+        "signal": {
+          "type": "T2",
+          "direction": "bearish",
+          "time": 1793992500,
+          "candleCount": 3,
+          "timeframe": "M15"
+        },
+        "fibGroup": "No FIB",
+        "fibSources": [],
+        "support": [
+          {
+            "timeframe": "H1",
+            "kind": "breakout",
+            "color": "red",
+            "firstTime": 1793088000,
+            "secondTime": 1793250000,
+            "confirmedAt": 1793851200,
+            "geometry": {
+              "time": 1793988000,
+              "slope": 0.9855232558139547,
+              "price": 4179.365988372093
+            },
+            "distance": {
+              "linePrice": 4180.844273255814,
+              "pips": 1158.4427325581419,
+              "atrRatio": 13.918494213526703,
+              "band": "Far"
+            }
+          },
+          {
+            "timeframe": "H1",
+            "kind": "breakout",
+            "color": "red",
+            "firstTime": 1793088000,
+            "secondTime": 1793156400,
+            "confirmedAt": 1793178000,
+            "geometry": {
+              "time": 1793988000,
+              "slope": 2.9761111111111203,
+              "price": 4563.549444444446
+            },
+            "distance": {
+              "linePrice": 4568.013611111112,
+              "pips": 5030.136111111124,
+              "atrRatio": 60.43623770779537,
+              "band": "Far"
+            }
+          },
+          {
+            "timeframe": "H4",
+            "kind": "continuation",
+            "color": "red",
+            "firstTime": 1790931600,
+            "secondTime": 1791522000,
+            "confirmedAt": 1792141200,
+            "geometry": {
+              "time": 1793973600,
+              "slope": -0.6912068965517266,
+              "price": 4123.157758620689
+            },
+            "distance": {
+              "linePrice": 4122.20734913793,
+              "pips": 572.0734913792967,
+              "atrRatio": 6.873366594386338,
+              "band": "Far"
+            }
+          },
+          {
+            "timeframe": "H4",
+            "kind": "continuation",
+            "color": "red",
+            "firstTime": 1791766800,
+            "secondTime": 1792155600,
+            "confirmedAt": 1793858400,
+            "geometry": {
+              "time": 1793973600,
+              "slope": -0.6783333333333522,
+              "price": 4138.029999999998
+            },
+            "distance": {
+              "linePrice": 4137.097291666664,
+              "pips": 720.972916666642,
+              "atrRatio": 8.662368097018106,
+              "band": "Far"
+            }
+          },
+          {
+            "timeframe": "H4",
+            "kind": "breakout",
+            "color": "red",
+            "firstTime": 1791363600,
+            "secondTime": 1791968400,
+            "confirmedAt": 1792616400,
+            "geometry": {
+              "time": 1793973600,
+              "slope": 0.6251666666666703,
+              "price": 4149.682166666667
+            },
+            "distance": {
+              "linePrice": 4150.541770833334,
+              "pips": 855.4177083333434,
+              "atrRatio": 10.277699612560129,
+              "band": "Far"
+            }
+          },
+          {
+            "timeframe": "H4",
+            "kind": "breakout",
+            "color": "red",
+            "firstTime": 1791363600,
+            "secondTime": 1791982800,
+            "confirmedAt": 1792645200,
+            "geometry": {
+              "time": 1793973600,
+              "slope": 0.5511290322580656,
+              "price": 4139.8351612903225
+            },
+            "distance": {
+              "linePrice": 4140.592963709677,
+              "pips": 755.9296370967695,
+              "atrRatio": 9.082367202158316,
+              "band": "Far"
+            }
+          },
+          {
+            "timeframe": "D",
+            "kind": "continuation",
+            "color": "red",
+            "firstTime": 1789678800,
+            "secondTime": 1792357200,
+            "confirmedAt": 1793916000,
+            "geometry": {
+              "time": 1793829600,
+              "slope": -9.964285714285714,
+              "price": 4060.884285714286
+            },
+            "distance": {
+              "linePrice": 4041.993660714286,
+              "pips": 230.06339285714148,
+              "atrRatio": 2.764172895413913,
+              "band": "Far"
+            }
+          },
+          {
+            "timeframe": "D",
+            "kind": "continuation",
+            "color": "red",
+            "firstTime": 1788382800,
+            "secondTime": 1792357200,
+            "confirmedAt": 1793829600,
+            "geometry": {
+              "time": 1793829600,
+              "slope": -10.015937500000007,
+              "price": 4060.2128125
+            },
+            "distance": {
+              "linePrice": 4041.2242643229165,
+              "pips": 237.75735677083503,
+              "atrRatio": 2.8566145752674763,
+              "band": "Far"
+            }
+          },
+          {
+            "timeframe": "D",
+            "kind": "breakout",
+            "color": "red",
+            "firstTime": 1757538000,
+            "secondTime": 1782766800,
+            "confirmedAt": 1784322000,
+            "geometry": {
+              "time": 1793829600,
+              "slope": 1.6061707317073164,
+              "price": 4089.867707317073
+            },
+            "distance": {
+              "linePrice": 4092.912739329268,
+              "pips": 279.1273932926788,
+              "atrRatio": 3.3536685924920793,
+              "band": "Far"
+            }
+          },
+          {
+            "timeframe": "D",
+            "kind": "breakout",
+            "color": "red",
+            "firstTime": 1758142800,
+            "secondTime": 1763676000,
+            "confirmedAt": 1770069600,
+            "geometry": {
+              "time": 1793829600,
+              "slope": 8.571739130434787,
+              "price": 6130.907826086957
+            },
+            "distance": {
+              "linePrice": 6147.158414855074,
+              "pips": 20821.584148550737,
+              "atrRatio": 250.16782473838649,
+              "band": "Far"
+            }
+          },
+          {
+            "timeframe": "W",
+            "kind": "continuation",
+            "color": "red",
+            "firstTime": 1769378400,
+            "secondTime": 1772402400,
+            "confirmedAt": 1787518800,
+            "geometry": {
+              "time": 1792962000,
+              "slope": -36.513000000000105,
+              "price": 4178.217999999996
+            },
+            "distance": {
+              "linePrice": 4116.167633928568,
+              "pips": 511.6763392856774,
+              "atrRatio": 6.147704989973501,
+              "band": "Far"
+            }
+          },
+          {
+            "timeframe": "W",
+            "kind": "breakout",
+            "color": "red",
+            "firstTime": 1755464400,
+            "secondTime": 1774213200,
+            "confirmedAt": 1788123600,
+            "geometry": {
+              "time": 1792962000,
+              "slope": 25.405322580645162,
+              "price": 4886.6900000000005
+            },
+            "distance": {
+              "linePrice": 4929.863926171275,
+              "pips": 8648.639261712751,
+              "atrRatio": 103.91194328027531,
+              "band": "Far"
+            }
+          },
+          {
+            "timeframe": "W",
+            "kind": "breakout",
+            "color": "red",
+            "firstTime": 1769983200,
+            "secondTime": 1774213200,
+            "confirmedAt": 1788123600,
+            "geometry": {
+              "time": 1792962000,
+              "slope": 9.979999999999952,
+              "price": 4781.619999999998
+            },
+            "distance": {
+              "linePrice": 4798.580059523808,
+              "pips": 7335.800595238079,
+              "atrRatio": 88.13840793919644,
+              "band": "Far"
+            }
+          }
+        ],
+        "style": "INTRADAY",
+        "levels": {
+          "entry": 4065,
+          "stopLoss": 4080.645,
+          "takeProfit": 4033.71,
+          "riskFree": 4049.355,
+          "riskFreeEnabled": false,
+          "riskPips": 156.45,
+          "rewardRisk": 2,
+          "status": "active",
+          "pendingAtCreation": false,
+          "calculatedAt": 1793993400,
+          "filledAt": 1793993400,
+          "signal": {
+            "type": "T2",
+            "direction": "bearish",
+            "time": 1793992500,
+            "candleCount": 3,
+            "timeframe": "M15"
+          }
+        },
+        "outcome": "sl",
+        "filledAt": 1793993400,
+        "resolvedAt": 1794184200,
+        "returnR": -1,
+        "distanceContext": {
+          "timeframe": "M15",
+          "measuredAt": 1793993400,
+          "atrPips": 83.2304640707691,
+          "nearPips": 20.807616017692276,
+          "mediumPips": 41.61523203538455
+        }
+      },
+      {
+        "id": "TL:XAUUSD:H1:iss-l4-1793894400:1794192300:M15",
+        "symbol": "XAUUSD",
+        "zoneId": "iss-l4-1793894400",
+        "zoneName": "ISS L4",
+        "zoneTimeframe": "H1",
+        "signal": {
+          "type": "T4",
+          "direction": "bearish",
+          "time": 1794192300,
+          "candleCount": 4,
+          "timeframe": "M15"
+        },
+        "fibGroup": "With FIB",
+        "fibSources": [
+          "Structure deep"
+        ],
+        "support": [
+          {
+            "timeframe": "H1",
+            "kind": "continuation",
+            "color": "red",
+            "firstTime": 1792594800,
+            "secondTime": 1793840400,
+            "confirmedAt": 1794193200,
+            "geometry": {
+              "time": 1794189600,
+              "slope": -0.02552521008403667,
+              "price": 4134.07531512605
+            },
+            "distance": {
+              "linePrice": 4134.049789915965,
+              "pips": 140.3978991596523,
+              "atrRatio": 1.3139040129686488,
+              "band": "Far"
+            }
+          },
+          {
+            "timeframe": "H1",
+            "kind": "breakout",
+            "color": "red",
+            "firstTime": 1793707200,
+            "secondTime": 1793736000,
+            "confirmedAt": 1793930400,
+            "geometry": {
+              "time": 1794189600,
+              "slope": 2.785624999999982,
+              "price": 4127.3812499999985
+            },
+            "distance": {
+              "linePrice": 4130.166874999999,
+              "pips": 101.56874999998763,
+              "atrRatio": 0.9505241105170658,
+              "band": "Far"
+            }
+          },
+          {
+            "timeframe": "H1",
+            "kind": "breakout",
+            "color": "red",
+            "firstTime": 1793804400,
+            "secondTime": 1793912400,
+            "confirmedAt": 1794193200,
+            "geometry": {
+              "time": 1794189600,
+              "slope": 1.804482758620687,
+              "price": 4130.171034482758
+            },
+            "distance": {
+              "linePrice": 4131.975517241379,
+              "pips": 119.6551724137862,
+              "atrRatio": 1.1197846417071602,
+              "band": "Far"
+            }
+          },
+          {
+            "timeframe": "H4",
+            "kind": "continuation",
+            "color": "red",
+            "firstTime": 1790931600,
+            "secondTime": 1791522000,
+            "confirmedAt": 1792141200,
+            "geometry": {
+              "time": 1794175200,
+              "slope": -0.6912068965517266,
+              "price": 4121.775344827585
+            }
+          },
+          {
+            "timeframe": "H4",
+            "kind": "continuation",
+            "color": "red",
+            "firstTime": 1791766800,
+            "secondTime": 1792155600,
+            "confirmedAt": 1793858400,
+            "geometry": {
+              "time": 1794175200,
+              "slope": -0.6783333333333522,
+              "price": 4136.673333333331
+            }
+          },
+          {
+            "timeframe": "H4",
+            "kind": "breakout",
+            "color": "red",
+            "firstTime": 1791363600,
+            "secondTime": 1791968400,
+            "confirmedAt": 1792616400,
+            "geometry": {
+              "time": 1794175200,
+              "slope": 0.6251666666666703,
+              "price": 4150.932500000001
+            }
+          },
+          {
+            "timeframe": "H4",
+            "kind": "breakout",
+            "color": "red",
+            "firstTime": 1791363600,
+            "secondTime": 1791982800,
+            "confirmedAt": 1792645200,
+            "geometry": {
+              "time": 1794175200,
+              "slope": 0.5511290322580656,
+              "price": 4140.937419354838
+            }
+          },
+          {
+            "timeframe": "D",
+            "kind": "continuation",
+            "color": "red",
+            "firstTime": 1789678800,
+            "secondTime": 1792357200,
+            "confirmedAt": 1793916000,
+            "geometry": {
+              "time": 1793916000,
+              "slope": -9.964285714285714,
+              "price": 4050.92
+            }
+          },
+          {
+            "timeframe": "D",
+            "kind": "continuation",
+            "color": "red",
+            "firstTime": 1788382800,
+            "secondTime": 1792357200,
+            "confirmedAt": 1793829600,
+            "geometry": {
+              "time": 1793916000,
+              "slope": -10.015937500000007,
+              "price": 4050.196875
+            }
+          },
+          {
+            "timeframe": "D",
+            "kind": "breakout",
+            "color": "red",
+            "firstTime": 1757538000,
+            "secondTime": 1782766800,
+            "confirmedAt": 1784322000,
+            "geometry": {
+              "time": 1793916000,
+              "slope": 1.6061707317073164,
+              "price": 4091.4738780487805
+            }
+          },
+          {
+            "timeframe": "D",
+            "kind": "breakout",
+            "color": "red",
+            "firstTime": 1758142800,
+            "secondTime": 1763676000,
+            "confirmedAt": 1770069600,
+            "geometry": {
+              "time": 1793916000,
+              "slope": 8.571739130434787,
+              "price": 6139.4795652173925
+            }
+          },
+          {
+            "timeframe": "W",
+            "kind": "continuation",
+            "color": "red",
+            "firstTime": 1769378400,
+            "secondTime": 1772402400,
+            "confirmedAt": 1787518800,
+            "geometry": {
+              "time": 1793570400,
+              "slope": -36.513000000000105,
+              "price": 4141.704999999996
+            }
+          },
+          {
+            "timeframe": "W",
+            "kind": "breakout",
+            "color": "red",
+            "firstTime": 1755464400,
+            "secondTime": 1774213200,
+            "confirmedAt": 1788123600,
+            "geometry": {
+              "time": 1793570400,
+              "slope": 25.405322580645162,
+              "price": 4912.095322580645
+            }
+          },
+          {
+            "timeframe": "W",
+            "kind": "breakout",
+            "color": "red",
+            "firstTime": 1769983200,
+            "secondTime": 1774213200,
+            "confirmedAt": 1788123600,
+            "geometry": {
+              "time": 1793570400,
+              "slope": 9.979999999999952,
+              "price": 4791.5999999999985
+            }
+          }
+        ],
+        "style": "INTRADAY",
+        "levels": {
+          "entry": 4120.01,
+          "stopLoss": 4136.135,
+          "takeProfit": 4087.76,
+          "riskFree": 4103.885,
+          "riskFreeEnabled": false,
+          "riskPips": 161.25,
+          "rewardRisk": 2,
+          "status": "active",
+          "pendingAtCreation": false,
+          "calculatedAt": 1794193200,
+          "filledAt": 1794193200,
+          "signal": {
+            "type": "T4",
+            "direction": "bearish",
+            "time": 1794192300,
+            "candleCount": 4,
+            "timeframe": "M15"
+          }
+        },
+        "outcome": "active",
+        "filledAt": 1794193200,
+        "distanceContext": {
+          "timeframe": "M15",
+          "measuredAt": 1794193200,
+          "atrPips": 106.85552199694997,
+          "nearPips": 26.713880499237494,
+          "mediumPips": 53.42776099847499
+        }
+      }
+    ],
+    "scanned": 777,
+    "from": 1791453600,
+    "to": 1794200400,
+    "missingTimeframes": []
+  }
+}

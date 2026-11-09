@@ -17,6 +17,7 @@ import {
   buildMt5SignalId,
   canMt5SignalExpireBeforeExecution,
   findEarlierZoneEntry,
+  isSameZoneEntryConfirmation,
   tradeZoneExecutionKey,
   tradeRecordZoneExecutionKey,
   calculateXauUsdLotSize,
@@ -177,6 +178,22 @@ test('a filled Major Liquidity chart entry blocks a later Fib entry, including l
   assert.equal(findEarlierZoneEntry(candidate, [{ ...earlier, signalAt: 300 }]), undefined,
     'keep the existing entry visible rather than treating it as another entry');
   assert.equal(findEarlierZoneEntry(candidate, [{ ...earlier, symbol: 'EURUSD' }]), undefined);
+});
+
+test('concurrent H1-zone 15M and 30M confirmations can be displayed without releasing the used-zone block', () => {
+  const candidate = { symbol: 'XAUUSD', zoneTimeframe: 'H1',
+    zoneId: 'iss-l4-1793894400', signalAt: 1794192300, signalTimeframe: 'M15' as const };
+  const manual = { id: 'DIRECT:iss-l4-1793894400:1794191400:4120.17',
+    zoneTimeframe: 'H1', signalAt: 1794191400, signalTimeframe: 'M30' as const, openedAt: 1794193200 };
+  assert.equal(findEarlierZoneEntry(candidate, [manual]), manual, 'execution stays blocked');
+  assert.equal(isSameZoneEntryConfirmation(candidate, manual), true,
+    'both signals confirm at 08:45 Nepal and may share an entry reference');
+  assert.equal(isSameZoneEntryConfirmation(candidate, { ...manual, signalAt: 1794189600 }), false,
+    'a genuinely earlier entry is not a reference for this confirmation');
+  assert.equal(isSameZoneEntryConfirmation(candidate, { ...manual, signalTimeframe: undefined }), false,
+    'do not guess the confirmation timeframe of a legacy record');
+  assert.equal(isSameZoneEntryConfirmation(candidate, { ...manual, zoneTimeframe: 'M15' }), false);
+  assert.equal(isSameZoneEntryConfirmation(candidate, { ...manual, symbol: 'EURUSD' }), false);
 });
 
 test('MT5 expiry applies only before execution and stale terminal journal cards are removed', () => {

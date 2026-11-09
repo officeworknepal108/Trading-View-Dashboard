@@ -1,6 +1,6 @@
 import type { StructureCandle } from './marketStructure';
 import type { TradeTimeframe } from './tradeLevels';
-import { studyTimeframes, type StudyTimeframe } from './trendlineStudy';
+import { studyDataTimeframes, type StudyTimeframe } from './trendlineStudy';
 
 export type StudyCandles = Partial<Record<StudyTimeframe, StructureCandle[]>>;
 const WARMUP_BARS = 500;
@@ -15,10 +15,10 @@ export function mergeStudyCandles(...sources: StructureCandle[][]): StructureCan
 export function studyHistoryRequirements(symbol: string, zoneTimeframe: TradeTimeframe) {
   const required: Record<string, StudyTimeframe[]> = {
     M1: ['M1', 'M5', 'M15', 'D'], M5: ['M5', 'H1'],
-    M15: ['M15', 'M30', 'H1', 'H4'], H1: ['H1', 'H4', 'D'],
+    M15: ['M15', 'M30', 'H1', 'H4'], H1: ['M15', 'M30', 'H1', 'H4', 'D'],
   };
   const mandatory = new Set<StudyTimeframe>(required[zoneTimeframe] ?? [zoneTimeframe]);
-  const optional = studyTimeframes(zoneTimeframe).filter(tf => !mandatory.has(tf));
+  const optional = studyDataTimeframes(symbol, zoneTimeframe).filter(tf => !mandatory.has(tf));
   return { mandatory: [...mandatory], optional };
 }
 
@@ -38,7 +38,7 @@ export async function loadStudyDateHistory(options: HistoryOptions): Promise<{ c
   const { symbol, fromTime, cutoff, signal, progress = () => undefined, fetcher = fetch } = options;
   if (!Number.isFinite(fromTime) || fromTime >= cutoff) throw new Error('Choose a start date before the study end time.');
   const requirements = studyHistoryRequirements(symbol, options.zoneTimeframe);
-  const candles: StudyCandles = Object.fromEntries(studyTimeframes(options.zoneTimeframe)
+  const candles: StudyCandles = Object.fromEntries(studyDataTimeframes(symbol, options.zoneTimeframe)
     .map(tf => [tf, options.candles[tf] ?? []]));
   const warnings: string[] = [];
   const load = async (tf: StudyTimeframe, mandatory: boolean) => {

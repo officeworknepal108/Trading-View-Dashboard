@@ -25,9 +25,14 @@ export function studyTimeframes(zoneTimeframe: TradeTimeframe): StudyTimeframe[]
 
 export function studyEntryTimeframes(symbol: string, zoneTimeframe: TradeTimeframe): TradeTimeframe[] {
   return (['M1', 'M5', 'M15', 'M30', 'H1', 'H4', 'D'] as TradeTimeframe[]).filter(tf => (
-    STUDY_SECONDS[tf] >= STUDY_SECONDS[zoneTimeframe] && getDirectTradeRule(zoneTimeframe, tf)
+    (zoneTimeframe === 'H1' || STUDY_SECONDS[tf] >= STUDY_SECONDS[zoneTimeframe]) && getDirectTradeRule(zoneTimeframe, tf)
     && (symbol !== 'XAUUSD' || isGoldIntradayCandleRoute(zoneTimeframe, tf))
   ));
+}
+/** Entry candles can be lower than the zone; trendline evidence still uses studyTimeframes. */
+export function studyDataTimeframes(symbol: string, zoneTimeframe: TradeTimeframe): StudyTimeframe[] {
+  const needed = new Set<StudyTimeframe>([...studyTimeframes(zoneTimeframe), ...studyEntryTimeframes(symbol, zoneTimeframe)]);
+  return STUDY_TIMEFRAMES.filter(tf => needed.has(tf));
 }
 const CONFIRMATION = { M1: 300, M5: 900, M15: 3600, M30: 3600, H1: 14400,
   H4: 86400, D: 604800, W: 2419200, MO: undefined };
@@ -176,7 +181,8 @@ export function readStudySnapshot(raw: string | null, symbol: string): StudySnap
         || !['With FIB', 'No FIB', 'FIB only'].includes(r.fibGroup) || !['INTRADAY', 'SCALPING'].includes(r.style)
         || !Array.isArray(r.fibSources) || !r.fibSources.every((s: unknown) => typeof s === 'string')
         || !r.signal || !tf(r.signal.timeframe) || !finite(r.signal.time) || !finite(r.signal.candleCount)
-        || STUDY_SECONDS[r.signal.timeframe as StudyTimeframe] < STUDY_SECONDS[r.zoneTimeframe as StudyTimeframe]
+        || (STUDY_SECONDS[r.signal.timeframe as StudyTimeframe] < STUDY_SECONDS[r.zoneTimeframe as StudyTimeframe]
+          && !(r.zoneTimeframe === 'H1' && studyEntryTimeframes(symbol, 'H1').includes(r.signal.timeframe)))
         || !['T1', 'T2', 'T3', 'T4'].includes(r.signal.type) || !['bullish', 'bearish'].includes(r.signal.direction)
         || !r.levels || !['entry', 'stopLoss', 'takeProfit', 'riskFree', 'riskPips', 'rewardRisk', 'calculatedAt']
           .every(key => finite(r.levels[key])) || typeof r.levels.pendingAtCreation !== 'boolean'
@@ -464,7 +470,7 @@ export function studyComparisonGroup(fibSources: readonly string[], support: rea
 
 export function studyCandleRule(symbol: string, zone: StructureZone, zoneTf: TradeTimeframe,
   signalTf: TradeTimeframe): { rule: TradeRule; style: 'INTRADAY' } | undefined {
-  if (STUDY_SECONDS[signalTf] < STUDY_SECONDS[zoneTf]) return undefined;
+  if (zoneTf !== 'H1' && STUDY_SECONDS[signalTf] < STUDY_SECONDS[zoneTf]) return undefined;
   if (symbol === 'XAUUSD' && !isGoldIntradayCandleRoute(zoneTf, signalTf)) return undefined;
   const rule = getDirectTradeRule(zoneTf, signalTf);
   return rule ? { rule, style: 'INTRADAY' } : undefined;
@@ -538,6 +544,32 @@ export function studyAccuracy(records: TrendlineStudyRecord[]) {
     cancelled: records.filter(r => r.outcome === 'cancelled').length };
 }
 
+export const STUDY_SETUP_KINDS = ['Deep Discount', 'Other FIB', 'No FIB', 'Unknown'] as const;
+export type StudySetupKind = typeof STUDY_SETUP_KINDS[number];
+
+/** Classify recorded evidence without reinterpreting a trade using future candles. */
+export function studySetupKind(record: TrendlineStudyRecord): StudySetupKind {
+  if (record.zoneName === 'DB' || record.zoneName === 'DT') return 'Deep Discount';
+  const evidence = record.fibSources.join(' ');
+  if (/\bdeep\b|0\.71\s*-\s*0\.79|DB\/DT/i.test(evidence)) return 'Deep Discount';
+  if (/0\.5\s*-\s*0\.618/.test(evidence)) return 'Other FIB';
+  if (evidence || (record.arrowDetails && !/^(no fib|none)$/i.test(record.arrowDetails.fib.trim()))) return 'Unknown';
+  return 'No FIB';
+}
+
+export function filterStudySetup(records: TrendlineStudyRecord[], kind: StudySetupKind | 'All'): TrendlineStudyRecord[] {
+  return kind === 'All' ? records : records.filter(record => studySetupKind(record) === kind);
+}
+
+export function studyDeepDiscountBreakdown(records: TrendlineStudyRecord[]) {
+  const deep = filterStudySetup(records, 'Deep Discount');
+  return [true, false].map(withTrendline => {
+    const entries = deep.filter(record => (record.support.length > 0) === withTrendline);
+    return { label: withTrendline ? 'Deep Discount + trendline' : 'Deep Discount without trendline',
+      recordIds: entries.map(record => record.id), stats: studyAccuracy(entries) };
+  });
+}
+
 /** Filter recorded entry evidence without changing prices, outcomes or groups. */
 export function filterStudyTrendlineType(records: TrendlineStudyRecord[], kind: StudyTrendlineType): TrendlineStudyRecord[] {
   if (kind === 'all') return records;
@@ -591,7 +623,7 @@ export function runTrendlineStudy(input: TrendlineStudyInput,
     throw new Error('Choose a start date before the study end time.');
   }
   const gold = symbol === 'XAUUSD';
-  const allowed = new Set(studyTimeframes(zoneTimeframe));
+  const allowed = new Set(studyDataTimeframes(symbol, zoneTimeframe));
   const all = Object.fromEntries(STUDY_TIMEFRAMES.map(tf => [tf,
     allowed.has(tf) ? studyClosedCandles(input.candles[tf] ?? [], tf, cutoff) : []])) as Record<StudyTimeframe, StructureCandle[]>;
   const snapshots = new Map<string, ReturnType<typeof analyzeMarketStructure>>();
@@ -706,7 +738,7 @@ export function runTrendlineStudy(input: TrendlineStudyInput,
   }
   return { records: records.map(record => measureStudyRecordDistance(record, all, input.pipSize)), scanned, from, to: cutoff,
     ...(input.historyWarnings?.length ? { historyWarnings: input.historyWarnings } : {}),
-    missingTimeframes: studyTimeframes(zoneTimeframe).filter(tf => all[tf].length < 12) };
+    missingTimeframes: studyDataTimeframes(symbol, zoneTimeframe).filter(tf => all[tf].length < 12) };
 }
 
 export function studyJournalCsv(records: TrendlineStudyRecord[]): string {
@@ -716,7 +748,7 @@ export function studyJournalCsv(records: TrendlineStudyRecord[]): string {
     'Recorded FIB', 'Risk-free price', 'Risk pips', 'Arrow status', 'Confirmation UTC',
     'Outside trading hours', 'Insufficient trendline history', 'Risk-free enabled',
     'Nearest measured trendline distance group', 'Distance measured UTC', 'ATR timeframe', 'ATR14 pips',
-    'Near limit pips', 'Medium limit pips', 'Trendline distances'];
+    'Near limit pips', 'Medium limit pips', 'Trendline distances', 'Setup category'];
   const iso = (t?: number) => t === undefined ? '' : new Date(t * 1000).toISOString();
   const rows = records.map(r => [r.id, r.symbol, r.zoneName, r.zoneTimeframe, r.signal.timeframe,
     r.signal.type, r.signal.direction, iso(r.signal.time), r.fibGroup, r.fibSources.join('; '),
@@ -730,6 +762,6 @@ export function studyJournalCsv(records: TrendlineStudyRecord[]): string {
     r.arrowDetails?.tradingTimeBlocked ?? '', r.arrowDetails?.unavailable.join('; ') ?? '', r.levels.riskFreeEnabled !== false,
     studyRecordDistanceBand(r), iso(r.distanceContext?.measuredAt), r.distanceContext?.timeframe ?? '',
     r.distanceContext?.atrPips ?? '', r.distanceContext?.nearPips ?? '', r.distanceContext?.mediumPips ?? '',
-    r.support.map(s => `${s.timeframe} ${s.kind}: ${s.distance ? `${s.distance.pips.toFixed(2)} pips, ${s.distance.band}, line price ${s.distance.linePrice}, ATR ratio ${s.distance.atrRatio ?? 'unknown'}` : 'distance unknown'}`).join('; ')]);
+    r.support.map(s => `${s.timeframe} ${s.kind}: ${s.distance ? `${s.distance.pips.toFixed(2)} pips, ${s.distance.band}, line price ${s.distance.linePrice}, ATR ratio ${s.distance.atrRatio ?? 'unknown'}` : 'distance unknown'}`).join('; '), studySetupKind(r)]);
   return [header, ...rows].map(row => row.map(v => `"${String(v).replaceAll('"', '""')}"`).join(',')).join('\r\n');
 }

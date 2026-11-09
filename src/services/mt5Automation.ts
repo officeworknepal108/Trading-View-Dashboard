@@ -339,6 +339,7 @@ export interface ZoneTradeRecord {
   zoneId?: string;
   setupId?: string;
   signalAt?: number;
+  signalTimeframe?: TradeTimeframe;
   openedAt?: number;
   outsideTradingTime?: boolean;
   mt5Managed?: boolean;
@@ -370,6 +371,20 @@ export function findEarlierZoneEntry(
       || Number.isFinite(record.brokerTicket))
     && Number.isFinite(record.signalAt) && record.signalAt! < candidate.signalAt
     && tradeRecordZoneExecutionKey(record) === key);
+}
+
+/** Different confirmation timeframes can describe the same completed entry event. */
+export function isSameZoneEntryConfirmation(
+  candidate: { symbol: string; zoneTimeframe: string; zoneId: string;
+    signalAt: number; signalTimeframe: TradeTimeframe },
+  record: ZoneTradeRecord,
+): boolean {
+  if (!record.signalTimeframe || !Number.isFinite(record.signalAt)) return false;
+  const seconds = (timeframe: TradeTimeframe) => timeframe === 'D' ? 86400
+    : Number(timeframe.slice(1)) * (timeframe.startsWith('H') ? 3600 : 60);
+  return tradeZoneExecutionKey(candidate) === tradeRecordZoneExecutionKey(record)
+    && candidate.signalAt + seconds(candidate.signalTimeframe)
+      === record.signalAt! + seconds(record.signalTimeframe);
 }
 
 /** Scalp, Major Liquidity and intraday routes consume the same Gold zone. */

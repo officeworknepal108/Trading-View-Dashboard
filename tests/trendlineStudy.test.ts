@@ -7,6 +7,7 @@ import { collectStudySupport, evaluateStudyOutcome, readStudySnapshot, runTrendl
   studyJournalCsv, studyLookbackWindow, studyDateWindow, studyLocalDateStart, studyLocalDateValue,
   studyTimeframes, studyEntryTimeframes, studyComparisonGroup, studyTrendlineBreakdown, filterStudyTrendlineType, STUDY_SECONDS,
   trendlineSupportsBuy, type TrendlineStudyRecord, type EntryArrowStudyInput, type EntryArrowStudyEntry } from '../src/services/trendlineStudy';
+import { studyDataTimeframes, studySetupKind, filterStudySetup, studyDeepDiscountBreakdown } from '../src/services/trendlineStudy';
 import { bestTrendlineSetupRank, preEntryTrendlineMarks, measureStudySupportDistance, studyEntryAtr, studySupportPriceAt, studyDistanceBand,
   studyDistanceBreakdown, studyRecordDistanceBand, filterStudyDistance, type StudySupport } from '../src/services/trendlineStudy';
 
@@ -492,7 +493,10 @@ test('Gold study retains existing intraday SL/TP and excludes lower-timeframe sc
   assert.equal(studyCandleRule('XAUUSD', zone, 'M15', 'M30')!.rule.rewardRisk, 1);
   assert.equal(studyCandleRule('XAUUSD', zone, 'M15', 'M1'), undefined);
   assert.equal(studyCandleRule('XAUUSD', zone, 'M15', 'M5'), undefined);
-  assert.equal(studyCandleRule('XAUUSD', zone, 'H1', 'M15'), undefined);
+  assert.deepEqual(studyCandleRule('XAUUSD', zone, 'H1', 'M15')!.rule, getDirectTradeRule('H1', 'M15'));
+  assert.deepEqual(studyCandleRule('XAUUSD', zone, 'H1', 'M30')!.rule, getDirectTradeRule('H1', 'M30'));
+  assert.equal(studyCandleRule('XAUUSD', zone, 'H1', 'H1'), undefined);
+  assert.equal(studyCandleRule('XAUUSD', zone, 'H1', 'M5'), undefined);
   assert.equal(studyCandleRule('XAUUSD', zone, 'M15', 'H1'), undefined);
 });
 
@@ -737,13 +741,65 @@ test('historical engine finds and resolves a real FIB entry without a matching t
   assert.equal(entry.levels.takeProfit, production.takeProfit);
 });
 
-test('study timeframe and entry selections never include a lower timeframe', () => {
+test('H1 study loads 15M/30M confirmations while trendline evidence stays on the zone timeframe or higher', () => {
   assert.deepEqual(studyTimeframes('M15'), ['M15', 'M30', 'H1', 'H4', 'D', 'W']);
   assert.deepEqual(studyEntryTimeframes('XAUUSD', 'M15'), ['M15', 'M30']);
   for (const symbol of ['XAUUSD', 'EURUSD']) for (const tf of ['M1', 'M5', 'M15', 'H1'] as const) {
-    assert.ok(studyEntryTimeframes(symbol, tf).every(entry => STUDY_SECONDS[entry] >= STUDY_SECONDS[tf]));
+    if (tf === 'H1') {
+      assert.deepEqual(studyEntryTimeframes(symbol, tf), ['M15', 'M30']);
+      assert.deepEqual(studyDataTimeframes(symbol, tf), ['M15', 'M30', 'H1', 'H4', 'D', 'W']);
+    } else assert.ok(studyEntryTimeframes(symbol, tf).every(entry => STUDY_SECONDS[entry] >= STUDY_SECONDS[tf]));
     assert.ok(studyTimeframes(tf).every(source => STUDY_SECONDS[source] >= STUDY_SECONDS[tf]));
   }
+});
+
+test('Deep Discount includes every Fib source and inherent DB/DT while missing evidence remains unknown', () => {
+  for (const fib of ['Structure 0.71-0.79', 'Structure deep', '4H Swing 0.71-0.79',
+    '1H Swing 0.71-0.79', 'Day 0.71-0.79', 'FIB DEEP DISCOUNT']) {
+    assert.equal(studySetupKind({ ...record('tp', 2), fibSources: [fib] }), 'Deep Discount');
+  }
+  for (const zoneName of ['DB', 'DT']) assert.equal(studySetupKind({ ...record('tp', 2), zoneName }), 'Deep Discount');
+  assert.equal(studySetupKind({ ...record('tp', 2), fibSources: ['Structure 0.5-0.618'] }), 'Other FIB');
+  assert.equal(studySetupKind(record('tp', 2)), 'No FIB');
+  const unknown = runEntryArrowStudy(arrowInput([arrowEntry('unknown', levels)])).records[0];
+  assert.equal(studySetupKind(unknown), 'Unknown');
+  assert.deepEqual(filterStudySetup([unknown], 'Deep Discount'), []);
+});
+
+test('Deep Discount comparison keeps trendline and no-trendline entries separate without changing their trades', () => {
+  const win = { ...record('tp', 2), id: 'deep-win', fibGroup: 'With FIB' as const, fibSources: ['Structure deep'] };
+  const loss = { ...win, id: 'deep-loss', outcome: 'sl' as const, returnR: -1 };
+  const fibOnly = { ...win, id: 'deep-only', fibGroup: 'FIB only' as const, support: [] };
+  const primary = { ...win, id: 'primary', fibSources: ['Structure 0.5-0.618'] };
+  const unknown = { ...win, id: 'unknown', fibSources: ['FIB aligned'] };
+  const rows = [win, loss, fibOnly, primary, unknown];
+  const before = JSON.stringify(rows);
+  assert.deepEqual(filterStudySetup(rows, 'Deep Discount'), [win, loss, fibOnly]);
+  assert.deepEqual(filterStudySetup(rows, 'Other FIB'), [primary]);
+  assert.equal(filterStudySetup(rows, 'All'), rows);
+  const [withTl, withoutTl] = studyDeepDiscountBreakdown(rows);
+  assert.deepEqual(withTl.recordIds, ['deep-win', 'deep-loss']);
+  assert.equal(withTl.stats.accuracy, 50);
+  assert.equal(withTl.stats.totalR, 1);
+  assert.deepEqual(withoutTl.recordIds, ['deep-only']);
+  assert.equal(withoutTl.stats.totalR, 2);
+  assert.equal(JSON.stringify(rows), before);
+});
+
+test('Deep Discount H1 lower-timeframe study records survive snapshot restore and CSV export', () => {
+  const deep: TrendlineStudyRecord = { ...record('tp', 2), zoneName: 'ISS L4', zoneTimeframe: 'H1',
+    signal: { ...signal, timeframe: 'M30' }, fibGroup: 'With FIB', fibSources: ['Structure deep'] };
+  const saved = { version: 3, symbol: 'XAUUSD', zoneTimeframe: 'H1', lookback: 50,
+    tradingTimeEnabled: false, result: { records: [deep], scanned: 4, from: 0, to: 3600, missingTimeframes: [] } };
+  const restored = readStudySnapshot(JSON.stringify(saved), 'XAUUSD');
+  assert.ok(restored);
+  assert.equal(filterStudySetup(restored.result.records, 'Deep Discount').length, 1);
+  const csv = studyJournalCsv(restored.result.records);
+  assert.match(csv, /Setup category/);
+  assert.match(csv, /Deep Discount/);
+  assert.match(csv, /"H1","M30"/);
+  const bad = { ...saved, result: { ...saved.result, records: [{ ...deep, signal: { ...deep.signal, timeframe: 'M5' } }] } };
+  assert.equal(readStudySnapshot(JSON.stringify(bad), 'XAUUSD'), undefined);
 });
 
 test('Gold M15 calculations ignore loaded M1/M5 patterns and do not report those feeds as missing', () => {
