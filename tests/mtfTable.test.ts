@@ -6,12 +6,23 @@ import { MultiTimeframeEntryTable, mtfTableHitExpired, isSlTpTradeDisplayFinishe
   tradeDisplayExpired, tradeDrawingExpired, tradeDrawingFromRecord, resolveArrowTradeZones,
   completedTradeLabel, CompletedTradeRow, resolveRetainedTrade, zoneTableTradeExpired, internalSbrTableSourceVisible,
   resolveZoneTableTrade, zoneTableCompletedStatus, TradeDetailsRow, ZoneTableEntryPrice,
-  zoneTableMtfStatus, reconcileSavedMtfTrade, validateRecordedMtfTrade } from '../src/components/OandaProChart';
+  zoneTableMtfStatus, reconcileSavedMtfTrade, validateRecordedMtfTrade, ZoneTableEngulfingConfirmations } from '../src/components/OandaProChart';
 import type { JournalTradeRecord } from '../src/components/TradeJournal';
 import type { MtfRow } from '../src/services/mtf';
 import type { StructureZone } from '../src/services/marketStructure';
 
 const bar = (time: number, complete = true) => ({ time, open: 100, high: 102, low: 99, close: 101, volume: 1, complete });
+
+test('Zone Table later engulfings render as small confirmation text without entry controls', () => {
+  const html = renderToStaticMarkup(React.createElement(ZoneTableEngulfingConfirmations, { confirmations: [{
+    sourceZoneId: 'DT-1793850300-4146.92', symbol: 'XAUUSD', confirmedAt: 12000,
+    signal: { timeframe: 'M30', type: 'T2', direction: 'bearish', time: 10200 },
+  }] }));
+  assert.ok(html.includes('30m') && html.includes('T2'));
+  assert.ok(html.includes('text-[8px]') && html.includes('Additional confirmation only'));
+  assert.ok(!html.includes('<button') && !html.includes('ENTRY') && !html.includes('TP HIT'));
+  assert.equal(renderToStaticMarkup(React.createElement(ZoneTableEngulfingConfirmations, { confirmations: [] })), '');
+});
 
 test('a retained Internal SBR row requires its current active chart zone', () => {
   const zone = { id: 'internal-sbr', name: 'Internal SBR' as const, active: true, status: 'valid' as const };

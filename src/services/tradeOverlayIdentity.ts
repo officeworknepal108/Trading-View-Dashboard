@@ -86,6 +86,96 @@ export function tradeOverlayEntryEventKey(signal: {
   return `${signal.timeframe}:${signal.direction}:${Math.floor(signal.time)}`;
 }
 
+type DirectZoneTableTrade = {
+  signal: { timeframe: string; direction: string; time: number };
+  filledAt?: number;
+};
+
+/** Price recalculation can revise a zone ID's suffix while preserving its type and origin candle. */
+export function tradeOverlayZoneOriginKey(id: string): string {
+  const match = /^(.+)-(\d{10})-(-?\d+(?:\.\d+)?(?:e[+-]?\d+)?)$/i.exec(id);
+  return match ? `${match[1]}:${match[2]}` : id;
+}
+
+/** Inputs already belong to the selected market and chart timeframe. Match an entry, not just its prices. */
+export function isRetainedDirectZoneTableEntry(
+  zoneIds: readonly string[],
+  candidate: DirectZoneTableTrade | undefined,
+  retainedZoneId: string | undefined,
+  retained: DirectZoneTableTrade,
+): boolean {
+  if (!candidate || !retainedZoneId
+    || !zoneIds.some(id => tradeOverlayZoneOriginKey(id) === tradeOverlayZoneOriginKey(retainedZoneId))
+    || candidate.signal.timeframe !== retained.signal.timeframe
+    || candidate.signal.direction !== retained.signal.direction) return false;
+  const candidateFilled = Number.isFinite(candidate.filledAt) && candidate.filledAt! > 0;
+  const retainedFilled = Number.isFinite(retained.filledAt) && retained.filledAt! > 0;
+  return tradeOverlayEntryEventKey(candidate.signal) === tradeOverlayEntryEventKey(retained.signal)
+    || (candidateFilled && retainedFilled && candidate.filledAt === retained.filledAt);
+}
+
+interface ZoneTableSignal {
+  timeframe: string;
+  direction: string;
+  time: number;
+  type: string;
+}
+
+export interface ZoneTableConfirmation {
+  sourceZoneId: string;
+  symbol: string;
+  signal: ZoneTableSignal;
+  confirmedAt: number;
+}
+
+export function directZoneTableGroupKey(zoneId: string, symbol: string, direction: string): string {
+  return JSON.stringify([symbol, tradeOverlayZoneOriginKey(zoneId), direction]);
+}
+
+/** Display only: one original entry per zone; later engulfings are annotations, never replacement trades. */
+export function groupDirectZoneTableRows<T extends {
+  overlay: { id: string; symbol?: string };
+  sourceZoneId?: string;
+  trade: { signal: ZoneTableSignal; filledAt?: number };
+  confirmedAt: number;
+}>(rows: readonly T[], confirmations: readonly ZoneTableConfirmation[], asOf: number): Array<T & {
+  additionalConfirmations: ZoneTableConfirmation[];
+}> {
+  const groups = new Map<string, T[]>();
+  for (const row of rows) {
+    if (row.confirmedAt > asOf || (row.trade.filledAt !== undefined && row.trade.filledAt > asOf)) continue;
+    const key = row.sourceZoneId
+      ? directZoneTableGroupKey(row.sourceZoneId, row.overlay.symbol ?? 'XAUUSD', row.trade.signal.direction)
+      : `unidentified:${row.overlay.id}`;
+    groups.set(key, [...(groups.get(key) ?? []), row]);
+  }
+  return [...groups.entries()].map(([key, members]) => {
+    const ordered = [...members].sort((a, b) => {
+      const aFilled = Number.isFinite(a.trade.filledAt), bFilled = Number.isFinite(b.trade.filledAt);
+      return Number(bFilled) - Number(aFilled)
+        || (a.trade.filledAt ?? a.confirmedAt) - (b.trade.filledAt ?? b.confirmedAt)
+        || a.confirmedAt - b.confirmedAt || a.overlay.id.localeCompare(b.overlay.id);
+    });
+    const original = ordered[0];
+    const later = [
+      ...members.filter(row => row !== original && row.sourceZoneId).map(row => ({
+        sourceZoneId: row.sourceZoneId!, symbol: row.overlay.symbol ?? 'XAUUSD',
+        signal: row.trade.signal, confirmedAt: row.confirmedAt,
+      })),
+      ...confirmations.filter(c => directZoneTableGroupKey(c.sourceZoneId, c.symbol, c.signal.direction) === key),
+    ].filter(c => c.confirmedAt > original.confirmedAt
+      && c.confirmedAt >= (original.trade.filledAt ?? original.confirmedAt) && c.confirmedAt <= asOf)
+      .sort((a, b) => a.confirmedAt - b.confirmedAt);
+    const seen = new Set([`${original.trade.signal.timeframe}:${original.trade.signal.type}`]);
+    const additionalConfirmations = later.filter(c => {
+      const signature = `${c.signal.timeframe}:${c.signal.type}`;
+      if (seen.has(signature)) return false;
+      seen.add(signature); return true;
+    });
+    return { ...original, additionalConfirmations };
+  });
+}
+
 /** The same chart trade can be attributed to two nearby source zones. */
 export function tradeOverlayExecutionKey(trade: {
   signal: { timeframe: string; direction: string; time: number };

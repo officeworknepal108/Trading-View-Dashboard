@@ -1,8 +1,11 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
+  directZoneTableGroupKey,
+  groupDirectZoneTableRows,
   hasIdentifiedDirectZoneLabel,
   isDirectTradeOverlay,
+  isRetainedDirectZoneTableEntry,
   isTradeOverlayTerminated,
   isTradeOverlayVisibleOnTimeframe,
   liveMtfPositionMatchesChartRow,
@@ -13,6 +16,7 @@ import {
   tradeOverlayExecutionKey,
   tradeOverlaySetupEntryKey,
   tradeOverlayZoneLabel,
+  tradeOverlayZoneOriginKey,
 } from '../src/services/tradeOverlayIdentity';
 
 test('matches a slipped MT5 direct fill to its chart setup', () => {
@@ -73,6 +77,113 @@ test('does not merge different direct zones', () => {
     resolveTradeOverlaySetupKey('DIRECT:zone-a:100:10'),
     resolveTradeOverlaySetupKey('MT5:1', 'DIRECT:M15:zone-b'),
   );
+});
+
+test('the DT result and its repeated-tap row represent one zone entry', () => {
+  const zoneId = 'DT-origin-4146.920';
+  const retained = { signal: { timeframe: 'M15', direction: 'bearish', time: 1800 },
+    filledAt: 2700, entry: 4140.320, stopLoss: 4146.920, takeProfit: 4127.120, result: 'tp' };
+  const current = { ...retained, tapCount: 2, status: 'tp-hit' };
+  assert.equal(isRetainedDirectZoneTableEntry([zoneId], current, zoneId, retained), true,
+    'a second tap must not bypass the duplicate check for the same completed entry');
+  const visibleCurrent = [current].filter(trade => !isRetainedDirectZoneTableEntry([zoneId], trade, zoneId, retained));
+  assert.equal(visibleCurrent.length + [retained].length, 1);
+  assert.equal(retained.result, 'tp');
+  assert.equal(isRetainedDirectZoneTableEntry(['confluence-zone', zoneId], current, zoneId, retained), true);
+});
+
+test('different DT origins, entry times, directions and timeframes stay separate even at identical prices', () => {
+  const zoneId = 'DT-origin-a';
+  const retained = { signal: { timeframe: 'M15', direction: 'bearish', time: 1800 },
+    filledAt: 2700, entry: 4140.320, stopLoss: 4146.920, takeProfit: 4127.120 };
+  assert.equal(isRetainedDirectZoneTableEntry(['DT-origin-b'], retained, zoneId, retained), false);
+  assert.equal(isRetainedDirectZoneTableEntry([zoneId], { ...retained,
+    signal: { ...retained.signal, time: 3600 }, filledAt: 4500 }, zoneId, retained), false);
+  assert.equal(isRetainedDirectZoneTableEntry([zoneId], { ...retained,
+    signal: { ...retained.signal, direction: 'bullish' } }, zoneId, retained), false);
+  assert.equal(isRetainedDirectZoneTableEntry([zoneId], { ...retained,
+    signal: { ...retained.signal, timeframe: 'H1' } }, zoneId, retained), false);
+});
+
+test('pending entries match their signal and a broker fill matches its execution rather than its prices', () => {
+  const zoneId = 'DT-origin-a';
+  const pending = { signal: { timeframe: 'M15', direction: 'bearish', time: 1800 }, filledAt: undefined };
+  assert.equal(isRetainedDirectZoneTableEntry([zoneId], { ...pending }, zoneId, pending), true);
+  assert.equal(isRetainedDirectZoneTableEntry([zoneId], { ...pending,
+    signal: { ...pending.signal, time: 3600 } }, zoneId, pending), false);
+  const filled = { ...pending, filledAt: 2700, entry: 4140.320 };
+  const slippedFill = { ...filled, entry: 4140.300, filledAt: 2701 };
+  assert.equal(isRetainedDirectZoneTableEntry([zoneId], slippedFill, zoneId, filled), true);
+  assert.equal(isRetainedDirectZoneTableEntry([zoneId], { ...filled,
+    signal: { ...filled.signal, time: 1801 } }, zoneId, filled), true,
+    'the same filled execution survives feed confirmation-time revisions');
+  assert.equal(isRetainedDirectZoneTableEntry([zoneId], undefined, zoneId, filled), false);
+  assert.equal(isRetainedDirectZoneTableEntry([zoneId], filled, undefined, filled), false);
+});
+
+test('DT row identity survives a revised price suffix but never merges a new origin at the same price', () => {
+  const oldZone = 'DT-1794290000-4140.320000000001';
+  const currentZone = 'DT-1794290000-4140.32';
+  const trade = { signal: { timeframe: 'M15', direction: 'bearish', time: 1794291800 } };
+  assert.equal(tradeOverlayZoneOriginKey(currentZone), tradeOverlayZoneOriginKey(oldZone));
+  assert.equal(isRetainedDirectZoneTableEntry([currentZone], trade, oldZone, trade), true);
+  assert.equal(isRetainedDirectZoneTableEntry(['DT-1794290900-4140.32'], trade, oldZone, trade), false);
+  assert.equal(isRetainedDirectZoneTableEntry(['DB-1794290000-4140.32'], trade, oldZone, trade), false);
+});
+
+const confirmationRow = (id: string, timeframe: string, type: string, confirmedAt: number, filledAt?: number) => ({
+  overlay: { id, symbol: 'XAUUSD' }, sourceZoneId: 'DT-1793850300-4146.92', confirmedAt,
+  trade: { signal: { timeframe, type, direction: 'bearish', time: confirmedAt - (timeframe === 'M30' ? 1800 : 900) },
+    filledAt, entry: 4135.265, stopLoss: 4148.2, takeProfit: 4109.395, result: 'tp' },
+});
+
+test('the reported 15m T1 remains one original DT row and 30m T4 becomes a small confirmation', () => {
+  const first = confirmationRow('DT-T1', 'M15', 'T1', 1794260700, 1794260700);
+  const later = { ...confirmationRow('DT-T4', 'M30', 'T4', 1794270600, 1794270600),
+    trade: { ...confirmationRow('DT-T4', 'M30', 'T4', 1794270600, 1794270600).trade,
+      entry: 4128.94, stopLoss: 4150.71, takeProfit: 4085.4 } };
+  const before = JSON.stringify([first, later]);
+  const rows = groupDirectZoneTableRows([later, first], [], 1794280000);
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].overlay.id, 'DT-T1');
+  assert.equal(rows[0].trade, first.trade, 'prices and result belong to the original trade');
+  assert.deepEqual(rows[0].additionalConfirmations.map(c => `${c.signal.timeframe} ${c.signal.type}`), ['M30 T4']);
+  assert.equal(JSON.stringify([first, later]), before, 'display grouping never rewrites saved entries');
+});
+
+test('additional confirmations do not replace an original SL with a later TP or create repeated labels', () => {
+  const first = confirmationRow('original', 'M15', 'T1', 10000, 10000);
+  first.trade.result = 'sl';
+  const later = confirmationRow('confirmation', 'M30', 'T2', 12000, 12000);
+  const repeat = confirmationRow('repeat', 'M30', 'T2', 14000, 14000);
+  const rows = groupDirectZoneTableRows([repeat, first, later], [], 20000);
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].trade.result, 'sl');
+  assert.equal(rows[0].trade.entry, first.trade.entry);
+  assert.equal(rows[0].additionalConfirmations.length, 1);
+  assert.equal(rows[0].additionalConfirmations[0].signal.type, 'T2');
+});
+
+test('annotations require a later completed confirmation and never reveal future replay signals', () => {
+  const first = confirmationRow('original', 'M15', 'T1', 10000, 11000);
+  const extra = (confirmedAt: number, type: string) => ({ sourceZoneId: first.sourceZoneId, symbol: 'XAUUSD',
+    signal: { timeframe: 'M30', type, direction: 'bearish', time: confirmedAt - 1800 }, confirmedAt });
+  const rows = groupDirectZoneTableRows([first], [extra(10500, 'T2'), extra(12000, 'T3'), extra(16000, 'T4')], 15000);
+  assert.deepEqual(rows[0].additionalConfirmations.map(c => c.signal.type), ['T3']);
+  assert.equal(groupDirectZoneTableRows([first], [], 10500).length, 0, 'a future fill cannot supply an entry row');
+});
+
+test('grouping keeps distinct origins, symbols and directions separate while allowing revised price suffixes', () => {
+  const first = confirmationRow('original', 'M15', 'T1', 10000, 10000);
+  const later = confirmationRow('later', 'M30', 'T2', 12000, 12000);
+  later.sourceZoneId = 'DT-1793850300-4146.920000001';
+  assert.equal(groupDirectZoneTableRows([first, later], [], 20000).length, 1);
+  const otherOrigin = { ...later, sourceZoneId: 'DT-1793851200-4146.92' };
+  const otherMarket = { ...later, overlay: { id: 'forex', symbol: 'EURUSD' } };
+  const otherDirection = { ...later, trade: { ...later.trade, signal: { ...later.trade.signal, direction: 'bullish' } } };
+  assert.equal(groupDirectZoneTableRows([first, otherOrigin, otherMarket, otherDirection], [], 20000).length, 4);
+  assert.notEqual(directZoneTableGroupKey(first.sourceZoneId, 'XAUUSD', 'bearish'),
+    directZoneTableGroupKey(otherOrigin.sourceZoneId, 'XAUUSD', 'bearish'));
 });
 
 test('classifies only direct overlays for the Zone Table', () => {

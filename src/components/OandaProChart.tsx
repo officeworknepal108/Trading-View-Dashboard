@@ -118,6 +118,9 @@ import {
 import {
   hasIdentifiedDirectZoneLabel,
   isDirectTradeOverlay,
+  directZoneTableGroupKey,
+  groupDirectZoneTableRows,
+  type ZoneTableConfirmation,
   isTradeOverlayTerminated,
   isTradeOverlayVisibleOnTimeframe,
   liveMtfPositionMatchesChartRow,
@@ -127,6 +130,7 @@ import {
   tradeOverlayExecutionKey,
   tradeOverlaySetupEntryKey,
   tradeOverlayZoneLabel,
+  tradeOverlayZoneOriginKey,
 } from '../services/tradeOverlayIdentity';
 import {
   consolidateZonesForDisplay,
@@ -390,6 +394,15 @@ interface TradeOverlay {
   fibLabels?: string[];
   chartTimeframe?: OandaGranularity;
   referenceOnly?: boolean;
+}
+
+interface DirectZoneTableRow {
+  overlay: TradeOverlay;
+  sourceZoneId?: string;
+  sourceZone?: StructureZone;
+  trade: TradeLevels;
+  confirmedAt: number;
+  tapCount?: number;
 }
 
 /** Resolve display labels without changing saved trades or their execution rules. */
@@ -1219,6 +1232,16 @@ export function zoneTableCompletedStatus(
     ? 'TP HIT' : 'SL HIT';
 }
 
+export function ZoneTableEngulfingConfirmations({ confirmations }: { confirmations: readonly ZoneTableConfirmation[] }) {
+  if (!confirmations.length) return null;
+  return <span className="ml-1 inline-flex flex-wrap gap-1 align-middle text-[8px] font-semibold text-slate-500" aria-label="Additional engulfing confirmations">
+    {confirmations.map(c => <span key={`${c.signal.timeframe}:${c.signal.type}`}
+      title="Additional confirmation only. The original entry and trade result stay unchanged.">
+      {formatTradeTimeframe(c.signal.timeframe as TradeTimeframe).toLowerCase()} {c.signal.type}
+    </span>)}
+  </span>;
+}
+
 export const ZoneTableEntryPrice: React.FC<{
   trade: TradeLevels; mt5Signal?: Mt5StoredSignal;
   zone?: Pick<StructureZone, 'bottom' | 'top'>; pipSize?: number;
@@ -1242,16 +1265,12 @@ export function resolveZoneTableTrade(
 ): TradeLevels | undefined {
   if (!trade) return trade;
   // Feed recalculation changes the price suffix, while zone type and origin stay stable.
-  const zoneIdentity = (id: string) => {
-    const match = /^(.+)-(\d{10})-(-?\d+(?:\.\d+)?(?:e[+-]?\d+)?)$/i.exec(id);
-    return match ? `${match[1]}:${match[2]}` : id;
-  };
-  const identities = new Set(zoneIds.map(zoneIdentity));
+  const identities = new Set(zoneIds.map(tradeOverlayZoneOriginKey));
   const matches = records.filter(record => (record.result === 'sl' || record.result === 'tp')
     && record.completedAt <= asOf && record.signalAt === trade.signal.time
     && record.signalTimeframe === trade.signal.timeframe && record.direction === trade.signal.direction
     && record.engulfingType === trade.signal.type
-    && (record.zoneId ? identities.has(zoneIdentity(record.zoneId))
+    && (record.zoneId ? identities.has(tradeOverlayZoneOriginKey(record.zoneId))
       : zoneNames.includes(record.zoneName)
         || tradeOverlayExecutionKey(tradeDrawingFromRecord(record)) === tradeOverlayExecutionKey(trade)));
   const record = matches[0];
@@ -4686,6 +4705,60 @@ export const OandaProChart: React.FC<{
         : visibleCanonicalTradeRecords.filter(record => record.id === recordId && record.zoneId)
           .map(record => record.zoneId!),
       zone ? displayZoneMembers(zone).map(member => executionZoneName(member)) : zoneName ? [zoneName] : [])
+  );
+  // Resolve saved row visibility once so a hidden/expired row cannot suppress a current entry.
+  const retainedDirectZoneTableCandidates: DirectZoneTableRow[] = retainedDirectChartTradesForTimeframe.flatMap((overlay) => {
+    const sourceZoneId = directTradeOverlayZoneId(overlay);
+    const matchesSource = (zone: StructureZone) => sourceZoneId !== undefined
+      && tradeOverlayZoneOriginKey(zone.id) === tradeOverlayZoneOriginKey(sourceZoneId)
+      && zone.isBuy === (overlay.trade.signal.direction === 'bullish');
+    const sourceZone = displayZones.find((zone) => zone.id === sourceZoneId)
+      ?? displayZones.find(matchesSource)
+      ?? [...trackedDirectTradeSetups.values()].find((setup) => (
+        setup.scope === tradeTrackingScope && matchesSource(setup.zone)
+      ))?.zone;
+    const trade = zoneTableTrade(overlay.trade, sourceZone, tradeOverlayZoneLabel(overlay.label), overlay.id);
+    if (!trade || hasZoneTableTradeExpired(trade, sourceZone)) return [];
+    return [{ overlay, sourceZoneId, sourceZone, trade,
+      confirmedAt: trade.signal.time + TIMEFRAME_SECONDS[trade.signal.timeframe],
+      tapCount: sourceZone ? displayedTapCount(sourceZone) : undefined }];
+  });
+  // Only this table groups later signals. Saved trades, arrows and execution rules are untouched.
+  const listedDirectZoneKeys = new Map<string, DirectZoneTableRow>(retainedDirectZoneTableCandidates.filter(row => row.sourceZoneId).map(row => [
+    directZoneTableGroupKey(row.sourceZoneId!, row.overlay.symbol ?? marketSymbol, row.trade.signal.direction), row,
+  ]));
+  for (const record of visibleCanonicalTradeRecords) {
+    if ((record.symbol ?? 'XAUUSD') !== marketSymbol || record.source !== 'ENGULFING'
+      || !isDirectTradeOverlay(record.id, record.setupId) || record.signalAt === undefined || record.openedAt === undefined
+      || record.openedAt > tradeDisplayAsOf || record.completedAt > tradeDisplayAsOf
+      || (tradingTimeEnabled && tradeRecordOutsideTradingTime(record))) continue;
+    const setupKey = resolveTradeOverlaySetupKey(record.id, record.setupId);
+    const sourceZoneId = record.zoneId ?? (setupKey.startsWith('DIRECT:') ? setupKey.slice(7) : undefined);
+    if (!sourceZoneId) continue;
+    const listed = listedDirectZoneKeys.get(directZoneTableGroupKey(sourceZoneId, marketSymbol, record.direction));
+    if (!listed) continue;
+    const trade = tradeDrawingFromRecord(record);
+    if (record.result === 'open') trade.status = 'active';
+    if (hasZoneTableTradeExpired(trade, listed.sourceZone)) continue;
+    retainedDirectZoneTableCandidates.push({ ...listed, sourceZoneId, trade,
+      overlay: { ...listed.overlay, id: record.id, setupId: record.setupId, symbol: marketSymbol,
+        trade, label: `${record.zoneName} · ${record.source}` },
+      confirmedAt: trade.signal.time + TIMEFRAME_SECONDS[trade.signal.timeframe] });
+  }
+  const zoneTableConfirmations: ZoneTableConfirmation[] = [];
+  for (const timeframe of ['M1', 'M5', 'M15', 'M30', 'H1', 'H4', 'D'] as const) {
+    const data = tableTimeframeData[timeframe];
+    for (const zone of data?.structure?.zones ?? []) {
+      const signal = resolveZoneEngulfingSignal(zone, timeframe as TradeTimeframe);
+      if (!signal || !listedDirectZoneKeys.has(directZoneTableGroupKey(zone.id, marketSymbol, signal.direction))) continue;
+      const confirmedAt = signal.time + TIMEFRAME_SECONDS[signal.timeframe];
+      if ((tradingTimeEnabled && !isNepalTradingTime(confirmedAt))
+        || blockedGoldChartEntry(signal.time, signal.timeframe, signal.direction)) continue;
+      zoneTableConfirmations.push({ sourceZoneId: zone.id, symbol: marketSymbol, signal, confirmedAt });
+    }
+  }
+  const retainedDirectZoneTableRows = groupDirectZoneTableRows(
+    retainedDirectZoneTableCandidates, zoneTableConfirmations, tradeDisplayAsOf,
   );
   const entryHovers = useMemo<EntryHover[]>(() => {
     const entries = new Map<string, EntryHover>();
@@ -9864,16 +9937,9 @@ export const OandaProChart: React.FC<{
                       </td>
                     </tr>
                   ))}
-                {retainedDirectChartTradesForTimeframe.map((overlay) => {
-                  const bullish = overlay.trade.signal.direction === 'bullish';
+                {retainedDirectZoneTableRows.map(({ overlay, sourceZone, trade, tapCount, additionalConfirmations }) => {
+                  const bullish = trade.signal.direction === 'bullish';
                   const zoneLabel = tradeOverlayZoneLabel(overlay.label);
-                  const sourceZoneId = directTradeOverlayZoneId(overlay);
-                  const sourceZone = displayZones.find((zone) => zone.id === sourceZoneId)
-                    ?? [...trackedDirectTradeSetups.values()].find((setup) => (
-                      setup.scope === tradeTrackingScope && setup.zone.id === sourceZoneId
-                    ))?.zone;
-                  const trade = zoneTableTrade(overlay.trade, sourceZone, zoneLabel, overlay.id)!;
-                  if (hasZoneTableTradeExpired(trade, sourceZone)) return null;
                   const currentFibLabels = sourceZone ? tradeZoneFibLabels(sourceZone) : [];
                   const fibLabels = currentFibLabels.length > 0 ? currentFibLabels : overlay.fibLabels ?? [];
                   return (
@@ -9881,6 +9947,11 @@ export const OandaProChart: React.FC<{
                       <tr className={`border-t ${bullish ? 'border-emerald-200 bg-emerald-50' : 'border-rose-200 bg-rose-50'}`}>
                         <td className="px-2 py-1 font-black text-slate-800">
                           <span>{zoneLabel ?? 'OPEN CHART TRADE'}</span>
+                          {(tapCount ?? 0) > 1 && (
+                            <span className="ml-1 rounded bg-sky-100 px-1 py-0.5 text-[8px] font-black text-sky-800">
+                              TAP {tapCount}
+                            </span>
+                          )}
                           {(sourceZone ? isDeepDiscountZoneDisplay(sourceZone, trade.signal)
                             : isDefaultDeepDiscountZoneName(zoneLabel)) && (
                             <span className="ml-1 rounded bg-fuchsia-100 px-1 py-0.5 text-[8px] font-black text-fuchsia-800">
@@ -9900,7 +9971,8 @@ export const OandaProChart: React.FC<{
                           <ZoneTableEntryPrice trade={trade} zone={sourceZone} pipSize={marketConfig.pipSize} />
                         </td>
                         <td className={`whitespace-nowrap px-2 py-1 text-center font-black ${bullish ? 'text-emerald-700' : 'text-rose-700'}`}>
-                          {overlay.trade.signal.type}
+                          {trade.signal.type}
+                          <ZoneTableEngulfingConfirmations confirmations={additionalConfirmations} />
                         </td>
                         <td className={`whitespace-nowrap px-2 py-1 text-right font-black ${trade.status === 'sl-hit' ? 'text-rose-700' : 'text-emerald-700'}`}>
                           {zoneTableCompletedStatus(trade) ?? <TradeStatusText trade={trade} />}
@@ -10068,6 +10140,11 @@ export const OandaProChart: React.FC<{
                   const usedZoneTrade = zoneTableTrade(entryDecision?.usedZoneTrade, zone);
                   const engulfingTrade = zoneTableTrade(trade ?? outsideTimePreview ?? historicalTrade ?? usedZoneTrade, zone);
                   if (hasZoneTableTradeExpired(engulfingTrade, zone)) return null;
+                  // Once listed, this zone's later engulfings belong beside its original entry type.
+                  if (retainedDirectZoneTableRows.some(retained => retained.sourceZoneId
+                    && displayZoneMembers(zone).some(member => directZoneTableGroupKey(
+                      member.id, marketSymbol, zone.isBuy ? 'bullish' : 'bearish',
+                    ) === directZoneTableGroupKey(retained.sourceZoneId!, marketSymbol, retained.trade.signal.direction)))) return null;
                   const scalpEngulfingTrade = scalpTrade ?? (!trade ? scalpPreview : undefined);
                   const deepDiscount = displayZoneMembers(zone).some(member => (
                     isDeepDiscountZoneDisplay(member, engulfingTrade?.signal)
@@ -10337,7 +10414,7 @@ export const OandaProChart: React.FC<{
                 })}
                 {pendingConfirmationRows.length === 0 && doubleChochRows.length === 0
                   && zoneTableRows.length === 0 && retainedTradeZoneRows.length === 0
-                  && retainedDirectChartTradesForTimeframe.length === 0
+                  && retainedDirectZoneTableRows.length === 0
                   && scalpEntryTableRows.length === 0 && (
                   <tr>
                     <td colSpan={5} className="px-2 py-2 text-center text-slate-400">No active zone rows</td>
