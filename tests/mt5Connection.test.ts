@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { spawn } from 'node:child_process';
-import { mkdtemp, mkdir, writeFile, rm } from 'node:fs/promises';
+import { mkdtemp, mkdir, writeFile, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -232,6 +232,55 @@ test('MT5 account handshake resets old candles and queues while preserving autom
     const shared = await (await request('/api/journal/trades')).json();
     assert.equal(shared.trades.find((trade: any) => trade.id === 'chart-only').reason, undefined, 'client notes never change the shared journal');
     assert.ok(shared.trades.some((trade: any) => trade.id === 'MT5:private'), 'admins retain broker history');
+
+    // Import the user's $5,000 + $220 - $150 + $400 example through the real heartbeat API.
+    const capitalHistory = { balance: 5470, initialPrincipal: 5000, initialAt: now - 604800, inferredOpening: false,
+      totalDeposits: 5400, totalWithdrawals: 150, withdrawalCount: 1, tradingNet: 220, adjustments: 0,
+      asOf: now, events: [{ id: 'deposit-400', at: now, kind: 'deposit', amount: 400 },
+        { id: 'withdraw-150', at: now, kind: 'withdrawal', amount: -150 }] };
+    const fundingHeartbeat = { ...second, account: 'capital-account', server: 'Capital-Broker',
+      currency: 'USD', balance: 5470, capitalHistory };
+    assert.equal((await request('/api/mt5/heartbeat', fundingHeartbeat)).status, 200);
+    let capital = (await (await request('/api/journal/capital')).json()).capital;
+    assert.equal(capital.summary.retainedPnl, 70);
+    assert.equal(capital.summary.pendingDeposits, 400);
+    assert.equal(capital.connected, true);
+    const allocation = { account: fundingHeartbeat.account, server: fundingHeartbeat.server, currency: 'USD',
+      kind: 'profit', amount: 70, requestId: 'profit-example-request-1' };
+    assert.equal((await request('/api/journal/capital/allocate', { ...allocation, account: 'foreign' })).status, 409);
+    const duplicateRequests = await Promise.all([
+      request('/api/journal/capital/allocate', allocation), request('/api/journal/capital/allocate', allocation),
+    ]);
+    assert.ok(duplicateRequests.every(response => response.status === 200));
+    capital = (await (await request('/api/journal/capital')).json()).capital;
+    assert.equal(capital.summary.principal, 5070);
+    assert.equal(capital.summary.retainedPnl, 0);
+    assert.equal(capital.allocations.length, 1, 'concurrent retries cannot capitalize the same profit twice');
+    assert.equal((await request('/api/journal/capital/allocate', { ...allocation, kind: 'deposit', amount: 400,
+      requestId: 'deposit-example-request-1' })).status, 200);
+    assert.equal((await request('/api/journal/capital/allocate', { ...allocation, kind: 'deposit', amount: 1,
+      requestId: 'overspend-example-request' })).status, 409);
+    // Repeated bridge snapshots must preserve manual allocations.
+    await request('/api/mt5/heartbeat', fundingHeartbeat);
+    capital = (await (await request('/api/journal/capital')).json()).capital;
+    assert.equal(capital.summary.principal, 5470);
+    assert.equal(capital.summary.pendingDeposits, 0);
+    assert.equal(capital.snapshot.balance, 5470);
+    const savedCapital = Object.values(JSON.parse(await readFile(path.join(dataPath, 'mt5-capital.json'), 'utf8'))) as any[];
+    assert.equal(savedCapital[0].profitAllocated, 70, 'allocations are durably stored');
+    assert.equal(savedCapital[0].depositAllocated, 400);
+    assert.equal((await (await request(secondaryRoute('/api/journal/capital'))).json()).capital, null,
+      'each MT5 terminal has its own capital ledger');
+    await request('/api/mt5/heartbeat', { ...fundingHeartbeat, account: 'other-account' });
+    assert.equal((await (await request('/api/journal/capital')).json()).capital.summary.principal, 5000,
+      'switching accounts never imports another account’s allocations');
+    await request('/api/mt5/heartbeat', { ...fundingHeartbeat, capitalHistory: { ...capitalHistory, balance: NaN } });
+    assert.equal((await (await request('/api/journal/capital')).json()).capital.connected, false,
+      'invalid history cannot authorize an allocation using old saved data');
+    assert.equal((await request('/api/journal/capital/allocate', { ...allocation, requestId: 'stale-example-request' })).status, 409);
+    assert.equal((await clientRequest('/api/journal/capital')).status, 403);
+    assert.equal((await clientRequest('/api/journal/capital/allocate', allocation)).status, 403);
+    assert.equal((await fetch(`${base}/api/journal/capital`, { headers: { Authorization: 'Bearer isolated-test-token' } })).status, 401);
   } finally {
     const exited = new Promise<void>((resolve) => {
       if (child.exitCode !== null) resolve(); else child.once('exit', () => resolve());

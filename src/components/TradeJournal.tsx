@@ -30,6 +30,7 @@ import {
   type TradeTimeframe,
 } from '../services/tradeLevels';
 import { TradeMultiSelect } from './TradeMultiSelect';
+import { Mt5CapitalPanel } from './Mt5CapitalPanel';
 
 export interface JournalTradeRecord {
   mtfContext?: import('../services/mtf').MtfRow;
@@ -110,6 +111,7 @@ interface JournalResponse {
 }
 
 interface TradeJournalProps {
+  canManageCapital?: boolean;
   terminalId?: 'primary' | 'secondary';
   records: JournalTradeRecord[];
   timeframe: TradeTimeframe;
@@ -194,7 +196,7 @@ function calculateTotalR(trades: JournalTradeRecord[]): number {
   ), 0);
 }
 
-type JournalView = 'overview' | 'calendar' | 'history';
+type JournalView = 'overview' | 'calendar' | 'history' | 'withdrawals';
 
 interface JournalPerformance {
   completed: number;
@@ -423,7 +425,7 @@ export function renderHistoricalTradeSnapshot(
   return canvas.toDataURL('image/jpeg', 0.78);
 }
 
-export const TradeJournal: React.FC<TradeJournalProps> = ({ records, timeframe, marketSymbol, historyAsOf, timeZone, onClose, terminalId = 'primary' }) => {
+export const TradeJournal: React.FC<TradeJournalProps> = ({ records, timeframe, marketSymbol, historyAsOf, timeZone, onClose, terminalId = 'primary', canManageCapital = false }) => {
   const terminalFetch = (url: string, options?: RequestInit) => fetch(
     url.startsWith('/api/journal/') ? `${url}${url.includes('?') ? '&' : '?'}terminal=${terminalId}` : url, options);
 
@@ -896,6 +898,7 @@ export const TradeJournal: React.FC<TradeJournalProps> = ({ records, timeframe, 
           <div className="text-[9px] font-semibold text-slate-500">{message}</div>
         </div>
         <div className="ml-auto flex items-center gap-1.5">
+          {activeView !== 'withdrawals' && <>
           <button type="button" onClick={() => void exportExcel()} disabled={exporting !== null || preparingScreenshots}
             className="flex items-center gap-1 rounded border border-emerald-200 bg-emerald-50 px-2 py-1 text-[9px] font-black text-emerald-700 disabled:opacity-50">
             <Download className="h-3 w-3" /> {exporting === 'excel' ? 'EXPORTING…' : 'EXPORT EXCEL'}
@@ -904,6 +907,7 @@ export const TradeJournal: React.FC<TradeJournalProps> = ({ records, timeframe, 
             className="flex items-center gap-1 rounded border border-blue-200 bg-blue-50 px-2 py-1 text-[9px] font-black text-blue-700 disabled:opacity-50">
             <Download className="h-3 w-3" /> {preparingScreenshots ? 'PREPARING IMAGES…' : exporting === 'word' ? 'EXPORTING…' : 'EXPORT WORD'}
           </button>
+          </>}
           <button type="button" onClick={onClose} className="rounded border border-slate-200 p-1 text-slate-600 hover:bg-slate-100" title="Close journal">
             <X className="h-4 w-4" />
           </button>
@@ -925,8 +929,12 @@ export const TradeJournal: React.FC<TradeJournalProps> = ({ records, timeframe, 
             <Icon className="h-3 w-3" /> {label}
           </button>
         ))}
+        {canManageCapital && <button type="button" onClick={() => setActiveView('withdrawals')}
+          className={`border-b-2 px-3 py-1.5 text-[9px] font-black ${activeView === 'withdrawals' ? 'border-indigo-600 text-indigo-700' : 'border-transparent text-slate-500'}`}>WITHDRAWALS</button>}
       </div>
 
+      {activeView === 'withdrawals' && canManageCapital && <Mt5CapitalPanel terminalId={terminalId === 'secondary' ? 'secondary' : 'primary'} timeZone={timeZone} />}
+      {activeView !== 'withdrawals' && <>
       <div className="shrink-0 border-b border-indigo-100 bg-white px-3 py-1 text-[9px] font-bold text-indigo-700">
         {formatHistoryDate(historyWindow.from)} – {formatHistoryDate(historyWindow.to)}
       </div>
@@ -986,6 +994,7 @@ export const TradeJournal: React.FC<TradeJournalProps> = ({ records, timeframe, 
         }} className="rounded border border-slate-200 bg-slate-50 px-2 py-1 text-[9px] font-black text-slate-600 hover:bg-slate-100">RESET</button>
       </div>
 
+      </>}
       {activeView === 'overview' && (
         <div className="min-h-0 flex-1 overflow-auto bg-slate-100 p-3">
           <section className="mb-3">

@@ -228,6 +228,7 @@ def heartbeat(config: dict[str, Any], message: str = "Bridge ready") -> dict[str
         "brokerSymbol": symbol,
         "dailyRisk": daily_risk,
         "overallProfit": overall_profit,
+        "capitalHistory": overall_profit.get("capitalHistory"),
         "positions": [{
             "ticket": int(position.ticket),
             "symbol": str(position.symbol),
@@ -453,6 +454,57 @@ def checked_live_entry_price(signal: dict[str, Any], config: dict[str, Any],
     return price
 
 
+def capital_history_snapshot(deals: Any, balance: float, instant: datetime) -> dict[str, Any]:
+    """Separate broker funding from net trading returns; retain two calendar months of rows."""
+    import calendar
+    month_index = instant.year * 12 + instant.month - 1 - 2
+    year, month_zero = divmod(month_index, 12)
+    cutoff = instant.replace(year=year, month=month_zero + 1,
+                             day=min(instant.day, calendar.monthrange(year, month_zero + 1)[1])).timestamp()
+    trade_types = (mt5.DEAL_TYPE_BUY, mt5.DEAL_TYPE_SELL)
+    cost_types = {getattr(mt5, name) for name in (
+        "DEAL_TYPE_COMMISSION", "DEAL_TYPE_COMMISSION_DAILY", "DEAL_TYPE_COMMISSION_MONTHLY",
+        "DEAL_TYPE_COMMISSION_AGENT_DAILY", "DEAL_TYPE_COMMISSION_AGENT_MONTHLY", "DEAL_TYPE_INTEREST",
+    ) if hasattr(mt5, name)}
+    rows, trading, adjustments = [], [], []
+    deposits, withdrawals, withdrawal_count = 0.0, 0.0, 0
+    initial, initial_at, inferred = 0.0, 0, False
+    ordered = sorted(deals, key=lambda d: (getattr(d, "time_msc", 0) or getattr(d, "time", 0) * 1000, d.ticket))
+    values = [math.fsum(float(getattr(d, field, 0)) for field in ("profit", "commission", "swap", "fee")) for d in ordered]
+    if any(not math.isfinite(value) for value in values):
+        raise RuntimeError("Capital history contains invalid deal values.")
+    opening = balance - math.fsum(values)
+    # Preserve balance predating broker-provided history without inventing a deposit date.
+    if opening > 0.02:
+        initial = deposits = opening
+        inferred = True
+    elif opening < -0.02:
+        adjustments.append(opening)
+    for deal, amount in zip(ordered, values):
+        at = float(getattr(deal, "time", 0))
+        if deal.type in trade_types or deal.type in cost_types:
+            trading.append(amount)
+            continue
+        if deal.type == mt5.DEAL_TYPE_BALANCE and amount > 0:
+            kind = "deposit"
+            if not initial:
+                initial, initial_at, kind = amount, at, "initial-deposit"
+            deposits += amount
+        elif deal.type == mt5.DEAL_TYPE_BALANCE and amount < 0:
+            withdrawals -= amount
+            withdrawal_count += 1
+            kind = "withdrawal"
+        else:
+            adjustments.append(amount)
+            kind = "adjustment"
+        if at >= cutoff and amount:
+            rows.append({"id": str(deal.ticket), "at": at, "kind": kind, "amount": amount})
+    return {"balance": balance, "initialPrincipal": initial, "initialAt": initial_at,
+            "inferredOpening": inferred, "totalDeposits": deposits, "totalWithdrawals": withdrawals,
+            "withdrawalCount": withdrawal_count, "tradingNet": math.fsum(trading),
+            "adjustments": math.fsum(adjustments), "asOf": instant.timestamp(), "events": rows}
+
+
 def overall_profit_snapshot(now: datetime | None = None) -> dict[str, Any]:
     """Read-only trade P/L across all available history of the connected account."""
     assert_execution_account()
@@ -481,7 +533,8 @@ def overall_profit_snapshot(now: datetime | None = None) -> dict[str, Any]:
         profit = math.fsum(max(0, value) for value in realized_by_position.values())
         loss = math.fsum(max(0, -value) for value in realized_by_position.values())
         assert_execution_account()
-        OVERALL_PROFIT_CACHE.update(key=key, checkedAt=checked_at, profit=profit, loss=loss)
+        capital = capital_history_snapshot(deals, float(account.balance), instant)
+        OVERALL_PROFIT_CACHE.update(key=key, checkedAt=checked_at, profit=profit, loss=loss, capital=capital)
     positions = mt5.positions_get()
     if positions is None:
         raise RuntimeError("Overall profit/loss is unavailable: MT5 positions could not be read.")
@@ -492,7 +545,8 @@ def overall_profit_snapshot(now: datetime | None = None) -> dict[str, Any]:
     profit, loss = OVERALL_PROFIT_CACHE["profit"], OVERALL_PROFIT_CACHE["loss"]
     realized = profit - loss
     return {"available": True, "realizedProfitMoney": profit, "realizedLossMoney": loss,
-            "netRealizedMoney": realized, "floatingMoney": floating, "netMoney": realized + floating}
+            "netRealizedMoney": realized, "floatingMoney": floating, "netMoney": realized + floating,
+            "capitalHistory": OVERALL_PROFIT_CACHE["capital"]}
 
 
 def daily_risk_snapshot(config: dict[str, Any], now: datetime | None = None) -> dict[str, Any]:

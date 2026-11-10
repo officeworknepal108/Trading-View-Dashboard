@@ -1,6 +1,7 @@
 import { detectAutoTrendlines, type AutoTrendline } from '../services/autoTrendlines';
 export { detectAutoTrendlines } from '../services/autoTrendlines';
 import { TrendlineStudy } from './TrendlineStudy';
+import { Mt5CapitalPanel } from './Mt5CapitalPanel';
 import { bestTrendlineSetupRank, collectStudySupport, measureStudySupportDistance, preEntryTrendlineMarks, studyClosedCandles, studyTimeframes, trendlineSupportsBuy, type EntryArrowStudyEntry } from '../services/trendlineStudy';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { UserRole } from '../services/authTypes';
@@ -2229,9 +2230,7 @@ export const OandaProChart: React.FC<{
   const [savedJournalTrades, setSavedJournalTrades] = useState<AccuracyTradeRecord[]>([]);
   const [mt5Status, setMt5Status] = useState<Mt5AutomationStatus | null>(null);
   const dailyRisk = mt5Status?.bridge.dailyRisk;
-  const overallProfit = mt5Status?.bridge.overallProfit;
   const dailyRiskMoney = (value: number) => `${mt5Status?.bridge.currency === 'USD' ? '$' : `${mt5Status?.bridge.currency || 'USD'} `}${value.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-  const overallProfitMoney = (value: number) => `${value < 0 ? '-' : ''}${dailyRiskMoney(Math.abs(value))}`;
   const scalpingEnabled = mt5Status?.config.scalpingEnabled ?? true;
   const intradayEnabled = mt5Status?.config.intradayEnabled ?? true;
   const tradeStyleEnabled = useCallback((trade: {
@@ -8322,41 +8321,33 @@ export const OandaProChart: React.FC<{
                   <span className="mt-1 block text-[8px] font-semibold text-slate-500">Maximum 5%. Closed and floating bot losses count together.</span>
                 </label>
                 <div className="mb-2 rounded border border-indigo-100 bg-indigo-50 p-2 text-slate-700">
-                  <div className="mb-1 font-black text-indigo-800">Daily bot loss · Nepal day</div>
+                  <div className="mb-1 font-black text-indigo-800">Today's bot loss limit</div>
                   {mt5Status.bridge.connected && dailyRisk?.available ? <>
-                    <div>Daily balance: <b>{dailyRiskMoney(dailyRisk.startingBalance)}</b></div>
-                    <div>Limit: <b>{dailyRisk.limitPercent.toFixed(2)}% · {dailyRiskMoney(dailyRisk.limitMoney)}</b></div>
-                    <div>Closed loss: <b>{(dailyRisk.realizedLossMoney / dailyRisk.startingBalance * 100).toFixed(2)}% · {dailyRiskMoney(dailyRisk.realizedLossMoney)}</b></div>
-                    <div>Floating loss: <b>{(dailyRisk.floatingLossMoney / dailyRisk.startingBalance * 100).toFixed(2)}% · {dailyRiskMoney(dailyRisk.floatingLossMoney)}</b></div>
-                    <div>Used today: <b>{dailyRisk.usedPercent.toFixed(2)}% · {dailyRiskMoney(dailyRisk.usedMoney)}</b></div>
-                    <div>Remaining: <b>{dailyRisk.remainingPercent.toFixed(2)}% · {dailyRiskMoney(dailyRisk.remainingMoney)}</b></div>
-                    <div>Reserved at SL: <b>{(dailyRisk.reservedRiskMoney / dailyRisk.startingBalance * 100).toFixed(2)}% · {dailyRiskMoney(dailyRisk.reservedRiskMoney)}</b></div>
-                    <div>Available for new trades: <b>{dailyRisk.availableRiskPercent.toFixed(2)}% · {dailyRiskMoney(dailyRisk.availableRiskMoney)}</b></div>
-                    <div className={`mt-1 font-black ${dailyRisk.limitReached || dailyRisk.riskUnbounded ? 'text-rose-700' : 'text-indigo-700'}`}>
-                      {dailyRisk.limitReached ? 'DAILY LIMIT REACHED · NEW TRADES STOPPED'
-                        : dailyRisk.riskUnbounded ? 'NEW TRADES PAUSED · AN AUTOMATED POSITION OR ORDER HAS NO SL'
-                          : dailyRisk.availableRiskMoney <= 0 ? 'DAILY ALLOWANCE FULLY RESERVED · NEW TRADES PAUSED' : 'DAILY ALLOWANCE AVAILABLE'}
+                    <div>Daily limit: <b>{dailyRiskMoney(dailyRisk.limitMoney)}</b></div>
+                    <div>Loss so far: <b>{dailyRiskMoney(dailyRisk.usedMoney)}</b></div>
+                    <div>Allowance left: <b>{dailyRiskMoney(dailyRisk.remainingMoney)}</b></div>
+                    <div role="status" className={`mt-2 font-black ${dailyRisk.limitReached || dailyRisk.riskUnbounded || dailyRisk.availableRiskMoney <= 0 ? 'text-rose-700' : 'text-emerald-700'}`}>
+                      {dailyRisk.limitReached ? 'Daily limit reached. No new bot trades today.'
+                        : dailyRisk.riskUnbounded ? 'New bot trades paused. An open trade or order needs a stop loss.'
+                          : dailyRisk.availableRiskMoney <= 0 ? 'New bot trades paused. Open trades have reserved the allowance.'
+                            : 'Daily limit has not been reached.'}
                     </div>
+                    <div className="mt-1 text-[8px] text-slate-500">Resets at midnight Nepal time.</div>
+                    <details className="mt-2 text-[8px] text-slate-500">
+                      <summary className="cursor-pointer font-bold">More details</summary>
+                      <div className="mt-1">Starting balance: <b>{dailyRiskMoney(dailyRisk.startingBalance)}</b></div>
+                      <div>Daily limit setting: <b>{dailyRisk.limitPercent.toFixed(2)}%</b></div>
+                      <div>Loss from closed bot trades: <b>{dailyRiskMoney(dailyRisk.realizedLossMoney)}</b></div>
+                      <div>Current loss on open bot trades: <b>{dailyRiskMoney(dailyRisk.floatingLossMoney)}</b></div>
+                      <div>Set aside for open trades and orders: <b>{dailyRiskMoney(dailyRisk.reservedRiskMoney)}</b></div>
+                      <div>Available for new trades: <b>{dailyRiskMoney(dailyRisk.availableRiskMoney)}</b></div>
+                    </details>
                   </> : <div className="text-amber-700">
                     {dailyRisk?.available === false ? dailyRisk.error : 'Waiting for fresh MT5 daily risk data.'}
                   </div>}
                 </div>
-                <div className="mb-2 rounded border border-slate-200 bg-slate-50 p-2 leading-relaxed text-slate-600">
-                  <div className="mb-1 font-black text-slate-800">Overall account profit / loss</div>
-                  <div className="mb-1 text-[8px]">This MT5 account · all available history · no daily reset</div>
-                  {mt5Status.bridge.connected && overallProfit?.available ? <>
-                    <div>Realized profit: <b className="text-emerald-700">{overallProfitMoney(overallProfit.realizedProfitMoney)}</b></div>
-                    <div>Realized loss: <b className="text-rose-700">{overallProfitMoney(overallProfit.realizedLossMoney)}</b></div>
-                    <div>Net realized P/L: <b className={overallProfit.netRealizedMoney < 0 ? 'text-rose-700' : 'text-emerald-700'}>{overallProfitMoney(overallProfit.netRealizedMoney)}</b></div>
-                    <div>Floating P/L: <b className={overallProfit.floatingMoney < 0 ? 'text-rose-700' : 'text-emerald-700'}>{overallProfitMoney(overallProfit.floatingMoney)}</b></div>
-                    <div className={`mt-1 font-black ${overallProfit.netMoney < 0 ? 'text-rose-700' : 'text-emerald-700'}`}>
-                      Overall P/L: {overallProfitMoney(overallProfit.netMoney)}
-                    </div>
-                    <div className="mt-1 text-[8px]">Bot and manual trades · commission, swap and fees included</div>
-                  </> : <div className="text-amber-700">
-                    {overallProfit?.available === false ? overallProfit.error : 'Waiting for overall MT5 profit/loss data.'}
-                  </div>}
-                </div>
+                <Mt5CapitalPanel terminalId={terminalId === 'secondary' ? 'secondary' : 'primary'} compact
+                  floating={mt5Status.bridge.connected && mt5Status.bridge.overallProfit?.available ? mt5Status.bridge.overallProfit.floatingMoney : 0} />
                 <label className="mb-2 block font-bold text-slate-700">
                   Maximum open trades (max 10)
                   <select
@@ -10382,6 +10373,7 @@ export const OandaProChart: React.FC<{
           )}
           {showJournal && (
             <TradeJournal
+              canManageCapital={canAdmin}
               terminalId={terminalId}
               records={visibleCanonicalTradeRecords}
               timeframe={granularity}

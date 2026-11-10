@@ -16,7 +16,18 @@ export default defineConfig(() => {
       // File watching is disabled to prevent flickering during agent edits.
       hmr: process.env.DISABLE_HMR !== 'true',
       // Disable file watching when DISABLE_HMR is true to save CPU during agent edits.
-      watch: process.env.DISABLE_HMR === 'true' ? null : {},
+      watch: process.env.DISABLE_HMR === 'true' ? null : {
+        // Account history and bridge state are saved repeatedly while trading.
+        // They must not trigger browser reloads or stylesheet rebuilds.
+        ignored: [
+          '**/data/**',
+          '**/.dashboard-auth/**',
+          '**/.code-lock/**',
+          '**/.mt5*',
+          '**/backups/**',
+          '**/*.log',
+        ],
+      },
     },
   };
 });

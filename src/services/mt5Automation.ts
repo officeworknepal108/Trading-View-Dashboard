@@ -534,6 +534,7 @@ export interface Mt5AutomationStatus {
     symbolCandidates?: string[];
     dailyRisk?: Mt5DailyRisk;
     overallProfit?: Mt5OverallProfit;
+    capital?: import('./mt5Capital').CapitalView;
     lastHeartbeatAt?: number;
     message?: string;
     logs?: string[];

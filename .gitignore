@@ -17,6 +17,7 @@ data/trade-journal.json
 data/mt5-signals.json
 data/mt5-automation.json
 data/telegram-alerts.json
+data/mt5-capital*.json*
 .env.mt5
 .mt5_bridge_state.json
 .mt5_daily_risk_state.json

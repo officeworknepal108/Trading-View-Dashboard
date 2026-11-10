@@ -334,7 +334,9 @@ class OverallProfitTests(BridgeTestCase):
         self.deals.append(self.deal(1, -12.35))
         with patch.object(bridge.time, "monotonic", side_effect=[0, 31, 32]):
             first = bridge.overall_profit_snapshot(now=self.now)
-            self.assertEqual(bridge.overall_profit_snapshot(now=self.now + timedelta(minutes=2)), first)
+            second = bridge.overall_profit_snapshot(now=self.now + timedelta(minutes=2))
+            self.assertEqual(second["netMoney"], first["netMoney"])
+            self.assertEqual(second["capitalHistory"]["tradingNet"], first["capitalHistory"]["tradingNet"])
             self.account.login = 456
             self.deals.clear()
             self.assertEqual(bridge.overall_profit_snapshot(now=self.now)["netMoney"], 0)
@@ -354,6 +356,47 @@ class OverallProfitTests(BridgeTestCase):
         self.deals.append(self.deal(1, float("nan")))
         with self.assertRaisesRegex(RuntimeError, "invalid deal"):
             bridge.overall_profit_snapshot(now=self.now)
+
+
+class CapitalHistoryTests(BridgeTestCase):
+    def test_funding_is_separate_from_net_trading_and_retains_two_months(self) -> None:
+        now = datetime(2026, 11, 10, 12, tzinfo=bridge.NEPAL_TIMEZONE)
+        def deal(ticket, amount, kind, at):
+            return SimpleNamespace(ticket=ticket, position_id=ticket, profit=amount,
+                                   type=kind, time=at.timestamp(), commission=0, swap=0, fee=0)
+        old = now - timedelta(days=100)
+        deals = [deal(1, 5000, bridge.mt5.DEAL_TYPE_BALANCE, old),
+                 deal(2, 300, bridge.mt5.DEAL_TYPE_BUY, now),
+                 deal(3, -80, bridge.mt5.DEAL_TYPE_SELL, now),
+                 deal(4, -150, bridge.mt5.DEAL_TYPE_BALANCE, now),
+                 deal(5, 400, bridge.mt5.DEAL_TYPE_BALANCE, now)]
+        result = bridge.capital_history_snapshot(deals, 5470, now)
+        self.assertEqual(result['initialPrincipal'], 5000)
+        self.assertEqual(result['initialAt'], old.timestamp())
+        self.assertEqual(result['totalDeposits'], 5400)
+        self.assertEqual(result['totalWithdrawals'], 150)
+        self.assertEqual(result['withdrawalCount'], 1)
+        self.assertEqual(result['tradingNet'], 220)
+        self.assertEqual([r['kind'] for r in result['events']], ['withdrawal', 'deposit'])
+        self.assertFalse(result['inferredOpening'])
+        self.assertEqual(bridge.capital_history_snapshot(list(reversed(deals)), 5470, now), result)
+
+    def test_missing_deposit_history_does_not_invent_an_initial_deposit_date(self) -> None:
+        now = datetime(2026, 4, 30, 12, tzinfo=bridge.NEPAL_TIMEZONE)
+        result = bridge.capital_history_snapshot([], 5000, now)
+        self.assertEqual(result['initialPrincipal'], 5000)
+        self.assertEqual(result['initialAt'], 0)
+        self.assertTrue(result['inferredOpening'])
+        self.assertEqual(result['tradingNet'], 0)
+
+    def test_standalone_broker_commission_is_included_in_net_trading_pnl(self) -> None:
+        now = datetime(2026, 11, 10, 12, tzinfo=bridge.NEPAL_TIMEZONE)
+        commission = SimpleNamespace(ticket=7, type=bridge.mt5.DEAL_TYPE_COMMISSION,
+                                     time=now.timestamp(), profit=-10, commission=0, swap=0, fee=0)
+        result = bridge.capital_history_snapshot([commission], 4990, now)
+        self.assertEqual(result['initialPrincipal'], 5000)
+        self.assertEqual(result['tradingNet'], -10)
+        self.assertEqual(result['adjustments'], 0)
 
 
 class DailyRiskTests(unittest.TestCase):

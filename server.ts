@@ -2,6 +2,8 @@ import 'dotenv/config';
 import { DashboardAuth } from './src/server/authentication';
 import { denyPrivateFiles, privateFilePatterns } from './src/server/privateFiles';
 import { clientVisibleTrades } from './src/server/clientJournal';
+import { allocateCapital, capitalAccountKey, capitalHistoryFrom, sanitizeCapitalSnapshot, summarizeCapital,
+  type CapitalAccount, type CapitalSnapshot, type CapitalView } from './src/services/mt5Capital';
 import { telegramFetch } from './src/services/telegramTransport';
 import { journalDashboardTrades, journalPendingImageTrades } from './src/services/journalPayload';
 import express from 'express';
@@ -190,6 +192,7 @@ async function goldNewsPauseUntil(now: number): Promise<number | undefined> {
 }
 
 interface Mt5BridgeHeartbeat {
+  capitalAvailable?: boolean;
   bridgeId: string;
   processId?: number;
   account?: string;
@@ -326,6 +329,60 @@ function serializeJournalMutation<T>(operation: () => Promise<T>): Promise<T> {
   const queued = mt5Context().journalMutationQueue.then(operation, operation);
   mt5Context().journalMutationQueue = queued.then(() => undefined, () => undefined);
   return queued;
+}
+
+const CAPITAL_FILE = path.resolve(process.cwd(), 'data', 'mt5-capital.json');
+async function readCapitalAccounts(): Promise<Record<string, CapitalAccount>> {
+  try { return JSON.parse(await readFile(terminalFile(CAPITAL_FILE), 'utf8')); }
+  catch (error) { if ((error as NodeJS.ErrnoException).code === 'ENOENT') return {}; throw error; }
+}
+async function writeCapitalAccounts(accounts: Record<string, CapitalAccount>) {
+  const from = capitalHistoryFrom(Date.now() / 1000);
+  for (const value of Object.values(accounts)) {
+    value.snapshot.events = value.snapshot.events.filter(e => e.at >= from);
+    value.allocations = value.allocations.filter(e => e.at >= from);
+  }
+  const file = terminalFile(CAPITAL_FILE);
+  await mkdir(path.dirname(file), { recursive: true });
+  const temporary = `${file}.${process.pid}.tmp`;
+  await writeFile(temporary, `${JSON.stringify(accounts, null, 2)}\n`, 'utf8');
+  await rename(temporary, file);
+}
+function currentCapitalKey(connection = mt5Context().mt5BridgeHeartbeat) {
+  return connection?.account && connection.server && connection.currency
+    ? capitalAccountKey(connection.account, connection.server, connection.currency) : undefined;
+}
+async function capitalView(): Promise<CapitalView | undefined> {
+  const connection = mt5Context().mt5BridgeHeartbeat;
+  const key = currentCapitalKey(connection);
+  const accounts = await readCapitalAccounts();
+  const value = key ? accounts[key] : !connection
+    ? Object.values(accounts).sort((a, b) => b.snapshot.asOf - a.snapshot.asOf)[0] : undefined;
+  if (!value) return undefined;
+  const now = Date.now() / 1000;
+  const from = capitalHistoryFrom(now);
+  return { ...value, snapshot: { ...value.snapshot, events: value.snapshot.events.filter(e => e.at >= from) },
+    allocations: value.allocations.filter(e => e.at >= from), summary: summarizeCapital(value), historyFrom: from,
+    connected: connection?.terminalConnected === true && connection.capitalAvailable === true && Date.now() - connection.lastHeartbeatAt < 15_000
+      && now - value.snapshot.asOf < 60 && Math.abs(value.snapshot.balance - (connection.balance ?? NaN)) < 0.02 };
+}
+async function syncCapital(snapshot: CapitalSnapshot, connection: Mt5BridgeHeartbeat) {
+  const key = currentCapitalKey(connection);
+  if (!key || typeof connection.balance !== 'number' || !Number.isFinite(connection.balance)
+    || Math.abs(snapshot.balance - connection.balance) > 0.02) return;
+  await serializeJournalMutation(async () => {
+    const accounts = await readCapitalAccounts();
+    const previous = accounts[key];
+    if (previous && previous.snapshot.asOf > snapshot.asOf) return;
+    const from = capitalHistoryFrom(Date.now() / 1000);
+    const next: CapitalAccount = { account: connection.account!, server: connection.server!, currency: connection.currency!,
+      snapshot: { ...snapshot, events: snapshot.events.filter(e => e.at >= from) },
+      depositAllocated: previous?.depositAllocated ?? 0, profitAllocated: previous?.profitAllocated ?? 0,
+      allocations: (previous?.allocations ?? []).filter(e => e.at >= from) };
+    if (JSON.stringify(previous) === JSON.stringify(next)) return;
+    accounts[key] = next;
+    await writeCapitalAccounts(accounts);
+  });
 }
 
 async function readMt5Signals(): Promise<Mt5StoredSignal[]> {
@@ -1593,6 +1650,7 @@ async function startServer() {
         config,
         bridge: {
           ...(mt5Context().mt5BridgeHeartbeat ?? {}),
+          capital: await capitalView(),
           connected,
           processId: mt5Context().mt5BridgeHeartbeat?.processId ?? managedProcessId,
           managedByServer: connected && managedProcessId !== undefined
@@ -1731,7 +1789,9 @@ async function startServer() {
       })
       : [];
     const previousConnection = mt5Context().mt5BridgeHeartbeat;
+    const capitalSnapshot = sanitizeCapitalSnapshot(req.body?.capitalHistory);
     mt5Context().mt5BridgeHeartbeat = {
+      capitalAvailable: !!capitalSnapshot,
       bridgeId,
       processId: Number.isInteger(Number(req.body?.processId)) ? Number(req.body.processId) : undefined,
       account: String(req.body?.account ?? '').slice(0, 40) || undefined,
@@ -1760,6 +1820,7 @@ async function startServer() {
       || previousConnection?.symbolResolved !== connection.symbolResolved
       || previousConnection?.terminalConnected !== connection.terminalConnected;
     try {
+      if (connection.terminalConnected && capitalSnapshot) await syncCapital(capitalSnapshot, connection);
       if (changed) {
         for (const timeframe of AUTOMATION_TIMEFRAMES) {
           delete mt5Context().automationCandleCache[timeframe];
@@ -2001,6 +2062,37 @@ async function startServer() {
         : res.status(404).json({ ok: false, error: 'Signal not found.' });
     } catch (error) {
       return res.status(500).json({ ok: false, error: error instanceof Error ? error.message : 'Unable to update MT5 signal.' });
+    }
+  });
+
+  app.get('/api/journal/capital', async (_req, res) => {
+    try {
+      res.json({ ok: true, capital: await capitalView() ?? null });
+    } catch (error) {
+      res.status(500).json({ ok: false, error: error instanceof Error ? error.message : 'Unable to read capital history.' });
+    }
+  });
+  app.post('/api/journal/capital/allocate', async (req, res) => {
+    try {
+      const { kind, amount, requestId, account, server, currency } = req.body ?? {};
+      if (!['deposit', 'profit'].includes(kind) || typeof amount !== 'number' || !Number.isFinite(amount)
+        || typeof requestId !== 'string' || !/^[a-zA-Z0-9-]{16,80}$/.test(requestId)) {
+        return res.status(400).json({ ok: false, error: 'Invalid principal allocation.' });
+      }
+      await serializeJournalMutation(async () => {
+        const current = await capitalView();
+        if (!current?.connected || current.account !== account || current.server !== server || current.currency !== currency) {
+          throw new Error('Reconnect the selected MT5 account and wait for fresh balance data before allocating.');
+        }
+        const key = capitalAccountKey(account, server, currency);
+        const accounts = await readCapitalAccounts();
+        if (key !== currentCapitalKey()) throw new Error('MT5 account changed. Reload before adding to principal.');
+        accounts[key] = allocateCapital(accounts[key], kind, amount, requestId, Date.now() / 1000);
+        await writeCapitalAccounts(accounts);
+      });
+      res.json({ ok: true, capital: await capitalView() });
+    } catch (error) {
+      res.status(409).json({ ok: false, error: error instanceof Error ? error.message : 'Unable to allocate principal.' });
     }
   });
 
