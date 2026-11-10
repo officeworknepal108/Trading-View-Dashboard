@@ -95,6 +95,21 @@ export function Mt5CapitalPanel({ terminalId, compact = false, floating = 0, tim
     link.click(); window.setTimeout(() => URL.revokeObjectURL(url), 1000);
   };
   const metric = (label: string, value: string) => <div key={label} className="flex flex-wrap justify-between gap-x-2"><span>{label}</span><b>{value}</b></div>;
+  const principalControls = <>
+    <div className="my-3 space-y-2">
+      {([['deposit', summary.pendingDeposits, 'Deposit'], ['profit', summary.availableProfit, 'Retained profit']] as const).map(([kind, available, label]) => available > 0.00000001 && <div key={kind} className="rounded border border-indigo-100 bg-indigo-50 p-2">
+        <div className="mb-1 font-bold">{label} available: {money(available)}</div>
+        <div className="flex flex-wrap gap-1">
+          <input type="number" min="0" max={available} step="any" aria-label={`${label} amount to add to principal`}
+            placeholder={String(available)} value={amounts[kind]} onChange={e => setAmounts(a => ({ ...a, [kind]: e.target.value }))}
+            className="min-w-0 flex-1 rounded border bg-white px-2 py-1" disabled={busy || !capital.connected} />
+          <button type="button" disabled={busy || !capital.connected} onClick={() => void allocate(kind, available)}
+            className="rounded bg-indigo-700 px-2 py-1 font-bold text-white disabled:opacity-50">{busy ? 'Saving…' : 'Add to principal'}</button>
+        </div>
+      </div>)}
+    </div>
+    <p className="mb-2 text-[10px] text-slate-500">Profit minus losses, fees, withdrawals and profit moved to principal. Deposits are separate.</p>
+  </>;
   return <section className={compact ? 'mb-2 rounded border border-slate-200 bg-slate-50 p-2 text-[10px] leading-relaxed text-slate-600' : 'min-h-0 flex-1 overflow-auto p-3 text-xs text-slate-700'}>
     <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
       <h3 className="font-black text-slate-800">{compact ? 'Account principal & P/L' : 'Withdrawals & principal'}</h3>
@@ -121,19 +136,10 @@ export function Mt5CapitalPanel({ terminalId, compact = false, floating = 0, tim
     </div>
     {!capital.connected && <p className="my-2 text-amber-700">Saved history. Waiting for fresh MT5 data; adding to principal is paused.</p>}
     {error && <p role="alert" className="my-2 text-rose-700">{error}</p>}
-    <div className="my-3 space-y-2">
-      {([['deposit', summary.pendingDeposits, 'Deposit'], ['profit', summary.availableProfit, 'Retained profit']] as const).map(([kind, available, label]) => available > 0.00000001 && <div key={kind} className="rounded border border-indigo-100 bg-indigo-50 p-2">
-        <div className="mb-1 font-bold">{label} available: {money(available)}</div>
-        <div className="flex flex-wrap gap-1">
-          <input type="number" min="0" max={available} step="any" aria-label={`${label} amount to add to principal`}
-            placeholder={String(available)} value={amounts[kind]} onChange={e => setAmounts(a => ({ ...a, [kind]: e.target.value }))}
-            className="min-w-0 flex-1 rounded border bg-white px-2 py-1" disabled={busy || !capital.connected} />
-          <button type="button" disabled={busy || !capital.connected} onClick={() => void allocate(kind, available)}
-            className="rounded bg-indigo-700 px-2 py-1 font-bold text-white disabled:opacity-50">{busy ? 'Saving…' : 'Add to principal'}</button>
-        </div>
-      </div>)}
-    </div>
-    <p className="mb-2 text-[10px] text-slate-500">Profit minus losses, fees, withdrawals and profit moved to principal. Deposits are separate.</p>
+    {compact ? <details className="mt-2 border-t border-slate-200 pt-2">
+      <summary className="cursor-pointer font-bold text-indigo-700">Manage principal</summary>
+      {principalControls}
+    </details> : principalControls}
     {!compact && <>
       <p className="mb-2 text-[10px] text-slate-500">History: {date(capital.historyFrom)} – {date(Date.now() / 1000)}. Lifetime totals stay in the summary. Allocations move existing money; they do not add a second deposit.</p>
       <div className="overflow-x-auto rounded border bg-white"><table className="w-full text-left text-xs">
