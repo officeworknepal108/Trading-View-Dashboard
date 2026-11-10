@@ -6,12 +6,27 @@ import { MultiTimeframeEntryTable, mtfTableHitExpired, isSlTpTradeDisplayFinishe
   tradeDisplayExpired, tradeDrawingExpired, tradeDrawingFromRecord, resolveArrowTradeZones,
   completedTradeLabel, CompletedTradeRow, resolveRetainedTrade, zoneTableTradeExpired, internalSbrTableSourceVisible,
   resolveZoneTableTrade, zoneTableCompletedStatus, TradeDetailsRow, ZoneTableEntryPrice,
-  zoneTableMtfStatus, reconcileSavedMtfTrade, validateRecordedMtfTrade, ZoneTableEngulfingConfirmations } from '../src/components/OandaProChart';
+  zoneTableMtfStatus, reconcileSavedMtfTrade, validateRecordedMtfTrade, ZoneTableEngulfingConfirmations,
+  ZoneSourceTimeframeLabel, resolveZoneTableSourceTimeframe } from '../src/components/OandaProChart';
 import type { JournalTradeRecord } from '../src/components/TradeJournal';
 import type { MtfRow } from '../src/services/mtf';
 import type { StructureZone } from '../src/services/marketStructure';
 
 const bar = (time: number, complete = true) => ({ time, open: 100, high: 102, low: 99, close: 101, volume: 1, complete });
+
+test('Zone Table source labels retain 1Hr for a saved hourly zone with a 15-minute confirmation', () => {
+  const source = resolveZoneTableSourceTimeframe({ recorded: 'H1', inferred: ['M15'] });
+  assert.equal(source, 'H1');
+  const html = renderToStaticMarkup(React.createElement(ZoneSourceTimeframeLabel, { timeframe: source }));
+  assert.ok(html.includes('1Hr') && html.includes('text-[7px]') && html.includes('Zone source timeframe'));
+  assert.ok(!html.includes('15m'));
+  assert.ok(renderToStaticMarkup(React.createElement(ZoneSourceTimeframeLabel, { timeframe: 'M15' })).includes('15m'));
+  assert.equal(resolveZoneTableSourceTimeframe({ stored: 'H1', recorded: 'M15' }), 'H1');
+  assert.equal(resolveZoneTableSourceTimeframe({ setup: 'H4' }), 'H4');
+  assert.equal(resolveZoneTableSourceTimeframe({ inferred: ['H1', 'H1'] }), 'H1');
+  assert.equal(resolveZoneTableSourceTimeframe({ inferred: ['M15', 'H1'] }), undefined);
+  assert.equal(renderToStaticMarkup(React.createElement(ZoneSourceTimeframeLabel, { timeframe: undefined })), '');
+});
 
 test('Zone Table later engulfings render as small confirmation text without entry controls', () => {
   const html = renderToStaticMarkup(React.createElement(ZoneTableEngulfingConfirmations, { confirmations: [{

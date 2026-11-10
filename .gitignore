@@ -21,6 +21,8 @@ data/mt5-capital*.json*
 .env.mt5
 .mt5_bridge_state.json
 .mt5_daily_risk_state.json
+.mt5_fib_profit_state*.json
+.mt5_fib_profit_state*.tmp
 __pycache__/
 
 # Local code-lock passwords and temporary unlock sessions (never commit)

@@ -1,4 +1,5 @@
 import unittest
+import json
 import tempfile
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -697,6 +698,197 @@ class TerminalProfileTests(unittest.TestCase):
     def test_unknown_profile_never_falls_back_to_primary(self):
         with self.assertRaisesRegex(RuntimeError, "Unknown MT5 terminal"):
             self.load_profile("invalid")
+
+
+class OpposingFibProfitTests(BridgeTestCase):
+    def setUp(self):
+        super().setUp()
+        temporary = tempfile.TemporaryDirectory(prefix='mt5-fib-profit-test-')
+        self.assertEqual(Path(temporary.name).resolve().parent, Path(tempfile.gettempdir()).resolve())
+        self.addCleanup(temporary.cleanup)
+        self.file = Path(temporary.name) / 'fib-profit.json'
+        self.now = 1800000000.0
+        self.position = SimpleNamespace(ticket=77, identifier=77, time_msc=123456, magic=0,
+            symbol='XAUUSD', type=bridge.mt5.POSITION_TYPE_BUY, volume=0.05,
+            price_open=100.0, sl=90.0, tp=120.0, profit=20.0, swap=0.0)
+        self.info = SimpleNamespace(volume_min=0.01, volume_step=0.01, volume_max=100)
+        self.tick = SimpleNamespace(bid=110.0, ask=110.1, time=self.now)
+        self.zone = {'id': 'sell-fib', 'timeframe': 'M15', 'isBuy': False, 'bottom': 110.0, 'top': 112.0}
+        self.payload = {'config': {'brokerSymbol': 'XAUUSD', 'dryRun': False, 'enabled': False},
+            'opposingFibProfitTaking': {'available': True, 'account': 'test-account', 'server': 'test-server',
+                'brokerSymbol': 'XAUUSD', 'asOf': self.now, 'zones': [self.zone]}}
+        for name, value in [('FIB_PROFIT_FILE', self.file), ('FIB_PROFIT_PREVIOUS_QUOTES', {}),
+                            ('ALLOW_LIVE_EXECUTION', True), ('BROKER_TIME_OFFSET', 0)]:
+            mocked = patch.object(bridge, name, value); mocked.start(); self.addCleanup(mocked.stop)
+        for target, name, value in [(bridge.time, 'time', self.now), (bridge.mt5, 'symbol_info', self.info),
+                                    (bridge.mt5, 'symbol_info_tick', self.tick),
+                                    (bridge.mt5, 'order_check', SimpleNamespace(retcode=0))]:
+            mocked = patch.object(target, name, return_value=value); mocked.start(); self.addCleanup(mocked.stop)
+        mocked = patch.object(bridge.mt5, 'positions_get', side_effect=lambda **kwargs:
+            [self.position] if self.position.volume > 1e-8 else [])
+        mocked.start(); self.addCleanup(mocked.stop)
+        def execute(request):
+            self.position.volume = round(self.position.volume - request['volume'], 8)
+            return SimpleNamespace(retcode=bridge.mt5.TRADE_RETCODE_DONE, deal=42, order=0)
+        mocked = patch.object(bridge.mt5, 'order_send', side_effect=execute)
+        self.send = mocked.start(); self.addCleanup(mocked.stop)
+
+    def test_agreed_lot_splits_and_other_broker_steps(self):
+        for volume, closed in [(0.01, 0.01), (0.02, 0.01), (0.03, 0.02), (0.05, 0.04), (0.10, 0.08)]:
+            with self.subTest(volume=volume):
+                self.assertAlmostEqual(bridge.fib_profit_close_volume(volume, self.info), closed)
+        other = SimpleNamespace(volume_min=0.1, volume_step=0.1)
+        self.assertEqual(bridge.fib_profit_close_volume(0.3, other), 0.2)
+        with self.assertRaises(RuntimeError):
+            bridge.fib_profit_close_volume(0.015, self.info)
+
+    def test_manual_buy_is_managed_with_auto_entries_off_once_and_keeps_sl_tp(self):
+        bridge.manage_opposing_fib_profit(self.payload, {})
+        request = self.send.call_args.args[0]
+        self.assertEqual(request['position'], 77)
+        self.assertEqual(request['type'], bridge.mt5.ORDER_TYPE_SELL)
+        self.assertEqual(request['volume'], 0.04)
+        self.assertEqual(request['magic'], 0)
+        self.assertNotIn('sl', request); self.assertNotIn('tp', request)
+        self.assertEqual((self.position.sl, self.position.tp, self.position.volume), (90, 120, 0.01))
+        self.assertEqual(next(iter(json.loads(self.file.read_text()).values()))['status'], 'done')
+        bridge.FIB_PROFIT_PREVIOUS_QUOTES.clear()  # Simulate a bridge restart.
+        bridge.manage_opposing_fib_profit(self.payload, {})
+        self.send.assert_called_once()
+
+    def test_minimum_manual_sell_closes_fully_at_buy_zone(self):
+        self.position.type = bridge.mt5.POSITION_TYPE_SELL
+        self.position.volume, self.position.sl, self.position.tp = 0.01, 110, 80
+        self.tick.bid, self.tick.ask = 89.9, 90
+        self.zone.update(isBuy=True, bottom=88, top=90)
+        bridge.manage_opposing_fib_profit(self.payload, {})
+        self.assertEqual(self.send.call_args.args[0]['type'], bridge.mt5.ORDER_TYPE_BUY)
+        self.assertEqual(self.send.call_args.args[0]['price'], 90)
+        self.assertEqual(self.position.volume, 0)
+
+    def test_no_close_before_zone_on_loss_beyond_tp_or_for_foreign_account_and_stale_data(self):
+        self.tick.bid = 109
+        bridge.manage_opposing_fib_profit(self.payload, {})
+        self.send.assert_not_called()
+        self.tick.bid = 110; self.position.profit = -1
+        bridge.manage_opposing_fib_profit(self.payload, {})
+        self.position.profit = 20; self.position.tp = 109
+        bridge.manage_opposing_fib_profit(self.payload, {})
+        self.position.tp = 120
+        self.payload['opposingFibProfitTaking']['account'] = 'foreign'
+        bridge.manage_opposing_fib_profit(self.payload, {})
+        self.payload['opposingFibProfitTaking']['account'] = 'test-account'
+        self.payload['opposingFibProfitTaking']['asOf'] = self.now - 91
+        bridge.manage_opposing_fib_profit(self.payload, {})
+        self.send.assert_not_called()
+
+    def test_same_side_or_out_of_path_zones_and_other_ea_positions_do_not_trigger(self):
+        self.zone['isBuy'] = True
+        bridge.manage_opposing_fib_profit(self.payload, {})
+        self.zone.update(isBuy=False, bottom=95, top=97)
+        bridge.manage_opposing_fib_profit(self.payload, {})
+        self.zone.update(bottom=110, top=112); self.position.magic = 1234
+        bridge.manage_opposing_fib_profit(self.payload, {})
+        self.position.magic = 0; self.payload['config']['dryRun'] = True
+        bridge.manage_opposing_fib_profit(self.payload, {})
+        self.send.assert_not_called()
+
+    def test_tick_crossing_zone_triggers_but_first_observation_past_it_does_not(self):
+        self.tick.bid = 113
+        bridge.manage_opposing_fib_profit(self.payload, {})
+        self.send.assert_not_called()
+        self.tick.bid = 109
+        bridge.manage_opposing_fib_profit(self.payload, {})
+        self.tick.bid = 113
+        bridge.manage_opposing_fib_profit(self.payload, {})
+        self.send.assert_called_once()
+
+    def test_uncertain_send_is_never_retried_even_after_restart(self):
+        self.send.side_effect = None; self.send.return_value = None
+        with self.assertRaisesRegex(RuntimeError, 'unknown'):
+            bridge.manage_opposing_fib_profit(self.payload, {})
+        self.assertEqual(next(iter(json.loads(self.file.read_text()).values()))['status'], 'pending')
+        bridge.FIB_PROFIT_PREVIOUS_QUOTES.clear()
+        bridge.manage_opposing_fib_profit(self.payload, {})
+        self.send.assert_called_once()
+
+    def test_confirmed_rejection_is_not_success_and_waits_before_retry(self):
+        self.send.side_effect = None
+        self.send.return_value = SimpleNamespace(retcode=bridge.mt5.TRADE_RETCODE_MARKET_CLOSED, comment='Market closed')
+        bridge.manage_opposing_fib_profit(self.payload, {})
+        self.assertEqual(self.position.volume, 0.05)
+        self.assertEqual(next(iter(json.loads(self.file.read_text()).values()))['status'], 'rejected')
+        bridge.manage_opposing_fib_profit(self.payload, {})
+        self.send.assert_called_once()
+
+    def test_bot_remainder_does_not_get_another_half_close_after_restart(self):
+        self.position.magic = bridge.MAGIC_NUMBER
+        record = {'account': 'test-account', 'server': 'test-server', 'brokerPosition': 77,
+                  'status': 'ACTIVE', 'tradeStyle': 'SCALPING', 'stopLoss': 90, 'riskFree': 110, 'volume': 0.05}
+        bridge.manage_opposing_fib_profit(self.payload, {'bot': dict(record)})
+        restored = {'bot': dict(record)}
+        bridge.manage_opposing_fib_profit({'config': {}, 'opposingFibProfitTaking': {'available': False}}, restored)
+        self.assertTrue(restored['bot']['opposingFibProfitTaken'])
+        with patch.object(bridge, 'find_position', return_value=self.position), \
+             patch.object(bridge, 'close_half_position') as half, patch.object(bridge, 'update_status'):
+            bridge.manage_open_signals(restored, [], {})
+            half.assert_not_called()
+
+    def test_confirmed_partial_fills_finish_only_the_original_target_volume(self):
+        def partial(request):
+            self.position.volume = round(self.position.volume - min(0.02, request['volume']), 8)
+            return SimpleNamespace(retcode=bridge.mt5.TRADE_RETCODE_DONE_PARTIAL, deal=42, order=0)
+        self.send.side_effect = partial
+        bridge.manage_opposing_fib_profit(self.payload, {})
+        self.assertEqual(self.position.volume, 0.03)
+        bridge.manage_opposing_fib_profit(self.payload, {})
+        self.assertEqual(self.position.volume, 0.01)
+        self.assertEqual([call.args[0]['volume'] for call in self.send.call_args_list], [0.04, 0.02])
+        bridge.manage_opposing_fib_profit(self.payload, {})
+        self.assertEqual(self.send.call_count, 2)
+
+    def test_other_account_cannot_inherit_a_manual_profit_take_record(self):
+        bridge.manage_opposing_fib_profit(self.payload, {})
+        record = {'account': 'another-account', 'server': 'test-server', 'brokerPosition': 77}
+        bridge.manage_opposing_fib_profit({'config': {}, 'opposingFibProfitTaking': {'available': False}}, {'bot': record})
+        self.assertNotIn('opposingFibProfitTaken', record)
+
+    def test_rejected_shortfall_retry_preserves_the_original_twenty_percent(self):
+        self.position.volume = 0.5
+        def first_partial(request):
+            self.position.volume = 0.3
+            return SimpleNamespace(retcode=bridge.mt5.TRADE_RETCODE_DONE_PARTIAL, deal=42, order=0)
+        self.send.side_effect = first_partial
+        bridge.manage_opposing_fib_profit(self.payload, {})
+        self.send.side_effect = None
+        self.send.return_value = SimpleNamespace(retcode=bridge.mt5.TRADE_RETCODE_MARKET_CLOSED, comment='Market closed')
+        bridge.manage_opposing_fib_profit(self.payload, {})
+        saved = json.loads(self.file.read_text())
+        next(iter(saved.values()))['attemptedAt'] = self.now - 31
+        self.file.write_text(json.dumps(saved))
+        def complete(request):
+            self.assertEqual(request['volume'], 0.2, 'close only the original shortfall, not 80% of 0.3')
+            self.position.volume = 0.1
+            return SimpleNamespace(retcode=bridge.mt5.TRADE_RETCODE_DONE, deal=43, order=0)
+        self.send.side_effect = complete
+        bridge.manage_opposing_fib_profit(self.payload, {})
+        self.assertEqual(self.position.volume, 0.1)
+
+    def test_durable_write_failure_and_stale_ticks_cannot_send_a_close(self):
+        self.tick.time = self.now - 121
+        bridge.manage_opposing_fib_profit(self.payload, {})
+        self.send.assert_not_called()
+        self.tick.time = self.now
+        with patch.object(bridge, 'write_fib_profit_state', side_effect=OSError('disk unavailable')):
+            with self.assertRaises(OSError):
+                bridge.manage_opposing_fib_profit(self.payload, {})
+        self.send.assert_not_called()
+
+    def test_corrupt_state_never_becomes_a_fresh_repeated_close(self):
+        self.file.write_text('{broken json', encoding='utf-8')
+        with self.assertRaises(ValueError):
+            bridge.manage_opposing_fib_profit(self.payload, {})
+        self.send.assert_not_called()
 
 
 if __name__ == "__main__":

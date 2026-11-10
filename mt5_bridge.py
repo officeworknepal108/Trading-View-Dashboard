@@ -15,6 +15,7 @@ import sys
 import time
 import uuid
 from datetime import datetime, timedelta, timezone
+from decimal import Decimal, ROUND_DOWN, ROUND_UP
 from pathlib import Path
 from typing import Any
 from urllib.parse import quote
@@ -42,6 +43,8 @@ if TERMINAL_ID not in {"primary", "secondary"}:
 BRIDGE_ID = os.getenv("MT5_BRIDGE_ID", f"kalbairab-{uuid.getnode():x}") + ("-secondary" if TERMINAL_ID == "secondary" else "")
 STATE_FILE = ROOT / (".mt5_bridge_state.secondary.json" if TERMINAL_ID == "secondary" else ".mt5_bridge_state.json")
 DAILY_RISK_FILE = ROOT / (".mt5_daily_risk_state.secondary.json" if TERMINAL_ID == "secondary" else ".mt5_daily_risk_state.json")
+FIB_PROFIT_FILE = ROOT / (".mt5_fib_profit_state.secondary.json" if TERMINAL_ID == "secondary" else ".mt5_fib_profit_state.json")
+FIB_PROFIT_PREVIOUS_QUOTES: dict[str, float] = {}
 OVERALL_PROFIT_CACHE: dict[str, Any] = {}
 CONNECTED_ACCOUNT = ""
 CONNECTED_SERVER = ""
@@ -862,6 +865,222 @@ def close_half_position(position: Any, record: dict[str, Any]) -> dict[str, Any]
     }
 
 
+def fib_profit_close_volume(volume: float, symbol_info: Any) -> float:
+    """Floor 80% to the broker step, leaving a valid remainder; close an unsplittable minimum lot."""
+    current, step, minimum = map(lambda v: Decimal(str(v)), (volume, symbol_info.volume_step, symbol_info.volume_min))
+    if not all(value.is_finite() and value > 0 for value in (current, step, minimum)):
+        raise RuntimeError("Invalid broker volume limits for Fib profit taking.")
+    units = current / step
+    if abs(units - units.to_integral_value()) > Decimal('0.000001'):
+        raise RuntimeError("Position volume does not match the broker lot step.")
+    units = int(units.to_integral_value())
+    minimum_units = int((minimum / step).to_integral_value(rounding=ROUND_UP))
+    if units < 2 * minimum_units:
+        return float(current)
+    close_units = min(int((Decimal(units) * Decimal('0.8')).to_integral_value(rounding=ROUND_DOWN)), units - minimum_units)
+    return float(Decimal(max(minimum_units, close_units)) * step)
+
+
+def write_fib_profit_state(state: dict[str, Any]) -> None:
+    temporary = FIB_PROFIT_FILE.with_suffix(f".{os.getpid()}.tmp")
+    with temporary.open('w', encoding='utf-8') as stream:
+        json.dump(state, stream, indent=2)
+        stream.flush()
+        os.fsync(stream.fileno())
+    temporary.replace(FIB_PROFIT_FILE)
+
+
+class FibCloseRejected(RuntimeError):
+    pass
+
+
+def send_fib_profit_close(request: dict[str, Any]) -> Any:
+    # Never retry an uncertain order_send with a different filling mode: 0.02 lots
+    # could otherwise close twice and lose the intended 0.01-lot remainder.
+    for filling in (mt5.ORDER_FILLING_IOC, mt5.ORDER_FILLING_FOK, mt5.ORDER_FILLING_RETURN):
+        assert_execution_account()
+        candidate = {**request, 'type_filling': filling}
+        live = mt5.positions_get(ticket=request['position'])
+        if not live or len(live) != 1 or live[0].symbol != request['symbol'] or float(live[0].volume) < request['volume'] - 1e-9:
+            raise FibCloseRejected('Position changed before the Fib close; no close was sent.')
+        expected = mt5.ORDER_TYPE_SELL if live[0].type == mt5.POSITION_TYPE_BUY else mt5.ORDER_TYPE_BUY
+        if candidate['type'] != expected:
+            raise FibCloseRejected('Position direction changed before the Fib close.')
+        checked = mt5.order_check(candidate)
+        if checked is None or checked.retcode not in (0, mt5.TRADE_RETCODE_DONE):
+            continue
+        assert_execution_account()
+        result = mt5.order_send(candidate)
+        if result is None:
+            raise RuntimeError("Fib close result is unknown; saved intent prevents a duplicate close.")
+        if result.retcode in (mt5.TRADE_RETCODE_DONE, mt5.TRADE_RETCODE_DONE_PARTIAL):
+            return result
+        if result.retcode == mt5.TRADE_RETCODE_INVALID_FILL:
+            continue
+        raise FibCloseRejected(f"Fib close rejected: {getattr(result, 'comment', result.retcode)}")
+    raise FibCloseRejected("Broker did not accept a filling mode for the Fib close.")
+
+
+def manage_opposing_fib_profit(status_payload: dict[str, Any], state: dict[str, dict[str, Any]]) -> None:
+    try:
+        saved = json.loads(FIB_PROFIT_FILE.read_text(encoding='utf-8'))
+        if not isinstance(saved, dict):
+            raise RuntimeError("Invalid saved Fib profit-taking state; no closes were sent.")
+    except FileNotFoundError:
+        saved = {}
+    # Restore the remainder protection even while fresh zone data is loading after restart.
+    for saved_key, event in saved.items():
+        owner = json.loads(saved_key)
+        if tuple(owner[:2]) != ACTIVE_ACCOUNT or (event.get('status') not in ('pending', 'partial', 'done')
+                                                and not event.get('progressConfirmed')):
+            continue
+        for record in state.values():
+            if (record.get('account'), record.get('server')) == ACTIVE_ACCOUNT \
+                    and int(record.get('brokerPosition') or record.get('brokerTicket') or 0) == int(event.get('ticket', 0)):
+                record['opposingFibProfitTaken'] = True
+    config = status_payload.get('config') or {}
+    snapshot = status_payload.get('opposingFibProfitTaking') or {}
+    now = time.time()
+    if config.get('dryRun', True) or not ALLOW_LIVE_EXECUTION or snapshot.get('available') is not True:
+        return
+    if (snapshot.get('account'), snapshot.get('server')) != ACTIVE_ACCOUNT:
+        return
+    as_of = snapshot.get('asOf')
+    if not isinstance(as_of, (int, float)) or not math.isfinite(as_of) or not 0 <= now - as_of <= 90:
+        return
+    symbol = snapshot.get('brokerSymbol')
+    if not symbol or symbol != config.get('brokerSymbol'):
+        return
+    assert_execution_account()
+    positions = mt5.positions_get(symbol=symbol)
+    if positions is None:
+        raise RuntimeError("Unable to read positions for opposing Fib profit taking.")
+    for position in positions:
+        if position.magic not in (0, MAGIC_NUMBER) or position.symbol != symbol:
+            continue
+        key = json.dumps([*ACTIVE_ACCOUNT, symbol, int(getattr(position, 'identifier', 0) or position.ticket),
+                          int(getattr(position, 'time_msc', getattr(position, 'time', 0))), int(position.type)])
+        prior = saved.get(key)
+        info = mt5.symbol_info(symbol)
+        if not info:
+            continue
+        if prior and (not math.isfinite(float(prior.get('targetRemaining', -1)))
+                      or not 0 <= float(prior.get('targetRemaining', -1)) < float(prior.get('originalVolume', 0))):
+            raise RuntimeError('Invalid saved Fib close target; no close was sent.')
+        def mark_managed() -> None:
+            for record in state.values():
+                if int(record.get('brokerPosition') or record.get('brokerTicket') or 0) == int(position.ticket):
+                    record['opposingFibProfitTaken'] = True
+        if prior and prior.get('status') in ('pending', 'done'):
+            # Reconcile after a crash/order timeout without ever submitting another 80% close.
+            if float(position.volume) <= float(prior['targetRemaining']) + float(info.volume_step) / 2:
+                if prior.get('status') != 'done':
+                    prior['status'] = 'done'
+                    write_fib_profit_state(saved)
+            elif (prior.get('status') == 'pending' and prior.get('brokerRetcode') == mt5.TRADE_RETCODE_DONE_PARTIAL
+                  and float(position.volume) < float(prior['lastVolume']) - float(info.volume_step) / 2):
+                prior['status'] = 'partial'
+                prior['progressConfirmed'] = True
+                write_fib_profit_state(saved)
+            mark_managed()
+            continue
+        if prior and prior.get('status') == 'rejected' and now - float(prior.get('attemptedAt', now)) < 30:
+            continue
+        if prior and prior.get('progressConfirmed') and int(prior.get('attempts', 0)) >= 3:
+            prior.update(status='done', remainingVolume=float(position.volume))
+            write_fib_profit_state(saved)
+            mark_managed()
+            continue
+        if prior and prior.get('progressConfirmed') and float(position.volume) > float(prior['lastVolume']) + float(info.volume_step) / 2:
+            prior.update(status='done', error='Position volume increased after the partial close; remaining plan stopped.')
+            write_fib_profit_state(saved)
+            mark_managed()
+            continue
+        tick = mt5.symbol_info_tick(symbol)
+        if not tick:
+            continue
+        tick_time = float(getattr(tick, 'time', 0)) - BROKER_TIME_OFFSET
+        if tick_time <= 0 or abs(now - tick_time) > 120:
+            continue
+        buy = position.type == mt5.POSITION_TYPE_BUY
+        quote, entry, target = float(tick.bid if buy else tick.ask), float(position.price_open), float(position.tp)
+        if not all(math.isfinite(v) and v > 0 for v in (quote, entry, target)):
+            continue
+        previous_quote = FIB_PROFIT_PREVIOUS_QUOTES.get(key, quote)
+        FIB_PROFIT_PREVIOUS_QUOTES[key] = quote
+        if float(position.profit) + float(position.swap) <= 0 or not (entry < quote < target if buy else target < quote < entry):
+            continue
+        candidates = []
+        for zone in snapshot.get('zones', []):
+            if zone.get('isBuy') is not (not buy):
+                continue
+            bottom, top = zone.get('bottom'), zone.get('top')
+            if not all(isinstance(v, (int, float)) and math.isfinite(v) and v > 0 for v in (bottom, top)) or top <= bottom:
+                continue
+            edge = bottom if buy else top
+            if not (entry < edge < target if buy else target < edge < entry):
+                continue
+            touched = bottom <= quote <= top or (previous_quote < bottom <= quote if buy else previous_quote > top >= quote)
+            if touched:
+                candidates.append((abs(edge - entry), zone))
+        if not candidates:
+            continue
+        zone = min(candidates, key=lambda item: item[0])[1]
+        # Re-read the exact ticket immediately before closing, including manual trades (magic 0).
+        assert_execution_account()
+        live = mt5.positions_get(ticket=int(position.ticket))
+        if not live or len(live) != 1 or live[0].type != position.type or live[0].symbol != symbol:
+            continue
+        position = live[0]
+        if float(position.profit) + float(position.swap) <= 0 or float(position.tp) != target:
+            continue
+        volume = float(position.volume)
+        close_volume = (round(volume - float(prior['targetRemaining']), 8) if prior and prior.get('progressConfirmed')
+                        else fib_profit_close_volume(volume, info))
+        if close_volume < float(info.volume_min) - 1e-8:
+            if prior:
+                prior.update(status='done', remainingVolume=volume)
+                write_fib_profit_state(saved)
+                mark_managed()
+            continue
+        if close_volume > float(info.volume_max):
+            raise RuntimeError("Fib close exceeds the broker's per-order volume limit.")
+        # Durably record the fixed remaining volume BEFORE the broker request.
+        plan = prior if prior and prior.get('progressConfirmed') else {
+            'originalVolume': volume, 'closeVolume': close_volume, 'targetRemaining': round(volume - close_volume, 8),
+            'zoneId': zone.get('id'), 'originalSL': float(position.sl), 'originalTP': float(position.tp)}
+        saved[key] = {**plan, 'status': 'pending', 'ticket': int(position.ticket), 'attemptedAt': now,
+                      'lastVolume': volume, 'lastRequestedClose': close_volume, 'attempts': int(plan.get('attempts', 0)) + 1}
+        write_fib_profit_state(saved)
+        mark_managed()
+        try:
+            result = send_fib_profit_close({
+                'action': mt5.TRADE_ACTION_DEAL, 'symbol': symbol, 'position': int(position.ticket),
+                'volume': close_volume, 'type': mt5.ORDER_TYPE_SELL if buy else mt5.ORDER_TYPE_BUY,
+                'price': quote, 'deviation': 20, 'magic': int(position.magic), 'comment': 'KB Fib80 profit',
+            })
+        except FibCloseRejected as error:
+            saved[key].update(status='rejected', error=str(error))
+            write_fib_profit_state(saved)
+            if not saved[key].get('progressConfirmed'):
+                for record in state.values():
+                    if int(record.get('brokerPosition') or record.get('brokerTicket') or 0) == int(position.ticket):
+                        record.pop('opposingFibProfitTaken', None)
+            print(str(error), file=sys.stderr)
+            continue
+        saved[key]['deal'] = int(result.deal or result.order)
+        saved[key]['brokerRetcode'] = int(result.retcode)
+        remaining = mt5.positions_get(ticket=int(position.ticket))
+        if remaining is not None:
+            remaining_volume = float(remaining[0].volume) if remaining else 0.0
+            if remaining_volume < volume - float(info.volume_step) / 2:
+                # Finish only a confirmed partial fill's shortfall; never recalculate 80% of the remainder.
+                complete = remaining_volume <= float(saved[key]['targetRemaining']) + float(info.volume_step) / 2
+                saved[key].update(status='done' if complete else 'partial', remainingVolume=remaining_volume, progressConfirmed=True)
+        write_fib_profit_state(saved)
+        print(f"FIB PROFIT: position {position.ticket}; requested close {close_volume:g} of {volume:g} lots at opposing {zone.get('timeframe')} zone; original SL/TP unchanged.")
+
+
 def closed_result(record: dict[str, Any], was_risk_free: bool) -> str:
     position_ticket = int(record.get("brokerPosition") or record.get("brokerTicket") or 0)
     deals = mt5.history_deals_get(position=position_ticket) or []
@@ -1012,6 +1231,8 @@ def manage_open_signals(
             )
             state.pop(signal_id, None)
             continue
+        if record.get('opposingFibProfitTaken'):
+            continue  # Its remaining position must reach the original TP/SL, without another 1R partial close.
         is_buy = position.type == mt5.POSITION_TYPE_BUY
         tick = mt5.symbol_info_tick(position.symbol)
         execution_price = float(position.price_open)
@@ -1130,6 +1351,7 @@ def process_bridge_cycle(
         ):
             state.setdefault(server_signal["id"], dict(server_signal))
     if market_data_issue is None:
+        manage_opposing_fib_profit(status_payload, state)
         active_state = {key: value for key, value in state.items()
                         if (value.get("account"), value.get("server")) == ACTIVE_ACCOUNT}
         managed_ids = set(active_state)

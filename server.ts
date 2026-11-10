@@ -21,6 +21,8 @@ import { formatTelegramTradeMessage, countDailyTrades, formatDailyTradeSummary, 
   telegramDemoMessages, type TelegramTradeAlert } from './src/services/telegramMessages';
 import {
   MT5_DEFAULT_ENABLED_TIMEFRAMES,
+  MT5_ENTRY_TIMEFRAME_OPTIONS,
+  isMt5EntryTimeframeEnabled,
   goldAutomationCountertrendBlocked,
   goldAutomationFastMoveBlocked,
   goldAutomationHighImpactUsdNewsTimes,
@@ -32,6 +34,9 @@ import {
   priorGoldMt5ZoneExecution,
   mt5SignalDisabledReason,
   mt5ConnectionMatches,
+  opposingFibProfitZones,
+  type OpposingFibProfitSnapshot,
+  type OpposingFibProfitZone,
   isTradeStyleEnabled,
   normalizeMt5EnabledTimeframes,
   normalizeMt5RiskPercent,
@@ -242,6 +247,10 @@ const createTerminalState = () => ({
   mt5MarketDataUpdatedAt: {} as Partial<Record<TradeTimeframe, number>>,
   mt5MarketDataVersion: 0,
   lastScannedMt5MarketDataVersion: -1,
+  fibProfitSnapshot: undefined as OpposingFibProfitSnapshot | undefined,
+  fibProfitVersion: -1,
+  fibProfitRefreshAt: 0,
+  fibProfitRefreshRunning: false,
   managedMt5Bridge: undefined as ChildProcessWithoutNullStreams | undefined,
   managedMt5BridgeProcessId: undefined as number | undefined,
   managedMt5BridgeStartedAt: undefined as number | undefined,
@@ -255,6 +264,7 @@ const terminalFile = (file: string) => terminalId() === 'primary' ? file
 let configWriteQueue: Promise<unknown> = Promise.resolve();
 // One delivery queue for the Telegram group, independent of terminal count.
 let telegramAlertQueue: Promise<unknown> = Promise.resolve();
+let sharedFibProfitAnalysis: { key: string; zones: OpposingFibProfitZone[]; at: number } | undefined;
 const sharedStrategyFields = ['tradingTimeEnabled', 'telegramMessagesEnabled', 'scalpingEnabled',
   'intradayEnabled', 'mtfLtfFibRequired', 'enabledTimeframes', 'maximumSpreadPoints',
   'signalMaxAgeSeconds', 'pendingExpiryMinutes', 'moveStopToBreakEvenAtR'] as const;
@@ -855,6 +865,85 @@ async function loadGoldOpposingZones(): Promise<StructureZone[] | undefined> {
   ));
 }
 
+function opposingFibProfitSnapshot(): OpposingFibProfitSnapshot {
+  const snapshot = mt5Context().fibProfitSnapshot;
+  if (!snapshot?.available) return snapshot ?? { available: false, error: 'Waiting for opposing Fib zones.' };
+  if (!mt5ExecutionFeedIsFresh() || !mt5ConnectionMatches(snapshot, mt5Context().mt5BridgeHeartbeat ?? {})
+    || Date.now() / 1000 - snapshot.asOf > 90) return { available: false, error: 'Opposing Fib zone data is stale or belongs to another account.' };
+  return snapshot;
+}
+
+async function refreshOpposingFibProfitSnapshot(): Promise<void> {
+  const context = mt5Context();
+  const connection = context.mt5BridgeHeartbeat;
+  if (!connection?.positions?.length || !mt5ExecutionFeedIsFresh() || !connection.account || !connection.server || !connection.brokerSymbol) return;
+  const now = Date.now();
+  if (context.fibProfitRefreshRunning || now - context.fibProfitRefreshAt < 5_000) return;
+  if (context.fibProfitVersion === context.mt5MarketDataVersion
+    && context.fibProfitSnapshot?.available && now / 1000 - context.fibProfitSnapshot.asOf < 60) return;
+  context.fibProfitRefreshAt = now;
+  context.fibProfitRefreshRunning = true;
+  const version = context.mt5MarketDataVersion;
+  const timeframes = AUTOMATION_TIMEFRAMES;
+  try {
+    // Use the same OANDA structures and Fib calculations as dashboard entries.
+    // Refresh separately from entry permissions, so manual trades are managed with Auto OFF too.
+    const sources: StructureCandle[][] = [];
+    for (const timeframe of timeframes) {
+      const source = await loadOandaAutomationCandles(timeframe);
+      if (!source) throw new Error(`Waiting for fresh ${timeframe} opposing Fib zones.`);
+      sources.push(source);
+    }
+    const candles: Partial<Record<TradeTimeframe, StructureCandle[]>> = {};
+    const raw: Partial<Record<TradeTimeframe, ReturnType<typeof analyzeMarketStructure>>> = {};
+    const asOf = Math.floor(Date.now() / 1000);
+    for (const [index, timeframe] of timeframes.entries()) {
+      const source = sources[index];
+      if (!source?.length || source.at(-1)!.time < asOf - AUTOMATION_SECONDS[timeframe] - 120) throw new Error(`Waiting for fresh ${timeframe} opposing Fib zones.`);
+      candles[timeframe] = source.filter(candle => candle.complete !== false && candle.time + AUTOMATION_SECONDS[timeframe] <= asOf);
+    }
+    // Both accounts use the same chart feed. Analyze it once per completed-bar snapshot.
+    const inputKey = JSON.stringify(timeframes.map(timeframe => [timeframe, candles[timeframe]!.length,
+      candles[timeframe]!.slice(-2).map(candle => [candle.time, candle.open, candle.high, candle.low, candle.close])]));
+    let zones = sharedFibProfitAnalysis?.key === inputKey && Date.now() - sharedFibProfitAnalysis.at < 90_000
+      ? sharedFibProfitAnalysis.zones : undefined;
+    if (!zones) {
+      for (const timeframe of timeframes) {
+        raw[timeframe] = analyzeMarketStructure(candles[timeframe]!, {
+          allowSupplyDemand: ['H1', 'H4', 'D'].includes(timeframe), sourceBarSeconds: AUTOMATION_SECONDS[timeframe],
+          confirmationBarSeconds: AUTOMATION_CONFIRMATION_SECONDS[timeframe], zoneVisualBars: 30,
+        });
+      }
+      const seed = raw.H4!.lines.filter(line => line.type === 'swing' && line.fromTime !== line.toTime && line.fromPrice !== line.toPrice)
+        .sort((a, b) => a.toTime - b.toTime)[0];
+      const swing = seed ? buildAlternatingSwingFibs(candles.H4!, {
+        sourceTime: seed.fromTime, sourcePrice: seed.fromPrice, zeroTime: seed.toTime, zeroPrice: seed.toPrice,
+      }) : [];
+      const h1Swing = buildOneHourSwingFibs(candles.H1!, raw.H1!.markers);
+      zones = timeframes.flatMap(timeframe => {
+        const source = candles[timeframe]!;
+        let aligned = applySwingFibConfluence(source, analyzeAutomationTimeframe(timeframe, source, raw).zones,
+          isDaySwingFibEntryTimeframe(timeframe) ? swing : undefined).zones;
+        if (timeframe === 'M15' || timeframe === 'M30') {
+          const day = buildDayFibs(source);
+          aligned = applyDayFibConfluence(source, aligned, day.at(-1)).zones;
+        }
+        if (timeframe === 'M15') aligned = applyPostChochH1SwingFibConfluence(source, aligned, raw.M15!.lines, h1Swing);
+        return opposingFibProfitZones(aligned, timeframe, asOf);
+      });
+      sharedFibProfitAnalysis = { key: inputKey, zones, at: Date.now() };
+    }
+    if (!mt5ConnectionMatches(connection, context.mt5BridgeHeartbeat ?? {})) return;
+    context.fibProfitSnapshot = { available: true, account: connection.account, server: connection.server,
+      brokerSymbol: connection.brokerSymbol, asOf, zones };
+    context.fibProfitVersion = version;
+  } catch (error) {
+    context.fibProfitSnapshot = { available: false, error: error instanceof Error ? error.message : 'Opposing Fib zones unavailable.' };
+  } finally {
+    context.fibProfitRefreshRunning = false;
+  }
+}
+
 async function scanMt5AutomationSignals(): Promise<number> {
   const config = await readMt5Config();
   if (!config.enabled) return 0;
@@ -1423,7 +1512,6 @@ async function deliverTelegramAlerts(
   allowResultWithoutEntry = false,
 ): Promise<string[]> {
   const task = telegramAlertQueue.then(async () => {
-    const config = await readMt5Config();
     // Migrate delivery evidence from every legacy terminal, including future ones.
     const directory = path.dirname(TELEGRAM_ALERTS_FILE);
     let legacyFiles: string[] = [];
@@ -1450,7 +1538,10 @@ async function deliverTelegramAlerts(
     };
     const acknowledged: string[] = [];
     for (const alert of alerts) {
-      if (!config.telegramMessagesEnabled || !isTradeStyleEnabled(config, alert)) {
+      const config = await readMt5Config();
+      if (!config.telegramMessagesEnabled || !isTradeStyleEnabled(config, alert)
+        || (MT5_ENTRY_TIMEFRAME_OPTIONS.some(timeframe => timeframe === alert.signalTimeframe)
+          && !isMt5EntryTimeframeEnabled(config.enabledTimeframes, alert.signalTimeframe))) {
         acknowledged.push(`${alert.id}:${alert.kind}`);
         continue;
       }
@@ -1648,6 +1739,7 @@ async function startServer() {
       return res.json({
         ok: true,
         config,
+        opposingFibProfitTaking: opposingFibProfitSnapshot(),
         bridge: {
           ...(mt5Context().mt5BridgeHeartbeat ?? {}),
           capital: await capitalView(),
@@ -2473,7 +2565,10 @@ async function startServer() {
     try {
       let queued = 0;
       for (const id of ['primary', 'secondary'] as const) {
-        queued += await terminalScope.run(id, scanMt5AutomationSignals);
+        queued += await terminalScope.run(id, async () => {
+          void refreshOpposingFibProfitSnapshot().catch(error => console.error('Opposing Fib refresh failed:', error));
+          return scanMt5AutomationSignals();
+        });
       }
       if (queued > 0) console.log(`MT5 automation queued ${queued} fresh signal${queued === 1 ? '' : 's'}.`);
     } catch (error) {

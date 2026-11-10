@@ -14,11 +14,12 @@ test('Telegram numbering covers all alert kinds, shared styles, retries, restart
   const captureFile = path.join(workspace, 'messages.jsonl');
   const failOnceFile = path.join(workspace, 'fail-once.txt');
   const beforeMidnight = Date.parse('2026-10-26T18:14:59Z') / 1000;
+  const enabledTimeframes = ['M1', 'M5', 'M15', 'M30', 'H1'];
   const cookie = await seedDashboardSession(workspace, beforeMidnight * 1000);
   await mkdir(path.join(workspace, 'data'));
   await writeFile(clockFile, String(beforeMidnight));
   await writeFile(path.join(workspace, 'data', 'mt5-automation.json'), JSON.stringify({
-    enabled: false, telegramMessagesEnabled: true, scalpingEnabled: true, intradayEnabled: true,
+    enabled: false, telegramMessagesEnabled: true, scalpingEnabled: true, intradayEnabled: true, enabledTimeframes,
   }));
   const preload = path.join(workspace, 'telegram-test-preload.mjs');
   // Intercept every Telegram request before networking: these tests never send messages.
@@ -141,7 +142,7 @@ test('Telegram numbering covers all alert kinds, shared styles, retries, restart
     await send([retry]);
     assert.match((await messages()).at(-1)!, /^Trade #3 \u2014/);
     await writeFile(path.join(workspace, 'data', 'mt5-automation.json'), JSON.stringify({
-      enabled: false, telegramMessagesEnabled: true, scalpingEnabled: false, intradayEnabled: true,
+      enabled: false, telegramMessagesEnabled: true, scalpingEnabled: false, intradayEnabled: true, enabledTimeframes,
     }));
     const beforeDisabled = (await messages()).length;
     await send([entry('disabled-scalp', { openedAt: beforeMidnight + 1, tradeStyle: 'SCALPING', riskFree: 101 })]);
@@ -170,7 +171,7 @@ test('Telegram numbering covers all alert kinds, shared styles, retries, restart
     const shared = entry(`${sharedKey}:100.00000`, { tradeKey: sharedKey, openedAt: beforeMidnight + 1,
       tradeStyle: 'SCALPING', riskFree: 101 });
     await writeFile(path.join(workspace, 'data', 'mt5-automation.json'), JSON.stringify({
-      enabled: false, telegramMessagesEnabled: true, scalpingEnabled: true, intradayEnabled: true,
+      enabled: false, telegramMessagesEnabled: true, scalpingEnabled: true, intradayEnabled: true, enabledTimeframes,
     }));
     const beforeShared = (await messages()).length;
     for (const kind of ['pending', 'entry', 'rf', 'tp']) {
@@ -326,6 +327,45 @@ test('Telegram numbering covers all alert kinds, shared styles, retries, restart
     assert.ok(demos.every(text => text.includes('NOT A LIVE TRADE')));
     assert.equal(await readFile(path.join(workspace, 'data', 'telegram-alerts.json'), 'utf8'), stateBeforeDemos,
       'demos must not consume live numbers or change live delivery/report state');
+
+    // Entry timeframe checkboxes apply to every alert kind, from either account.
+    const selectTimeframes = async (selected: string[]) => {
+      const response = await dashboardFetch(`${base}/api/mt5/config`, {
+        method: 'PUT', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ enabledTimeframes: selected }),
+      });
+      assert.equal(response.status, 200, await response.text());
+    };
+    for (const timeframe of enabledTimeframes) {
+      await selectTimeframes(enabledTimeframes);
+      const alert = (suffix: string, overrides: Record<string, unknown> = {}) => entry(`timeframe-${timeframe}-${suffix}`, {
+        zoneTimeframe: 'H1', signalTimeframe: timeframe, openedAt: beforeMidnight + 62,
+        tradeStyle: 'SCALPING', riskFree: 101, ...overrides,
+      });
+      // Seed real delivery evidence so RF, TP, SL and cancellation would otherwise send.
+      await send([alert('rf'), alert('tp'), alert('sl'), alert('cancelled', { kind: 'pending' })]);
+      await selectTimeframes(enabledTimeframes.filter(value => value !== timeframe));
+      const beforeMuted = (await messages()).length;
+      const stateBeforeMuted = await readFile(reportFile, 'utf8');
+      const muted = [
+        alert('entry'), alert('pending', { kind: 'pending' }),
+        alert('rf', { kind: 'rf', rfAt: beforeMidnight + 62, partialClosedVolume: 0.5, remainingVolume: 0.5 }),
+        alert('tp', { kind: 'tp', closedAt: beforeMidnight + 62, exitPrice: 102, returnR: 2 }),
+        alert('sl', { kind: 'sl', closedAt: beforeMidnight + 62, exitPrice: 99, returnR: -1 }),
+        alert('cancelled', { kind: 'cancelled', closedAt: beforeMidnight + 62 }),
+      ];
+      await send(muted);
+      await send(muted, 200, 'secondary');
+      assert.equal((await messages()).length, beforeMuted, `${timeframe} OFF suppresses all alert kinds on both accounts`);
+      assert.equal(await readFile(reportFile, 'utf8'), stateBeforeMuted,
+        'muted alerts never reserve a trade number or change delivery evidence');
+      // An enabled entry timeframe still sends, even when its parent-zone timeframe is unticked.
+      await send([alert('other-enabled', { signalTimeframe: timeframe === 'M1' ? 'M5' : 'M1', zoneTimeframe: timeframe })]);
+      assert.equal((await messages()).length, beforeMuted + 1);
+      await selectTimeframes(enabledTimeframes);
+      await send([alert('new-after-enabling')]);
+      assert.equal((await messages()).length, beforeMuted + 2, `${timeframe} ON allows new entry alerts again`);
+    }
   } finally {
     await stop();
     assert.ok(path.resolve(workspace).startsWith(path.join(path.resolve(tmpdir()), 'telegram-numbering-test-')));

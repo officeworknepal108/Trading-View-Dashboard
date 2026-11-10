@@ -393,6 +393,7 @@ interface TradeOverlay {
   label?: string;
   fibLabels?: string[];
   chartTimeframe?: OandaGranularity;
+  zoneTimeframe?: TradeTimeframe;
   referenceOnly?: boolean;
 }
 
@@ -400,6 +401,7 @@ interface DirectZoneTableRow {
   overlay: TradeOverlay;
   sourceZoneId?: string;
   sourceZone?: StructureZone;
+  sourceTimeframe?: TradeTimeframe;
   trade: TradeLevels;
   confirmedAt: number;
   tapCount?: number;
@@ -482,6 +484,7 @@ function loadStoredRetainedChartTrades(storageKey = RETAINED_CHART_TRADES_STORAG
       ...overlay,
       // Migrate older saved drawings that used the source-zone chart instead
       // of the timeframe where the engulfing entry actually formed.
+      zoneTimeframe: overlay.zoneTimeframe ?? (overlay.chartTimeframe !== overlay.trade.signal.timeframe ? overlay.chartTimeframe as TradeTimeframe : undefined),
       chartTimeframe: overlay.trade.signal.timeframe,
     }] as const);
     return new Map(entries);
@@ -1240,6 +1243,25 @@ export function ZoneTableEngulfingConfirmations({ confirmations }: { confirmatio
       {formatTradeTimeframe(c.signal.timeframe as TradeTimeframe).toLowerCase()} {c.signal.type}
     </span>)}
   </span>;
+}
+
+const ZONE_SOURCE_TIMEFRAME_LABELS: Record<string, string> = {
+  M1: '1m', M5: '5m', M15: '15m', M30: '30m', H1: '1Hr', H4: '4Hr', D: '1D', W: '1W', MO: '1Mo',
+};
+
+export function resolveZoneTableSourceTimeframe(options: {
+  stored?: TradeTimeframe; recorded?: TradeTimeframe; setup?: TradeTimeframe; inferred?: readonly TradeTimeframe[];
+}): TradeTimeframe | undefined {
+  const explicit = options.stored ?? options.recorded ?? options.setup;
+  if (explicit) return explicit;
+  const unique = [...new Set(options.inferred ?? [])];
+  return unique.length === 1 ? unique[0] : undefined;
+}
+
+export function ZoneSourceTimeframeLabel({ timeframe }: { timeframe?: string }) {
+  const label = timeframe ? ZONE_SOURCE_TIMEFRAME_LABELS[timeframe] : undefined;
+  return label ? <span className="ml-1 whitespace-nowrap align-baseline text-[7px] font-semibold normal-case text-slate-500"
+    title="Zone source timeframe" aria-label={`Zone source timeframe: ${label}`}>{label}</span> : null;
 }
 
 export const ZoneTableEntryPrice: React.FC<{
@@ -4002,6 +4024,7 @@ export const OandaProChart: React.FC<{
       label?: string,
       drawingTimeframe: OandaGranularity = trade.signal.timeframe,
       zone?: StructureZone,
+      zoneTimeframe?: TradeTimeframe,
     ) => {
       if (isCompletedTrade(trade) || blockedGoldChartEntry(
         trade.signal.time, trade.signal.timeframe, trade.signal.direction,
@@ -4019,6 +4042,7 @@ export const OandaProChart: React.FC<{
         label,
         fibLabels: zone ? tradeZoneFibLabels(zone) : undefined,
         chartTimeframe: drawingTimeframe,
+        zoneTimeframe,
       });
     };
     for (const [zoneId, trade] of directZoneTrades) {
@@ -4045,6 +4069,7 @@ export const OandaProChart: React.FC<{
         `${executionZoneName(setup.zone)} · CHART · 1:${trade.rewardRisk}`,
         trade.signal.timeframe,
         setup.zone,
+        setup.rule.zoneTimeframe,
       );
     }
     // Reconstruct filled, unresolved direct trades from historical zones too.
@@ -4093,6 +4118,7 @@ export const OandaProChart: React.FC<{
         `${executionZoneName(zone)} · CHART · 1:${trade.rewardRisk}`,
         trade.signal.timeframe,
         zone,
+        granularity as TradeTimeframe,
       );
     }
     for (const row of mtfRows) {
@@ -4160,7 +4186,9 @@ export const OandaProChart: React.FC<{
       );
       for (const overlay of tradeOverlays) {
         if (overlay.trade.filledAt !== undefined && !isCompletedTrade(overlay.trade)) {
-          if (!isCompletedTrade(next.get(overlay.id)?.trade)) next.set(overlay.id, overlay);
+          if (!isCompletedTrade(next.get(overlay.id)?.trade)) next.set(overlay.id, {
+            ...overlay, zoneTimeframe: next.get(overlay.id)?.zoneTimeframe ?? overlay.zoneTimeframe,
+          });
         }
       }
       for (const [id, overlay] of next) {
@@ -4199,7 +4227,7 @@ export const OandaProChart: React.FC<{
         }
       }
       const signature = (entries: Map<string, TradeOverlay>) => Array.from(entries)
-        .map(([id, overlay]) => `${overlay.symbol ?? 'XAUUSD'}:${id}:${overlay.trade.status}:${overlay.trade.resolvedAt ?? ''}:${overlay.fibLabels?.join(',') ?? ''}`)
+        .map(([id, overlay]) => `${overlay.symbol ?? 'XAUUSD'}:${id}:${overlay.zoneTimeframe ?? ''}:${overlay.trade.status}:${overlay.trade.resolvedAt ?? ''}:${overlay.fibLabels?.join(',') ?? ''}`)
         .sort()
         .join('|');
       return signature(next) === signature(existing) ? existing : next;
@@ -4719,7 +4747,15 @@ export const OandaProChart: React.FC<{
       ))?.zone;
     const trade = zoneTableTrade(overlay.trade, sourceZone, tradeOverlayZoneLabel(overlay.label), overlay.id);
     if (!trade || hasZoneTableTradeExpired(trade, sourceZone)) return [];
+    const record = [...visibleCanonicalTradeRecords, ...openChartJournalTrades, ...visibleSavedJournalTrades].find(candidate => candidate.id === overlay.id);
+    const setup = [...trackedDirectTradeSetups.values()].find(candidate => matchesSource(candidate.zone)
+      && candidate.signal.time === trade.signal.time && candidate.signal.timeframe === trade.signal.timeframe);
+    const inferred = (['M1', 'M5', 'M15', 'M30', 'H1', 'H4', 'D'] as const)
+      .filter(timeframe => tableTimeframeData[timeframe]?.structure?.zones.some(matchesSource));
+    const sourceTimeframe = resolveZoneTableSourceTimeframe({ stored: overlay.zoneTimeframe,
+      recorded: record?.zoneTimeframe, setup: setup?.rule.zoneTimeframe, inferred });
     return [{ overlay, sourceZoneId, sourceZone, trade,
+      sourceTimeframe,
       confirmedAt: trade.signal.time + TIMEFRAME_SECONDS[trade.signal.timeframe],
       tapCount: sourceZone ? displayedTapCount(sourceZone) : undefined }];
   });
@@ -4740,7 +4776,7 @@ export const OandaProChart: React.FC<{
     const trade = tradeDrawingFromRecord(record);
     if (record.result === 'open') trade.status = 'active';
     if (hasZoneTableTradeExpired(trade, listed.sourceZone)) continue;
-    retainedDirectZoneTableCandidates.push({ ...listed, sourceZoneId, trade,
+    retainedDirectZoneTableCandidates.push({ ...listed, sourceZoneId, trade, sourceTimeframe: record.zoneTimeframe,
       overlay: { ...listed.overlay, id: record.id, setupId: record.setupId, symbol: marketSymbol,
         trade, label: `${record.zoneName} · ${record.source}` },
       confirmedAt: trade.signal.time + TIMEFRAME_SECONDS[trade.signal.timeframe] });
@@ -9867,14 +9903,16 @@ export const OandaProChart: React.FC<{
               <tbody>
                 {scalpEntryTableRows.map(({ id, zone, trade: sourceTrade, tradingTimeBlocked }) => {
                   const trade = zoneTableTrade(sourceTrade, undefined, zone, id)!;
-                  const sourceZone = goldScalpingAccuracyTrades.find(candidate => candidate.trade.signal.time === trade.signal.time
-                    && candidate.trade.entry === trade.entry)?.zone;
+                  const sourceSetup = goldScalpingAccuracyTrades.find(candidate => candidate.trade.signal.time === trade.signal.time
+                    && candidate.trade.entry === trade.entry);
+                  const sourceZone = sourceSetup?.zone;
                   if (hasZoneTableTradeExpired(trade, sourceZone)) return null;
                   const bullish = trade.signal.direction === 'bullish';
                   return (
                     <tr key={`scalp-entry-${id}`} className="border-t border-indigo-200 bg-indigo-50/80">
                       <td className="px-2 py-1 font-black text-slate-800">
-                        <div>SCALP · {zone}</div>
+                        <div>SCALP · {zone}<ZoneSourceTimeframeLabel timeframe={sourceSetup?.zoneTimeframe
+                          ?? chartEntryRecords.find(record => record.id === id)?.zoneTimeframe} /></div>
                         <div className="text-[8px] font-semibold text-slate-500">
                           {formatAccuracyTradeTime(
                             trade.signal.time + TIMEFRAME_SECONDS[trade.signal.timeframe],
@@ -9908,7 +9946,7 @@ export const OandaProChart: React.FC<{
                   .slice(0, 3).map(({ zone, zoneTimeframe, trade }) => (
                     <tr key={`blocked-scalp-${zoneTimeframe}-${zone.id}-${trade.signal.time}`}
                       className="border-t border-amber-200 bg-amber-50/80">
-                      <td className="px-2 py-1 font-black text-slate-700">SCALP · {executionZoneName(zone)}</td>
+                      <td className="px-2 py-1 font-black text-slate-700">SCALP · {executionZoneName(zone)}<ZoneSourceTimeframeLabel timeframe={zoneTimeframe} /></td>
                       <td className="px-2 py-1 font-bold text-slate-600">BUY SETUP</td>
                       <td className="px-2 py-1 text-slate-400">—</td>
                       <td className="px-2 py-1 text-center font-black text-slate-600">{trade.signal.type}</td>
@@ -9925,7 +9963,7 @@ export const OandaProChart: React.FC<{
                   .slice(0, 3).map(({ zone, zoneTimeframe, trade, opposingZoneBlock }) => (
                     <tr key={`opposing-scalp-${zoneTimeframe}-${zone.id}-${trade.signal.time}`}
                       className="border-t border-amber-200 bg-amber-50/80">
-                      <td className="px-2 py-1 font-black text-slate-700">SCALP · {executionZoneName(zone)}</td>
+                      <td className="px-2 py-1 font-black text-slate-700">SCALP · {executionZoneName(zone)}<ZoneSourceTimeframeLabel timeframe={zoneTimeframe} /></td>
                       <td className="px-2 py-1 font-bold text-slate-600">
                         {trade.signal.direction === 'bullish' ? 'BUY' : 'SELL'} SETUP
                       </td>
@@ -9937,7 +9975,7 @@ export const OandaProChart: React.FC<{
                       </td>
                     </tr>
                   ))}
-                {retainedDirectZoneTableRows.map(({ overlay, sourceZone, trade, tapCount, additionalConfirmations }) => {
+                {retainedDirectZoneTableRows.map(({ overlay, sourceZone, sourceTimeframe, trade, tapCount, additionalConfirmations }) => {
                   const bullish = trade.signal.direction === 'bullish';
                   const zoneLabel = tradeOverlayZoneLabel(overlay.label);
                   const currentFibLabels = sourceZone ? tradeZoneFibLabels(sourceZone) : [];
@@ -9947,6 +9985,7 @@ export const OandaProChart: React.FC<{
                       <tr className={`border-t ${bullish ? 'border-emerald-200 bg-emerald-50' : 'border-rose-200 bg-rose-50'}`}>
                         <td className="px-2 py-1 font-black text-slate-800">
                           <span>{zoneLabel ?? 'OPEN CHART TRADE'}</span>
+                          <ZoneSourceTimeframeLabel timeframe={sourceTimeframe} />
                           {(tapCount ?? 0) > 1 && (
                             <span className="ml-1 rounded bg-sky-100 px-1 py-0.5 text-[8px] font-black text-sky-800">
                               TAP {tapCount}
@@ -9985,7 +10024,7 @@ export const OandaProChart: React.FC<{
                 })}
                 {pendingConfirmationRows.map((zone) => (
                   <tr key={zone.id} className={`border-t text-slate-700 ${zone.isBuy ? 'border-emerald-100 bg-emerald-50/70' : 'border-rose-100 bg-rose-50/70'}`}>
-                    <td className={`px-2 py-1 font-black ${zone.isBuy ? 'text-emerald-800' : 'text-rose-800'}`}>{displayZoneName(zone.name, zone.oneMinuteGenesisQml)}</td>
+                    <td className={`px-2 py-1 font-black ${zone.isBuy ? 'text-emerald-800' : 'text-rose-800'}`}>{displayZoneName(zone.name, zone.oneMinuteGenesisQml)}<ZoneSourceTimeframeLabel timeframe={granularity} /></td>
                     <td className={`px-2 py-1 font-bold ${zone.isBuy ? 'text-emerald-700' : 'text-rose-700'}`}>
                       {zone.isBuy ? 'BUY' : 'SELL'}
                     </td>
@@ -10017,6 +10056,7 @@ export const OandaProChart: React.FC<{
                     }`}>
                       <td className="px-2 py-1 font-black text-slate-800">
                         <span>{displayZoneName(zone.name, zone.oneMinuteGenesisQml)}</span>
+                        <ZoneSourceTimeframeLabel timeframe={mt5Signal?.zoneTimeframe ?? granularity} />
                         {displayedTapCount(zone) !== undefined && (
                           <span className="ml-1 rounded bg-sky-100 px-1 py-0.5 text-[8px] font-black text-sky-800">
                             TAP {displayedTapCount(zone)}
@@ -10181,6 +10221,7 @@ export const OandaProChart: React.FC<{
                   <tr className="border-t border-slate-100 text-slate-700">
                     <td className="px-2 py-1 font-black text-slate-800">
                       <span>{displayConfluenceZoneName(zone)}</span>
+                      <ZoneSourceTimeframeLabel timeframe={mt5Signal?.zoneTimeframe ?? granularity} />
                       {latestTap && (
                         <span className="ml-1 rounded bg-sky-100 px-1 py-0.5 text-[8px] font-black text-sky-800">
                           TAP {tapCount ?? latestTap.count}
@@ -10381,6 +10422,7 @@ export const OandaProChart: React.FC<{
                       <tr className="border-t border-slate-200 bg-slate-50 text-slate-600">
                         <td className="px-2 py-1 font-black">
                           {displayZoneName(zone.name, zone.oneMinuteGenesisQml)}
+                          <ZoneSourceTimeframeLabel timeframe={mt5Signal?.zoneTimeframe ?? granularity} />
                           {isDeepDiscountZoneDisplay(zone, trade.signal) && (
                             <span className="ml-1 rounded bg-fuchsia-100 px-1 py-0.5 text-[8px] font-black text-fuchsia-800">
                               DEEP DISCOUNT

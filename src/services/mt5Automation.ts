@@ -224,6 +224,27 @@ export function goldAutomationCountertrendBlocked(signal: Mt5SignalInput): boole
     ));
 }
 
+export interface OpposingFibProfitZone {
+  id: string; timeframe: TradeTimeframe; isBuy: boolean; bottom: number; top: number;
+}
+
+export type OpposingFibProfitSnapshot = { available: false; error: string } | {
+  available: true; account: string; server: string; brokerSymbol: string; asOf: number;
+  zones: OpposingFibProfitZone[];
+};
+
+export function opposingFibProfitZones(zones: readonly StructureZone[], timeframe: TradeTimeframe, asOf: number): OpposingFibProfitZone[] {
+  return zones.filter(zone => zone.active && zone.status === 'valid' && zone.startTime <= asOf
+    && (zone.activeFromTime === undefined || zone.activeFromTime <= asOf)
+    && (zone.invalidatedAt === undefined || zone.invalidatedAt > asOf)
+    && ((zone.fibStatus === 'a-plus' && !!zone.fibBand && zone.fibDeepInvalidatedAt === undefined)
+      || (zone.swingFibStatus === 'a-plus' && !!zone.swingFibBand)
+      || (zone.h1SwingFibStatus === 'aligned' && !!zone.h1SwingFibBand)
+      || (zone.dayFibStatus === 'a-plus' && !!zone.dayFibBand))
+    && Number.isFinite(zone.bottom) && Number.isFinite(zone.top) && zone.bottom > 0 && zone.top > zone.bottom)
+    .map(zone => ({ id: zone.id, timeframe, isBuy: zone.isBuy, bottom: zone.bottom, top: zone.top }));
+}
+
 /** The first active opposing zone must be at least one full stop distance from entry. */
 export function goldOpposingZoneBeforeOneR(
   signal: Pick<Mt5SignalInput, 'direction' | 'entry' | 'stopLoss' | 'signalAt'>,

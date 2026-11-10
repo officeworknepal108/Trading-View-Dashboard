@@ -29,6 +29,7 @@ import {
   isTradeStyleEnabled,
   mt5ClosedReturnR,
   mt5SignalDisabledReason,
+  opposingFibProfitZones,
   mt5ConnectionMatches,
   normalizeMt5DailyLossPercent,
   sanitizeMt5DailyRisk,
@@ -39,6 +40,22 @@ import {
   shouldRemoveOpenMt5JournalRecord,
   tradeToMt5Signal,
 } from '../src/services/mt5Automation';
+
+test('opposing profit zones require current explicit Fibonacci alignment', () => {
+  const zone = { id: 'fib-sell', active: true, status: 'valid', isBuy: false, startTime: 100,
+    bottom: 110, top: 112, fibStatus: 'a-plus', fibBand: '0.71-0.79' } as StructureZone;
+  assert.deepEqual(opposingFibProfitZones([zone], 'M15', 1000), [
+    { id: 'fib-sell', timeframe: 'M15', isBuy: false, bottom: 110, top: 112 },
+  ]);
+  for (const changes of [{ active: false }, { status: 'rejected' }, { fibStatus: 'not-valid' },
+    { startTime: 1100 }, { invalidatedAt: 900 }, { fibDeepInvalidatedAt: 800 }, { top: NaN }]) {
+    assert.equal(opposingFibProfitZones([{ ...zone, ...changes } as StructureZone], 'M15', 1000).length, 0);
+  }
+  assert.equal(opposingFibProfitZones([{ ...zone, fibStatus: undefined,
+    dayFibStatus: 'a-plus', dayFibBand: '0.71-0.79' }], 'M30', 1000).length, 1);
+  assert.equal(opposingFibProfitZones([{ ...zone, fibStatus: undefined, name: 'DT' }], 'M15', 1000).length, 0,
+    'a bare DT label is not proof of Fib alignment');
+});
 import type { Mt5SignalInput, Mt5StoredSignal } from '../src/services/mt5Automation';
 import type { StructureLine, StructureZone } from '../src/services/marketStructure';
 import type { TradeLevels } from '../src/services/tradeLevels';
