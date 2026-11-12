@@ -55,9 +55,12 @@ test('MT5 account handshake resets old candles and queues while preserving autom
     }
     assert.ok(ready, output);
     const first = { bridgeId: 'test-bridge', account: '123', server: 'Broker-A', brokerSymbol: 'XAUUSD.x', balance: 12345, equity: 12400,
-      terminalConnected: true, symbolResolved: true, symbolCandidates: ['XAUUSD.x'] };
+      terminalConnected: true, symbolResolved: true, symbolCandidates: ['XAUUSD.x'],
+      fibProfitEvents: [{ ticket: 77, direction: 'BUY', originalVolume: 0.05, remainingVolume: 0.01,
+        status: 'partial', phase: 'touch', updatedAt: 1000, zoneTimeframe: 'M15', zoneName: 'QML' }] };
     assert.equal((await request('/api/mt5/heartbeat', first)).status, 200);
     let status = await (await request('/api/mt5/status')).json();
+    assert.deepEqual(status.bridge.fibProfitEvents, first.fibProfitEvents);
     assert.equal(status.config.brokerSymbol, 'XAUUSD.x');
     assert.equal(status.config.brokerSymbolAccount, '123');
     assert.equal(status.config.enabled, false);

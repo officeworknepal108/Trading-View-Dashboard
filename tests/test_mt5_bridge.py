@@ -766,6 +766,180 @@ class OpposingFibProfitTests(BridgeTestCase):
         self.assertEqual(self.send.call_args.args[0]['price'], 90)
         self.assertEqual(self.position.volume, 0)
 
+    def test_confirmation_closes_the_remaining_twenty_percent_after_restart(self):
+        bridge.manage_opposing_fib_profit(self.payload, {})
+        self.assertEqual(self.position.volume, 0.01)
+        bridge.FIB_PROFIT_PREVIOUS_QUOTES.clear()
+        self.zone['engulfingConfirmedAt'] = self.now
+        self.tick.bid = 108  # Confirmation need not arrive while still inside the zone.
+        bridge.manage_opposing_fib_profit(self.payload, {})
+        self.assertEqual([c.args[0]['volume'] for c in self.send.call_args_list], [0.04, 0.01])
+        self.assertEqual(self.position.volume, 0)
+        self.assertEqual((self.position.sl, self.position.tp), (90, 120))
+        event = next(iter(json.loads(self.file.read_text()).values()))
+        self.assertEqual((event['phase'], event['targetRemaining'], event['status']), ('engulfing', 0, 'done'))
+        bridge.manage_opposing_fib_profit(self.payload, {})
+        self.assertEqual(self.send.call_count, 2)
+
+    def test_already_confirmed_opposing_zone_closes_all_at_first_touch(self):
+        self.zone['engulfingConfirmedAt'] = self.now - 60
+        bridge.manage_opposing_fib_profit(self.payload, {})
+        self.assertEqual(self.send.call_args.args[0]['volume'], 0.05)
+        self.assertEqual(self.position.volume, 0)
+        self.assertNotIn('sl', self.send.call_args.args[0])
+        self.assertNotIn('tp', self.send.call_args.args[0])
+
+    def test_confirmed_buy_zone_closes_sell_remainder_even_after_reversal_into_loss(self):
+        self.position.type = bridge.mt5.POSITION_TYPE_SELL
+        self.position.sl, self.position.tp = 110, 80
+        self.tick.bid, self.tick.ask = 89.9, 90
+        self.zone.update(isBuy=True, bottom=88, top=90)
+        bridge.manage_opposing_fib_profit(self.payload, {})
+        self.zone['engulfingConfirmedAt'] = self.now
+        self.tick.bid, self.tick.ask = 100.9, 101
+        self.position.profit = -1
+        bridge.manage_opposing_fib_profit(self.payload, {})
+        self.assertEqual(self.position.volume, 0)
+        self.assertEqual(self.send.call_args.args[0]['type'], bridge.mt5.ORDER_TYPE_BUY)
+        self.assertEqual(self.send.call_args.args[0]['volume'], 0.01)
+
+    def test_other_zone_confirmation_cannot_close_the_remainder(self):
+        bridge.manage_opposing_fib_profit(self.payload, {})
+        other = {**self.zone, 'id': 'unrelated', 'engulfingConfirmedAt': self.now}
+        self.payload['opposingFibProfitTaking']['zones'].append(other)
+        bridge.manage_opposing_fib_profit(self.payload, {})
+        self.assertEqual(self.position.volume, 0.01)
+        self.send.assert_called_once()
+        self.zone.update(timeframe='H1', engulfingConfirmedAt=self.now)
+        bridge.manage_opposing_fib_profit(self.payload, {})
+        self.send.assert_called_once()
+
+    def test_display_reports_actual_partial_and_confirmed_full_close_after_restart(self):
+        self.assertEqual(bridge.fib_profit_display_events('XAUUSD'), [])
+        bridge.manage_opposing_fib_profit(self.payload, {})
+        [event] = bridge.fib_profit_display_events('XAUUSD')
+        self.assertEqual((event['ticket'], event['originalVolume'], event['remainingVolume']), (77, 0.05, 0.01))
+        self.assertEqual((event['status'], event['phase']), ('partial', 'touch'))
+        self.zone['engulfingConfirmedAt'] = self.now
+        bridge.manage_opposing_fib_profit(self.payload, {})
+        [event] = bridge.fib_profit_display_events('XAUUSD')
+        self.assertEqual((event['status'], event['phase'], event['remainingVolume']), ('closed', 'engulfing', 0))
+
+    def test_display_never_claims_an_intent_unknown_result_or_later_sl_was_a_fib_close(self):
+        self.send.side_effect = None
+        self.send.return_value = None
+        with self.assertRaisesRegex(RuntimeError, 'unknown'):
+            bridge.manage_opposing_fib_profit(self.payload, {})
+        self.assertEqual(bridge.fib_profit_display_events('XAUUSD'), [])
+        saved = json.loads(self.file.read_text())
+        event = next(iter(saved.values()))
+        event.update(status='done', progressConfirmed=True, remainingVolume=0.01)
+        self.file.write_text(json.dumps(saved))
+        self.position.volume = 0  # Position subsequently disappeared via another exit.
+        self.assertEqual(bridge.fib_profit_display_events('XAUUSD'), [])
+
+    def test_display_filters_other_account_symbol_reused_ticket_and_unavailable_positions(self):
+        bridge.manage_opposing_fib_profit(self.payload, {})
+        self.assertEqual(bridge.fib_profit_display_events('EURUSD'), [])
+        with patch.object(bridge, 'ACTIVE_ACCOUNT', ('other-account', 'test-server')):
+            self.assertEqual(bridge.fib_profit_display_events('XAUUSD'), [])
+        self.position.identifier = 88
+        self.assertEqual(bridge.fib_profit_display_events('XAUUSD'), [])
+        self.position.identifier = 77
+        with patch.object(bridge.mt5, 'positions_get', return_value=None):
+            self.assertEqual(bridge.fib_profit_display_events('XAUUSD'), [])
+
+    def test_invalid_or_future_confirmation_does_not_close_remainder(self):
+        bridge.manage_opposing_fib_profit(self.payload, {})
+        for value in [None, True, 'confirmed', float('nan'), float('inf'), self.now + 1, 0]:
+            self.zone['engulfingConfirmedAt'] = value
+            bridge.manage_opposing_fib_profit(self.payload, {})
+        self.send.assert_called_once()
+        self.assertEqual(self.position.volume, 0.01)
+
+    def test_remainder_waits_for_fresh_data_and_stale_ticks_cannot_close(self):
+        bridge.manage_opposing_fib_profit(self.payload, {})
+        self.zone['engulfingConfirmedAt'] = self.now
+        self.payload['opposingFibProfitTaking']['asOf'] = self.now - 91
+        bridge.manage_opposing_fib_profit(self.payload, {})
+        self.payload['opposingFibProfitTaking']['asOf'] = self.now
+        self.tick.time = self.now - 121
+        bridge.manage_opposing_fib_profit(self.payload, {})
+        self.send.assert_called_once()
+
+    def test_uncertain_remainder_send_is_not_repeated_after_restart(self):
+        bridge.manage_opposing_fib_profit(self.payload, {})
+        self.zone['engulfingConfirmedAt'] = self.now
+        self.send.side_effect = None
+        self.send.return_value = None
+        with self.assertRaisesRegex(RuntimeError, 'unknown'):
+            bridge.manage_opposing_fib_profit(self.payload, {})
+        bridge.FIB_PROFIT_PREVIOUS_QUOTES.clear()
+        bridge.manage_opposing_fib_profit(self.payload, {})
+        self.assertEqual(self.send.call_count, 2)
+        self.assertEqual(self.position.volume, 0.01)
+
+    def test_confirmation_cannot_upgrade_an_unreconciled_eighty_percent_send(self):
+        self.send.side_effect = None
+        self.send.return_value = None
+        with self.assertRaisesRegex(RuntimeError, 'unknown'):
+            bridge.manage_opposing_fib_profit(self.payload, {})
+        self.zone['engulfingConfirmedAt'] = self.now
+        bridge.manage_opposing_fib_profit(self.payload, {})
+        self.send.assert_called_once()
+
+    def test_confirmed_full_exit_partial_fills_only_close_the_outstanding_remainder(self):
+        self.zone['engulfingConfirmedAt'] = self.now
+        def partial(request):
+            self.position.volume = round(self.position.volume - min(0.02, request['volume']), 8)
+            return SimpleNamespace(retcode=bridge.mt5.TRADE_RETCODE_DONE_PARTIAL, deal=42, order=0)
+        self.send.side_effect = partial
+        for _ in range(4):
+            bridge.manage_opposing_fib_profit(self.payload, {})
+        self.assertEqual([c.args[0]['volume'] for c in self.send.call_args_list], [0.05, 0.03, 0.01])
+        self.assertEqual(self.position.volume, 0)
+
+    def test_confirmation_after_partial_eighty_percent_fill_closes_all_that_is_left(self):
+        def execute(request):
+            closed = 0.02 if self.send.call_count == 1 else request['volume']
+            self.position.volume = round(self.position.volume - closed, 8)
+            return SimpleNamespace(retcode=bridge.mt5.TRADE_RETCODE_DONE_PARTIAL, deal=42, order=0)
+        self.send.side_effect = execute
+        bridge.manage_opposing_fib_profit(self.payload, {})
+        self.assertEqual(self.position.volume, 0.03)
+        self.zone['engulfingConfirmedAt'] = self.now
+        bridge.manage_opposing_fib_profit(self.payload, {})
+        self.assertEqual([c.args[0]['volume'] for c in self.send.call_args_list], [0.04, 0.03])
+        self.assertEqual(self.position.volume, 0)
+
+    def test_remainder_intent_must_be_saved_before_sending(self):
+        bridge.manage_opposing_fib_profit(self.payload, {})
+        self.zone['engulfingConfirmedAt'] = self.now
+        with patch.object(bridge, 'write_fib_profit_state', side_effect=OSError('disk unavailable')):
+            with self.assertRaises(OSError):
+                bridge.manage_opposing_fib_profit(self.payload, {})
+        self.send.assert_called_once()
+        self.assertEqual(self.position.volume, 0.01)
+
+    def test_rejected_remainder_retries_only_after_delay_and_does_not_repeat_eighty_percent(self):
+        bridge.manage_opposing_fib_profit(self.payload, {})
+        self.zone['engulfingConfirmedAt'] = self.now
+        self.send.side_effect = None
+        self.send.return_value = SimpleNamespace(retcode=bridge.mt5.TRADE_RETCODE_MARKET_CLOSED, comment='Market closed')
+        bridge.manage_opposing_fib_profit(self.payload, {})
+        bridge.manage_opposing_fib_profit(self.payload, {})
+        self.assertEqual(self.send.call_count, 2)
+        saved = json.loads(self.file.read_text())
+        next(iter(saved.values()))['attemptedAt'] = self.now - 31
+        self.file.write_text(json.dumps(saved))
+        def complete(request):
+            self.assertEqual(request['volume'], 0.01)
+            self.position.volume = 0
+            return SimpleNamespace(retcode=bridge.mt5.TRADE_RETCODE_DONE, deal=43, order=0)
+        self.send.side_effect = complete
+        bridge.manage_opposing_fib_profit(self.payload, {})
+        self.assertEqual(self.position.volume, 0)
+
     def test_no_close_before_zone_on_loss_beyond_tp_or_for_foreign_account_and_stale_data(self):
         self.tick.bid = 109
         bridge.manage_opposing_fib_profit(self.payload, {})

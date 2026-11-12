@@ -12,6 +12,10 @@ import {
   goldAutomationNewsPauseUntil,
   goldAutomationOpposingZoneBlocked,
   goldOpposingZoneBeforeOneR,
+  prepareGoldOpposingZones,
+  goldOpposingZoneBlockLabel,
+  sanitizeMt5FibProfitEvents,
+  mt5FibProfitEventLabel,
   goldAutomationRepeatAreaBlocked,
   applySignalOppositePositionTarget,
   buildMt5SignalId,
@@ -59,6 +63,30 @@ test('opposing profit zones require current explicit Fibonacci alignment', () =>
 import type { Mt5SignalInput, Mt5StoredSignal } from '../src/services/mt5Automation';
 import type { StructureLine, StructureZone } from '../src/services/marketStructure';
 import type { TradeLevels } from '../src/services/tradeLevels';
+
+test('Fib exit snapshots carry only completed engulfing confirmation for the same aligned zone', () => {
+  const zone = { id: 'buy-qml', name: 'QML', category: 'mg', isBuy: true, bottom: 97, top: 101,
+    startTime: 0, activeFromTime: 50, endTime: 10_000, active: true, status: 'valid',
+    tradeable: true, fibStatus: 'a-plus', fibBand: '0.5-0.618', fibLevel50: 105 } as StructureZone;
+  const candles = [
+    { time: 100, open: 100, high: 101, low: 98, close: 99, complete: true },
+    { time: 1000, open: 99, high: 103, low: 97, close: 102, complete: true },
+  ];
+  const zones = [zone, { ...zone, id: 'other-qml', bottom: 110, top: 112 }];
+  const snapshot = opposingFibProfitZones(zones, 'H1', 1900, { M15: candles });
+  assert.equal(snapshot[0].engulfingConfirmedAt, 1900);
+  assert.equal(snapshot[1].engulfingConfirmedAt, undefined);
+  assert.equal(opposingFibProfitZones([zone], 'H1', 1899, { M15: candles })[0].engulfingConfirmedAt, undefined);
+  assert.equal(opposingFibProfitZones([zone], 'H1', 2000, {
+    M15: candles.map((c, i) => i === 1 ? { ...c, complete: false } : c),
+  })[0].engulfingConfirmedAt, undefined);
+  assert.equal(opposingFibProfitZones([{ ...zone, isBuy: false }], 'H1', 2000,
+    { M15: candles })[0].engulfingConfirmedAt, undefined);
+  assert.equal(opposingFibProfitZones([zone], 'H1', 2000)[0].engulfingConfirmedAt, undefined);
+  assert.equal(opposingFibProfitZones([{ ...zone, fibStatus: 'not-valid' }], 'H1', 2000,
+    { M15: candles }).length, 0);
+  assert.equal(opposingFibProfitZones([zone], 'M5', 1300, { M5: candles })[0].engulfingConfirmedAt, 1300);
+});
 
 test('overall P/L accepts signed broker totals and rejects invalid or inconsistent snapshots', () => {
   const summary = { available: true, realizedProfitMoney: 0, realizedLossMoney: 12.35,
@@ -430,8 +458,9 @@ test('gold entry guards block bearish one-minute buys, opposing zones before 1R,
       ...candidate.journalContext!.biasAtEntry, H1: 'bullish',
     } },
   }), false);
-  const sellZone = { active: true, status: 'valid', isBuy: false,
-    startTime: 0, bottom: 102, top: 104 } as StructureZone;
+  const sellZone = { active: true, status: 'valid', isBuy: false, opposingEngulfingConfirmedAt: 1_000,
+    id: 'confirmed-sell', name: 'QML', category: 'mg', endTime: 3_000,
+    startTime: 0, bottom: 102, top: 104 } as const;
   assert.equal(goldAutomationOpposingZoneBlocked(candidate, [sellZone]), true);
   assert.equal(goldAutomationOpposingZoneBlocked(candidate, [{ ...sellZone, bottom: 103, top: 106 }]), false);
   assert.equal(goldAutomationOpposingZoneBlocked(candidate, [{ ...sellZone, bottom: 104, top: 106 }]), false);
@@ -452,6 +481,78 @@ test('gold entry guards block bearish one-minute buys, opposing zones before 1R,
   const confirmedChoch = [{ type: 'choch', direction: 'bullish', toTime: 800 }] as StructureLine[];
   assert.equal(goldAutomationRepeatAreaBlocked(candidate, previous, confirmedChoch), false);
   assert.equal(goldAutomationRepeatAreaBlocked({ ...candidate, entry: 110, stopLoss: 107 }, previous, []), false);
+});
+
+test('opposing QML blocks only after its own completed, direction-matching engulfing', () => {
+  const zone = { id: 'h1-qml', name: 'QML', category: 'mg', isBuy: true,
+    bottom: 3975.65, top: 4000.774, startTime: 0, endTime: 10_000,
+    activeFromTime: 100, active: true, status: 'valid', tradeable: true,
+    fibStatus: 'a-plus', fibBand: '0.5-0.618', fibLevel50: 4009.515 } as StructureZone;
+  const sell = { direction: 'SELL' as const, entry: 3989.055, stopLoss: 4002.73,
+    signalAt: 5_000, calculatedAt: 5_900 };
+  // The pictured T2: the aligned zone is touched, but exact Fib 50% is not.
+  const candles = [
+    { time: 1_000, open: 3982.165, high: 3984.175, low: 3978.245, close: 3978.77, complete: true },
+    { time: 1_900, open: 3978.825, high: 3985.705, low: 3968.765, close: 3982.71, complete: true },
+    { time: 2_800, open: 3983.02, high: 3995.415, low: 3980.745, close: 3994.345, complete: true },
+  ];
+  assert.equal(goldOpposingZoneBeforeOneR(sell, [zone]), undefined);
+  assert.equal(goldOpposingZoneBeforeOneR(sell, prepareGoldOpposingZones([zone], 'H1', {})), undefined);
+  for (const timeframe of ['H1', 'H4'] as const) {
+    const prepared = prepareGoldOpposingZones([zone], timeframe, { M15: candles });
+    assert.equal(prepared[0].opposingEngulfingConfirmedAt, 3_700);
+    assert.equal(goldOpposingZoneBlockLabel({ zone: prepared[0], rewardRisk: 0 }),
+      `NO ENTRY · ${timeframe} QML BUY CONFIRMED BY M15 T2 · 0.00R`);
+    assert.equal(goldOpposingZoneBeforeOneR(sell, prepared)?.rewardRisk, 0);
+    assert.equal(goldOpposingZoneBeforeOneR({ ...sell, signalAt: 2_700, calculatedAt: 3_699 }, prepared), undefined);
+    assert.equal(goldOpposingZoneBeforeOneR({ ...sell, signalAt: 2_800, calculatedAt: 3_700 }, prepared)?.rewardRisk, 0);
+    assert.equal(goldOpposingZoneBeforeOneR(sell, prepareGoldOpposingZones([zone], timeframe,
+      { M15: candles.map((c, i) => i === 2 ? { ...c, complete: false } : c) })), undefined);
+  }
+  assert.equal(goldOpposingZoneBeforeOneR(sell, prepareGoldOpposingZones([zone], 'H1', {
+    M15: candles.map(c => ({ ...c, open: c.open + 100, high: c.high + 100,
+      low: c.low + 100, close: c.close + 100 })),
+  })), undefined, 'an unrelated engulfing outside this QML cannot confirm it');
+  assert.equal(goldOpposingZoneBeforeOneR(sell, prepareGoldOpposingZones([
+    { ...zone, activeFromTime: 4_000 },
+  ], 'H1', { M15: candles })), undefined, 'confirmation before zone activation does not count');
+  assert.equal(goldOpposingZoneBeforeOneR(sell, prepareGoldOpposingZones([
+    { ...zone, active: false, status: 'invalidated' },
+  ], 'H1', { M15: candles })), undefined);
+  const mirrored = candles.map(c => ({ ...c, open: 8000 - c.open, close: 8000 - c.close,
+    high: 8000 - c.low, low: 8000 - c.high }));
+  assert.equal(goldOpposingZoneBeforeOneR(sell,
+    prepareGoldOpposingZones([zone], 'H1', { M15: mirrored })), undefined,
+  'a bearish engulfing does not confirm a BUY zone');
+  const buy = { ...sell, direction: 'BUY' as const, entry: 8000 - sell.entry, stopLoss: 8000 - sell.stopLoss };
+  const sellZone = { ...zone, isBuy: false, bottom: 8000 - zone.top, top: 8000 - zone.bottom };
+  assert.equal(goldOpposingZoneBeforeOneR(buy, [sellZone]), undefined);
+  assert.equal(goldOpposingZoneBeforeOneR(buy,
+    prepareGoldOpposingZones([sellZone], 'H1', { M15: mirrored }))?.rewardRisk, 0);
+  assert.equal(goldOpposingZoneBeforeOneR(sell,
+    prepareGoldOpposingZones([zone], 'H1', { M30: candles }))?.rewardRisk, 0);
+  assert.equal(goldOpposingZoneBeforeOneR(sell,
+    prepareGoldOpposingZones([zone], 'H4', { M30: candles })), undefined,
+  'unmapped M30 confirmation is not accepted for an H4 zone');
+});
+
+test('table close labels use actual broker volume and reject inconsistent exit telemetry', () => {
+  const raw = { ticket: 77, direction: 'BUY', originalVolume: 0.05, remainingVolume: 0.01,
+    phase: 'touch', status: 'partial', updatedAt: 1000, zoneTimeframe: 'M15', zoneName: 'QML' };
+  const [event] = sanitizeMt5FibProfitEvents([raw]);
+  assert.ok(event);
+  assert.equal(mt5FibProfitEventLabel(event), '80% CLOSED · 20% RUNNING');
+  assert.equal(mt5FibProfitEventLabel({ ...event, originalVolume: 0.02 }), '50% CLOSED · 50% RUNNING');
+  assert.equal(mt5FibProfitEventLabel({ ...event, remainingVolume: 0, status: 'closed', phase: 'engulfing' }),
+    'FULLY CLOSED · Opposing engulfing confirmed');
+  assert.equal(mt5FibProfitEventLabel({ ...event, remainingVolume: 0, status: 'closed' }),
+    'FULLY CLOSED · Fib zone touch');
+  for (const change of [{ status: 'pending' }, { status: 'closed' }, { remainingVolume: 0 },
+    { remainingVolume: -1 }, { remainingVolume: 0.06 }, { originalVolume: NaN }, { direction: 'invalid' },
+    { ticket: -1 }, { updatedAt: Infinity }]) {
+    assert.deepEqual(sanitizeMt5FibProfitEvents([{ ...raw, ...change }]), []);
+  }
+  assert.deepEqual(sanitizeMt5FibProfitEvents(undefined), []);
 });
 
 test('chart and MT5 share the exact one-minute buy countertrend rule', () => {

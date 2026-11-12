@@ -5,7 +5,111 @@ import {
   type TradeLevels,
   type TradeTimeframe,
 } from './tradeLevels';
-import type { StructureCandle, StructureLine, StructureZone } from './marketStructure';
+import { detectEngulfingPatternAt, isZoneEligibleForEngulfingEntry,
+  type StructureCandle, type StructureLine, type StructureZone } from './marketStructure';
+
+export interface GoldOpposingZone extends StructureZone {
+  opposingEngulfingConfirmedAt?: number;
+  opposingZoneTimeframe?: TradeTimeframe;
+  opposingEngulfingTimeframe?: TradeTimeframe;
+  opposingEngulfingType?: string;
+}
+
+const OPPOSING_CONFIRMATION_SECONDS: Record<TradeTimeframe, number> = {
+  M1: 60, M5: 300, M15: 900, M30: 1800, H1: 3600, H4: 14400, D: 86400,
+};
+
+/** An opposing zone needs its own completed reversal, not merely a zone label.
+ * Confirmation touches the aligned zone; it need not touch the exact Fib 50% line.
+ * Retain the close time so a later reversal cannot veto an earlier entry.
+ */
+export function prepareGoldOpposingZones(
+  zones: readonly StructureZone[],
+  zoneTimeframe: TradeTimeframe,
+  candles: Partial<Record<TradeTimeframe, StructureCandle[]>>,
+): GoldOpposingZone[] {
+  const routes: TradeTimeframe[] = zoneTimeframe === 'M15' ? ['M15', 'M30']
+    : zoneTimeframe === 'H1' ? ['H1', 'M15', 'M30']
+      : zoneTimeframe === 'H4' ? ['H4', 'M15'] : [zoneTimeframe];
+  const eligible = zones.filter(isZoneEligibleForEngulfingEntry);
+  if (!eligible.length) return [];
+  const earliest = Math.min(...eligible.map(zone => Math.max(zone.startTime,
+    zone.activeFromTime ?? zone.startTime, zone.confirmationTime ?? zone.startTime)));
+  const patterns = routes.flatMap(timeframe => {
+    const source = candles[timeframe] ?? [];
+    return source.flatMap((candle, index) => {
+      if (candle.complete === false || candle.time < earliest) return [];
+      const pattern = detectEngulfingPatternAt(source, index);
+      return pattern ? [{ pattern, source, timeframe,
+        confirmedAt: candle.time + OPPOSING_CONFIRMATION_SECONDS[timeframe] }] : [];
+    });
+  });
+  return eligible.map(zone => {
+    const validFrom = Math.max(zone.startTime, zone.activeFromTime ?? zone.startTime,
+      zone.confirmationTime ?? zone.startTime);
+    let confirmedAt: number | undefined;
+    let confirmation: typeof patterns[number] | undefined;
+    for (const candidate of patterns) {
+      const { pattern, source } = candidate;
+      if (pattern.direction !== (zone.isBuy ? 'bullish' : 'bearish')
+        || source[pattern.endIndex].time < validFrom) continue;
+      const touchesZone = source.slice(pattern.startIndex, pattern.endIndex + 1).some(candle => (
+        candle.time > zone.startTime && candle.time >= validFrom
+        && candle.high >= zone.bottom && candle.low <= zone.top
+      ));
+      if (touchesZone && (confirmedAt === undefined || candidate.confirmedAt < confirmedAt)) {
+        confirmedAt = candidate.confirmedAt;
+        confirmation = candidate;
+      }
+    }
+    return { ...zone, opposingZoneTimeframe: zoneTimeframe, opposingEngulfingConfirmedAt: confirmedAt,
+      opposingEngulfingTimeframe: confirmation?.timeframe, opposingEngulfingType: confirmation?.pattern.type };
+  });
+}
+
+export function goldOpposingZoneBlockLabel(block: { zone: GoldOpposingZone; rewardRisk: number }): string {
+  const zone = block.zone;
+  const confirmation = zone.opposingEngulfingTimeframe && zone.opposingEngulfingType
+    ? `CONFIRMED BY ${zone.opposingEngulfingTimeframe} ${zone.opposingEngulfingType}` : 'ENGULFING CONFIRMED';
+  return `NO ENTRY · ${zone.opposingZoneTimeframe ? `${zone.opposingZoneTimeframe} ` : ''}${zone.name} `
+    + `${zone.isBuy ? 'BUY' : 'SELL'} ${confirmation} · ${block.rewardRisk.toFixed(2)}R`;
+}
+
+export interface Mt5FibProfitEvent {
+  ticket: number;
+  direction: 'BUY' | 'SELL';
+  originalVolume: number;
+  remainingVolume: number;
+  phase: 'touch' | 'engulfing';
+  status: 'partial' | 'closed';
+  zoneTimeframe?: TradeTimeframe;
+  zoneName?: string;
+  updatedAt: number;
+}
+
+export function sanitizeMt5FibProfitEvents(value: unknown): Mt5FibProfitEvent[] {
+  if (!Array.isArray(value)) return [];
+  return value.slice(0, 25).flatMap(raw => {
+    if (!raw || !Number.isInteger(raw.ticket) || raw.ticket <= 0 || !['BUY', 'SELL'].includes(raw.direction)
+      || !Number.isFinite(raw.originalVolume) || raw.originalVolume <= 0
+      || !Number.isFinite(raw.remainingVolume) || raw.remainingVolume < 0 || raw.remainingVolume >= raw.originalVolume
+      || !Number.isFinite(raw.updatedAt) || raw.updatedAt <= 0
+      || !['touch', 'engulfing'].includes(raw.phase)
+      || (raw.status !== 'partial' || raw.remainingVolume <= 0) && (raw.status !== 'closed' || raw.remainingVolume !== 0)) return [];
+    return [{ ticket: raw.ticket, direction: raw.direction, originalVolume: raw.originalVolume,
+      remainingVolume: raw.remainingVolume, phase: raw.phase, status: raw.status, updatedAt: raw.updatedAt,
+      zoneTimeframe: Object.hasOwn(OPPOSING_CONFIRMATION_SECONDS, raw.zoneTimeframe) ? raw.zoneTimeframe : undefined,
+      zoneName: typeof raw.zoneName === 'string' ? raw.zoneName.slice(0, 50) : undefined }];
+  });
+}
+
+export function mt5FibProfitEventLabel(event: Mt5FibProfitEvent): string {
+  if (event.status === 'closed') return event.phase === 'engulfing'
+    ? 'FULLY CLOSED · Opposing engulfing confirmed' : 'FULLY CLOSED · Fib zone touch';
+  const remaining = Number((event.remainingVolume / event.originalVolume * 100).toFixed(1));
+  const closed = Number((100 - remaining).toFixed(1));
+  return `${closed}% CLOSED · ${remaining}% RUNNING`;
+}
 
 export const MT5_RISK_PERCENT_OPTIONS = [
   0.25, 0.5, 1, 1.5, 2, 2.5, 3, 3.5, 4, 4.5, 5,
@@ -226,6 +330,8 @@ export function goldAutomationCountertrendBlocked(signal: Mt5SignalInput): boole
 
 export interface OpposingFibProfitZone {
   id: string; timeframe: TradeTimeframe; isBuy: boolean; bottom: number; top: number;
+  name?: string;
+  engulfingConfirmedAt?: number;
 }
 
 export type OpposingFibProfitSnapshot = { available: false; error: string } | {
@@ -233,7 +339,10 @@ export type OpposingFibProfitSnapshot = { available: false; error: string } | {
   zones: OpposingFibProfitZone[];
 };
 
-export function opposingFibProfitZones(zones: readonly StructureZone[], timeframe: TradeTimeframe, asOf: number): OpposingFibProfitZone[] {
+export function opposingFibProfitZones(zones: readonly StructureZone[], timeframe: TradeTimeframe, asOf: number,
+  candles: Partial<Record<TradeTimeframe, StructureCandle[]>> = {}): OpposingFibProfitZone[] {
+  const confirmations = new Map(prepareGoldOpposingZones(zones, timeframe, candles)
+    .map(zone => [zone.id, zone.opposingEngulfingConfirmedAt]));
   return zones.filter(zone => zone.active && zone.status === 'valid' && zone.startTime <= asOf
     && (zone.activeFromTime === undefined || zone.activeFromTime <= asOf)
     && (zone.invalidatedAt === undefined || zone.invalidatedAt > asOf)
@@ -242,19 +351,25 @@ export function opposingFibProfitZones(zones: readonly StructureZone[], timefram
       || (zone.h1SwingFibStatus === 'aligned' && !!zone.h1SwingFibBand)
       || (zone.dayFibStatus === 'a-plus' && !!zone.dayFibBand))
     && Number.isFinite(zone.bottom) && Number.isFinite(zone.top) && zone.bottom > 0 && zone.top > zone.bottom)
-    .map(zone => ({ id: zone.id, timeframe, isBuy: zone.isBuy, bottom: zone.bottom, top: zone.top }));
+    .map(zone => {
+      const confirmedAt = confirmations.get(zone.id);
+      return { id: zone.id, ...(zone.name ? { name: zone.name } : {}), timeframe, isBuy: zone.isBuy, bottom: zone.bottom, top: zone.top,
+        ...(confirmedAt !== undefined && confirmedAt <= asOf ? { engulfingConfirmedAt: confirmedAt } : {}) };
+    });
 }
 
-/** The first active opposing zone must be at least one full stop distance from entry. */
+/** Only an already-confirmed opposing zone can block entry before one full stop distance. */
 export function goldOpposingZoneBeforeOneR(
-  signal: Pick<Mt5SignalInput, 'direction' | 'entry' | 'stopLoss' | 'signalAt'>,
-  zones: readonly StructureZone[],
-): { zone: StructureZone; rewardRisk: number } | undefined {
+  signal: Pick<Mt5SignalInput, 'direction' | 'entry' | 'stopLoss' | 'signalAt'> & { calculatedAt?: number },
+  zones: readonly GoldOpposingZone[],
+): { zone: GoldOpposingZone; rewardRisk: number } | undefined {
   const risk = Math.abs(signal.entry - signal.stopLoss);
   if (!Number.isFinite(risk) || risk <= 0 || !Number.isFinite(signal.entry)) return undefined;
-  let nearest: { zone: StructureZone; rewardRisk: number } | undefined;
+  let nearest: { zone: GoldOpposingZone; rewardRisk: number } | undefined;
   for (const zone of zones) {
-    if (!zone.active || zone.status !== 'valid' || zone.isBuy === (signal.direction === 'BUY')
+    if (!Number.isFinite(zone.opposingEngulfingConfirmedAt)
+      || zone.opposingEngulfingConfirmedAt! > (signal.calculatedAt ?? signal.signalAt)
+      || !zone.active || zone.status !== 'valid' || zone.isBuy === (signal.direction === 'BUY')
       || zone.startTime > signal.signalAt
       || (zone.activeFromTime !== undefined && zone.activeFromTime > signal.signalAt)
       || (zone.invalidatedAt !== undefined && zone.invalidatedAt <= signal.signalAt)) continue;
@@ -536,6 +651,7 @@ export interface Mt5AutomationStatus {
   ok: boolean;
   config: Mt5AutomationConfig;
   bridge: {
+    fibProfitEvents?: Mt5FibProfitEvent[];
     connected: boolean;
     bridgeId?: string;
     processId?: number;

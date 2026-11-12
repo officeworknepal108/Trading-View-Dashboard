@@ -11,7 +11,7 @@ import { applySwingFibConfluence, applyPostChochH1SwingFibConfluence } from './s
 import { applyDayFibConfluence } from './dayFibConfluence';
 import { applyOneMinuteGenesisQml } from './oneMinuteGenesis';
 import { redundantStandaloneLiquidityZoneIds, selectExtremeAPlusTjl2Zones } from './zoneConfluence';
-import { goldOpposingZoneBeforeOneR } from './mt5Automation';
+import { goldOpposingZoneBeforeOneR, prepareGoldOpposingZones } from './mt5Automation';
 import { isNepalTradingTime } from './tradingTime';
 
 export const STUDY_SECONDS = { M1: 60, M5: 300, M15: 900, M30: 1800,
@@ -719,9 +719,13 @@ export function runTrendlineStudy(input: TrendlineStudyInput,
         !gold && isDeepDiscountTradeSignal(zone, signal));
       if (!levels) continue;
       if (gold && goldOpposingZoneBeforeOneR({ direction: zone.isBuy ? 'BUY' : 'SELL',
-        entry: levels.entry, stopLoss: levels.stopLoss, signalAt: signal.time },
+        entry: levels.entry, stopLoss: levels.stopLoss, signalAt: signal.time, calculatedAt: event.at },
       (['M15', 'H1', 'H4'] as const).filter(tf => allowed.has(tf))
-        .flatMap(tf => tf === zoneTimeframe ? zones : analyze(tf, event.at).zones))) continue;
+        .flatMap(tf => prepareGoldOpposingZones(
+          tf === zoneTimeframe ? zones : analyze(tf, event.at).zones, tf,
+          { M15: prefixes('M15', event.at), M30: prefixes('M30', event.at),
+            H1: prefixes('H1', event.at), H4: prefixes('H4', event.at) },
+        )))) continue;
       usedZones.add(zone.id);
       records.push({ id: `TL:${symbol}:${zoneTimeframe}:${zone.id}:${signal.time}:${event.tf}`,
         symbol, zoneId: zone.id, zoneName: zone.name, zoneTimeframe, signal,

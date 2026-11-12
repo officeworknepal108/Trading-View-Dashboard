@@ -159,6 +159,9 @@ import {
   goldM1BuyCountertrendBlocked,
   goldM5ScalpingBuyCountertrendBlocked,
   goldOpposingZoneBeforeOneR,
+  prepareGoldOpposingZones,
+  goldOpposingZoneBlockLabel,
+  mt5FibProfitEventLabel,
   isTradeStyleEnabled,
   type Mt5AutomationStatus,
   type Mt5StoredSignal,
@@ -1142,9 +1145,7 @@ function mtfZoneLabel(name: StructureZone['name'], majorLiquidity = false): stri
 }
 
 function mtfSignalLabel(row: DisplayMtfRow, trade: TradeLevels | undefined): string {
-  if (row.opposingZoneBlock) return `NO ENTRY · ${row.opposingZoneBlock.zone.name} ${
-    row.opposingZoneBlock.zone.isBuy ? 'BUY' : 'SELL'
-  } ZONE AT ${row.opposingZoneBlock.rewardRisk.toFixed(2)}R`;
+  if (row.opposingZoneBlock) return goldOpposingZoneBlockLabel(row.opposingZoneBlock);
   if ((row.chochSequence ?? 1) > 1) return mtfChochSequenceLabel(row.chochSequence!);
   if (row.sourcePairOverlapsHigherZone === false) {
     return 'CHOCH OBSERVED · SOURCE OUTSIDE ZONE · NO ENTRY';
@@ -2840,18 +2841,19 @@ export const OandaProChart: React.FC<{
     const latest = displayCandles[displayCandles.length - 1];
     if (!latest) return [] as StructureZone[];
     const cutoff = latest.time + (latest.complete ? TIMEFRAME_SECONDS[granularity] : 0);
+    const confirmationCandles = { ...vipCandles, [granularity]: displayCandles };
     return (['M15', 'H1', 'H4'] as const).flatMap((timeframe) => {
-      if (timeframe === granularity) return displayZones;
+      if (timeframe === granularity) return prepareGoldOpposingZones(displayZones, timeframe, confirmationCandles);
       const support = vipSupportContexts.find((context) => context.timeframe === GRANULARITY_LABELS[timeframe]);
-      if (support) return support.zones;
+      if (support) return prepareGoldOpposingZones(support.zones, timeframe, confirmationCandles);
       const sourceCandles = (vipCandles[timeframe] ?? []).filter((candle) => candle.time <= cutoff);
       if (sourceCandles.length === 0) return [];
-      return analyzeChartStructure(`opposing:${timeframe}`, sourceCandles, {
+      return prepareGoldOpposingZones(analyzeChartStructure(`opposing:${timeframe}`, sourceCandles, {
         allowSupplyDemand: timeframe !== 'M15',
         sourceBarSeconds: TIMEFRAME_SECONDS[timeframe],
         confirmationBarSeconds: TJL1_CONFIRMATION_SECONDS[timeframe],
         zoneVisualBars: 30,
-      }).zones;
+      }).zones, timeframe, confirmationCandles);
     });
   }, [analyzeChartStructure, displayCandles, displayZones, granularity, marketSymbol, vipCandles, vipSupportContexts]);
   const consolidatedDisplayZones = useMemo(
@@ -3144,6 +3146,7 @@ export const OandaProChart: React.FC<{
           entry: trade.entry,
           stopLoss: trade.stopLoss,
           signalAt: setup.signal.time,
+          calculatedAt: signalClose,
         }, opposingGoldZones)
         : undefined;
       if (opposingZoneBlock) {
@@ -3461,6 +3464,7 @@ export const OandaProChart: React.FC<{
           entry: trade.entry,
           stopLoss: trade.stopLoss,
           signalAt: signal.time,
+          calculatedAt: trade.calculatedAt,
         }, opposingGoldZones);
         rows.push({ zone, zoneTimeframe, trade, countertrendBlocked: blockedGoldChartEntry(
           signal.time, signal.timeframe, signal.direction, true,
@@ -3564,6 +3568,7 @@ export const OandaProChart: React.FC<{
               entry: trade.entry,
               stopLoss: trade.stopLoss,
               signalAt: signal.time,
+              calculatedAt: signalClose,
             }, opposingGoldZones);
             if (opposingZoneBlock) trade = undefined;
           }
@@ -9901,6 +9906,23 @@ export const OandaProChart: React.FC<{
                 </tr>
               </thead>
               <tbody>
+                {replayIndex === null && marketSymbol === 'XAUUSD' && mt5Status?.bridge.connected
+                  && mt5Status.bridge.fibProfitEvents?.map(event => (
+                    <tr key={`fib-exit-${event.ticket}`} className="border-t border-cyan-200 bg-cyan-50/80">
+                      <td className="px-2 py-1 font-black text-slate-800">
+                        <div>MT5 #{event.ticket}</div>
+                        <div className="text-[8px] text-slate-500">{event.zoneTimeframe} {event.zoneName ?? 'Opposing Fib zone'}</div>
+                      </td>
+                      <td className={`px-2 py-1 font-bold ${event.direction === 'BUY' ? 'text-emerald-700' : 'text-rose-700'}`}>{event.direction}</td>
+                      <td className="whitespace-nowrap px-2 py-1 text-slate-600">
+                        {event.originalVolume} → {event.remainingVolume} LOT
+                      </td>
+                      <td className="px-2 py-1 text-center font-black">
+                        {event.phase === 'engulfing' ? 'OPPOSING CONFIRMED' : 'WAITING FOR CONFIRMATION'}
+                      </td>
+                      <td className="whitespace-nowrap px-2 py-1 text-right font-black text-cyan-800">{mt5FibProfitEventLabel(event)}</td>
+                    </tr>
+                  ))}
                 {scalpEntryTableRows.map(({ id, zone, trade: sourceTrade, tradingTimeBlocked }) => {
                   const trade = zoneTableTrade(sourceTrade, undefined, zone, id)!;
                   const sourceSetup = goldScalpingAccuracyTrades.find(candidate => candidate.trade.signal.time === trade.signal.time
@@ -9970,8 +9992,7 @@ export const OandaProChart: React.FC<{
                       <td className="px-2 py-1 text-slate-400">—</td>
                       <td className="px-2 py-1 text-center font-black text-slate-600">{trade.signal.type}</td>
                       <td className="whitespace-nowrap px-2 py-1 text-right font-black text-amber-800">
-                        NO ENTRY · {opposingZoneBlock!.zone.name} {opposingZoneBlock!.zone.isBuy ? 'BUY' : 'SELL'} ZONE AT{' '}
-                        {opposingZoneBlock!.rewardRisk.toFixed(2)}R
+                        {goldOpposingZoneBlockLabel(opposingZoneBlock!)}
                       </td>
                     </tr>
                   ))}
@@ -10352,9 +10373,7 @@ export const OandaProChart: React.FC<{
                         </span>
                       ) : entryDecision?.opposingZoneBlock ? (
                         <span className="text-rose-700">
-                          NO ENTRY · {entryDecision.opposingZoneBlock.zone.name}{' '}
-                          {entryDecision.opposingZoneBlock.zone.isBuy ? 'BUY' : 'SELL'} ZONE AT{' '}
-                          {entryDecision.opposingZoneBlock.rewardRisk.toFixed(2)}R
+                          {goldOpposingZoneBlockLabel(entryDecision.opposingZoneBlock)}
                         </span>
                       ) : isCompletedTrade(trade) ? (
                         <span className={trade?.status === 'sl-hit' ? 'text-rose-700' : 'text-emerald-700'}>

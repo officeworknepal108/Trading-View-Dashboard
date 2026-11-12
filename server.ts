@@ -28,6 +28,9 @@ import {
   goldAutomationHighImpactUsdNewsTimes,
   goldAutomationNewsPauseUntil,
   goldAutomationOpposingZoneBlocked,
+  prepareGoldOpposingZones,
+  sanitizeMt5FibProfitEvents,
+  type Mt5FibProfitEvent,
   goldAutomationRepeatAreaBlocked,
   applySignalOppositePositionTarget,
   canMt5SignalExpireBeforeExecution,
@@ -197,6 +200,7 @@ async function goldNewsPauseUntil(now: number): Promise<number | undefined> {
 }
 
 interface Mt5BridgeHeartbeat {
+  fibProfitEvents?: Mt5FibProfitEvent[];
   capitalAvailable?: boolean;
   bridgeId: string;
   processId?: number;
@@ -844,7 +848,7 @@ async function loadOandaAutomationCandles(timeframe: TradeTimeframe): Promise<St
 }
 
 async function loadGoldOpposingZones(): Promise<StructureZone[] | undefined> {
-  const timeframes = ['M15', 'H1', 'H4', 'D'] as const;
+  const timeframes = ['M15', 'M30', 'H1', 'H4', 'D'] as const;
   const candles = {} as Pick<Record<TradeTimeframe, StructureCandle[]>, typeof timeframes[number]>;
   for (const timeframe of timeframes) {
     const source = await loadOandaAutomationCandles(timeframe);
@@ -861,7 +865,10 @@ async function loadGoldOpposingZones(): Promise<StructureZone[] | undefined> {
     });
   }
   return (['M15', 'H1', 'H4'] as const).flatMap((timeframe) => (
-    analyzeAutomationTimeframe(timeframe, candles[timeframe], rawStructures).zones
+    prepareGoldOpposingZones(
+      analyzeAutomationTimeframe(timeframe, candles[timeframe], rawStructures).zones,
+      timeframe, candles,
+    )
   ));
 }
 
@@ -929,7 +936,7 @@ async function refreshOpposingFibProfitSnapshot(): Promise<void> {
           aligned = applyDayFibConfluence(source, aligned, day.at(-1)).zones;
         }
         if (timeframe === 'M15') aligned = applyPostChochH1SwingFibConfluence(source, aligned, raw.M15!.lines, h1Swing);
-        return opposingFibProfitZones(aligned, timeframe, asOf);
+        return opposingFibProfitZones(aligned, timeframe, asOf, candles);
       });
       sharedFibProfitAnalysis = { key: inputKey, zones, at: Date.now() };
     }
@@ -1248,7 +1255,7 @@ async function scanMt5AutomationSignals(): Promise<number> {
 
   const grouped = new Map<string, Mt5SignalInput>();
   const opposingZones = (['M15', 'H1', 'H4'] as const)
-    .flatMap((timeframe) => structures[timeframe]?.zones ?? []);
+    .flatMap((timeframe) => prepareGoldOpposingZones(structures[timeframe]?.zones ?? [], timeframe, candles));
   const previousSignals = await readMt5Signals();
   const m15Lines = structures.M15?.lines ?? [];
   for (const candidate of candidates) {
@@ -1883,6 +1890,7 @@ async function startServer() {
     const previousConnection = mt5Context().mt5BridgeHeartbeat;
     const capitalSnapshot = sanitizeCapitalSnapshot(req.body?.capitalHistory);
     mt5Context().mt5BridgeHeartbeat = {
+      fibProfitEvents: sanitizeMt5FibProfitEvents(req.body?.fibProfitEvents),
       capitalAvailable: !!capitalSnapshot,
       bridgeId,
       processId: Number.isInteger(Number(req.body?.processId)) ? Number(req.body.processId) : undefined,

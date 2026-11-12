@@ -232,6 +232,7 @@ def heartbeat(config: dict[str, Any], message: str = "Bridge ready") -> dict[str
         "dailyRisk": daily_risk,
         "overallProfit": overall_profit,
         "capitalHistory": overall_profit.get("capitalHistory"),
+        "fibProfitEvents": fib_profit_display_events(symbol) if connected and symbol else [],
         "positions": [{
             "ticket": int(position.ticket),
             "symbol": str(position.symbol),
@@ -894,6 +895,52 @@ class FibCloseRejected(RuntimeError):
     pass
 
 
+def fib_zone_engulfing_confirmed(zone: dict[str, Any], as_of: float) -> bool:
+    confirmed_at = zone.get('engulfingConfirmedAt')
+    return (type(confirmed_at) in (int, float) and math.isfinite(confirmed_at)
+            and 0 < confirmed_at <= as_of)
+
+
+def fib_profit_display_events(symbol: str) -> list[dict[str, Any]]:
+    """Publish broker-confirmed results, never a saved intent or a predicted fill."""
+    try:
+        saved = json.loads(FIB_PROFIT_FILE.read_text(encoding='utf-8'))
+        if not isinstance(saved, dict):
+            return []
+        events = []
+        for key, event in saved.items():
+            owner = json.loads(key)
+            if tuple(owner[:2]) != ACTIVE_ACCOUNT or owner[2] != symbol or not event.get('progressConfirmed'):
+                continue
+            ticket = int(event['ticket'])
+            live = mt5.positions_get(ticket=ticket)
+            if live is None:
+                continue
+            original = float(event['originalVolume'])
+            if live:
+                position = live[0]
+                if (len(live) != 1 or position.symbol != symbol or int(position.type) != owner[5]
+                        or int(getattr(position, 'identifier', 0) or position.ticket) != owner[3]
+                        or int(getattr(position, 'time_msc', getattr(position, 'time', 0))) != owner[4]):
+                    continue
+                remaining = float(position.volume)
+            elif event.get('status') == 'done' and float(event.get('remainingVolume', -1)) == 0:
+                remaining = 0.0
+            else:
+                continue  # A later SL/TP/manual close is not an engulfing exit.
+            if not 0 <= remaining < original:
+                continue
+            events.append({'ticket': ticket, 'direction': 'BUY' if owner[5] == mt5.POSITION_TYPE_BUY else 'SELL',
+                'originalVolume': original, 'remainingVolume': remaining,
+                'phase': 'engulfing' if event.get('phase') == 'engulfing' else 'touch',
+                'status': 'closed' if remaining == 0 else 'partial',
+                'zoneTimeframe': event.get('zoneTimeframe'), 'zoneName': event.get('zoneName'),
+                'updatedAt': float(event.get('attemptedAt', 0))})
+        return sorted(events, key=lambda event: event['updatedAt'], reverse=True)[:25]
+    except (OSError, ValueError, TypeError, KeyError, IndexError):
+        return []
+
+
 def send_fib_profit_close(request: dict[str, Any]) -> Any:
     # Never retry an uncertain order_send with a different filling mode: 0.02 lots
     # could otherwise close twice and lose the intended 0.01-lot remainder.
@@ -974,8 +1021,8 @@ def manage_opposing_fib_profit(status_payload: dict[str, Any], state: dict[str, 
         if prior and prior.get('status') in ('pending', 'done'):
             # Reconcile after a crash/order timeout without ever submitting another 80% close.
             if float(position.volume) <= float(prior['targetRemaining']) + float(info.volume_step) / 2:
-                if prior.get('status') != 'done':
-                    prior['status'] = 'done'
+                if prior.get('status') != 'done' or not prior.get('progressConfirmed'):
+                    prior.update(status='done', progressConfirmed=True)
                     write_fib_profit_state(saved)
             elif (prior.get('status') == 'pending' and prior.get('brokerRetcode') == mt5.TRADE_RETCODE_DONE_PARTIAL
                   and float(position.volume) < float(prior['lastVolume']) - float(info.volume_step) / 2):
@@ -983,13 +1030,11 @@ def manage_opposing_fib_profit(status_payload: dict[str, Any], state: dict[str, 
                 prior['progressConfirmed'] = True
                 write_fib_profit_state(saved)
             mark_managed()
-            continue
+            # A pending ambiguous send must be reconciled before any new phase.
+            # Once 80% is confirmed closed, the same zone may now close the rest.
+            if prior.get('status') == 'pending' or float(prior['targetRemaining']) == 0:
+                continue
         if prior and prior.get('status') == 'rejected' and now - float(prior.get('attemptedAt', now)) < 30:
-            continue
-        if prior and prior.get('progressConfirmed') and int(prior.get('attempts', 0)) >= 3:
-            prior.update(status='done', remainingVolume=float(position.volume))
-            write_fib_profit_state(saved)
-            mark_managed()
             continue
         if prior and prior.get('progressConfirmed') and float(position.volume) > float(prior['lastVolume']) + float(info.volume_step) / 2:
             prior.update(status='done', error='Position volume increased after the partial close; remaining plan stopped.')
@@ -1008,8 +1053,7 @@ def manage_opposing_fib_profit(status_payload: dict[str, Any], state: dict[str, 
             continue
         previous_quote = FIB_PROFIT_PREVIOUS_QUOTES.get(key, quote)
         FIB_PROFIT_PREVIOUS_QUOTES[key] = quote
-        if float(position.profit) + float(position.swap) <= 0 or not (entry < quote < target if buy else target < quote < entry):
-            continue
+        has_fib_progress = bool(prior and prior.get('progressConfirmed'))
         candidates = []
         for zone in snapshot.get('zones', []):
             if zone.get('isBuy') is not (not buy):
@@ -1021,21 +1065,45 @@ def manage_opposing_fib_profit(status_payload: dict[str, Any], state: dict[str, 
             if not (entry < edge < target if buy else target < edge < entry):
                 continue
             touched = bottom <= quote <= top or (previous_quote < bottom <= quote if buy else previous_quote > top >= quote)
+            same_saved_zone = bool(prior and zone.get('id') == prior.get('zoneId')
+                                   and zone.get('timeframe') == prior.get('zoneTimeframe', zone.get('timeframe')))
+            confirmed_remainder = (has_fib_progress and same_saved_zone
+                                   and fib_zone_engulfing_confirmed(zone, min(now, as_of)))
+            if prior and not same_saved_zone:
+                continue
+            if prior and prior.get('status') == 'done' and not confirmed_remainder:
+                continue
+            if confirmed_remainder:
+                # The zone was already touched: confirmation can arrive after
+                # price leaves it, even if the remaining position is now losing.
+                touched = True
             if touched:
                 candidates.append((abs(edge - entry), zone))
         if not candidates:
             continue
         zone = min(candidates, key=lambda item: item[0])[1]
+        full_exit = fib_zone_engulfing_confirmed(zone, min(now, as_of))
+        closing_remainder = has_fib_progress and full_exit
+        if not closing_remainder and (float(position.profit) + float(position.swap) <= 0
+                                     or not (entry < quote < target if buy else target < quote < entry)):
+            continue
+        upgrading = bool(prior and full_exit and prior.get('phase') != 'engulfing')
+        if prior and prior.get('progressConfirmed') and int(prior.get('attempts', 0)) >= 3 and not upgrading:
+            prior.update(status='done', remainingVolume=float(position.volume))
+            write_fib_profit_state(saved)
+            mark_managed()
+            continue
         # Re-read the exact ticket immediately before closing, including manual trades (magic 0).
         assert_execution_account()
         live = mt5.positions_get(ticket=int(position.ticket))
         if not live or len(live) != 1 or live[0].type != position.type or live[0].symbol != symbol:
             continue
         position = live[0]
-        if float(position.profit) + float(position.swap) <= 0 or float(position.tp) != target:
+        if (not closing_remainder and float(position.profit) + float(position.swap) <= 0) or float(position.tp) != target:
             continue
         volume = float(position.volume)
-        close_volume = (round(volume - float(prior['targetRemaining']), 8) if prior and prior.get('progressConfirmed')
+        close_volume = (volume if full_exit else
+                        round(volume - float(prior['targetRemaining']), 8) if prior and prior.get('progressConfirmed')
                         else fib_profit_close_volume(volume, info))
         if close_volume < float(info.volume_min) - 1e-8:
             if prior:
@@ -1048,7 +1116,12 @@ def manage_opposing_fib_profit(status_payload: dict[str, Any], state: dict[str, 
         # Durably record the fixed remaining volume BEFORE the broker request.
         plan = prior if prior and prior.get('progressConfirmed') else {
             'originalVolume': volume, 'closeVolume': close_volume, 'targetRemaining': round(volume - close_volume, 8),
-            'zoneId': zone.get('id'), 'originalSL': float(position.sl), 'originalTP': float(position.tp)}
+            'zoneId': zone.get('id'), 'zoneTimeframe': zone.get('timeframe'), 'zoneName': zone.get('name'),
+            'originalSL': float(position.sl), 'originalTP': float(position.tp)}
+        if full_exit:
+            plan = {**plan, 'targetRemaining': 0.0, 'phase': 'engulfing',
+                    'engulfingConfirmedAt': zone['engulfingConfirmedAt'],
+                    'attempts': 0 if upgrading else int(plan.get('attempts', 0))}
         saved[key] = {**plan, 'status': 'pending', 'ticket': int(position.ticket), 'attemptedAt': now,
                       'lastVolume': volume, 'lastRequestedClose': close_volume, 'attempts': int(plan.get('attempts', 0)) + 1}
         write_fib_profit_state(saved)
@@ -1057,7 +1130,8 @@ def manage_opposing_fib_profit(status_payload: dict[str, Any], state: dict[str, 
             result = send_fib_profit_close({
                 'action': mt5.TRADE_ACTION_DEAL, 'symbol': symbol, 'position': int(position.ticket),
                 'volume': close_volume, 'type': mt5.ORDER_TYPE_SELL if buy else mt5.ORDER_TYPE_BUY,
-                'price': quote, 'deviation': 20, 'magic': int(position.magic), 'comment': 'KB Fib80 profit',
+                'price': quote, 'deviation': 20, 'magic': int(position.magic),
+                'comment': 'KB Fib engulf exit' if full_exit else 'KB Fib80 profit',
             })
         except FibCloseRejected as error:
             saved[key].update(status='rejected', error=str(error))
