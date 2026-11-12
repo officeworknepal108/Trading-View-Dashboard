@@ -11,6 +11,7 @@ import {
   liveMtfPositionMatchesChartRow,
   normalizeTradeSetupId,
   retainedDirectTradeHasSource,
+  chartSignalMatchesLoadedCandles,
   resolveTradeOverlaySetupKey,
   tradeOverlayEntryEventKey,
   tradeOverlayExecutionKey,
@@ -228,6 +229,23 @@ test('a retained direct BUY needs its own tapped source zone when the signal is 
     'wait for all eligible source feeds before rejecting a saved trade');
   assert.equal(retainedDirectTradeHasSource(overlay, [], [[]]), true,
     'preserve a trade whose historical signal is outside loaded candles');
+});
+
+test('rejects the pictured one-minute T3 wrongly retained as a fifteen-minute chart entry', () => {
+  const overlay = { id: 'DIRECT:TJL1-1794490080-3907.42285:1794493320:3892.86',
+    label: 'TJL1 · CHART · 1:2', signalTime: 1794493320, direction: 'bearish' as const };
+  const m15 = [{ time: 1794492900 }, { time: 1794493800 }, { time: 1794494700 }];
+  const m1 = [{ time: 1794493260 }, { time: 1794493320 }, { time: 1794493380 }];
+  assert.equal(chartSignalMatchesLoadedCandles(overlay.signalTime, m15), false);
+  assert.equal(retainedDirectTradeHasSource(overlay, m15, [[], []]), false);
+  assert.equal(retainedDirectTradeHasSource(overlay, m15, [undefined]), false,
+    'known wrong signal candles cannot be accepted because auxiliary zones are still loading');
+  assert.equal(chartSignalMatchesLoadedCandles(overlay.signalTime, m1), true);
+  assert.equal(chartSignalMatchesLoadedCandles(overlay.signalTime, []), true, 'missing history is unknown');
+  assert.equal(chartSignalMatchesLoadedCandles(1794492000, m15), true, 'older records are preserved');
+  assert.equal(chartSignalMatchesLoadedCandles(undefined, m15), true);
+  assert.equal(retainedDirectTradeHasSource({ ...overlay, id: 'MT5:77' }, m15, [[]]), true,
+    'an actual broker fill is never invalidated by chart candle timestamps');
 });
 
 test('shows only the learned zone name in a retained direct-trade table row', () => {

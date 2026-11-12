@@ -41,7 +41,8 @@ import {
 import { findReplayIndexAtOrBefore } from '../services/replay';
 import { buildAlternatingSwingFibs, buildOneHourSwingFibs, SwingFibMove } from '../services/swingFib';
 import { ChartTimeZone, formatChartTick, formatChartTime } from '../services/chartTime';
-import { structureSnapshotsMatch, type PreparedStructureAnalysis, type StructureAnalysisTask } from '../services/structureAnalysis';
+import { matchingChartCandles, structureSnapshotsMatch, type ChartCandleSnapshot,
+  type PreparedStructureAnalysis, type StructureAnalysisTask } from '../services/structureAnalysis';
 import { buildDayFibs, DayFibMove } from '../services/dayFib';
 import { applyPostChochH1SwingFibConfluence, applySwingFibConfluence } from '../services/swingFibConfluence';
 import { applyDayFibConfluence } from '../services/dayFibConfluence';
@@ -125,6 +126,7 @@ import {
   isTradeOverlayVisibleOnTimeframe,
   liveMtfPositionMatchesChartRow,
   retainedDirectTradeHasSource,
+  chartSignalMatchesLoadedCandles,
   resolveTradeOverlaySetupKey,
   tradeOverlayEntryEventKey,
   tradeOverlayExecutionKey,
@@ -2217,7 +2219,10 @@ export const OandaProChart: React.FC<{
   const [granularity, setGranularity] = useState<OandaGranularity>('M15');
   const [marketSymbol, setMarketSymbol] = useState<OandaMarketSymbol>(loadStoredMarketSymbol);
   const [liveChartDataSource, setLiveChartDataSource] = useState<LiveChartDataSource>('OANDA');
-  const [candles, setCandles] = useState<OandaCandle[]>([]);
+  const [candleSnapshot, setCandleSnapshot] = useState<ChartCandleSnapshot<OandaCandle> | null>(null);
+  const candles = useMemo(() => matchingChartCandles(candleSnapshot, {
+    granularity, symbol: marketSymbol, dataSource: liveChartDataSource,
+  }), [candleSnapshot, granularity, marketSymbol, liveChartDataSource]);
   const [vipCandles, setVipCandles] = useState<Partial<Record<MarketGranularity, OandaCandle[]>>>({});
   const vipCandlesRef = useRef(vipCandles);
   vipCandlesRef.current = vipCandles;
@@ -2269,7 +2274,14 @@ export const OandaProChart: React.FC<{
   const [showJournal, setShowJournal] = useState(() => (
     new URLSearchParams(window.location.search).get('journal') === '1'
   ));
-  const [savedJournalTrades, setSavedJournalTrades] = useState<AccuracyTradeRecord[]>([]);
+  const [loadedJournalTrades, setSavedJournalTrades] = useState<AccuracyTradeRecord[]>([]);
+  const savedJournalTrades = useMemo(() => loadedJournalTrades.filter(record => (
+    record.mt5Managed || record.brokerTicket !== undefined || record.mt5SignalId || record.id.startsWith('MT5:')
+    || !isDirectTradeOverlay(record.id, record.setupId)
+    || !((record.symbol ?? 'XAUUSD') === marketSymbol)
+    || chartSignalMatchesLoadedCandles(record.signalAt,
+      record.signalTimeframe === granularity ? candles : vipCandles[record.signalTimeframe])
+  )), [loadedJournalTrades, marketSymbol, granularity, candles, vipCandles]);
   const [mt5Status, setMt5Status] = useState<Mt5AutomationStatus | null>(null);
   const dailyRisk = mt5Status?.bridge.dailyRisk;
   const dailyRiskMoney = (value: number) => `${mt5Status?.bridge.currency === 'USD' ? '$' : `${mt5Status?.bridge.currency || 'USD'} `}${value.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -4246,6 +4258,7 @@ export const OandaProChart: React.FC<{
   }, [displayCandles, displayZones, extremeAPlusTjl2Selection.blockedZoneIds, granularity, hasRetainedDirectTradeSource, marketSymbol, mt5Status?.positions, redundantRetainedOverlayIds, redundantStandaloneZoneIds, tradeOverlays]);
 
   const retainedChartTradesForTimeframe = useMemo(() => {
+    if (!candles.length) return [];
     const firstTradeBySetup = new Map<string, TradeOverlay>();
     const candidates = visibleRetainedChartTradeOverlays
       .filter((overlay) => (overlay.symbol ?? 'XAUUSD') === marketSymbol
@@ -4270,7 +4283,7 @@ export const OandaProChart: React.FC<{
     }
     return [...firstTradeBySetup.values()]
       .sort((first, second) => second.trade.calculatedAt - first.trade.calculatedAt);
-  }, [granularity, hasRetainedDirectTradeSource, marketSymbol, overlayStyleEnabled, visibleRetainedChartTradeOverlays, savedChartMtfEntryQualification, tradingTimeEnabled]);
+  }, [candles.length, granularity, hasRetainedDirectTradeSource, marketSymbol, overlayStyleEnabled, visibleRetainedChartTradeOverlays, savedChartMtfEntryQualification, tradingTimeEnabled]);
 
   // The Zone Table owns only direct chart-zone trades. MTF trades remain
   // drawable on the chart, but all their row/details UI belongs to MTF Table.
@@ -6953,9 +6966,10 @@ export const OandaProChart: React.FC<{
       loadedGranularityRef.current = granularity;
       loadedDataSourceRef.current = liveChartDataSource;
       loadedMarketSymbolRef.current = marketSymbol;
-      setCandles((current) => candleSnapshotsMatch(current, payload.candles)
-        ? current
-        : payload.candles);
+      setCandleSnapshot(current => current
+        && current.granularity === granularity && current.symbol === marketSymbol
+        && current.dataSource === liveChartDataSource && candleSnapshotsMatch(current.candles, payload.candles)
+        ? current : { granularity, symbol: marketSymbol, dataSource: liveChartDataSource, candles: payload.candles });
       if (nextReplayIndex !== null) setReplayIndex(nextReplayIndex);
       setSource(payload.source || `MetaTrader 5 · broker ${marketSymbol}`);
       setLastUpdated(payload.fetchedAt || new Date().toISOString());
@@ -7352,6 +7366,9 @@ export const OandaProChart: React.FC<{
 
   const changeTimeframe = (nextGranularity: OandaGranularity) => {
     if (nextGranularity === granularity) return;
+    loadRequestIdRef.current += 1;
+    setIsLoading(true);
+    setHoveredEntry(null);
     if (replayIndex !== null) {
       const replayCandle = candles[Math.min(replayIndex, candles.length - 1)];
       if (replayCandle) replayTimeRef.current = replayCandle.time;
@@ -7382,8 +7399,9 @@ export const OandaProChart: React.FC<{
   const changeLiveChartDataSource = (nextSource: LiveChartDataSource) => {
     if (replayIndex !== null || nextSource === liveChartDataSource
       || (nextSource === 'MT5' && !marketConfig.mt5AutomationEnabled)) return;
+    loadRequestIdRef.current += 1;
     setLiveChartDataSource(nextSource);
-    setCandles([]);
+    setCandleSnapshot(null);
     setVipCandles({});
     setTrackedDirectTradeSetups(new Map<string, TrackedDirectTradeSetup>());
     setSource(nextSource === 'MT5'
@@ -7411,7 +7429,7 @@ export const OandaProChart: React.FC<{
     setReplaySelectionIndex(null);
     setMarketSymbol(nextSymbol);
     setLiveChartDataSource('OANDA');
-    setCandles([]);
+    setCandleSnapshot(null);
     setVipCandles({});
     // Entries are already isolated by tradeTrackingScope. Keep Gold's tracked
     // first-entry history intact so visiting a currency pair cannot cause Gold

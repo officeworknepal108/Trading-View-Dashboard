@@ -1,5 +1,25 @@
 import { analyzeMarketStructure, type StructureCandle } from './marketStructure';
 
+export interface ChartCandleContext {
+  granularity: string;
+  symbol: string;
+  dataSource: string;
+}
+
+export interface ChartCandleSnapshot<T> extends ChartCandleContext {
+  candles: T[];
+}
+
+/** Candle data and its identity are published atomically. A new selection must
+ * never interpret the preceding selection's candles while its feed is loading.
+ */
+export function matchingChartCandles<T>(snapshot: ChartCandleSnapshot<T> | null,
+  selection: ChartCandleContext): T[] {
+  return snapshot && snapshot.granularity === selection.granularity
+    && snapshot.symbol === selection.symbol && snapshot.dataSource === selection.dataSource
+    ? snapshot.candles : [];
+}
+
 export interface StructureAnalysisTask {
   key: string;
   candles: StructureCandle[];

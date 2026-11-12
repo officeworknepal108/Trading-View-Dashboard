@@ -24,6 +24,16 @@ export function isDirectTradeOverlay(id: string, setupId?: string): boolean {
   return resolveTradeOverlaySetupKey(id, setupId).startsWith('DIRECT:');
 }
 
+/** Missing feeds and older history are unknown, but a missing timestamp inside
+ * loaded coverage proves that this signal did not belong to these candles.
+ */
+export function chartSignalMatchesLoadedCandles(signalTime: number | undefined,
+  candles: readonly { time: number }[] | undefined): boolean {
+  if (signalTime === undefined || !candles?.length) return true;
+  if (signalTime < candles[0].time || signalTime > candles[candles.length - 1].time) return true;
+  return candles.some(candle => candle.time === signalTime);
+}
+
 /** Keep a saved chart trade only when its loaded source zone was tapped before the signal. */
 export function retainedDirectTradeHasSource(
   overlay: {
@@ -41,6 +51,7 @@ export function retainedDirectTradeHasSource(
     tapTime?: number;
   }[] | undefined)[],
 ): boolean {
+  if (overlay.id.startsWith('DIRECT:') && !chartSignalMatchesLoadedCandles(overlay.signalTime, signalCandles)) return false;
   if (!overlay.id.startsWith('DIRECT:')
     || !signalCandles?.some((candle) => candle.time === overlay.signalTime)
     || sourceZoneSets.length === 0 || sourceZoneSets.some((zones) => zones === undefined)) return true;
