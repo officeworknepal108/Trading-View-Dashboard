@@ -897,7 +897,8 @@ class FibCloseRejected(RuntimeError):
 
 def fib_zone_engulfing_confirmed(zone: dict[str, Any], as_of: float) -> bool:
     confirmed_at = zone.get('engulfingConfirmedAt')
-    return (type(confirmed_at) in (int, float) and math.isfinite(confirmed_at)
+    return ((zone.get('timeframe') != 'H4' or zone.get('confirmationRoute') == 'MTF_CHOCH')
+            and type(confirmed_at) in (int, float) and math.isfinite(confirmed_at)
             and 0 < confirmed_at <= as_of)
 
 
@@ -1083,6 +1084,8 @@ def manage_opposing_fib_profit(status_payload: dict[str, Any], state: dict[str, 
             continue
         zone = min(candidates, key=lambda item: item[0])[1]
         full_exit = fib_zone_engulfing_confirmed(zone, min(now, as_of))
+        if prior and prior.get('phase') == 'engulfing' and not full_exit:
+            continue  # A legacy H4 engulfing-only plan cannot authorize a new remainder close.
         closing_remainder = has_fib_progress and full_exit
         if not closing_remainder and (float(position.profit) + float(position.swap) <= 0
                                      or not (entry < quote < target if buy else target < quote < entry)):

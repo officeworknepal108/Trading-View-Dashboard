@@ -6,13 +6,20 @@ import {
   type TradeTimeframe,
 } from './tradeLevels';
 import { detectEngulfingPatternAt, isZoneEligibleForEngulfingEntry,
-  type StructureCandle, type StructureLine, type StructureZone } from './marketStructure';
+  type MarketStructureResult, type StructureCandle, type StructureLine, type StructureZone } from './marketStructure';
+import { buildGoldIntradayMtfHistoryRows } from './mtf';
 
 export interface GoldOpposingZone extends StructureZone {
   opposingEngulfingConfirmedAt?: number;
   opposingZoneTimeframe?: TradeTimeframe;
   opposingEngulfingTimeframe?: TradeTimeframe;
   opposingEngulfingType?: string;
+  opposingConfirmationRoute?: 'MTF_CHOCH';
+}
+
+export interface GoldOpposingConfirmationOptions {
+  m15Structure?: MarketStructureResult;
+  requireLtfFib?: boolean;
 }
 
 const OPPOSING_CONFIRMATION_SECONDS: Record<TradeTimeframe, number> = {
@@ -27,10 +34,36 @@ export function prepareGoldOpposingZones(
   zones: readonly StructureZone[],
   zoneTimeframe: TradeTimeframe,
   candles: Partial<Record<TradeTimeframe, StructureCandle[]>>,
+  options: GoldOpposingConfirmationOptions = {},
 ): GoldOpposingZone[] {
+  if (zoneTimeframe === 'H4') {
+    // An H4 zone is confirmed only by its actual M15 MTF setup, including
+    // source-pair overlap, first CHoCH, LTF zone tap and qualified engulfing.
+    const lower = candles.M15 ?? [];
+    const rows = options.m15Structure ? buildGoldIntradayMtfHistoryRows({
+      H4: { candles: candles.H4 ?? [], structure: {
+        markers: [], issMarkers: [], internalMarkers: [], engulfingMarkers: [],
+        zones: [...zones], lines: [], trend: 'neutral',
+      } },
+      M15: { candles: lower, structure: options.m15Structure },
+    }, options.requireLtfFib, Number.POSITIVE_INFINITY) : [];
+    return zones.filter(isZoneEligibleForEngulfingEntry).map(zone => {
+      const row = rows.filter(row => row.higherTimeframeZoneId === zone.id
+        && row.confirmationKind === 'choch' && (row.chochSequence ?? 1) === 1
+        && row.sourcePairOverlapsHigherZone === true
+        && row.direction === (zone.isBuy ? 'bullish' : 'bearish')
+        && row.engulfingType && row.engulfingTime !== undefined
+        && lower.some(candle => candle.time === row.engulfingTime && candle.complete !== false))
+        .sort((a, b) => a.engulfingTime! - b.engulfingTime!)[0];
+      return { ...zone, opposingZoneTimeframe: zoneTimeframe,
+        opposingEngulfingConfirmedAt: row ? row.engulfingTime! + 900 : undefined,
+        opposingEngulfingTimeframe: row ? 'M15' as const : undefined,
+        opposingEngulfingType: row?.engulfingType,
+        opposingConfirmationRoute: row ? 'MTF_CHOCH' as const : undefined };
+    });
+  }
   const routes: TradeTimeframe[] = zoneTimeframe === 'M15' ? ['M15', 'M30']
-    : zoneTimeframe === 'H1' ? ['H1', 'M15', 'M30']
-      : zoneTimeframe === 'H4' ? ['H4', 'M15'] : [zoneTimeframe];
+    : zoneTimeframe === 'H1' ? ['H1', 'M15', 'M30'] : [zoneTimeframe];
   const eligible = zones.filter(isZoneEligibleForEngulfingEntry);
   if (!eligible.length) return [];
   const earliest = Math.min(...eligible.map(zone => Math.max(zone.startTime,
@@ -70,7 +103,7 @@ export function prepareGoldOpposingZones(
 export function goldOpposingZoneBlockLabel(block: { zone: GoldOpposingZone; rewardRisk: number }): string {
   const zone = block.zone;
   const confirmation = zone.opposingEngulfingTimeframe && zone.opposingEngulfingType
-    ? `CONFIRMED BY ${zone.opposingEngulfingTimeframe} ${zone.opposingEngulfingType}` : 'ENGULFING CONFIRMED';
+    ? `CONFIRMED BY ${zone.opposingEngulfingTimeframe} ${zone.opposingConfirmationRoute === 'MTF_CHOCH' ? 'MTF CHoCH + ' : ''}${zone.opposingEngulfingType}` : 'ENGULFING CONFIRMED';
   return `NO ENTRY · ${zone.opposingZoneTimeframe ? `${zone.opposingZoneTimeframe} ` : ''}${zone.name} `
     + `${zone.isBuy ? 'BUY' : 'SELL'} ${confirmation} · ${block.rewardRisk.toFixed(2)}R`;
 }
@@ -332,6 +365,7 @@ export interface OpposingFibProfitZone {
   id: string; timeframe: TradeTimeframe; isBuy: boolean; bottom: number; top: number;
   name?: string;
   engulfingConfirmedAt?: number;
+  confirmationRoute?: 'MTF_CHOCH';
 }
 
 export type OpposingFibProfitSnapshot = { available: false; error: string } | {
@@ -340,9 +374,10 @@ export type OpposingFibProfitSnapshot = { available: false; error: string } | {
 };
 
 export function opposingFibProfitZones(zones: readonly StructureZone[], timeframe: TradeTimeframe, asOf: number,
-  candles: Partial<Record<TradeTimeframe, StructureCandle[]>> = {}): OpposingFibProfitZone[] {
-  const confirmations = new Map(prepareGoldOpposingZones(zones, timeframe, candles)
-    .map(zone => [zone.id, zone.opposingEngulfingConfirmedAt]));
+  candles: Partial<Record<TradeTimeframe, StructureCandle[]>> = {},
+  options: GoldOpposingConfirmationOptions = {}): OpposingFibProfitZone[] {
+  const confirmations = new Map(prepareGoldOpposingZones(zones, timeframe, candles, options)
+    .map(zone => [zone.id, zone]));
   return zones.filter(zone => zone.active && zone.status === 'valid' && zone.startTime <= asOf
     && (zone.activeFromTime === undefined || zone.activeFromTime <= asOf)
     && (zone.invalidatedAt === undefined || zone.invalidatedAt > asOf)
@@ -352,9 +387,11 @@ export function opposingFibProfitZones(zones: readonly StructureZone[], timefram
       || (zone.dayFibStatus === 'a-plus' && !!zone.dayFibBand))
     && Number.isFinite(zone.bottom) && Number.isFinite(zone.top) && zone.bottom > 0 && zone.top > zone.bottom)
     .map(zone => {
-      const confirmedAt = confirmations.get(zone.id);
+      const confirmation = confirmations.get(zone.id);
+      const confirmedAt = confirmation?.opposingEngulfingConfirmedAt;
       return { id: zone.id, ...(zone.name ? { name: zone.name } : {}), timeframe, isBuy: zone.isBuy, bottom: zone.bottom, top: zone.top,
-        ...(confirmedAt !== undefined && confirmedAt <= asOf ? { engulfingConfirmedAt: confirmedAt } : {}) };
+        ...(confirmedAt !== undefined && confirmedAt <= asOf ? { engulfingConfirmedAt: confirmedAt,
+          ...(confirmation?.opposingConfirmationRoute ? { confirmationRoute: confirmation.opposingConfirmationRoute } : {}) } : {}) };
     });
 }
 
@@ -368,6 +405,7 @@ export function goldOpposingZoneBeforeOneR(
   let nearest: { zone: GoldOpposingZone; rewardRisk: number } | undefined;
   for (const zone of zones) {
     if (!Number.isFinite(zone.opposingEngulfingConfirmedAt)
+      || (zone.opposingZoneTimeframe === 'H4' && zone.opposingConfirmationRoute !== 'MTF_CHOCH')
       || zone.opposingEngulfingConfirmedAt! > (signal.calculatedAt ?? signal.signalAt)
       || !zone.active || zone.status !== 'valid' || zone.isBuy === (signal.direction === 'BUY')
       || zone.startTime > signal.signalAt

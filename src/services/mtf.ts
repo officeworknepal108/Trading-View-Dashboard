@@ -591,8 +591,9 @@ export function buildGoldIntradayMtfRows(
 export function buildGoldIntradayMtfHistoryRows(
   data: Partial<Record<MtfGranularity, MtfTimeframeData>>,
   requireLtfFib = false,
+  maximumRowsPerMapping = 12,
 ): MtfRow[] {
-  return buildMtfRowsInternal(data, 12, 12, false, true, requireLtfFib);
+  return buildMtfRowsInternal(data, maximumRowsPerMapping, maximumRowsPerMapping, false, true, requireLtfFib);
 }
 
 export function buildGoldScalpingMtfHistoryRows(

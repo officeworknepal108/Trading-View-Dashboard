@@ -498,7 +498,7 @@ test('opposing QML blocks only after its own completed, direction-matching engul
   ];
   assert.equal(goldOpposingZoneBeforeOneR(sell, [zone]), undefined);
   assert.equal(goldOpposingZoneBeforeOneR(sell, prepareGoldOpposingZones([zone], 'H1', {})), undefined);
-  for (const timeframe of ['H1', 'H4'] as const) {
+  for (const timeframe of ['H1'] as const) {
     const prepared = prepareGoldOpposingZones([zone], timeframe, { M15: candles });
     assert.equal(prepared[0].opposingEngulfingConfirmedAt, 3_700);
     assert.equal(goldOpposingZoneBlockLabel({ zone: prepared[0], rewardRisk: 0 }),
@@ -534,6 +534,9 @@ test('opposing QML blocks only after its own completed, direction-matching engul
   assert.equal(goldOpposingZoneBeforeOneR(sell,
     prepareGoldOpposingZones([zone], 'H4', { M30: candles })), undefined,
   'unmapped M30 confirmation is not accepted for an H4 zone');
+  assert.equal(goldOpposingZoneBeforeOneR(sell,
+    prepareGoldOpposingZones([zone], 'H4', { M15: candles })), undefined,
+  'a bare M15 engulfing cannot confirm H4 without the MTF CHoCH setup');
 });
 
 test('table close labels use actual broker volume and reject inconsistent exit telemetry', () => {

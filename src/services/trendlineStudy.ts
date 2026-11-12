@@ -725,6 +725,7 @@ export function runTrendlineStudy(input: TrendlineStudyInput,
           tf === zoneTimeframe ? zones : analyze(tf, event.at).zones, tf,
           { M15: prefixes('M15', event.at), M30: prefixes('M30', event.at),
             H1: prefixes('H1', event.at), H4: prefixes('H4', event.at) },
+          { m15Structure: analyze('M15', event.at) },
         )))) continue;
       usedZones.add(zone.id);
       records.push({ id: `TL:${symbol}:${zoneTimeframe}:${zone.id}:${signal.time}:${event.tf}`,

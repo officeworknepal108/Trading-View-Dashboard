@@ -789,6 +789,35 @@ class OpposingFibProfitTests(BridgeTestCase):
         self.assertNotIn('sl', self.send.call_args.args[0])
         self.assertNotIn('tp', self.send.call_args.args[0])
 
+    def test_h4_bare_engulfing_only_takes_eighty_percent_then_waits_for_mtf_choch(self):
+        self.zone.update(timeframe='H4', engulfingConfirmedAt=self.now)
+        bridge.manage_opposing_fib_profit(self.payload, {})
+        self.assertEqual(self.position.volume, 0.01)
+        bridge.manage_opposing_fib_profit(self.payload, {})
+        self.send.assert_called_once()
+        self.zone['confirmationRoute'] = 'MTF_CHOCH'
+        bridge.manage_opposing_fib_profit(self.payload, {})
+        self.assertEqual(self.position.volume, 0)
+        self.assertEqual(self.send.call_args.args[0]['volume'], 0.01)
+
+    def test_h4_already_mtf_confirmed_closes_full_position_at_first_touch(self):
+        self.zone.update(timeframe='H4', engulfingConfirmedAt=self.now, confirmationRoute='MTF_CHOCH')
+        bridge.manage_opposing_fib_profit(self.payload, {})
+        self.assertEqual(self.position.volume, 0)
+        self.assertEqual(self.send.call_args.args[0]['volume'], 0.05)
+
+    def test_legacy_h4_partial_full_exit_plan_cannot_retry_without_mtf_confirmation(self):
+        self.zone.update(timeframe='H4', engulfingConfirmedAt=self.now, confirmationRoute='MTF_CHOCH')
+        def partial(request):
+            self.position.volume = 0.03
+            return SimpleNamespace(retcode=bridge.mt5.TRADE_RETCODE_DONE_PARTIAL, deal=42, order=0)
+        self.send.side_effect = partial
+        bridge.manage_opposing_fib_profit(self.payload, {})
+        self.zone.pop('confirmationRoute')
+        bridge.manage_opposing_fib_profit(self.payload, {})
+        self.send.assert_called_once()
+        self.assertEqual(self.position.volume, 0.03)
+
     def test_confirmed_buy_zone_closes_sell_remainder_even_after_reversal_into_loss(self):
         self.position.type = bridge.mt5.POSITION_TYPE_SELL
         self.position.sl, self.position.tp = 110, 80

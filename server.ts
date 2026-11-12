@@ -848,6 +848,7 @@ async function loadOandaAutomationCandles(timeframe: TradeTimeframe): Promise<St
 }
 
 async function loadGoldOpposingZones(): Promise<StructureZone[] | undefined> {
+  const config = await readMt5Config();
   const timeframes = ['M15', 'M30', 'H1', 'H4', 'D'] as const;
   const candles = {} as Pick<Record<TradeTimeframe, StructureCandle[]>, typeof timeframes[number]>;
   for (const timeframe of timeframes) {
@@ -867,7 +868,7 @@ async function loadGoldOpposingZones(): Promise<StructureZone[] | undefined> {
   return (['M15', 'H1', 'H4'] as const).flatMap((timeframe) => (
     prepareGoldOpposingZones(
       analyzeAutomationTimeframe(timeframe, candles[timeframe], rawStructures).zones,
-      timeframe, candles,
+      timeframe, candles, { m15Structure: rawStructures.M15, requireLtfFib: config.mtfLtfFibRequired },
     )
   ));
 }
@@ -910,8 +911,9 @@ async function refreshOpposingFibProfitSnapshot(): Promise<void> {
       candles[timeframe] = source.filter(candle => candle.complete !== false && candle.time + AUTOMATION_SECONDS[timeframe] <= asOf);
     }
     // Both accounts use the same chart feed. Analyze it once per completed-bar snapshot.
-    const inputKey = JSON.stringify(timeframes.map(timeframe => [timeframe, candles[timeframe]!.length,
-      candles[timeframe]!.slice(-2).map(candle => [candle.time, candle.open, candle.high, candle.low, candle.close])]));
+    const config = await readMt5Config();
+    const inputKey = JSON.stringify([config.mtfLtfFibRequired, timeframes.map(timeframe => [timeframe, candles[timeframe]!.length,
+      candles[timeframe]!.slice(-2).map(candle => [candle.time, candle.open, candle.high, candle.low, candle.close])])]);
     let zones = sharedFibProfitAnalysis?.key === inputKey && Date.now() - sharedFibProfitAnalysis.at < 90_000
       ? sharedFibProfitAnalysis.zones : undefined;
     if (!zones) {
@@ -936,7 +938,8 @@ async function refreshOpposingFibProfitSnapshot(): Promise<void> {
           aligned = applyDayFibConfluence(source, aligned, day.at(-1)).zones;
         }
         if (timeframe === 'M15') aligned = applyPostChochH1SwingFibConfluence(source, aligned, raw.M15!.lines, h1Swing);
-        return opposingFibProfitZones(aligned, timeframe, asOf, candles);
+        return opposingFibProfitZones(aligned, timeframe, asOf, candles,
+          { m15Structure: raw.M15, requireLtfFib: config.mtfLtfFibRequired });
       });
       sharedFibProfitAnalysis = { key: inputKey, zones, at: Date.now() };
     }
@@ -1255,7 +1258,8 @@ async function scanMt5AutomationSignals(): Promise<number> {
 
   const grouped = new Map<string, Mt5SignalInput>();
   const opposingZones = (['M15', 'H1', 'H4'] as const)
-    .flatMap((timeframe) => prepareGoldOpposingZones(structures[timeframe]?.zones ?? [], timeframe, candles));
+    .flatMap((timeframe) => prepareGoldOpposingZones(structures[timeframe]?.zones ?? [], timeframe, candles,
+      { m15Structure: mtfData.M15?.structure, requireLtfFib: config.mtfLtfFibRequired }));
   const previousSignals = await readMt5Signals();
   const m15Lines = structures.M15?.lines ?? [];
   for (const candidate of candidates) {

@@ -2842,10 +2842,16 @@ export const OandaProChart: React.FC<{
     if (!latest) return [] as StructureZone[];
     const cutoff = latest.time + (latest.complete ? TIMEFRAME_SECONDS[granularity] : 0);
     const confirmationCandles = { ...vipCandles, [granularity]: displayCandles };
+    const m15Candles = confirmationCandles.M15 ?? [];
+    const confirmationOptions = { requireLtfFib: mtfLtfFibRequired,
+      m15Structure: granularity === 'M15' ? structure : analyzeChartStructure('opposing:M15', m15Candles, {
+        allowSupplyDemand: false, sourceBarSeconds: TIMEFRAME_SECONDS.M15,
+        confirmationBarSeconds: TJL1_CONFIRMATION_SECONDS.M15, zoneVisualBars: 30,
+      }) };
     return (['M15', 'H1', 'H4'] as const).flatMap((timeframe) => {
-      if (timeframe === granularity) return prepareGoldOpposingZones(displayZones, timeframe, confirmationCandles);
+      if (timeframe === granularity) return prepareGoldOpposingZones(displayZones, timeframe, confirmationCandles, confirmationOptions);
       const support = vipSupportContexts.find((context) => context.timeframe === GRANULARITY_LABELS[timeframe]);
-      if (support) return prepareGoldOpposingZones(support.zones, timeframe, confirmationCandles);
+      if (support) return prepareGoldOpposingZones(support.zones, timeframe, confirmationCandles, confirmationOptions);
       const sourceCandles = (vipCandles[timeframe] ?? []).filter((candle) => candle.time <= cutoff);
       if (sourceCandles.length === 0) return [];
       return prepareGoldOpposingZones(analyzeChartStructure(`opposing:${timeframe}`, sourceCandles, {
@@ -2853,9 +2859,9 @@ export const OandaProChart: React.FC<{
         sourceBarSeconds: TIMEFRAME_SECONDS[timeframe],
         confirmationBarSeconds: TJL1_CONFIRMATION_SECONDS[timeframe],
         zoneVisualBars: 30,
-      }).zones, timeframe, confirmationCandles);
+      }).zones, timeframe, confirmationCandles, confirmationOptions);
     });
-  }, [analyzeChartStructure, displayCandles, displayZones, granularity, marketSymbol, vipCandles, vipSupportContexts]);
+  }, [analyzeChartStructure, displayCandles, displayZones, granularity, marketSymbol, mtfLtfFibRequired, structure, vipCandles, vipSupportContexts]);
   const consolidatedDisplayZones = useMemo(
     () => consolidateZonesForDisplay(displayZones, marketConfig.pipSize),
     [displayZones, marketConfig.pipSize],

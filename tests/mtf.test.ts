@@ -12,6 +12,8 @@ import {
 } from '../src/services/mtf';
 import type { MarketStructureResult, StructureCandle, StructureZone } from '../src/services/marketStructure';
 import { applySwingFibConfluence } from '../src/services/swingFibConfluence';
+import { prepareGoldOpposingZones, opposingFibProfitZones, goldOpposingZoneBeforeOneR,
+  goldOpposingZoneBlockLabel } from '../src/services/mt5Automation';
 
 function candle(time: number, open: number, high: number, low: number, close: number): StructureCandle {
   return { time, open, high, low, close, complete: true };
@@ -230,6 +232,45 @@ function repeatedChochFixture(isBuy = true, count = 3) {
     M15: higherData, H1: higherData, M1: lowerData, M5: lowerData,
   } };
 }
+
+test('H4 opposing-entry and remainder-exit confirmation use the same M15 MTF CHoCH setup', () => {
+  for (const isBuy of [true, false]) {
+    const fixture = repeatedChochFixture(isBuy, 1);
+    const { candles, zones, higher } = fixture;
+    Object.assign(higher, { fibStatus: 'a-plus', fibBand: '0.5-0.618' });
+    const data = { H4: fixture.data.H1, M15: fixture.data.M5 };
+    const expected = buildGoldIntradayMtfRows(data).find(row => row.higherTimeframe === 'H4');
+    assert.equal(expected?.engulfingType, 'T1');
+    const feeds = { H4: candles, M15: candles };
+    const options = { m15Structure: structure(zones) };
+    const [prepared] = prepareGoldOpposingZones([higher], 'H4', feeds, options);
+    const confirmedAt = expected!.engulfingTime! + 900;
+    assert.equal(prepared.opposingEngulfingConfirmedAt, confirmedAt);
+    assert.equal(prepared.opposingConfirmationRoute, 'MTF_CHOCH');
+    assert.match(goldOpposingZoneBlockLabel({ zone: prepared, rewardRisk: 0 }), /M15 MTF CHoCH \+ T1/);
+    const signal = { direction: isBuy ? 'SELL' as const : 'BUY' as const,
+      entry: isBuy ? 104 : 116, stopLoss: isBuy ? 114 : 106,
+      signalAt: 500, calculatedAt: confirmedAt };
+    assert.ok(goldOpposingZoneBeforeOneR(signal, [prepared]));
+    assert.equal(goldOpposingZoneBeforeOneR({ ...signal, calculatedAt: confirmedAt - 1 }, [prepared]), undefined);
+    const [snapshot] = opposingFibProfitZones([higher], 'H4', confirmedAt, feeds, options);
+    assert.equal(snapshot.engulfingConfirmedAt, confirmedAt);
+    assert.equal(snapshot.confirmationRoute, 'MTF_CHOCH');
+    for (const lowerZones of [[], zones.map(z => ({ ...z, chochTime: undefined })),
+      zones.map(z => ({ ...z, tjlPairTime: undefined })),
+      zones.map(z => ({ ...z, bottom: z.bottom + 1000, top: z.top + 1000 }))]) {
+      const invalidOptions = { m15Structure: structure(lowerZones) };
+      const [unconfirmed] = prepareGoldOpposingZones([higher], 'H4', feeds, invalidOptions);
+      assert.equal(goldOpposingZoneBeforeOneR(signal, [unconfirmed]), undefined);
+      assert.equal(opposingFibProfitZones([higher], 'H4', confirmedAt, feeds, invalidOptions)[0].engulfingConfirmedAt, undefined);
+    }
+    const unfinished = { ...feeds, M15: candles.map((c, i) => i === candles.length - 1 ? { ...c, complete: false } : c) };
+    assert.equal(prepareGoldOpposingZones([higher], 'H4', unfinished, options)[0].opposingEngulfingConfirmedAt, undefined);
+    assert.equal(prepareGoldOpposingZones([higher], 'H4', feeds)[0].opposingEngulfingConfirmedAt, undefined);
+    const [direct] = prepareGoldOpposingZones([higher], 'H1', feeds);
+    assert.ok(direct.opposingEngulfingConfirmedAt, 'H1 continues to accept zone engulfing without CHoCH');
+  }
+});
 
 test('Supply and Demand HTF zones require Fib even when the LTF Fib switch is off', () => {
   for (const isBuy of [true, false]) {
