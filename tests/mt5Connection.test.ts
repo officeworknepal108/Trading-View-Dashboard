@@ -236,6 +236,30 @@ test('MT5 account handshake resets old candles and queues while preserving autom
     assert.equal((await (await request('/api/mt5/signals/claim', second)).json()).signal, null,
       'a repeated poll cannot claim the same order twice');
 
+    // A qualified, unfilled order becomes a durable missed opportunity, not a reusable zone.
+    const missedZone = 'TJL1-1794492000-3890.29265';
+    const qualified = { ...queuedSignal, ...second, id: 'qualified-expiry', zoneId: missedZone,
+      setupId: `DIRECT:H1:${missedZone}`, zoneName: 'TJL1', engulfingType: 'T1',
+      entryQualifiedAt: now - 60, expiresAt: now - 1 };
+    await writeFile(path.join(dataPath, 'mt5-signals.json'), JSON.stringify({ signals: [
+      qualified,
+      { ...qualified, id: 'unqualified-expiry', zoneId: 'another-zone', entryQualifiedAt: undefined },
+      ...Array.from({ length: 26 }, (_, i) => ({ ...queuedSignal, id: `history-${i}`, status: 'REJECTED' })),
+    ] }));
+    assert.equal((await (await request('/api/mt5/signals/claim', second)).json()).signal, null);
+    const missedStatus = await (await request('/api/mt5/status')).json();
+    assert.deepEqual(missedStatus.missedEntries.map((entry: any) => entry.id), ['qualified-expiry']);
+    assert.ok(!missedStatus.recentSignals.some((entry: any) => entry.id === qualified.id),
+      'the retirement survives beyond the recent 25 signals');
+    const retry = await (await request('/api/mt5/signals', { ...queuedSignal, id: 'later-engulfing',
+      zoneId: 'TJL1-1794492000-3890.30', setupId: `GOLD_SCALP:H1:${missedZone}`,
+      zoneName: 'TJL1', engulfingType: 'T1' })).json();
+    assert.equal(retry.duplicate, true, JSON.stringify(retry));
+    assert.equal(retry.signal.id, qualified.id);
+    assert.equal(retry.signal.status, 'EXPIRED', 'a new pattern must never queue a replacement entry');
+    assert.deepEqual((await (await request(secondaryRoute('/api/mt5/status'))).json()).missedEntries, [],
+      'missed entries are isolated by terminal and broker account');
+
 
     const clientRequest = (route: string, body?: unknown, method?: string) => fetch(`${base}${route}`, {
       method: method ?? (body === undefined ? 'GET' : 'POST'),

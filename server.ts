@@ -35,6 +35,7 @@ import {
   applySignalOppositePositionTarget,
   canMt5SignalExpireBeforeExecution,
   priorGoldMt5ZoneExecution,
+  findMissedZoneEntry,
   mt5SignalDisabledReason,
   mt5ConnectionMatches,
   manualTradeTimeframeKey,
@@ -604,6 +605,7 @@ async function enqueueMt5Signal(
   candidate: Mt5SignalInput,
   config: Mt5AutomationConfig,
   opposingZones?: readonly StructureZone[],
+  scannerQualified = false,
 ): Promise<{ signal: Mt5StoredSignal; duplicate: boolean }> {
   if (terminalId() === 'secondary' && !candidate.id.endsWith(':secondary')) {
     candidate = { ...candidate, id: `${candidate.id}:secondary` };
@@ -617,7 +619,8 @@ async function enqueueMt5Signal(
   if (config.tradingTimeEnabled && !isNepalTradingTime(now)) {
     throw new Error('Outside Nepal trading time; automatic entry is blocked.');
   }
-  if (candidate.calculatedAt < now - config.signalMaxAgeSeconds) {
+  const entryMissed = candidate.calculatedAt < now - config.signalMaxAgeSeconds;
+  if (entryMissed && !scannerQualified) {
     throw new Error('Signal is too old for automatic execution.');
   }
   if (candidate.signalAt > now + 5 || candidate.calculatedAt > now + 5) {
@@ -645,7 +648,8 @@ async function enqueueMt5Signal(
       signal.setupId === candidate.setupId && consumedSetupStatuses.has(signal.status)
     ));
     const priorZoneAttempt = priorGoldMt5ZoneExecution(candidate, signals, consumedSetupStatuses);
-    const existing = exactExisting ?? priorZoneAttempt ?? priorSetupAttempts[0];
+    const missed = findMissedZoneEntry(candidate, signals, executionConnection ?? {});
+    const existing = missed ?? exactExisting ?? priorZoneAttempt ?? priorSetupAttempts[0];
     if (!existing && findEarlierZoneEntry(candidate, await readJournalTrades())) {
       throw new Error('This zone already had an entry; a second entry is blocked.');
     }
@@ -671,7 +675,10 @@ async function enqueueMt5Signal(
       zoneName: String(candidate.zoneName || 'Unknown').slice(0, 100),
       engulfingType: String(candidate.engulfingType || '').slice(0, 30),
       confluenceZones: candidate.confluenceZones?.map(String).slice(0, 20),
-      status: 'QUEUED',
+      // An expired, fully qualified candidate is recorded for retirement, never queued.
+      status: entryMissed ? 'EXPIRED' : 'QUEUED',
+      entryQualifiedAt: scannerQualified && !config.dryRun ? now : undefined,
+      message: entryMissed ? 'ENTRY MISSED: the fully qualified entry expired; this zone cannot enter again.' : undefined,
       account: executionConnection?.account,
       server: executionConnection?.server,
       brokerSymbol: executionConnection?.brokerSymbol,
@@ -1267,6 +1274,7 @@ async function scanMt5AutomationSignals(): Promise<number> {
     .flatMap((timeframe) => prepareGoldOpposingZones(structures[timeframe]?.zones ?? [], timeframe, candles,
       { m15Structure: mtfData.M15?.structure, requireLtfFib: config.mtfLtfFibRequired }));
   const previousSignals = await readMt5Signals();
+  const previousZoneEntries = await readJournalTrades();
   const m15Lines = structures.M15?.lines ?? [];
   const entryChecks: ReturnType<typeof mt5Context>['entryChecks'] = [];
   const explainCandidate = (candidate: Mt5SignalInput, mode: 'WAIT' | 'BLOCKED' | 'DISABLED', reasons: string[]) => {
@@ -1277,6 +1285,12 @@ async function scanMt5AutomationSignals(): Promise<number> {
       brokerSymbol: scanConnection?.brokerSymbol, mode, reasons });
   };
   for (const candidate of candidates) {
+    if (findMissedZoneEntry(candidate, previousSignals, scanConnection ?? {})) {
+      explainCandidate(candidate, 'BLOCKED', ['ENTRY MISSED']); continue;
+    }
+    if (findEarlierZoneEntry(candidate, previousZoneEntries)) {
+      explainCandidate(candidate, 'BLOCKED', ['ZONE ALREADY USED']); continue;
+    }
     const disabled = mt5SignalDisabledReason(config, candidate);
     if (disabled) { explainCandidate(candidate, 'DISABLED', [disabled]); continue; }
     const waiting: string[] = [];
@@ -1284,9 +1298,13 @@ async function scanMt5AutomationSignals(): Promise<number> {
     if (goldAutomationFastMoveBlocked(candidate)) waiting.push('VOLATILITY TO SETTLE');
     if (goldAutomationOpposingZoneBlocked(candidate, opposingZones)) waiting.push('OPPOSING ZONE CLEARANCE');
     if (goldAutomationRepeatAreaBlocked(candidate, previousSignals, m15Lines)) waiting.push('NEW 15M CHoCH AFTER SL');
+    if ((scanConnection?.positions ?? []).filter(position => position.symbol === scanConnection?.brokerSymbol).length >= config.maximumOpenTrades) {
+      waiting.push('OPEN TRADE LIMIT');
+    }
     if (waiting.length) { explainCandidate(candidate, 'WAIT', waiting); continue; }
     if (candidate.calculatedAt < now - config.signalMaxAgeSeconds) {
-      explainCandidate(candidate, 'BLOCKED', ['SIGNAL EXPIRED']); continue;
+      if (!config.dryRun) await enqueueMt5Signal(candidate, config, opposingZones, true);
+      explainCandidate(candidate, 'BLOCKED', ['ENTRY MISSED']); continue;
     }
     if (candidate.signalAt > now + 5 || candidate.calculatedAt > now + 5) {
       explainCandidate(candidate, 'WAIT', ['CANDLE TIME SYNCHRONIZATION']); continue;
@@ -1303,7 +1321,7 @@ async function scanMt5AutomationSignals(): Promise<number> {
   for (const candidate of grouped.values()) {
     if (!mt5ConnectionMatches(scanConnection, mt5Context().mt5BridgeHeartbeat ?? {}) || !mt5ExecutionFeedIsFresh()) break;
     let result: Awaited<ReturnType<typeof enqueueMt5Signal>>;
-    try { result = await enqueueMt5Signal(candidate, config, opposingZones); }
+    try { result = await enqueueMt5Signal(candidate, config, opposingZones, true); }
     catch (error) {
       explainCandidate(candidate, 'WAIT', [error instanceof Error ? error.message : 'MT5 entry verification failed.']);
       mt5Context().entryChecks = entryChecks.slice(-100);
@@ -1825,6 +1843,7 @@ async function startServer() {
             .sort((a, b) => a - b)[0],
         },
         recentSignals: signals.slice(-25).reverse(),
+        missedEntries: signals.filter(signal => findMissedZoneEntry(signal, [signal], mt5Context().mt5BridgeHeartbeat ?? {})),
       });
     } catch (error) {
       return res.status(500).json({ ok: false, error: error instanceof Error ? error.message : 'Unable to read MT5 status.' });

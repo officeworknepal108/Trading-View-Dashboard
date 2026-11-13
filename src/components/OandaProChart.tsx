@@ -4,6 +4,7 @@ import { TrendlineStudy } from './TrendlineStudy';
 import { Mt5CapitalPanel } from './Mt5CapitalPanel';
 import { bestTrendlineSetupRank, collectStudySupport, measureStudySupportDistance, preEntryTrendlineMarks, studyClosedCandles, studyTimeframes, trendlineSupportsBuy, type EntryArrowStudyEntry } from '../services/trendlineStudy';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import type { UserRole } from '../services/authTypes';
 import { userStorage } from '../services/userStorage';
 import {
@@ -154,6 +155,8 @@ import {
 import { TradeMultiSelect } from './TradeMultiSelect';
 import {
   findEarlierZoneEntry,
+  confirmedBrokerZoneEntry,
+  findMissedZoneEntry,
   isSameZoneEntryConfirmation,
   tradeZoneExecutionKey,
   type ZoneTradeRecord,
@@ -749,7 +752,7 @@ function mt5SignalStatusLabel(signal: Mt5StoredSignal): string {
   }
   if (signal.status === 'SL') return 'SL HIT';
   if (signal.status === 'CANCELLED') return 'MT5 CANCELLED';
-  if (signal.status === 'EXPIRED') return 'MT5 EXPIRED';
+  if (signal.status === 'EXPIRED') return signal.entryQualifiedAt ? 'ENTRY MISSED' : 'MT5 EXPIRED';
   if (signal.status === 'SIMULATED') return 'MT5 SIMULATED';
   if (signal.status === 'REJECTED' && signal.message?.startsWith('STRONG OPPOSITE')) {
     return 'STRONG OPPOSITE SETUP · TRADE SKIPPED';
@@ -954,6 +957,63 @@ export interface ZoneEntryReadiness {
   label: string;
   title: string;
   reasons: string[];
+  context?: string;
+  explanations?: Array<{ reason: string; detail: string }>;
+}
+
+/** Display wording only: the entry checks remain the source of every reason. */
+function entryReasonExplanation(reason: string, detail: string, zone: StructureZone,
+  automation?: Mt5AutomationStatus): string {
+  const explanations: Record<string, string> = {
+    'OPPORTUNITY EXPIRED': 'Price has already moved far enough away from the zone to reach its allowed entry limit. The code now blocks entry from this opportunity. Another engulfing does not remove this expiry block.',
+    'ENTRY MISSED': 'All required entry conditions passed, but the trade did not open within the allowed entry time. That entry was missed. The code will not chase the price or allow another entry from this same zone.',
+    'SIGNAL EXPIRED': 'The signal is older than the allowed execution time. The code will not open a late trade using this signal. A fully qualified missed entry cannot be replaced by another entry from the same zone.',
+    'ZONE INVALIDATED': 'This zone no longer meets the structure rules for a valid entry. A new engulfing cannot make this invalid zone usable. A different valid setup is needed.',
+    'ZONE ALREADY USED': 'The entry checks have marked this zone as already used. Another trade from the same zone is blocked. A visible candle pattern alone does not count as a valid entry.',
+    'HIGHER EXTREME A+ ZONE': 'Another qualifying A+ zone is farther out at the structure extreme and has priority. This zone is blocked by that selection rule; an engulfing here alone cannot allow entry.',
+    'HTF CONFIRMATION ROUTE': 'The higher-timeframe confirmation route for this zone is disabled. This route cannot open a trade while that restriction applies.',
+    'STRUCTURE NOT TRADEABLE': 'This zone has not met the structure and CHoCH classification rules needed for entry. Fib alignment or an engulfing alone is not enough to qualify it.',
+    'A+ FIB ALIGNMENT': 'This zone does not currently have a qualifying A+ Fib alignment. The code needs an approved numerical Fib alignment for this entry route. An engulfing alone cannot trigger entry while this requirement is missing.',
+    'FIB 0.5 TOUCH': `An engulfing is visible, but its candles did not touch the required Fib 0.5 level${zone.fibLevel50 === undefined ? '' : ` at ${formatPrice(zone.fibLevel50)}`}. This pattern cannot give an entry. While the zone remains valid and within its entry limits, a new engulfing can qualify if it touches that level and passes the other conditions.`,
+    'FIB 0.5 DATA': 'The code cannot verify the required Fib 0.5 price yet. It must have that price before it can check whether the engulfing touched it. Entry stays paused until the data is available and the conditions pass.',
+    'ZONE TOUCH': `No completed candle has revisited this zone after it became active. Price must return to the zone at ${formatPrice(zone.bottom)}–${formatPrice(zone.top)}, and the required entry pattern must also qualify. Touching the zone by itself does not open a trade.`,
+    'ENGULFING': `No completed ${zone.isBuy ? 'bullish' : 'bearish'} engulfing pattern has qualified at this zone. The code is waiting for an approved pattern in the required direction. It must also pass the applicable Fib and other entry conditions.`,
+    'QUALIFYING ENGULFING': 'A candle pattern is visible, but it has not passed the strategy checks for entry. Seeing an engulfing on the chart does not mean a trade is ready. Entry remains paused while the required checks are incomplete.',
+    'QUALIFYING ENTRY SIGNAL': 'There is no fully qualified entry signal yet. The zone can remain available while its validity and entry limits hold, but all required conditions must pass before a trade can open.',
+    'CANDLE CLOSE': 'The candle forming the observed engulfing is still open. Its shape can change before it closes, so it cannot confirm entry yet. The code will check it again after it closes.',
+    'CANDLE DATA': 'The code does not have the source candles needed to check this setup. It must receive usable candle data before it can confirm a pattern or allow entry.',
+    'TRADING HOURS': 'This entry falls outside the enabled trading hours. The setup must form and execute inside the allowed hours. An old outside-hours pattern will not automatically become an entry when the session opens.',
+    'VOLUME DATA': 'The candle volume needed for this entry rule is missing. The code cannot confirm the required volume relationship, so entry stays paused until it can verify the data.',
+    'VOLUME CONFIRMATION': 'The engulfing did not pass its required candle-volume comparison. This pattern cannot give an entry. A later pattern must meet the volume rule and all other conditions while the zone remains eligible.',
+    'NO M1 VOLUME RULE': 'This one-minute pattern has no approved volume rule for entry. The code therefore blocks this pattern instead of assuming that its volume is acceptable.',
+    '15M + 1H TREND ALIGNMENT': 'The 15-minute and 1-hour trends do not currently meet the direction rule for this trade. Entry remains paused while that trend condition fails. Passing Fib and engulfing checks alone is not enough.',
+    'TREND ALIGNMENT': 'The current trends do not meet this entry route’s direction rule. The code is waiting for the required trend agreement. All other conditions must still pass before entry can become possible.',
+    'OPPOSING ZONE CLEARANCE': 'A qualifying zone in the opposite direction is too close to the planned entry. There is not enough room to reach the required 1:1 reward compared with the stop-loss distance. Entry is paused while this obstacle remains.',
+    'VOLATILITY TO SETTLE': 'A recent one-minute candle is unusually large compared with normal candles and the planned stop distance. The fast-move check is pausing entry. The setup must pass this check and the other entry rules before execution.',
+    'NEW 15M CHoCH AFTER SL': 'An earlier trade in this price area hit its stop loss. The code needs a new completed 15-minute CHoCH in the required direction before another setup in this area can qualify. Another engulfing alone is not enough.',
+    'ENTRY PRICE': 'The setup has a planned entry price, but price has not filled that entry yet. The code waits for the planned price while the order and setup remain valid. It does not assume that seeing the signal means a trade has opened.',
+    'ENTRY CANDLE / PRICE': 'A qualified pattern has been found, but the available candles and entry price have not produced a usable trade yet. The code must verify the entry before sending an order; this message does not mean that a trade is already open.',
+    'CANDLE TIME SYNCHRONIZATION': 'The signal time is ahead of the current verified time. The candle feeds must line up before the code can safely treat this as a completed entry signal.',
+    'MT5 STATUS': 'The dashboard is waiting for the MT5 status. It needs to check the connection, account and execution conditions before it can say that automatic entry is ready.',
+    'AUTO ENTRY OFF': 'Automatic entry is switched off. The chart can still show zones and patterns, but this setting prevents the code from opening a trade. Turning it on does not make an old missed signal eligible again.',
+    'STRATEGY': 'This entry strategy is switched off in the MT5 settings. It cannot open a trade while disabled. Enabling it still requires a currently eligible setup that passes every entry check.',
+    'TIMEFRAME': 'The timeframe required by this entry route is disabled in the MT5 settings. Entry from this route stays disabled until the required timeframe is enabled and a valid setup qualifies.',
+    'MT5 CONNECTION': 'The dashboard does not have a working connection to the MT5 terminal. It cannot send this trade until the connection is restored and the live entry checks pass. A signal that expires in the meantime is not chased.',
+    'BROKER SYMBOL SELECTION': 'MT5 has not confirmed the correct broker symbol for this market. The code must identify and select that symbol before it can send an order.',
+    'FRESH MT5 DATA': 'The latest broker data is missing or too old. Entry is paused because the code cannot verify the current market conditions. Fresh MT5 data is required before execution can be checked again.',
+    'DAILY RISK DATA': 'The code cannot verify how much daily risk is still available on this account. New entries stay paused until MT5 supplies usable risk information.',
+    'DAILY RISK LIMIT': 'The account has no usable daily risk allowance left for a new entry. This can include losses and risk already reserved by existing trades. A valid chart setup cannot override the account’s risk limit.',
+    'EXISTING POSITION STOP LOSS': 'An existing automated position has no usable stop loss, so its risk cannot be measured. New entries stay paused until that risk can be verified.',
+    'OPEN TRADE LIMIT': `The account has reached its configured limit${automation ? ` of ${automation.config.maximumOpenTrades} open trade${automation.config.maximumOpenTrades === 1 ? '' : 's'}` : ''}. Another trade cannot open while this limit is reached. A space becoming available does not allow an already missed entry to be reused.`,
+    'NEWS CALENDAR DATA': 'The news calendar could not be verified. The code pauses automatic entry because it cannot check whether an important news event is too close. It needs usable calendar data before this check can pass.',
+    'NEWS WINDOW': 'Automatic entry is paused around a high-impact US-dollar news event. The pause must end before an eligible trade can open. A signal that has already expired is not automatically reused after the pause.',
+    'LIVE ORDERS OFF': 'MT5 is in simulation mode. The code can show and test signals, but this setting prevents real orders from being placed.',
+  };
+  const explanation = reason.match(/CLOSE (ABOVE|BELOW)$/)
+    ? `The ${reason.replace(/ CLOSE .*$/, '')} candle has not yet confirmed the required close ${zone.isBuy ? 'above' : 'below'} the CHoCH confirmation level. Moving past the level while that candle is still open is not enough. Confirmation stays pending until a completed candle meets the rule.`
+    : explanations[reason];
+  if (!explanation) return `${detail}\n\nThe execution check has not passed. Entry remains paused while this condition applies; the setup must still pass all other entry checks.`;
+  return detail !== reason && !explanation.includes(detail) ? `${explanation}\n\nCheck details: ${detail}` : explanation;
 }
 
 /** Read-only explanation of the same setup and execution gates; never creates an order. */
@@ -968,7 +1028,8 @@ export function explainZoneEntry(options: {
   const { zone, timeframe, evidence, trade, decision } = options;
   const entries: Array<{ mode: ZoneEntryReadiness['mode']; reason: string; detail: string }> = [];
   const add = (mode: ZoneEntryReadiness['mode'], reason: string, detail = reason) => {
-    if (!entries.some(entry => entry.reason === reason)) entries.push({ mode, reason, detail });
+    if (!entries.some(entry => entry.reason === reason)) entries.push({ mode, reason,
+      detail: entryReasonExplanation(reason, detail, zone, options.automation) });
   };
   if (!zone.active || ['invalidated', 'rejected', 'superseded'].includes(zone.status)) {
     add('BLOCKED', 'ZONE INVALIDATED', `Zone status: ${zone.status}.`);
@@ -1002,6 +1063,10 @@ export function explainZoneEntry(options: {
     const status = options.automation;
     if (!status) add('WAIT', 'MT5 STATUS');
     else {
+      if (findMissedZoneEntry({ symbol: options.symbol ?? 'XAUUSD', zoneTimeframe: timeframe as TradeTimeframe,
+        zoneId: zone.id }, status.missedEntries ?? status.recentSignals, status.bridge)) {
+        add('BLOCKED', 'ENTRY MISSED', 'A fully qualified entry was missed. This zone cannot produce another entry.');
+      }
       if (!status.config.enabled) add('DISABLED', 'AUTO ENTRY OFF');
       const disabled = mt5SignalDisabledReason(status.config, {
         zoneTimeframe: timeframe as TradeTimeframe, signalTimeframe: signal?.timeframe ?? timeframe as TradeTimeframe,
@@ -1049,15 +1114,83 @@ export function explainZoneEntry(options: {
   const hidden = entries.length - Math.min(2, sameMode.length);
   return { mode: first.mode, label: `${first.mode} — ${shown}${hidden > 0 ? ` · +${hidden}` : ''}`,
     title: entries.map(entry => `${entry.mode} — ${entry.reason}: ${entry.detail}`).join('\n'),
+    context: `${displayZoneName(zone.name, zone.oneMinuteGenesisQml)} · ${formatTradeTimeframe(timeframe as TradeTimeframe)} · ${zone.isBuy ? 'BUY' : 'SELL'} · ${formatPrice(zone.bottom)}–${formatPrice(zone.top)}`,
+    explanations: entries.map(({ reason, detail }) => ({ reason, detail })),
     reasons: entries.map(entry => entry.reason) };
 }
 
-export const ZoneEntryReadinessText: React.FC<{ readiness: ZoneEntryReadiness }> = ({ readiness }) => (
-  <span title={readiness.title} role="status" className={`inline-block max-w-[260px] whitespace-normal text-right ${
+export const ZoneEntryReasonDetails: React.FC<{ readiness: ZoneEntryReadiness }> = ({ readiness }) => (
+  <div className="space-y-3 text-left text-[11px] font-normal leading-relaxed normal-case text-slate-700">
+    <div>
+      <div className="font-semibold text-slate-900">{readiness.mode === 'READY' ? 'Entry checks' : 'Why is this entry waiting or blocked?'}</div>
+      {readiness.context && <div className="mt-1 text-[10px] text-slate-500">{readiness.context}</div>}
+    </div>
+    {readiness.explanations?.length ? readiness.explanations.map((entry, index) => (
+      <div key={entry.reason}>
+        <div className="mb-1 font-semibold text-slate-900">{index + 1}. {entry.reason}</div>
+        <div className="whitespace-pre-line">{entry.detail}</div>
+      </div>
+    )) : <div className="whitespace-pre-line">{readiness.title}</div>}
+  </div>
+);
+
+export const ZoneEntryReadinessText: React.FC<{ readiness: ZoneEntryReadiness }> = ({ readiness }) => {
+  const anchor = useRef<HTMLSpanElement>(null);
+  const tooltip = useRef<HTMLDivElement>(null);
+  const closeTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const tooltipId = React.useId();
+  const [position, setPosition] = useState<{ left: number; top: number; width: number; maxHeight: number }>();
+  const keepOpen = () => { clearTimeout(closeTimer.current); };
+  const closeSoon = () => { keepOpen(); closeTimer.current = setTimeout(() => setPosition(undefined), 180); };
+  const place = useCallback(() => {
+    const rect = anchor.current?.getBoundingClientRect();
+    if (!rect) return;
+    const gap = 8;
+    const width = Math.min(380, window.innerWidth - 2 * gap);
+    const below = window.innerHeight - rect.bottom - 2 * gap;
+    const above = rect.top - 2 * gap;
+    const useBelow = below >= Math.min(320, above);
+    const maxHeight = Math.max(40, Math.min(400, useBelow ? below : above));
+    setPosition({ left: Math.max(gap, Math.min(rect.right - width, window.innerWidth - width - gap)),
+      top: useBelow ? rect.bottom + gap : Math.max(gap, rect.top - gap - maxHeight), width, maxHeight });
+  }, []);
+  useEffect(() => {
+    if (!position) return;
+    const escape = (event: KeyboardEvent) => { if (event.key === 'Escape') setPosition(undefined); };
+    const outsideClick = (event: PointerEvent) => {
+      if (event.target instanceof Node && !anchor.current?.contains(event.target)
+        && !tooltip.current?.contains(event.target)) setPosition(undefined);
+    };
+    const scroll = (event: Event) => {
+      if (!(event.target instanceof Node && tooltip.current?.contains(event.target))) place();
+    };
+    window.addEventListener('resize', place);
+    window.addEventListener('keydown', escape);
+    window.addEventListener('pointerdown', outsideClick);
+    window.addEventListener('scroll', scroll, true);
+    return () => {
+      window.removeEventListener('resize', place); window.removeEventListener('keydown', escape);
+      window.removeEventListener('pointerdown', outsideClick); window.removeEventListener('scroll', scroll, true);
+    };
+  }, [!!position, place]);
+  useEffect(() => () => clearTimeout(closeTimer.current), []);
+  return <>
+  <span ref={anchor} role="status" tabIndex={0} aria-label={`${readiness.label}. Hover or focus for all entry reasons.`}
+    aria-describedby={position ? tooltipId : undefined}
+    onMouseEnter={() => { keepOpen(); place(); }} onMouseLeave={closeSoon}
+    onFocus={() => { keepOpen(); place(); }} onBlur={closeSoon}
+    onClick={() => { keepOpen(); place(); }}
+    className={`inline-block max-w-[260px] cursor-help whitespace-normal text-right outline-offset-2 ${
     readiness.mode === 'READY' ? 'text-emerald-700' : readiness.mode === 'BLOCKED' ? 'text-rose-700'
       : readiness.mode === 'DISABLED' || readiness.mode === 'SIMULATION' ? 'text-slate-600' : 'text-amber-700'
   }`}>{readiness.label}</span>
-);
+  {position && createPortal(<div ref={tooltip} id={tooltipId} role="tooltip" onMouseEnter={keepOpen} onMouseLeave={closeSoon}
+    className="fixed z-[10000] overflow-y-auto overscroll-contain rounded-lg border border-slate-200 bg-white p-3 shadow-xl"
+    style={position}>
+    <ZoneEntryReasonDetails readiness={readiness} />
+  </div>, document.body)}
+  </>;
+};
 
 function displayFibLabel(zone: StructureZone): string {
   if (zone.fibBand === 'deep') {
@@ -3184,17 +3317,10 @@ export const OandaProChart: React.FC<{
   ), [consolidatedDisplayZones, displayCandles, granularity, marketSymbol, retainedChartTradeOverlays]);
 
   const zoneEntryRecords = useMemo<ZoneTradeRecord[]>(() => [
-    ...visibleSavedJournalTrades,
-    ...visibleRetainedChartTradeOverlays.filter((overlay) => !overlay.referenceOnly)
-      .map((overlay) => ({
-        id: overlay.id, symbol: overlay.symbol ?? 'XAUUSD',
-        setupId: overlay.setupId, zoneTimeframe: overlay.chartTimeframe,
-        signalAt: overlay.trade.signal.time, signalTimeframe: overlay.trade.signal.timeframe,
-        openedAt: overlay.trade.filledAt,
-      })),
-    ...(mt5Status?.recentSignals ?? []).filter((signal) => signal.openedAt !== undefined)
+    ...visibleSavedJournalTrades.filter(confirmedBrokerZoneEntry),
+    ...(mt5Status?.recentSignals ?? []).filter(confirmedBrokerZoneEntry)
       .map((signal) => ({ ...signal, signalAt: signal.signalAt })),
-  ], [visibleSavedJournalTrades, visibleRetainedChartTradeOverlays, mt5Status?.recentSignals]);
+  ], [visibleSavedJournalTrades, mt5Status?.recentSignals]);
 
   // Preserve Gold's original tracking identity exactly. Currency pairs receive
   // their own symbol-prefixed scopes without changing Gold's entry lifecycle.
@@ -3286,6 +3412,13 @@ export const OandaProChart: React.FC<{
           || isGoldIntradayCandleRoute(granularity, setup.signal.timeframe))
         && !redundantStandaloneZoneIds.has(setup.zone.id)
         && !extremeAPlusTjl2Selection.blockedZoneIds.has(setup.zone.id)) {
+        const liveZone = displayZones.find(zone => zone.id === setup.zone.id);
+        const source = setup.signal.timeframe === granularity ? displayCandles : vipCandles[setup.signal.timeframe] ?? [];
+        // An unexecuted cached paper setup must still pass today's exact zone/Fib signal checks.
+        if (replayIndex === null && !isUnfilledDirectSetupQualified({
+          zone: liveZone, signal: setup.signal, zoneTimeframe: granularity, sourceCandles: source,
+          goldZone: marketSymbol === 'XAUUSD' ? { candles: displayCandles, pipSize: marketConfig.pipSize } : undefined,
+        })) continue;
         setups.set(setup.zone.id, setup);
       }
     }
@@ -8439,6 +8572,9 @@ export const OandaProChart: React.FC<{
     }
     return evidence;
   }, [zoneTableRows, doubleChochRows, displayCandles, granularity]);
+  const zoneEntryMissed = (zone: DisplayStructureZone) => replayIndex === null && mt5Status
+    && displayZoneMembers(zone).some(member => findMissedZoneEntry({ symbol: marketSymbol,
+      zoneTimeframe: granularity, zoneId: member.id }, mt5Status.missedEntries ?? mt5Status.recentSignals, mt5Status.bridge));
   const zoneReadiness = (zone: DisplayStructureZone, trade?: TradeLevels,
     decision?: DirectZoneEntryDecision, extra: Partial<Parameters<typeof explainZoneEntry>[0]> = {}) => {
     const inspected = zoneEntryEvidenceById.get(zone.id) ?? {
@@ -8621,7 +8757,7 @@ export const OandaProChart: React.FC<{
       const displayedTrade = zoneTableTrade(trade ?? outsideTimePreview, zone);
       const mt5Signal = confluenceMapValue<Mt5StoredSignal>(zone, directZoneMt5Signals);
       if (hasZoneTableTradeExpired(displayedTrade, zone) || hasZoneTableTradeExpired(mt5Signal, zone)) return null;
-      const completedStatus = zoneTableCompletedStatus(displayedTrade, mt5Signal);
+      const completedStatus = zoneEntryMissed(zone) ? 'ENTRY MISSED' : zoneTableCompletedStatus(displayedTrade, mt5Signal);
       const measurement = confluenceFirstValue(zone, (member) => (
         measureTradeableFibZone(member, marketConfig.pipSize)
       )) ?? (completedStatus ? measureListedZone(zone, marketConfig.pipSize) : undefined);
@@ -8698,7 +8834,8 @@ export const OandaProChart: React.FC<{
               : outsideTimePreview ? 'text-rose-700'
                 : pending ? 'text-amber-700' : 'text-emerald-700'
           }`}>
-            {completedStatus ? completedStatus : isCompletedTrade(outsideTimePreview)
+            {completedStatus === 'ENTRY MISSED' ? <ZoneEntryReadinessText readiness={zoneReadiness(zone, trade, entryDecision)} />
+              : completedStatus ? completedStatus : isCompletedTrade(outsideTimePreview)
               ? <TradeStatusText trade={outsideTimePreview!} />
               : mt5Signal
                 ? <span className={mt5SignalStatusClassName(mt5Signal)} title={mt5Signal.message}>{mt5SignalStatusLabel(mt5Signal)}</span>
@@ -8755,7 +8892,7 @@ export const OandaProChart: React.FC<{
         isDeepDiscountZoneDisplay(member, engulfingTrade?.signal)
       ));
       const mt5Signal = confluenceMapValue<Mt5StoredSignal>(zone, directZoneMt5Signals);
-      const completedStatus = zoneTableCompletedStatus(engulfingTrade, mt5Signal);
+      const completedStatus = zoneEntryMissed(zone) ? 'ENTRY MISSED' : zoneTableCompletedStatus(engulfingTrade, mt5Signal);
       const measurement = confluenceFirstValue(zone, (member) => (
         measureTradeableFibZone(member, marketConfig.pipSize)
       )) ?? measureListedZone(zone, marketConfig.pipSize);
@@ -8899,7 +9036,7 @@ export const OandaProChart: React.FC<{
         <td className={`px-2 py-1 text-right font-bold whitespace-nowrap ${
           trade?.status === 'sl-hit' ? 'text-rose-700' : ''
         }`}>
-          {completedStatus ? (
+          {completedStatus === 'ENTRY MISSED' ? <ZoneEntryReadinessText readiness={readiness} /> : completedStatus ? (
             <span className={completedStatus === 'SL HIT' ? 'text-rose-700' : 'text-emerald-700'}>{completedStatus}</span>
           ) : outsideTimePreview && isCompletedTrade(outsideTimePreview) ? (
             <TradeStatusText trade={outsideTimePreview} />
@@ -8949,7 +9086,7 @@ export const OandaProChart: React.FC<{
       const trade = zoneTableTrade(directZoneTrades.get(zone.id), zone)!;
       const mt5Signal = directZoneMt5Signals.get(zone.id);
       if (hasZoneTableTradeExpired(trade, zone) || hasZoneTableTradeExpired(mt5Signal, zone)) return null;
-      const completedStatus = zoneTableCompletedStatus(trade, mt5Signal);
+      const completedStatus = zoneEntryMissed(zone) ? 'ENTRY MISSED' : zoneTableCompletedStatus(trade, mt5Signal);
       return (
         <React.Fragment key={`retained-trade-${zone.id}`}>
           <tr className="border-t border-slate-200 bg-slate-50 text-slate-600">
@@ -8977,7 +9114,8 @@ export const OandaProChart: React.FC<{
               ? mt5SignalStatusClassName(mt5Signal)
               : trade.status === 'sl-hit' ? 'text-rose-700' : 'text-emerald-700'
             }`}>
-              {completedStatus ?? <>{zone.tapBarsAgo} bars · {mt5Signal
+              {completedStatus === 'ENTRY MISSED' ? <ZoneEntryReadinessText readiness={zoneReadiness(zone, trade)} />
+                : completedStatus ?? <>{zone.tapBarsAgo} bars · {mt5Signal
                 ? mt5SignalStatusLabel(mt5Signal)
                 : <TradeStatusText trade={trade} />}</>}
               {bestTrendlineBadge(trade)}

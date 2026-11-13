@@ -21,6 +21,7 @@ import {
   buildMt5SignalId,
   canMt5SignalExpireBeforeExecution,
   findEarlierZoneEntry,
+  findMissedZoneEntry,
   isSameZoneEntryConfirmation,
   tradeZoneExecutionKey,
   tradeRecordZoneExecutionKey,
@@ -224,11 +225,11 @@ test('zone identity survives price revisions but keeps different origins, market
   assert.notEqual(tradeZoneExecutionKey({ ...zone, zoneTimeframe: 'H1' }), key);
 });
 
-test('a filled Major Liquidity chart entry blocks a later Fib entry, including legacy journals', () => {
+test('only a confirmed broker entry consumes a live zone across routes and legacy identities', () => {
   const candidate = { symbol: 'XAUUSD', zoneTimeframe: 'M15',
     zoneId: 'TJL2-1792708200-4032.49', signalAt: 300 };
   const earlier = { id: 'DIRECT:TJL2-1792708200-4032.49:100:4014.365',
-    zoneTimeframe: 'M15', signalAt: 100, openedAt: 110 };
+    zoneTimeframe: 'M15', signalAt: 100, openedAt: 110, brokerTicket: 123 };
   assert.equal(tradeRecordZoneExecutionKey(earlier), tradeZoneExecutionKey(candidate));
   assert.equal(findEarlierZoneEntry(candidate, [earlier]), earlier);
   const scalp = { ...earlier, id: 'GOLD_SCALP:M15:TJL2-1792708200-4032.49:100:4014.365' };
@@ -238,7 +239,9 @@ test('a filled Major Liquidity chart entry blocks a later Fib entry, including l
   const mapped = { ...earlier, id: 'MTF:some-setup:100:4014.365', zoneId: candidate.zoneId };
   assert.equal(findEarlierZoneEntry(candidate, [mapped]), mapped);
   assert.equal(findEarlierZoneEntry(candidate, [{ ...earlier, openedAt: undefined }]), undefined);
-  assert.equal(findEarlierZoneEntry(candidate, [{ ...earlier, outsideTradingTime: true }]), undefined);
+  const outsideHoursExecution = { ...earlier, outsideTradingTime: true };
+  assert.equal(findEarlierZoneEntry(candidate, [outsideHoursExecution]), outsideHoursExecution,
+    'a confirmed broker fill remains consumed regardless of the chart session label');
   const broker = { ...earlier, outsideTradingTime: true, mt5Managed: true };
   assert.equal(findEarlierZoneEntry(candidate, [broker]), broker,
     'a real broker entry consumes its zone even when the session filter was disabled');
@@ -247,11 +250,51 @@ test('a filled Major Liquidity chart entry blocks a later Fib entry, including l
   assert.equal(findEarlierZoneEntry(candidate, [{ ...earlier, symbol: 'EURUSD' }]), undefined);
 });
 
+test('an unqualified or simulated chart journal record cannot consume a live zone', () => {
+  const candidate = { symbol: 'XAUUSD', zoneTimeframe: 'M15',
+    zoneId: 'TJL1-1794492000-3890.29265', signalAt: 1794570300 };
+  const paper = { id: 'GOLD_SCALP:M15:TJL1-1794492000-3890.29265:1794528900:3885.585',
+    symbol: 'XAUUSD', zoneTimeframe: 'M15', zoneId: candidate.zoneId,
+    signalAt: 1794528900, openedAt: 1794529200 };
+  for (const record of [paper, { ...paper, mt5Managed: true }, { ...paper, brokerTicket: 0 },
+    { ...paper, brokerTicket: -1 }, { ...paper, outsideTradingTime: true }]) {
+    assert.equal(findEarlierZoneEntry(candidate, [record]), undefined);
+  }
+  assert.equal(findEarlierZoneEntry(candidate, [{ ...paper, brokerPosition: 77 }])?.brokerPosition, 77);
+  assert.equal(findEarlierZoneEntry(candidate, [{ ...paper, brokerTicket: 77, openedAt: undefined }]), undefined,
+    'a pending order is reserved by the signal queue, not proof that an entry filled');
+  assert.equal(findEarlierZoneEntry(candidate, [paper, { ...paper, brokerTicket: 78 }])?.brokerTicket, 78,
+    'an unqualified paper record must not hide a genuine later broker record');
+});
+
+test('a verified missed entry retires its zone across new engulfings and entry routes', () => {
+  const connection = { account: '123', server: 'Broker-A', brokerSymbol: 'XAUUSD' };
+  const candidate = { symbol: 'XAUUSD', zoneTimeframe: 'M15' as const,
+    zoneId: 'TJL1-1794492000-3890.29265', setupId: 'DIRECT:M15:zone' };
+  const missed = { ...candidate, ...connection, id: 'first-valid-entry', status: 'EXPIRED',
+    entryQualifiedAt: 100, signalAt: 90 } as Mt5StoredSignal;
+  const scalp = { ...candidate, setupId: 'GOLD_SCALP:M15:zone', zoneId: 'TJL1-1794492000-3890.30' };
+  // A restart loads the same durable evidence; price revisions and routes do not reset it.
+  const restored = JSON.parse(JSON.stringify([missed])) as Mt5StoredSignal[];
+  assert.equal(findMissedZoneEntry(scalp, restored, connection)?.id, missed.id);
+  assert.equal(findMissedZoneEntry(candidate, [{ ...missed, entryQualifiedAt: undefined }], connection), undefined,
+    'an old or unqualified expired record is not proof of a valid missed entry');
+  for (const status of ['REJECTED', 'SIMULATED', 'ACTIVE', 'TP'] as const) {
+    assert.equal(findMissedZoneEntry(candidate, [{ ...missed, status }], connection), undefined);
+  }
+  assert.equal(findMissedZoneEntry({ ...candidate, zoneId: 'TJL1-1794492900-3890.30' }, restored, connection), undefined);
+  assert.equal(findMissedZoneEntry(candidate, restored, { ...connection, account: 'other' }), undefined);
+  assert.equal(findMissedZoneEntry(candidate, restored, { ...connection, server: 'other' }), undefined);
+  assert.equal(findMissedZoneEntry(candidate, restored, { ...connection, brokerSymbol: 'GOLD' }), undefined);
+  assert.equal(findMissedZoneEntry(candidate, [{ ...missed, openedAt: 100, brokerPosition: 77 }], connection), undefined,
+    'a confirmed fill is handled by the broker duplicate protection, not labelled missed');
+});
+
 test('concurrent H1-zone 15M and 30M confirmations can be displayed without releasing the used-zone block', () => {
   const candidate = { symbol: 'XAUUSD', zoneTimeframe: 'H1',
     zoneId: 'iss-l4-1793894400', signalAt: 1794192300, signalTimeframe: 'M15' as const };
   const manual = { id: 'DIRECT:iss-l4-1793894400:1794191400:4120.17',
-    zoneTimeframe: 'H1', signalAt: 1794191400, signalTimeframe: 'M30' as const, openedAt: 1794193200 };
+    zoneTimeframe: 'H1', signalAt: 1794191400, signalTimeframe: 'M30' as const, openedAt: 1794193200, brokerTicket: 123 };
   assert.equal(findEarlierZoneEntry(candidate, [manual]), manual, 'execution stays blocked');
   assert.equal(isSameZoneEntryConfirmation(candidate, manual), true,
     'both signals confirm at 08:45 Nepal and may share an entry reference');

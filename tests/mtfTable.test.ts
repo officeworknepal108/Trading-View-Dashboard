@@ -8,9 +8,9 @@ import { MultiTimeframeEntryTable, mtfTableHitExpired, isSlTpTradeDisplayFinishe
   resolveZoneTableTrade, zoneTableCompletedStatus, TradeDetailsRow, ZoneTableEntryPrice,
   zoneTableMtfStatus, reconcileSavedMtfTrade, validateRecordedMtfTrade, ZoneTableEngulfingConfirmations,
   ZoneSourceTimeframeLabel, resolveZoneTableSourceTimeframe,
-  selectChochStatusTableZones, ChochStatusTableRow, explainZoneEntry, ZoneEntryReadinessText,
+  selectChochStatusTableZones, ChochStatusTableRow, explainZoneEntry, ZoneEntryReadinessText, ZoneEntryReasonDetails,
   ManualTradeTimeframeControl } from '../src/components/OandaProChart';
-import type { Mt5AutomationStatus } from '../src/services/mt5Automation';
+import type { Mt5AutomationStatus, Mt5StoredSignal } from '../src/services/mt5Automation';
 import type { JournalTradeRecord } from '../src/components/TradeJournal';
 import type { MtfRow } from '../src/services/mtf';
 import type { StructureZone } from '../src/services/marketStructure';
@@ -68,7 +68,7 @@ test('Zone Table reports real waiting reasons, full hover details and no prematu
   assert.ok(status.reasons.includes('TRADING HOURS'));
   assert.ok(status.title.includes('3887.835'));
   const html = renderToStaticMarkup(React.createElement(ZoneEntryReadinessText, { readiness: status }));
-  assert.ok(html.includes('title=') && html.includes('WAIT'));
+  assert.ok(html.includes('tabindex="0"') && html.includes('Hover or focus') && html.includes('WAIT'));
   assert.ok(!html.includes('ENTRY READY'));
   assert.deepEqual(options, before, 'rendering reasons must not change entry eligibility');
   assert.equal(explainZoneEntry(entryDiagnosticOptions()).label, 'ENTRY READY');
@@ -76,6 +76,38 @@ test('Zone Table reports real waiting reasons, full hover details and no prematu
   assert.equal(explainZoneEntry(entryDiagnosticOptions({ opportunityExpired: true })).mode, 'BLOCKED');
   assert.ok(explainZoneEntry(entryDiagnosticOptions({ evidence: { waiting: ['ENGULFING'], details: [] } }))
     .label.includes('WAIT'));
+});
+
+test('small-text entry tooltip explains every hidden reason without inventing a trigger price', () => {
+  const options = entryDiagnosticOptions({ opportunityExpired: true,
+    evidence: { waiting: ['ENGULFING'], details: ['No completed sell engulfing qualifies.'] } });
+  options.zone = { ...options.zone, name: 'ISS L4', isBuy: false, bottom: 3900.634, top: 3905.975 };
+  const readiness = explainZoneEntry(options);
+  assert.ok(readiness.label.includes('+1'));
+  const tooltip = renderToStaticMarkup(React.createElement(ZoneEntryReasonDetails, { readiness }));
+  assert.ok(tooltip.includes('text-[11px]') && tooltip.includes('font-normal'));
+  assert.ok(tooltip.includes('ISS L4') && tooltip.includes('3,900.634') && tooltip.includes('3,905.975'));
+  assert.ok(tooltip.includes('OPPORTUNITY EXPIRED') && tooltip.includes('allowed entry limit'));
+  assert.ok(tooltip.includes('ENGULFING') && tooltip.includes('bearish'));
+  assert.ok(tooltip.includes('No completed sell engulfing qualifies.'));
+  assert.ok(!tooltip.includes('1R reached'), 'a generic expiry flag cannot prove a specific 1R trigger');
+  assert.ok(!tooltip.includes('entry limit at'), 'do not invent a numerical trigger when it is unavailable');
+});
+
+test('tooltip uses real Fib prices, preserves server errors, and distinguishes waiting from a missed entry', () => {
+  const options = entryDiagnosticOptions({ evidence: { waiting: ['FIB 0.5 TOUCH'], details: [] } });
+  options.zone.fibLevel50 = 3887.835;
+  const fib = explainZoneEntry(options);
+  assert.ok(fib.title.includes('3,887.835') && fib.title.includes('new engulfing can qualify'));
+  assert.ok(!fib.title.includes('ENTRY MISSED'));
+  const automation = entryDiagnosticAutomation();
+  automation.newsCalendar = { available: false, error: 'Calendar request returned 429.' };
+  const news = explainZoneEntry(entryDiagnosticOptions({ automationSupported: true, automation }));
+  assert.ok(news.title.includes('Calendar request returned 429.'));
+  assert.ok(news.title.includes('important news event'));
+  const pending = entryDiagnosticOptions();
+  pending.zone.chochClass = 'pending';
+  assert.ok(explainZoneEntry(pending).title.includes('while that candle is still open is not enough'));
 });
 
 test('Zone Table applies live execution gates and ignores them in replay', () => {
@@ -104,6 +136,29 @@ test('Zone Table applies live execution gates and ignores them in replay', () =>
   assert.ok(explainZoneEntry(options).reasons.includes('DAILY RISK DATA'));
   automation.bridge.dailyRisk = { ...entryDiagnosticAutomation().bridge.dailyRisk as Extract<NonNullable<Mt5AutomationStatus['bridge']['dailyRisk']>, { available: true }>, limitReached: true };
   assert.equal(explainZoneEntry(options).mode, 'BLOCKED');
+});
+
+test('Zone Table keeps ENTRY MISSED visible for a new pattern, but not for incomplete or other-account entries', () => {
+  const automation = entryDiagnosticAutomation();
+  const missed = { id: 'missed', symbol: 'XAUUSD', zoneTimeframe: 'M15', zoneId: 'qml',
+    signalAt: 900, status: 'EXPIRED', entryQualifiedAt: 1800,
+    account: 'account-a', server: 'server-a', brokerSymbol: 'XAUUSD' } as Mt5StoredSignal;
+  automation.missedEntries = [missed];
+  const options = entryDiagnosticOptions({ automationSupported: true, automation, now: 100000 });
+  const readiness = explainZoneEntry(options);
+  assert.equal(readiness.mode, 'BLOCKED');
+  assert.ok(readiness.label.includes('ENTRY MISSED'));
+  assert.ok(readiness.title.includes('cannot produce another entry'));
+  assert.equal(explainZoneEntry({ ...options, replay: true }).label, 'ENTRY READY');
+  automation.missedEntries = [{ ...missed, entryQualifiedAt: undefined }];
+  assert.equal(explainZoneEntry(options).label, 'ENTRY READY');
+  automation.missedEntries = [{ ...missed, account: 'account-b' }];
+  assert.equal(explainZoneEntry(options).label, 'ENTRY READY');
+  automation.missedEntries = [];
+  const incomplete = explainZoneEntry({ ...options, evidence: { waiting: ['FIB 0.5 TOUCH'], details: [] } });
+  assert.equal(incomplete.mode, 'WAIT');
+  assert.ok(incomplete.reasons.includes('FIB 0.5 TOUCH'));
+  assert.ok(!incomplete.reasons.includes('ENTRY MISSED'));
 });
 
 test('scanner entry reasons match the exact account, zone and signal and expire promptly', () => {

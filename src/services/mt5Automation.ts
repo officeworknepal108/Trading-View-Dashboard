@@ -519,6 +519,13 @@ export interface ZoneTradeRecord {
   outsideTradingTime?: boolean;
   mt5Managed?: boolean;
   brokerTicket?: number;
+  brokerPosition?: number;
+}
+
+/** A simulated chart fill or an MT5 label alone is not proof of broker execution. */
+export function confirmedBrokerZoneEntry(record: ZoneTradeRecord): boolean {
+  return Number.isFinite(record.openedAt) && record.openedAt! > 0
+    && [record.brokerTicket, record.brokerPosition].some(ticket => Number.isSafeInteger(ticket) && ticket! > 0);
 }
 
 /** Read explicit zone identity and migrate older direct/scalp journal IDs. */
@@ -541,9 +548,7 @@ export function findEarlierZoneEntry(
 ): ZoneTradeRecord | undefined {
   const key = tradeZoneExecutionKey(candidate);
   if (!key) return undefined;
-  return records.find((record) => Number.isFinite(record.openedAt) && record.openedAt! > 0
-    && (record.outsideTradingTime !== true || record.mt5Managed === true
-      || Number.isFinite(record.brokerTicket))
+  return records.find((record) => confirmedBrokerZoneEntry(record)
     && Number.isFinite(record.signalAt) && record.signalAt! < candidate.signalAt
     && tradeRecordZoneExecutionKey(record) === key);
 }
@@ -583,6 +588,8 @@ export function priorGoldMt5ZoneExecution<T extends Pick<Mt5SignalInput,
 }
 
 export interface Mt5StoredSignal extends Mt5SignalInput {
+  /** Set only by the server scanner after all strategy and execution prechecks pass. */
+  entryQualifiedAt?: number;
   account?: string;
   server?: string;
   brokerSymbol?: string;
@@ -607,6 +614,19 @@ export interface Mt5StoredSignal extends Mt5SignalInput {
   closePrice?: number;
   realizedProfit?: number;
   message?: string;
+}
+
+/** Only a verified, unfilled opportunity can retire a zone as ENTRY MISSED. */
+export function findMissedZoneEntry(
+  candidate: Pick<Mt5SignalInput, 'symbol' | 'zoneTimeframe' | 'zoneId' | 'setupId'>,
+  signals: readonly Mt5StoredSignal[],
+  connection: { account?: string; server?: string; brokerSymbol?: string },
+): Mt5StoredSignal | undefined {
+  const key = tradeZoneExecutionKey(candidate);
+  return key === undefined ? undefined : signals.find(signal => signal.status === 'EXPIRED'
+    && Number.isFinite(signal.entryQualifiedAt) && signal.entryQualifiedAt! > 0
+    && !confirmedBrokerZoneEntry(signal)
+    && mt5ConnectionMatches(connection, signal) && tradeZoneExecutionKey(signal) === key);
 }
 
 /** Require the exact account, broker server and resolved contract before reusing execution data. */
@@ -762,6 +782,7 @@ export interface Mt5AutomationStatus {
   };
   counts: Record<string, number>;
   recentSignals: Mt5StoredSignal[];
+  missedEntries?: Mt5StoredSignal[];
 }
 
 export const MT5_FIB_EXIT_TIMEFRAMES: readonly TradeTimeframe[] = ['M1', 'M5', 'M15', 'M30', 'H1', 'H4', 'D'];

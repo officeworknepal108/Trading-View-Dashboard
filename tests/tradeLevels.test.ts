@@ -19,7 +19,7 @@ import {
   timeframeWindowCutoff,
   type EngulfingTradeSignal,
 } from '../src/services/tradeLevels';
-import type { StructureCandle, StructureZone } from '../src/services/marketStructure';
+import { findTradeableZoneEngulfingPattern, type StructureCandle, type StructureZone } from '../src/services/marketStructure';
 
 const bullishSignal: EngulfingTradeSignal = {
   type: 'T1',
@@ -28,6 +28,25 @@ const bullishSignal: EngulfingTradeSignal = {
   candleCount: 2,
   timeframe: 'M1',
 };
+
+test('incomplete Fib patterns allow a later qualified engulfing; a first valid pattern is never replaced', () => {
+  for (const isBuy of [true, false]) {
+    const candles: StructureCandle[] = [
+      { time: 60, open: 103, high: 104, low: 101.5, close: 102, complete: true },
+      { time: 120, open: 102, high: 106, low: 101.5, close: 105, complete: true },
+      { time: 180, open: 105, high: 106, low: 100, close: 103, complete: true },
+      { time: 240, open: 103, high: 109, low: 103, close: 108, complete: true },
+    ].map(c => isBuy ? c : { ...c, open: 210 - c.open, high: 210 - c.low, low: 210 - c.high, close: 210 - c.close });
+    const zone: StructureZone = { id: 'qml', name: 'QML', category: 'mg', isBuy,
+      startTime: 0, endTime: 9000, bottom: isBuy ? 100 : 108, top: isBuy ? 102 : 110,
+      active: true, status: 'valid', fibStatus: 'a-plus', fibBand: '0.5-0.618', fibLevel50: isBuy ? 101 : 109 };
+    assert.equal(findTradeableZoneEngulfingPattern(candles.slice(0, 2), zone), undefined);
+    assert.equal(findTradeableZoneEngulfingPattern(candles, zone)?.endIndex, 3);
+    const firstValid = candles.map((c, i) => i < 2 ? { ...c, low: isBuy ? 100 : c.low, high: isBuy ? c.high : 110 } : c);
+    assert.equal(findTradeableZoneEngulfingPattern(firstValid, zone)?.endIndex, 1,
+      'a newer engulfing cannot replace the first fully qualified opportunity just because it is older');
+  }
+});
 
 test('entry diagnostics recognize the reported QML engulfing while explaining its missed Fib 0.5', () => {
   const zone: StructureZone = { id: 'qml', name: 'QML', category: 'mg', isBuy: true,
