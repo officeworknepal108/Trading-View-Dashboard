@@ -235,6 +235,8 @@ def heartbeat(config: dict[str, Any], message: str = "Bridge ready") -> dict[str
         "fibProfitEvents": fib_profit_display_events(symbol) if connected and symbol else [],
         "positions": [{
             "ticket": int(position.ticket),
+            "identifier": int(getattr(position, 'identifier', 0) or position.ticket),
+            "openedAtMsc": int(getattr(position, 'time_msc', 0) or int(position.time) * 1000),
             "symbol": str(position.symbol),
             "direction": "BUY" if position.type == mt5.POSITION_TYPE_BUY else "SELL",
             "volume": float(position.volume),
@@ -969,6 +971,44 @@ def send_fib_profit_close(request: dict[str, Any]) -> Any:
     raise FibCloseRejected("Broker did not accept a filling mode for the Fib close.")
 
 
+FIB_EXIT_TIMEFRAME_SECONDS = {'M1': 60, 'M5': 300, 'M15': 900, 'M30': 1800,
+                             'H1': 3600, 'H4': 14400, 'D': 86400}
+
+
+def manual_trade_timeframe_key(position: Any) -> str | None:
+    ticket = int(position.ticket)
+    identifier = int(getattr(position, 'identifier', 0) or ticket)
+    opened = int(getattr(position, 'time_msc', 0) or int(getattr(position, 'time', 0)) * 1000)
+    if not ACTIVE_ACCOUNT or not all(ACTIVE_ACCOUNT) or min(ticket, identifier, opened) <= 0:
+        return None
+    return json.dumps([*ACTIVE_ACCOUNT, str(position.symbol), ticket, identifier, opened], separators=(',', ':'), ensure_ascii=False)
+
+
+def position_fib_exit_timeframe(position: Any, status_payload: dict[str, Any],
+                                state: dict[str, dict[str, Any]]) -> str | None:
+    if position.magic == 0:
+        key = manual_trade_timeframe_key(position)
+        assignments = (status_payload.get('config') or {}).get('manualTradeTimeframes') or {}
+        value = assignments.get(key) if key and isinstance(assignments, dict) else None
+        return value if isinstance(value, str) and value in FIB_EXIT_TIMEFRAME_SECONDS else None
+    identifiers = {int(position.ticket), int(getattr(position, 'identifier', 0) or position.ticket)}
+    matches = [record for record in [*state.values(), *status_payload.get('recentSignals', [])]
+               if (record.get('account'), record.get('server')) == ACTIVE_ACCOUNT
+               and record.get('brokerSymbol') == position.symbol
+               and any(int(record.get(field) or 0) in identifiers for field in ('brokerPosition', 'brokerTicket'))]
+    timeframes = {record.get('zoneTimeframe') for record in matches}
+    value = next(iter(timeframes)) if len(timeframes) == 1 else None
+    return value if isinstance(value, str) and value in FIB_EXIT_TIMEFRAME_SECONDS else None
+
+
+def fib_exit_timeframe_allowed(trade_timeframe: str | None, zone_timeframe: str | None) -> bool:
+    if not isinstance(trade_timeframe, str) or not isinstance(zone_timeframe, str):
+        return False
+    trade_seconds = FIB_EXIT_TIMEFRAME_SECONDS.get(trade_timeframe or '')
+    zone_seconds = FIB_EXIT_TIMEFRAME_SECONDS.get(zone_timeframe or '')
+    return trade_seconds is not None and zone_seconds is not None and zone_seconds >= trade_seconds
+
+
 def manage_opposing_fib_profit(status_payload: dict[str, Any], state: dict[str, dict[str, Any]]) -> None:
     try:
         saved = json.loads(FIB_PROFIT_FILE.read_text(encoding='utf-8'))
@@ -1006,9 +1046,14 @@ def manage_opposing_fib_profit(status_payload: dict[str, Any], state: dict[str, 
     for position in positions:
         if position.magic not in (0, MAGIC_NUMBER) or position.symbol != symbol:
             continue
+        trade_timeframe = position_fib_exit_timeframe(position, status_payload, state)
+        if trade_timeframe is None:
+            continue  # Never infer a manual trade's analysis timeframe from the current chart.
         key = json.dumps([*ACTIVE_ACCOUNT, symbol, int(getattr(position, 'identifier', 0) or position.ticket),
                           int(getattr(position, 'time_msc', getattr(position, 'time', 0))), int(position.type)])
         prior = saved.get(key)
+        if prior and not fib_exit_timeframe_allowed(trade_timeframe, prior.get('zoneTimeframe')):
+            prior = None  # A legacy lower-timeframe plan cannot authorize another close.
         info = mt5.symbol_info(symbol)
         if not info:
             continue
@@ -1057,6 +1102,8 @@ def manage_opposing_fib_profit(status_payload: dict[str, Any], state: dict[str, 
         has_fib_progress = bool(prior and prior.get('progressConfirmed'))
         candidates = []
         for zone in snapshot.get('zones', []):
+            if not fib_exit_timeframe_allowed(trade_timeframe, zone.get('timeframe')):
+                continue
             if zone.get('isBuy') is not (not buy):
                 continue
             bottom, top = zone.get('bottom'), zone.get('top')
@@ -1102,6 +1149,8 @@ def manage_opposing_fib_profit(status_payload: dict[str, Any], state: dict[str, 
         if not live or len(live) != 1 or live[0].type != position.type or live[0].symbol != symbol:
             continue
         position = live[0]
+        if position_fib_exit_timeframe(position, status_payload, state) != trade_timeframe:
+            continue
         if (not closing_remainder and float(position.profit) + float(position.swap) <= 0) or float(position.tp) != target:
             continue
         volume = float(position.volume)

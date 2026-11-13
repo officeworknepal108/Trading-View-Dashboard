@@ -8,13 +8,29 @@ import { MultiTimeframeEntryTable, mtfTableHitExpired, isSlTpTradeDisplayFinishe
   resolveZoneTableTrade, zoneTableCompletedStatus, TradeDetailsRow, ZoneTableEntryPrice,
   zoneTableMtfStatus, reconcileSavedMtfTrade, validateRecordedMtfTrade, ZoneTableEngulfingConfirmations,
   ZoneSourceTimeframeLabel, resolveZoneTableSourceTimeframe,
-  selectChochStatusTableZones, ChochStatusTableRow, explainZoneEntry, ZoneEntryReadinessText } from '../src/components/OandaProChart';
+  selectChochStatusTableZones, ChochStatusTableRow, explainZoneEntry, ZoneEntryReadinessText,
+  ManualTradeTimeframeControl } from '../src/components/OandaProChart';
 import type { Mt5AutomationStatus } from '../src/services/mt5Automation';
 import type { JournalTradeRecord } from '../src/components/TradeJournal';
 import type { MtfRow } from '../src/services/mtf';
 import type { StructureZone } from '../src/services/marketStructure';
 
 const bar = (time: number, complete = true) => ({ time, open: 100, high: 102, low: 99, close: 101, volume: 1, complete });
+
+test('manual trade control starts unassigned and explains same-or-higher timeframe exits', () => {
+  const position = { ticket: 77, identifier: 77, openedAtMsc: 123456, symbol: 'XAUUSD', magic: 0,
+    direction: 'BUY' as const, volume: 0.02, priceOpen: 100, priceCurrent: 101, stopLoss: 90,
+    takeProfit: 120, profit: 2, swap: 0, openedAt: 123 };
+  const render = (fibExitTimeframe?: 'M15') => renderToStaticMarkup(React.createElement(ManualTradeTimeframeControl,
+    { position: { ...position, fibExitTimeframe }, onChange: () => {} }));
+  const unknown = render();
+  assert.ok(unknown.includes('Not set — Fib exits paused'));
+  assert.ok(!unknown.includes('value="M15" selected'));
+  const assigned = render('M15');
+  assert.ok(assigned.includes('value="M15" selected'));
+  assert.ok(assigned.includes('15m and higher only'));
+  assert.ok(assigned.includes('Broker SL and TP remain active'));
+});
 
 function entryDiagnosticOptions(overrides: Partial<Parameters<typeof explainZoneEntry>[0]> = {}): Parameters<typeof explainZoneEntry>[0] {
   return { zone: { id: 'qml', name: 'QML', category: 'mg', isBuy: true, active: true,

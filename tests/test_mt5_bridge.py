@@ -717,6 +717,7 @@ class OpposingFibProfitTests(BridgeTestCase):
         self.payload = {'config': {'brokerSymbol': 'XAUUSD', 'dryRun': False, 'enabled': False},
             'opposingFibProfitTaking': {'available': True, 'account': 'test-account', 'server': 'test-server',
                 'brokerSymbol': 'XAUUSD', 'asOf': self.now, 'zones': [self.zone]}}
+        self.payload['config']['manualTradeTimeframes'] = {bridge.manual_trade_timeframe_key(self.position): 'M15'}
         for name, value in [('FIB_PROFIT_FILE', self.file), ('FIB_PROFIT_PREVIOUS_QUOTES', {}),
                             ('ALLOW_LIVE_EXECUTION', True), ('BROKER_TIME_OFFSET', 0)]:
             mocked = patch.object(bridge, name, value); mocked.start(); self.addCleanup(mocked.stop)
@@ -732,6 +733,82 @@ class OpposingFibProfitTests(BridgeTestCase):
             return SimpleNamespace(retcode=bridge.mt5.TRADE_RETCODE_DONE, deal=42, order=0)
         mocked = patch.object(bridge.mt5, 'order_send', side_effect=execute)
         self.send = mocked.start(); self.addCleanup(mocked.stop)
+
+    def test_unknown_manual_timeframe_never_closes_even_with_confirmed_opposing_zone(self):
+        self.payload['config'].pop('manualTradeTimeframes')
+        self.zone['engulfingConfirmedAt'] = self.now
+        bridge.manage_opposing_fib_profit(self.payload, {})
+        self.send.assert_not_called()
+        self.assertEqual(self.position.volume, 0.05)
+
+    def test_manual_timeframe_binding_is_exact_and_does_not_follow_chart_or_saved_exit_zone(self):
+        self.assertEqual(bridge.manual_trade_timeframe_key(self.position),
+                         '["test-account","test-server","XAUUSD",77,77,123456]')
+        self.assertEqual(bridge.position_fib_exit_timeframe(self.position, self.payload, {}), 'M15')
+        self.payload['config']['chartTimeframe'] = 'M1'
+        self.assertEqual(bridge.position_fib_exit_timeframe(self.position, self.payload, {}), 'M15')
+        self.position.time_msc += 1
+        self.assertIsNone(bridge.position_fib_exit_timeframe(self.position, self.payload, {}))
+        self.position.time_msc -= 1
+        self.position.identifier += 1
+        self.assertIsNone(bridge.position_fib_exit_timeframe(self.position, self.payload, {}))
+        self.position.identifier -= 1
+        with patch.object(bridge, 'ACTIVE_ACCOUNT', ('other', 'test-server')):
+            self.assertIsNone(bridge.position_fib_exit_timeframe(self.position, self.payload, {}))
+
+    def test_fifteen_minute_trade_rejects_all_lower_timeframe_partial_and_full_exits(self):
+        for timeframe in ['M1', 'M5', 'invalid', None]:
+            for confirmed in [False, True]:
+                with self.subTest(timeframe=timeframe, confirmed=confirmed):
+                    self.zone['timeframe'] = timeframe
+                    self.zone['engulfingConfirmedAt'] = self.now if confirmed else None
+                    bridge.manage_opposing_fib_profit(self.payload, {})
+                    self.send.assert_not_called()
+                    self.assertEqual(self.position.volume, 0.05)
+
+    def test_timeframe_order_is_symmetric_and_rejects_unknown_trade_timeframes(self):
+        timeframes = list(bridge.FIB_EXIT_TIMEFRAME_SECONDS)
+        for own_index, own in enumerate(timeframes):
+            for zone_index, zone in enumerate(timeframes):
+                self.assertEqual(bridge.fib_exit_timeframe_allowed(own, zone), zone_index >= own_index)
+        self.assertFalse(bridge.fib_exit_timeframe_allowed(None, 'M15'))
+        self.assertFalse(bridge.fib_exit_timeframe_allowed('M15', 'invalid'))
+
+    def test_automated_trade_uses_its_recorded_setup_not_the_lower_entry_candle_timeframe(self):
+        self.position.magic = bridge.MAGIC_NUMBER
+        record = {'account': 'test-account', 'server': 'test-server', 'brokerSymbol': 'XAUUSD',
+                  'brokerPosition': 77, 'zoneTimeframe': 'H1', 'signalTimeframe': 'M15'}
+        bridge.manage_opposing_fib_profit(self.payload, {'bot': record})
+        self.send.assert_not_called()
+        self.zone['timeframe'] = 'H1'
+        bridge.manage_opposing_fib_profit(self.payload, {'bot': record})
+        self.send.assert_called_once()
+        self.assertEqual(self.position.volume, 0.01)
+
+    def test_unknown_or_conflicting_bot_metadata_cannot_authorize_a_close(self):
+        self.position.magic = bridge.MAGIC_NUMBER
+        self.zone['engulfingConfirmedAt'] = self.now
+        bridge.manage_opposing_fib_profit(self.payload, {})
+        self.send.assert_not_called()
+        record = {'account': 'test-account', 'server': 'test-server', 'brokerSymbol': 'XAUUSD',
+                  'brokerPosition': 77, 'zoneTimeframe': 'M15'}
+        self.payload['recentSignals'] = [{**record, 'zoneTimeframe': 'H1'}]
+        bridge.manage_opposing_fib_profit(self.payload, {'bot': record})
+        self.send.assert_not_called()
+
+    def test_legacy_lower_timeframe_partial_cannot_close_the_remainder_after_timeframe_correction(self):
+        key = bridge.manual_trade_timeframe_key(self.position)
+        self.payload['config']['manualTradeTimeframes'][key] = 'M1'
+        self.zone['timeframe'] = 'M1'
+        bridge.manage_opposing_fib_profit(self.payload, {})
+        self.assertEqual(self.position.volume, 0.01)
+        self.payload['config']['manualTradeTimeframes'][key] = 'M15'
+        self.zone['engulfingConfirmedAt'] = self.now
+        bridge.manage_opposing_fib_profit(self.payload, {})
+        self.send.assert_called_once()
+        self.zone.update(id='eligible-m15', timeframe='M15')
+        bridge.manage_opposing_fib_profit(self.payload, {})
+        self.assertEqual(self.send.call_count, 2)
 
     def test_agreed_lot_splits_and_other_broker_steps(self):
         for volume, closed in [(0.01, 0.01), (0.02, 0.01), (0.03, 0.02), (0.05, 0.04), (0.10, 0.08)]:
@@ -1027,6 +1104,7 @@ class OpposingFibProfitTests(BridgeTestCase):
     def test_bot_remainder_does_not_get_another_half_close_after_restart(self):
         self.position.magic = bridge.MAGIC_NUMBER
         record = {'account': 'test-account', 'server': 'test-server', 'brokerPosition': 77,
+                  'brokerSymbol': 'XAUUSD', 'zoneTimeframe': 'M15',
                   'status': 'ACTIVE', 'tradeStyle': 'SCALPING', 'stopLoss': 90, 'riskFree': 110, 'volume': 0.05}
         bridge.manage_opposing_fib_profit(self.payload, {'bot': dict(record)})
         restored = {'bot': dict(record)}

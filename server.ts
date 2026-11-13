@@ -37,6 +37,9 @@ import {
   priorGoldMt5ZoneExecution,
   mt5SignalDisabledReason,
   mt5ConnectionMatches,
+  manualTradeTimeframeKey,
+  positionFibExitTimeframe,
+  MT5_FIB_EXIT_TIMEFRAMES,
   opposingFibProfitZones,
   type OpposingFibProfitSnapshot,
   type OpposingFibProfitZone,
@@ -223,6 +226,8 @@ interface Mt5BridgeHeartbeat {
 
 interface Mt5LivePosition {
   ticket: number;
+  identifier?: number;
+  openedAtMsc?: number;
   symbol: string;
   direction: 'BUY' | 'SELL';
   volume: number;
@@ -1754,10 +1759,12 @@ async function startServer() {
       const managedProcessId = mt5Context().managedMt5Bridge?.pid ?? mt5Context().managedMt5BridgeProcessId;
       const positions = (mt5Context().mt5BridgeHeartbeat?.positions ?? []).map((position) => {
         const signal = signals.find((candidate) => (
-          candidate.brokerPosition === position.ticket || candidate.brokerTicket === position.ticket
+          mt5ConnectionMatches(mt5Context().mt5BridgeHeartbeat, candidate)
+          && (candidate.brokerPosition === position.ticket || candidate.brokerTicket === position.ticket)
         ));
         return {
           ...position,
+          fibExitTimeframe: positionFibExitTimeframe(mt5Context().mt5BridgeHeartbeat ?? {}, position, config, signals),
           signalTimeframe: signal?.signalTimeframe,
           zoneTimeframe: signal?.zoneTimeframe,
           source: signal?.source,
@@ -1854,6 +1861,39 @@ async function startServer() {
     }
   });
 
+  app.put('/api/mt5/positions/:ticket/timeframe', async (req, res) => {
+    const connection = mt5Context().mt5BridgeHeartbeat;
+    const ticket = Number(req.params.ticket);
+    const timeframe = req.body?.timeframe;
+    if (timeframe !== '' && !MT5_FIB_EXIT_TIMEFRAMES.includes(timeframe)) {
+      return res.status(400).json({ ok: false, error: 'Choose a supported trade timeframe.' });
+    }
+    if (!connection?.terminalConnected || Date.now() - connection.lastHeartbeatAt >= 15_000
+      || !mt5ConnectionMatches(connection, req.body ?? {})) {
+      return res.status(409).json({ ok: false, error: 'MT5 account changed or disconnected. Refresh before selecting the timeframe.' });
+    }
+    const position = connection.positions?.find(item => item.ticket === ticket);
+    if (!position || position.magic !== 0 || position.identifier !== req.body?.identifier
+      || position.openedAtMsc !== req.body?.openedAtMsc) {
+      return res.status(409).json({ ok: false, error: 'This manual position changed or closed. Refresh its details.' });
+    }
+    const key = manualTradeTimeframeKey(connection, position);
+    if (!key) return res.status(409).json({ ok: false, error: 'Waiting for the updated MT5 bridge position details.' });
+    try {
+      await serializeMt5Mutation(async () => {
+        const config = await readMt5Config();
+        const assignments = { ...config.manualTradeTimeframes };
+        if (timeframe === '') delete assignments[key];
+        else assignments[key] = timeframe;
+        config.manualTradeTimeframes = Object.fromEntries(Object.entries(assignments).slice(-200));
+        await writeMt5Config(config);
+      });
+      return res.json({ ok: true });
+    } catch (error) {
+      return res.status(500).json({ ok: false, error: error instanceof Error ? error.message : 'Unable to save the trade timeframe.' });
+    }
+  });
+
   app.post('/api/mt5/signals', async (req, res) => {
     try {
       const error = validateMt5Signal(req.body);
@@ -1900,6 +1940,8 @@ async function startServer() {
           || numericFields.some((field) => !Number.isFinite(Number(raw?.[field])))) return [];
         return [{
           ticket,
+          identifier: Number.isSafeInteger(raw?.identifier) && raw.identifier > 0 ? raw.identifier : undefined,
+          openedAtMsc: Number.isSafeInteger(raw?.openedAtMsc) && raw.openedAtMsc > 0 ? raw.openedAtMsc : undefined,
           symbol: String(raw?.symbol ?? '').slice(0, 30),
           direction,
           volume: Number(raw.volume),

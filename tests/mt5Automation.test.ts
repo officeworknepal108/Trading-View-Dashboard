@@ -35,6 +35,8 @@ import {
   mt5SignalDisabledReason,
   opposingFibProfitZones,
   mt5ConnectionMatches,
+  manualTradeTimeframeKey,
+  positionFibExitTimeframe,
   normalizeMt5DailyLossPercent,
   sanitizeMt5DailyRisk,
   sanitizeMt5OverallProfit,
@@ -44,6 +46,26 @@ import {
   shouldRemoveOpenMt5JournalRecord,
   tradeToMt5Signal,
 } from '../src/services/mt5Automation';
+
+test('manual Fib exit timeframes bind the exact account, contract, ticket and opening identity', () => {
+  const connection = { account: 'test-account', server: 'test-server', brokerSymbol: 'XAUUSD' };
+  const position = { ticket: 77, identifier: 77, openedAtMsc: 123456, symbol: 'XAUUSD', magic: 0 };
+  const key = manualTradeTimeframeKey(connection, position)!;
+  assert.equal(key, '["test-account","test-server","XAUUSD",77,77,123456]', 'must match Python key encoding');
+  const config = { manualTradeTimeframes: { [key]: 'M15' as const } };
+  assert.equal(positionFibExitTimeframe(connection, position, config, []), 'M15');
+  for (const changed of [{ ...position, identifier: 78 }, { ...position, openedAtMsc: 123457 }, { ...position, ticket: 78 }]) {
+    assert.equal(positionFibExitTimeframe(connection, changed, config, []), undefined);
+  }
+  assert.equal(positionFibExitTimeframe({ ...connection, account: 'other' }, position, config, []), undefined);
+  assert.equal(manualTradeTimeframeKey(connection, { ...position, openedAtMsc: undefined }), undefined);
+  assert.equal(manualTradeTimeframeKey(connection, { ...position, symbol: 'XAUUSD.x' }), undefined);
+  const automated = { account: connection.account, server: connection.server, brokerSymbol: 'XAUUSD',
+    brokerPosition: 77, zoneTimeframe: 'H1', signalTimeframe: 'M15' } as Mt5StoredSignal;
+  assert.equal(positionFibExitTimeframe(connection, { ...position, magic: 998877 }, config, [automated]), 'H1');
+  assert.equal(positionFibExitTimeframe(connection, { ...position, magic: 998877 }, config,
+    [automated, { ...automated, zoneTimeframe: 'M15' }]), undefined, 'conflicting recorded setup timeframes cannot authorize an exit');
+});
 
 test('opposing profit zones require current explicit Fibonacci alignment', () => {
   const zone = { id: 'fib-sell', active: true, status: 'valid', isBuy: false, startTime: 100,

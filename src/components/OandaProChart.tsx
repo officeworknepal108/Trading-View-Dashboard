@@ -168,6 +168,7 @@ import {
   mt5FibProfitEventLabel,
   isTradeStyleEnabled,
   mt5SignalDisabledReason,
+  MT5_FIB_EXIT_TIMEFRAMES,
   type Mt5AutomationStatus,
   type Mt5StoredSignal,
 } from '../services/mt5Automation';
@@ -1396,6 +1397,31 @@ export const ChochStatusTableRow: React.FC<{
   </tr>;
 };
 
+export const ManualTradeTimeframeControl: React.FC<{
+  position: Mt5AutomationStatus['positions'][number]; disabled?: boolean;
+  onChange: (timeframe: string) => void;
+}> = ({ position, disabled, onChange }) => (
+  <label className="mt-2 block rounded border border-slate-200 bg-white p-2 text-[10px] text-slate-700">
+    <span className="font-bold">Manual #{position.ticket} · {position.direction} {position.volume} lot</span>
+    <span className="mt-1 block">Trade timeframe</span>
+    <select aria-label={`Manual trade ${position.ticket} timeframe`}
+      value={position.fibExitTimeframe ?? ''} disabled={disabled}
+      onChange={event => onChange(event.target.value)}
+      className="mt-1 w-full rounded border border-slate-200 bg-white px-2 py-1 disabled:opacity-50">
+      <option value="">Not set — Fib exits paused</option>
+      {MT5_FIB_EXIT_TIMEFRAMES.map(timeframe => (
+        <option key={timeframe} value={timeframe}>{ZONE_SOURCE_TIMEFRAME_LABELS[timeframe]}</option>
+      ))}
+    </select>
+    <span className="mt-1 block text-[9px] text-slate-500">
+      {position.fibExitTimeframe
+        ? `Opposing Fib exits: ${ZONE_SOURCE_TIMEFRAME_LABELS[position.fibExitTimeframe]} and higher only.`
+        : 'Select the timeframe used for this trade to enable opposing Fib exits.'}
+      {' '}Broker SL and TP remain active.
+    </span>
+  </label>
+);
+
 export function ZoneTableEngulfingConfirmations({ confirmations }: { confirmations: readonly ZoneTableConfirmation[] }) {
   if (!confirmations.length) return null;
   return <span className="ml-1 inline-flex flex-wrap gap-1 align-middle text-[8px] font-semibold text-slate-500" aria-label="Additional engulfing confirmations">
@@ -2453,6 +2479,8 @@ export const OandaProChart: React.FC<{
       record.signalTimeframe === granularity ? candles : vipCandles[record.signalTimeframe])
   )), [loadedJournalTrades, marketSymbol, granularity, candles, vipCandles]);
   const [mt5Status, setMt5Status] = useState<Mt5AutomationStatus | null>(null);
+  const [manualTimeframeSaving, setManualTimeframeSaving] = useState<number | null>(null);
+  const [manualTimeframeError, setManualTimeframeError] = useState<string | null>(null);
   const dailyRisk = mt5Status?.bridge.dailyRisk;
   const dailyRiskMoney = (value: number) => `${mt5Status?.bridge.currency === 'USD' ? '$' : `${mt5Status?.bridge.currency || 'USD'} `}${value.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
   const scalpingEnabled = mt5Status?.config.scalpingEnabled ?? true;
@@ -2734,6 +2762,26 @@ export const OandaProChart: React.FC<{
     void prepareMt5JournalImages();
     return () => { cancelled = true; };
   }, [mt5JournalLifecycleSignature]);
+
+  const updateManualTradeTimeframe = useCallback(async (
+    position: Mt5AutomationStatus['positions'][number], timeframe: string,
+  ) => {
+    if (!canAdmin || !mt5Status) return;
+    setManualTimeframeSaving(position.ticket);
+    setManualTimeframeError(null);
+    try {
+      const response = await terminalFetch(`/api/mt5/positions/${position.ticket}/timeframe`, {
+        method: 'PUT', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ timeframe, account: mt5Status.bridge.account, server: mt5Status.bridge.server,
+          brokerSymbol: mt5Status.bridge.brokerSymbol, identifier: position.identifier, openedAtMsc: position.openedAtMsc }),
+      });
+      const payload = await response.json();
+      if (!response.ok || !payload.ok) throw new Error(payload.error || 'Unable to save the trade timeframe.');
+      await refreshMt5Status();
+    } catch (error) {
+      setManualTimeframeError(error instanceof Error ? error.message : 'Unable to save the trade timeframe.');
+    } finally { setManualTimeframeSaving(null); }
+  }, [canAdmin, mt5Status, refreshMt5Status]);
 
   const updateMt5Config = useCallback(async (changes: Record<string, unknown>) => {
     if (!canAdmin || !mt5Status) return;
@@ -9275,6 +9323,12 @@ export const OandaProChart: React.FC<{
                     ? '—'
                     : `${mt5Status.bridge.currency || '$'} ${(mt5Status.bridge.equity * mt5Status.config.riskPercent / 100).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}</b><br />
                   Waiting to send: <b>{mt5Status.counts.QUEUED ?? 0}</b> · Open MT5 trades: <b>{mt5Status.positions.length}</b><br />
+                  {mt5Status.positions.filter(position => position.magic === 0).map(position => (
+                    <ManualTradeTimeframeControl key={`${mt5Status.bridge.account}:${position.ticket}:${position.openedAtMsc}`}
+                      position={position} disabled={!mt5Status.bridge.connected || manualTimeframeSaving !== null}
+                      onChange={timeframe => void updateManualTradeTimeframe(position, timeframe)} />
+                  ))}
+                  {manualTimeframeError && <div className="mt-1 text-rose-700" role="alert">{manualTimeframeError}</div>}
                   Process: <b>{mt5Status.bridge.processRunning
                     ? `RUNNING · PID ${mt5Status.bridge.processId ?? '—'}`
                     : mt5Status.bridge.connected ? 'MANUALLY STARTED' : 'STOPPED'}</b><br />

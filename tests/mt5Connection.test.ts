@@ -69,6 +69,9 @@ test('MT5 account handshake resets old candles and queues while preserving autom
     assert.ok(ready, output);
     const first = { bridgeId: 'test-bridge', account: '123', server: 'Broker-A', brokerSymbol: 'XAUUSD.x', balance: 12345, equity: 12400,
       terminalConnected: true, symbolResolved: true, symbolCandidates: ['XAUUSD.x'],
+      positions: [{ ticket: 77, identifier: 77, openedAtMsc: 1700000000000, magic: 0, symbol: 'XAUUSD.x',
+        direction: 'BUY', volume: 0.02, priceOpen: 4000, priceCurrent: 4001, stopLoss: 3990,
+        takeProfit: 4020, profit: 2, swap: 0, openedAt: 1700000000 }],
       fibProfitEvents: [{ ticket: 77, direction: 'BUY', originalVolume: 0.05, remainingVolume: 0.01,
         status: 'partial', phase: 'touch', updatedAt: 1000, zoneTimeframe: 'M15', zoneName: 'QML' }] };
     assert.equal((await request('/api/mt5/heartbeat', first)).status, 200);
@@ -82,6 +85,17 @@ test('MT5 account handshake resets old candles and queues while preserving autom
     assert.equal(status.config.tradingTimeEnabled, false, 'missing session setting defaults OFF');
     assert.equal(status.counts.REJECTED, 1);
     assert.equal(status.counts.ACTIVE, 1, 'existing positions are not rewritten on connection changes');
+    assert.equal(status.positions[0].fibExitTimeframe, undefined, 'never infer a manual timeframe');
+    const timeframeRequest = { ...first, timeframe: 'M15', identifier: 77, openedAtMsc: 1700000000000 };
+    assert.equal((await request('/api/mt5/positions/77/timeframe', timeframeRequest, 'PUT')).status, 200);
+    status = await (await request('/api/mt5/status')).json();
+    assert.equal(status.positions[0].fibExitTimeframe, 'M15');
+    assert.equal((await request('/api/mt5/positions/77/timeframe', { ...timeframeRequest, openedAtMsc: 1700000000001 }, 'PUT')).status, 409);
+    assert.equal((await request('/api/mt5/positions/77/timeframe', { ...timeframeRequest, account: 'foreign' }, 'PUT')).status, 409);
+    assert.equal((await request('/api/mt5/positions/77/timeframe', { ...timeframeRequest, timeframe: 'M2' }, 'PUT')).status, 400);
+    assert.equal((await request('/api/mt5/positions/77/timeframe', { ...timeframeRequest, timeframe: '' }, 'PUT')).status, 200);
+    assert.equal((await (await request('/api/mt5/status')).json()).positions[0].fibExitTimeframe, undefined);
+    assert.equal((await request('/api/mt5/positions/77/timeframe', timeframeRequest, 'PUT')).status, 200);
     const now = Math.floor(Date.now() / 1000);
     const candles = Array.from({ length: 10 }, (_, index) => ({
       time: now - (9 - index) * 60, open: 4000, high: 4002, low: 3998, close: 4001, volume: 10, complete: index < 9,
@@ -91,11 +105,13 @@ test('MT5 account handshake resets old candles and queues while preserving autom
     status = await (await request('/api/mt5/status')).json();
     assert.equal(status.marketData.timeframes.M1.count, 10);
     assert.equal((await request('/api/mt5/market-data', { ...snapshot, account: 'foreign' })).status, 409);
-    const second = { ...first, account: '456', server: 'Broker-B', brokerSymbol: 'XAUUSDm', symbolCandidates: ['XAUUSDm'] };
+    const second = { ...first, account: '456', server: 'Broker-B', brokerSymbol: 'XAUUSDm', symbolCandidates: ['XAUUSDm'],
+      positions: first.positions.map(position => ({ ...position, symbol: 'XAUUSDm' })) };
     assert.equal((await request('/api/mt5/heartbeat', second)).status, 200);
     status = await (await request('/api/mt5/status')).json();
     assert.equal(status.config.brokerSymbol, 'XAUUSDm');
     assert.equal(status.config.brokerSymbolAccount, '456');
+    assert.equal(status.positions[0].fibExitTimeframe, undefined, 'a timeframe assignment cannot follow a reused ticket into another account');
     assert.equal(status.marketData.timeframes.M1.count, 0, 'old account candles are discarded');
     assert.equal((await request('/api/mt5/market-data', snapshot)).status, 409);
     assert.equal((await request('/api/mt5/signals/old-active/status', { status: 'SL', account: '456', server: 'Broker-B' })).status, 500);
@@ -235,6 +251,7 @@ test('MT5 account handshake resets old candles and queues while preserving autom
     assert.deepEqual(clientStatus.positions, []);
     assert.equal((await clientRequest('/api/mt5/accounts')).status, 403);
     assert.equal((await clientRequest('/api/mt5/config', {}, 'PUT')).status, 403);
+    assert.equal((await clientRequest('/api/mt5/positions/77/timeframe', timeframeRequest, 'PUT')).status, 403);
     assert.equal((await clientRequest('/api/mt5/bridge/start', {})).status, 403);
     assert.equal((await clientRequest('/api/telegram/alerts', {})).status, 403);
     const bridgeStatus = await fetch(`${base}/api/mt5/status`, { headers: { Authorization: 'Bearer isolated-test-token' } });

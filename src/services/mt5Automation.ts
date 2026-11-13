@@ -269,6 +269,7 @@ export function shouldRemoveOpenMt5JournalRecord(status: Mt5SignalStatus): boole
 }
 
 export interface Mt5AutomationConfig {
+  manualTradeTimeframes?: Record<string, TradeTimeframe>;
   enabled: boolean;
   tradingTimeEnabled: boolean;
   telegramMessagesEnabled: boolean;
@@ -722,6 +723,9 @@ export interface Mt5AutomationStatus {
   };
   positions: Array<{
     ticket: number;
+    identifier?: number;
+    openedAtMsc?: number;
+    fibExitTimeframe?: TradeTimeframe;
     symbol: string;
     direction: 'BUY' | 'SELL';
     volume: number;
@@ -758,6 +762,40 @@ export interface Mt5AutomationStatus {
   };
   counts: Record<string, number>;
   recentSignals: Mt5StoredSignal[];
+}
+
+export const MT5_FIB_EXIT_TIMEFRAMES: readonly TradeTimeframe[] = ['M1', 'M5', 'M15', 'M30', 'H1', 'H4', 'D'];
+
+/** A manual assignment belongs to one exact position, not the currently viewed chart. */
+export function manualTradeTimeframeKey(
+  connection: { account?: string; server?: string; brokerSymbol?: string },
+  position: { ticket: number; symbol: string; identifier?: number; openedAtMsc?: number },
+): string | undefined {
+  if (!connection.account || !connection.server || !connection.brokerSymbol
+    || position.symbol !== connection.brokerSymbol
+    || ![position.ticket, position.identifier, position.openedAtMsc].every(value => (
+      Number.isSafeInteger(value) && value! > 0
+    ))) return undefined;
+  return JSON.stringify([connection.account, connection.server, position.symbol,
+    position.ticket, position.identifier, position.openedAtMsc]);
+}
+
+export function positionFibExitTimeframe(
+  connection: { account?: string; server?: string; brokerSymbol?: string },
+  position: { ticket: number; symbol: string; magic?: number; identifier?: number; openedAtMsc?: number },
+  config: Pick<Mt5AutomationConfig, 'manualTradeTimeframes'>, signals: readonly Mt5StoredSignal[],
+): TradeTimeframe | undefined {
+  if (position.magic === 0) {
+    const key = manualTradeTimeframeKey(connection, position);
+    const value = key ? config.manualTradeTimeframes?.[key] : undefined;
+    return value && MT5_FIB_EXIT_TIMEFRAMES.includes(value) ? value : undefined;
+  }
+  const matches = signals.filter(signal => mt5ConnectionMatches(connection, signal)
+    && [position.ticket, position.identifier].some(ticket => ticket !== undefined
+      && (signal.brokerPosition === ticket || signal.brokerTicket === ticket)));
+  const timeframes = new Set(matches.map(signal => signal.zoneTimeframe));
+  const value = timeframes.size === 1 ? [...timeframes][0] : undefined;
+  return value && MT5_FIB_EXIT_TIMEFRAMES.includes(value) ? value : undefined;
 }
 
 function stablePrice(value: number): string {
