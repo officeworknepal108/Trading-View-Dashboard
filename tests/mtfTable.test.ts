@@ -9,13 +9,44 @@ import { MultiTimeframeEntryTable, mtfTableHitExpired, isSlTpTradeDisplayFinishe
   zoneTableMtfStatus, reconcileSavedMtfTrade, validateRecordedMtfTrade, ZoneTableEngulfingConfirmations,
   ZoneSourceTimeframeLabel, resolveZoneTableSourceTimeframe,
   selectChochStatusTableZones, ChochStatusTableRow, explainZoneEntry, ZoneEntryReadinessText, ZoneEntryReasonDetails,
-  ManualTradeTimeframeControl } from '../src/components/OandaProChart';
+  ManualTradeTimeframeControl, compactZoneTableStatus, firstZoneTapBarsAgo } from '../src/components/OandaProChart';
 import type { Mt5AutomationStatus, Mt5StoredSignal } from '../src/services/mt5Automation';
 import type { JournalTradeRecord } from '../src/components/TradeJournal';
 import type { MtfRow } from '../src/services/mtf';
 import type { StructureZone } from '../src/services/marketStructure';
+import type { TradeLevels } from '../src/services/tradeLevels';
 
 const bar = (time: number, complete = true) => ({ time, open: 100, high: 102, low: 99, close: 101, volume: 1, complete });
+
+test('displayed bar age keeps increasing from the first touch when the same zone is touched again', () => {
+  const zone: StructureZone = { id: 'qml-first-touch', name: 'QML', category: 'mg', isBuy: true,
+    active: true, status: 'valid', startTime: 0, endTime: 10000, bottom: 100, top: 102,
+    tapTime: 60, tapBarsAgo: 5, lastTapTime: 300, lastTapBarsAgo: 1, tapCount: 2 };
+  const candles = [60, 120, 180, 240, 300, 360].map(time => bar(time));
+  const original = structuredClone({ zone, candles });
+  assert.equal(firstZoneTapBarsAgo(zone, candles), 5, 'the most recent visit must not reset the age to 1');
+  const nextVisit = { ...zone, tapBarsAgo: 6, lastTapTime: 420, lastTapBarsAgo: 0, tapCount: 3 };
+  assert.equal(firstZoneTapBarsAgo(nextVisit, [...candles, bar(420, false)]), 6);
+  assert.equal(firstZoneTapBarsAgo(nextVisit, [...candles, bar(420), bar(480)]), 7);
+  assert.equal(firstZoneTapBarsAgo(nextVisit), 6, 'metadata fallback also uses first-touch age');
+  assert.deepEqual({ zone, candles }, original, 'display must not rewrite tap or entry lifecycle data');
+});
+
+test('first-touch age follows the replay candle, counts actual bars across gaps and handles merged zones', () => {
+  const zone: StructureZone = { id: 'old-touch', name: 'QML', category: 'mg', isBuy: true,
+    active: true, status: 'valid', startTime: 0, endTime: 999999, bottom: 100, top: 102,
+    tapTime: 60, tapBarsAgo: 99, lastTapTime: 200000, lastTapBarsAgo: 0 };
+  const candles = [bar(60), bar(120), bar(200000), bar(200060)];
+  assert.equal(firstZoneTapBarsAgo(zone, candles.slice(0, 1)), 0);
+  assert.equal(firstZoneTapBarsAgo(zone, candles.slice(0, 2)), 1, 'replay must ignore future age metadata');
+  assert.equal(firstZoneTapBarsAgo(zone, candles), 3, 'a weekend gap does not add imaginary candles');
+  const newer = { ...zone, id: 'later-member', tapTime: 200000, tapBarsAgo: 1 };
+  const merged = { ...newer, confluenceMembers: [newer, zone] };
+  assert.equal(firstZoneTapBarsAgo(merged, candles), 3, 'merged rows start at their earliest first touch');
+  assert.equal(firstZoneTapBarsAgo({ ...zone, tapTime: 300000 }, candles), undefined);
+  assert.equal(firstZoneTapBarsAgo({ ...zone, tapTime: undefined, tapBarsAgo: undefined }), undefined,
+    'latest-touch metadata must not masquerade as a first touch');
+});
 
 test('manual trade control starts unassigned and explains same-or-higher timeframe exits', () => {
   const position = { ticket: 77, identifier: 77, openedAtMsc: 123456, symbol: 'XAUUSD', magic: 0,
@@ -56,6 +87,126 @@ function entryDiagnosticAutomation(): Mt5AutomationStatus {
     positions: [], counts: {}, recentSignals: [] };
 }
 
+test('compact table restores bar counts and confirmation text while preserving full hover reasons', () => {
+  const options = entryDiagnosticOptions({ evidence: { waiting: ['A+ FIB ALIGNMENT', 'ENGULFING'],
+    details: ['Fib alignment is missing.', 'No completed engulfing qualifies.'] } });
+  const readiness = explainZoneEntry(options);
+  const before = structuredClone(readiness);
+  const label = compactZoneTableStatus(readiness, 2);
+  assert.equal(label, '2 bars · TRADE');
+  const cell = renderToStaticMarkup(React.createElement(ZoneEntryReadinessText, { readiness, compactLabel: label }));
+  assert.ok(cell.includes('2 bars · TRADE') && cell.includes('tabindex="0"'));
+  assert.ok(!cell.includes('WAIT —') && !cell.includes('+1') && !cell.includes('A+ FIB ALIGNMENT'));
+  const details = renderToStaticMarkup(React.createElement(ZoneEntryReasonDetails, { readiness }));
+  assert.ok(details.includes('Fib alignment is still missing') && details.includes('engulfing has qualified') && details.includes('text-[11px]'));
+  assert.deepEqual(readiness, before, 'compact wording must not change entry checks');
+  options.zone.chochClass = 'pending';
+  assert.equal(compactZoneTableStatus(explainZoneEntry(options), 2), 'WAIT 1H ABOVE');
+  options.zone.isBuy = false;
+  assert.equal(compactZoneTableStatus(explainZoneEntry(options), 2), 'WAIT 1H BELOW');
+  assert.equal(compactZoneTableStatus(explainZoneEntry({ ...options, opportunityExpired: true }), 6), '6 bars · NO TRADE');
+  assert.equal(compactZoneTableStatus(readiness, 6, false), '6 bars · NO TRADE');
+});
+
+test('compact result labels keep their detailed hover without long waiting labels', () => {
+  const readiness = explainZoneEntry(entryDiagnosticOptions());
+  for (const compactLabel of ['TP HIT', 'SL HIT', 'ENTRY MISSED']) {
+    const cell = renderToStaticMarkup(React.createElement(ZoneEntryReadinessText, { readiness, compactLabel }));
+    assert.ok(cell.includes(compactLabel));
+    assert.ok(!cell.includes('ENTRY READY'));
+  }
+});
+
+test('natural explanation includes passed Fib alignment, tap age and the remaining missing condition', () => {
+  const options = entryDiagnosticOptions({ barsAgo: 5, now: 3000,
+    evidence: { waiting: ['ENGULFING'], details: [] } });
+  options.zone = { ...options.zone, tapTime: 1800, fibStatus: 'a-plus', fibBand: '0.5-0.618',
+    dayFibStatus: 'a-plus', dayFibBand: '0.5-0.618' };
+  const before = structuredClone(options);
+  const readiness = explainZoneEntry(options);
+  const text = readiness.narrative!.join('\n');
+  assert.ok(text.includes('15-minute buy zone'));
+  assert.ok(text.includes('A+ Fib 0.5-0.618 and Day Fib 0.5-0.618'));
+  assert.ok(text.includes('conditions have passed'));
+  assert.ok(text.includes('5 bars ago'));
+  assert.ok(text.includes('No completed buy engulfing has qualified'));
+  assert.deepEqual(options, before);
+  const html = renderToStaticMarkup(React.createElement(ZoneEntryReasonDetails, { readiness }));
+  assert.ok(html.includes('<p') && !html.includes('1. ENGULFING'));
+});
+
+function storyTrade(): TradeLevels {
+  return { entry: 105, stopLoss: 100, takeProfit: 115, riskFree: 110, riskPips: 50, rewardRisk: 2,
+    status: 'active', pendingAtCreation: false, calculatedAt: 2700, filledAt: 2700,
+    signal: { type: 'T1', direction: 'bullish', timeframe: 'M15', time: 1800, candleCount: 2 } };
+}
+
+function storyBroker(): Mt5StoredSignal {
+  return { id: 'filled-entry', symbol: 'XAUUSD', zoneId: 'qml', zoneTimeframe: 'M15', zoneName: 'QML',
+    account: 'account-a', server: 'server-a', brokerSymbol: 'XAUUSD', brokerTicket: 77,
+    source: 'ENGULFING', direction: 'BUY', orderType: 'MARKET', signalTimeframe: 'M15',
+    signalAt: 1800, calculatedAt: 2700, engulfingType: 'T1', entry: 105, executionPrice: 105.1,
+    stopLoss: 100, takeProfit: 115, riskFree: 110, rewardRisk: 2, riskPips: 50,
+    openedAt: 2700, entryQualifiedAt: 2700, status: 'ACTIVE', createdAt: 2700, updatedAt: 2700, expiresAt: 2820,
+    journalContext: { biasAtEntry: {} as NonNullable<Mt5StoredSignal['journalContext']>['biasAtEntry'],
+      autoReason: 'Qualified entry', volumeLogicStatus: 'not-applicable', fibSource: 'ZONE FIB', fibBand: '0.5-0.618',
+      fibLevels: [{ label: '0.5', price: 101 }], entrySnapshotCandles: [
+        { time: 900, open: 103, high: 104, low: 100, close: 101, complete: true },
+        { time: 1800, open: 101, high: 106, low: 100, close: 105, complete: true },
+      ] } };
+}
+
+test('executed MT5 explanation uses broker fill, recorded Fib evidence and actual outcome prices', () => {
+  const options = entryDiagnosticOptions({ now: 3000, automationSupported: true,
+    automation: entryDiagnosticAutomation(), brokerSignal: storyBroker(),
+    evidence: { waiting: ['ENGULFING'], details: [] } });
+  const before = structuredClone(options);
+  const text = explainZoneEntry(options).narrative!.join('\n');
+  for (const expected of ['buy MT5 trade', 'ticket 77', 'ZONE FIB', 'T1 buy engulfing',
+    'automatic entry checks passed', 'touched Fib 0.5 at 101.000', '105.100', '100.000', '115.000', 'still open']) {
+    assert.ok(text.includes(expected), expected);
+  }
+  assert.ok(!text.includes('No completed buy engulfing'), 'current missing checks cannot rewrite an executed entry');
+  for (const [status, price, description] of [['TP', 115.2, 'take profit'], ['SL', 99.8, 'stop loss']] as const) {
+    const closed = explainZoneEntry({ ...options, brokerSignal: { ...storyBroker(), status, closedAt: 2900, closePrice: price } }).narrative!.join('\n');
+    assert.ok(closed.includes(description) && closed.includes(price.toFixed(3)));
+    assert.ok(!closed.includes('still open'));
+  }
+  assert.deepEqual(options, before);
+});
+
+test('replay and chart entries are never presented as broker fills and future outcomes stay hidden', () => {
+  const automation = entryDiagnosticAutomation();
+  automation.bridge.connected = false;
+  const options = entryDiagnosticOptions({ now: 3000, replay: true, recordedTrade: {
+    ...storyTrade(), status: 'tp-hit', result: 'tp', resolvedAt: 3600 },
+    automationSupported: true, automation, brokerSignal: storyBroker() });
+  const open = explainZoneEntry(options).narrative!.join('\n');
+  assert.ok(open.includes('buy replay entry') && open.includes('still open'));
+  assert.ok(!open.includes('MT5 trade') && !open.includes('reached its take profit') && !open.includes('working connection'));
+  const closed = explainZoneEntry({ ...options, now: 4000 }).narrative!.join('\n');
+  assert.ok(closed.includes('replay entry reached its take profit'));
+  const chart = explainZoneEntry({ ...options, replay: false, brokerSignal: undefined }).narrative!.join('\n');
+  assert.ok(chart.includes('buy chart entry') && chart.includes('does not confirm that an order opened in MT5'));
+  assert.ok(!chart.includes('automatic entry checks passed'));
+  const future = explainZoneEntry({ ...options, recordedTrade: { ...storyTrade(), filledAt: 5000 } }).narrative!.join('\n');
+  assert.ok(!future.includes('buy replay entry was recorded'));
+});
+
+test('foreign-account, queued and unproven MT5 records cannot produce a confirmed trade story', () => {
+  const options = entryDiagnosticOptions({ now: 3000, automation: entryDiagnosticAutomation() });
+  for (const brokerSignal of [{ ...storyBroker(), account: 'other' },
+    { ...storyBroker(), brokerTicket: undefined }, { ...storyBroker(), openedAt: 5000 }]) {
+    assert.ok(!explainZoneEntry({ ...options, brokerSignal }).narrative!.join('\n').includes('MT5 trade was recorded'));
+  }
+  const queued = explainZoneEntry({ ...options, brokerSignal: { ...storyBroker(), status: 'QUEUED',
+    openedAt: undefined, brokerTicket: undefined } }).narrative!.join('\n');
+  assert.ok(queued.includes('fill has not been confirmed'));
+  const noSnapshot = explainZoneEntry({ ...options, brokerSignal: { ...storyBroker(), journalContext: undefined,
+    entryQualifiedAt: undefined } }).narrative!.join('\n');
+  assert.ok(!noSnapshot.includes('touched Fib 0.5') && !noSnapshot.includes('automatic entry checks passed'));
+});
+
 test('Zone Table reports real waiting reasons, full hover details and no premature ENTRY READY', () => {
   const options = entryDiagnosticOptions({ evidence: { waiting: ['FIB 0.5 TOUCH'],
     details: ['T1 is visible, but the pattern missed 3887.835.'] }, outsideHours: true });
@@ -87,9 +238,8 @@ test('small-text entry tooltip explains every hidden reason without inventing a 
   const tooltip = renderToStaticMarkup(React.createElement(ZoneEntryReasonDetails, { readiness }));
   assert.ok(tooltip.includes('text-[11px]') && tooltip.includes('font-normal'));
   assert.ok(tooltip.includes('ISS L4') && tooltip.includes('3,900.634') && tooltip.includes('3,905.975'));
-  assert.ok(tooltip.includes('OPPORTUNITY EXPIRED') && tooltip.includes('allowed entry limit'));
-  assert.ok(tooltip.includes('ENGULFING') && tooltip.includes('bearish'));
-  assert.ok(tooltip.includes('No completed sell engulfing qualifies.'));
+  assert.ok(tooltip.includes('allowed entry limit') && tooltip.includes('Entry from this opportunity is now blocked'));
+  assert.ok(tooltip.includes('No completed sell engulfing has qualified'));
   assert.ok(!tooltip.includes('1R reached'), 'a generic expiry flag cannot prove a specific 1R trigger');
   assert.ok(!tooltip.includes('entry limit at'), 'do not invent a numerical trigger when it is unavailable');
 });
@@ -189,7 +339,7 @@ test('a fresh CHoCH shows a compact pending row before a revisit and leaves the 
       React.createElement('tbody', {}, React.createElement(ChochStatusTableRow, { zone, timeframe: 'M15' }))));
     const html = render(selected[0]);
     assert.ok(html.includes(`WAIT 1H ${isBuy ? 'ABOVE' : 'BELOW'}`));
-    assert.ok(html.includes('CHoCH pending'));
+    assert.ok(html.includes('Hover or focus for all entry reasons.') && html.includes('tabindex="0"'));
     assert.ok(!html.includes('VALID'));
     for (const chochClass of ['valid', 'vip', 'air'] as const) {
       const resolved = { ...pending, chochClass, chochConfirmationTime: 3600 };
