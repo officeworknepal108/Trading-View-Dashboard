@@ -82,6 +82,7 @@ import {
   isZoneEngulfingFibQualified,
   isDeepDiscountTradeSignal,
   isUnfilledDirectSetupQualified,
+  inspectZoneEntryEvidence,
   measureTradeableFibZone,
   resolveDirectEntryPolicy,
   resolveZoneEngulfingSignal,
@@ -92,6 +93,7 @@ import {
   type TradeResult,
   type TradeRule,
   type TradeTimeframe,
+  type ZoneEntryEvidence,
 } from '../services/tradeLevels';
 import { applyOneMinuteGenesisQml, executionZoneName } from '../services/oneMinuteGenesis';
 import {
@@ -165,6 +167,7 @@ import {
   goldOpposingZoneBlockLabel,
   mt5FibProfitEventLabel,
   isTradeStyleEnabled,
+  mt5SignalDisabledReason,
   type Mt5AutomationStatus,
   type Mt5StoredSignal,
 } from '../services/mt5Automation';
@@ -687,6 +690,8 @@ function mt5StatusRenderSignature(status: Mt5AutomationStatus): string {
     marketData: status.marketData,
     counts: status.counts,
     recentSignals: status.recentSignals,
+    entryChecks: status.entryChecks,
+    newsCalendar: status.newsCalendar,
   });
 }
 
@@ -754,6 +759,7 @@ function mt5SignalStatusLabel(signal: Mt5StoredSignal): string {
   if (signal.message?.includes('daily loss')) return 'MT5 REJECTED · DAILY LOSS LIMIT';
   if (signal.message?.includes('open trades')) return 'MT5 REJECTED · OPEN TRADE LIMIT';
   if (signal.message?.toLowerCase().includes('spread')) return 'MT5 REJECTED · SPREAD LIMIT';
+  if (signal.message) return `ORDER REJECTED — ${signal.message.length > 65 ? `${signal.message.slice(0, 62)}…` : signal.message}`;
   return 'MT5 REJECTED · NO TRADE';
 }
 
@@ -941,6 +947,116 @@ function directEntryPolicyLabel(policy: DirectEntryPolicyDecision): string {
   if (policy.reason === 'volume-failed') return 'VOLUME FAILED';
   return 'ENTRY VALID';
 }
+
+export interface ZoneEntryReadiness {
+  mode: 'WAIT' | 'BLOCKED' | 'DISABLED' | 'SIMULATION' | 'READY';
+  label: string;
+  title: string;
+  reasons: string[];
+}
+
+/** Read-only explanation of the same setup and execution gates; never creates an order. */
+export function explainZoneEntry(options: {
+  zone: StructureZone; timeframe: OandaGranularity; evidence: ZoneEntryEvidence;
+  confirmationLabel: string; trade?: TradeLevels; decision?: DirectZoneEntryDecision;
+  opportunityExpired?: boolean; zoneUsed?: boolean; extremeBlocked?: boolean;
+  outsideHours?: boolean; countertrendBlocked?: boolean; replay?: boolean;
+  automationSupported?: boolean; automation?: Mt5AutomationStatus; now: number;
+  scalping?: boolean; symbol?: string;
+}): ZoneEntryReadiness {
+  const { zone, timeframe, evidence, trade, decision } = options;
+  const entries: Array<{ mode: ZoneEntryReadiness['mode']; reason: string; detail: string }> = [];
+  const add = (mode: ZoneEntryReadiness['mode'], reason: string, detail = reason) => {
+    if (!entries.some(entry => entry.reason === reason)) entries.push({ mode, reason, detail });
+  };
+  if (!zone.active || ['invalidated', 'rejected', 'superseded'].includes(zone.status)) {
+    add('BLOCKED', 'ZONE INVALIDATED', `Zone status: ${zone.status}.`);
+  }
+  if (options.zoneUsed || decision?.policy.reason === 'zone-used') add('BLOCKED', 'ZONE ALREADY USED');
+  if (options.opportunityExpired) add('BLOCKED', 'OPPORTUNITY EXPIRED', 'The allowed move away from this zone has already been reached.');
+  if (options.extremeBlocked) add('BLOCKED', 'HIGHER EXTREME A+ ZONE');
+  if (zone.confirmationRouteDisabled) add('DISABLED', 'HTF CONFIRMATION ROUTE');
+  if (zone.status === 'pending' || zone.chochClass === 'pending' || zone.m15H1ChochClosePending
+    || zone.doubleChochStatus === 'pending') {
+    add('WAIT', `${options.confirmationLabel} CLOSE ${zone.isBuy ? 'ABOVE' : 'BELOW'}`,
+      'A completed higher-timeframe candle must satisfy the confirmation rule; a forming candle cannot confirm it.');
+  } else if (!isZoneEligibleForEngulfingEntry(zone)) {
+    add('BLOCKED', 'STRUCTURE NOT TRADEABLE', 'This structure does not meet its CHoCH entry classification rules.');
+  }
+  for (let i = 0; i < evidence.waiting.length; i++) add('WAIT', evidence.waiting[i], evidence.details[i] ?? evidence.waiting[i]);
+  const signal = trade?.signal ?? evidence.signal;
+  if (options.outsideHours || decision?.policy.reason === 'outside-trading-time') {
+    add('WAIT', 'TRADING HOURS', 'Entry must form and execute inside the enabled trading hours. An old outside-hours signal is not automatically reused.');
+  }
+  if (decision?.policy.reason === 'volume-unavailable') add('WAIT', 'VOLUME DATA');
+  if (decision?.policy.reason === 'volume-failed') add('WAIT', 'VOLUME CONFIRMATION', 'The native M1 volume relationship failed; a fresh qualifying signal is required.');
+  if (decision?.policy.reason === 'volume-not-applicable') add('BLOCKED', 'NO M1 VOLUME RULE', 'This pattern has no approved native M1 volume entry rule.');
+  if (options.countertrendBlocked) add('WAIT', '15M + 1H TREND ALIGNMENT');
+  if (decision?.opposingZoneBlock) add('WAIT', 'OPPOSING ZONE CLEARANCE', goldOpposingZoneBlockLabel(decision.opposingZoneBlock));
+  if (trade?.status === 'pending') add('WAIT', 'ENTRY PRICE', `The planned entry at ${formatPrice(trade.entry)} has not filled.`);
+  if (signal && !trade && decision?.policy.allowed && !decision.opposingZoneBlock) {
+    add('WAIT', 'ENTRY CANDLE / PRICE', 'The qualified signal has not produced a currently usable entry. Waiting for executable candle data or a fresh setup.');
+  }
+  if (!options.replay && options.automationSupported) {
+    const status = options.automation;
+    if (!status) add('WAIT', 'MT5 STATUS');
+    else {
+      if (!status.config.enabled) add('DISABLED', 'AUTO ENTRY OFF');
+      const disabled = mt5SignalDisabledReason(status.config, {
+        zoneTimeframe: timeframe as TradeTimeframe, signalTimeframe: signal?.timeframe ?? timeframe as TradeTimeframe,
+        tradeStyle: options.scalping ? 'SCALPING' : 'INTRADAY', source: 'ENGULFING',
+      });
+      if (disabled) add('DISABLED', disabled.includes('Scalping') || disabled.includes('Intraday') ? 'STRATEGY' : 'TIMEFRAME', disabled);
+      if (signal) {
+        const key = tradeZoneExecutionKey({ symbol: options.symbol ?? 'XAUUSD', zoneTimeframe: timeframe, zoneId: zone.id });
+        const check = status.entryChecks?.find(item => item.account === status.bridge.account
+          && item.server === status.bridge.server && item.brokerSymbol === status.bridge.brokerSymbol
+          && item.symbol === (options.symbol ?? 'XAUUSD') && item.signalAt === signal.time
+          && item.direction === (signal.direction === 'bullish' ? 'BUY' : 'SELL')
+          && options.now - item.checkedAt >= 0 && options.now - item.checkedAt <= 30
+          && key !== undefined && tradeZoneExecutionKey(item) === key);
+        for (const reason of check?.reasons ?? []) add(check!.mode, reason);
+      }
+      if (!status.bridge.connected || status.bridge.terminalConnected === false) add('WAIT', 'MT5 CONNECTION');
+      else {
+        if (status.bridge.symbolResolved === false) add('WAIT', 'BROKER SYMBOL SELECTION');
+        if (!status.marketData?.fresh) add('WAIT', 'FRESH MT5 DATA');
+        const risk = status.bridge.dailyRisk;
+        if (!risk || risk.available === false) add('WAIT', 'DAILY RISK DATA', risk?.available === false ? risk.error : 'Waiting for MT5 daily risk verification.');
+        else if (risk.limitReached || risk.usedMoney >= risk.limitMoney || risk.availableRiskMoney <= 1e-8) add('BLOCKED', 'DAILY RISK LIMIT');
+        else if (risk.riskUnbounded) add('WAIT', 'EXISTING POSITION STOP LOSS', 'Daily entry risk cannot be verified while an existing automated trade has no stop loss.');
+        if (status.positions.filter(position => position.symbol === status.bridge.brokerSymbol).length >= status.config.maximumOpenTrades) {
+          add('WAIT', 'OPEN TRADE LIMIT');
+        }
+        const news = status.newsCalendar;
+        if (news?.available === false) add('WAIT', 'NEWS CALENDAR DATA', news.error ?? 'The automatic scanner pauses while the news calendar is unavailable.');
+        else if (news?.pausedUntil !== undefined && news.pausedUntil > options.now) add('WAIT', 'NEWS WINDOW', 'Automatic entries are paused around a high-impact USD event.');
+      }
+      if (status.config.dryRun) add('SIMULATION', 'LIVE ORDERS OFF');
+    }
+  }
+  // Readiness requires a strategy-qualified signal, not merely a visible candle pattern.
+  if (!signal && !entries.some(entry => entry.mode === 'WAIT' || entry.mode === 'BLOCKED')) add('WAIT', 'QUALIFYING ENTRY SIGNAL');
+  const priority = { BLOCKED: 0, DISABLED: 1, WAIT: 2, SIMULATION: 3, READY: 4 };
+  entries.sort((a, b) => priority[a.mode] - priority[b.mode]);
+  if (!entries.length) return { mode: 'READY', label: 'ENTRY READY', reasons: [],
+    title: 'Chart conditions and the available execution checks pass. Broker acceptance and live price/risk checks still occur when the order is sent.' };
+  const first = entries[0];
+  const sameMode = entries.filter(entry => entry.mode === first.mode);
+  const text = sameMode.slice(0, 2).map(entry => entry.reason).join(' · ');
+  const shown = text.length > 85 ? `${text.slice(0, 82)}…` : text;
+  const hidden = entries.length - Math.min(2, sameMode.length);
+  return { mode: first.mode, label: `${first.mode} — ${shown}${hidden > 0 ? ` · +${hidden}` : ''}`,
+    title: entries.map(entry => `${entry.mode} — ${entry.reason}: ${entry.detail}`).join('\n'),
+    reasons: entries.map(entry => entry.reason) };
+}
+
+export const ZoneEntryReadinessText: React.FC<{ readiness: ZoneEntryReadiness }> = ({ readiness }) => (
+  <span title={readiness.title} role="status" className={`inline-block max-w-[260px] whitespace-normal text-right ${
+    readiness.mode === 'READY' ? 'text-emerald-700' : readiness.mode === 'BLOCKED' ? 'text-rose-700'
+      : readiness.mode === 'DISABLED' || readiness.mode === 'SIMULATION' ? 'text-slate-600' : 'text-amber-700'
+  }`}>{readiness.label}</span>
+);
 
 function displayFibLabel(zone: StructureZone): string {
   if (zone.fibBand === 'deep') {
@@ -8261,6 +8377,37 @@ export const OandaProChart: React.FC<{
     );
   };
 
+  const zoneEntryEvidenceById = useMemo(() => {
+    const evidence = new Map<string, { zone: StructureZone; evidence: ZoneEntryEvidence }>();
+    for (const zone of [...zoneTableRows, ...doubleChochRows]) {
+      const candidates = displayZoneMembers(zone).map(member => ({
+        zone: member, evidence: inspectZoneEntryEvidence(member, displayCandles, granularity as TradeTimeframe),
+      }));
+      candidates.sort((a, b) => Number(!isZoneEligibleForEngulfingEntry(a.zone)) - Number(!isZoneEligibleForEngulfingEntry(b.zone))
+        || Number(!a.evidence.signal) - Number(!b.evidence.signal)
+        || Number(!a.evidence.observedSignal) - Number(!b.evidence.observedSignal)
+        || a.evidence.waiting.length - b.evidence.waiting.length);
+      evidence.set(zone.id, candidates[0]);
+    }
+    return evidence;
+  }, [zoneTableRows, doubleChochRows, displayCandles, granularity]);
+  const zoneReadiness = (zone: DisplayStructureZone, trade?: TradeLevels,
+    decision?: DirectZoneEntryDecision, extra: Partial<Parameters<typeof explainZoneEntry>[0]> = {}) => {
+    const inspected = zoneEntryEvidenceById.get(zone.id) ?? {
+      zone, evidence: inspectZoneEntryEvidence(zone, displayCandles, granularity as TradeTimeframe),
+    };
+    const signal = trade?.signal ?? inspected.evidence.signal;
+    const signalClose = signal ? signal.time + TIMEFRAME_SECONDS[signal.timeframe] : tradeDisplayAsOf;
+    return explainZoneEntry({
+      zone: inspected.zone, timeframe: granularity, evidence: inspected.evidence, trade, decision,
+      confirmationLabel: TJL1_CONFIRMATION_LABELS[granularity].toUpperCase(),
+      outsideHours: tradingTimeEnabled && !isNepalTradingTime(signalClose),
+      countertrendBlocked: signal && blockedGoldChartEntry(signal.time, signal.timeframe, signal.direction),
+      replay: replayIndex !== null, automationSupported: marketConfig.mt5AutomationEnabled,
+      automation: mt5Status ?? undefined, now: tradeDisplayAsOf, symbol: marketSymbol, ...extra,
+    });
+  };
+
   const zoneTableContent = (
     <>
     {replayIndex === null && marketSymbol === 'XAUUSD' && mt5Status?.bridge.connected
@@ -8505,28 +8652,17 @@ export const OandaProChart: React.FC<{
           }`}>
             {completedStatus ? completedStatus : isCompletedTrade(outsideTimePreview)
               ? <TradeStatusText trade={outsideTimePreview!} />
-              : outsideTimePreview || entryDecision?.policy.reason === 'outside-trading-time'
-              ? 'OUTSIDE TRADING TIME'
               : mt5Signal
-              ? <span className={mt5SignalStatusClassName(mt5Signal)}>{mt5SignalStatusLabel(mt5Signal)}</span>
-              : isCompletedTrade(trade)
-              ? <>{zone.lastTapBarsAgo ?? zone.tapBarsAgo} bars · <TradeStatusText trade={trade!} /></>
-               : pending
-               ? `WAIT ${confirmationLabel} ${confirmationSide} · NO TRADE`
-               : zone.tradeable === false
-                 ? 'VALID DOUBLE CHoCH · NO TRADE'
-               : zone.tapTime === undefined
-                 ? 'VALID DOUBLE CHoCH · NO TRADE'
-                 : marketSymbol === 'XAUUSD' && isGoldZoneOpportunityExpired(
-                   zone, displayCandles, granularity, marketConfig.pipSize, Infinity,
-                   displayedTrade?.filledAt === undefined ? undefined
-                     : { price: displayedTrade.entry, filledAt: displayedTrade.filledAt, stopLoss: displayedTrade.stopLoss },
-                 )
-                   ? `${zone.lastTapBarsAgo ?? zone.tapBarsAgo} bars · DISTANCE REACHED · NO NEW ENTRY`
-                   : marketSymbol === 'XAUUSD' && (displayedTapCount(zone) ?? 0) > 1
-                     ? `${zone.lastTapBarsAgo ?? zone.tapBarsAgo} bars · TAP ${displayedTapCount(zone)} · NO NEW ENTRY`
-                   : `${zone.lastTapBarsAgo ?? zone.tapBarsAgo} bars · ${confirmationLabel} CONFIRMED · TRADE`}
-            {!outsideTimePreview && bestTrendlineBadge(displayedTrade)}
+                ? <span className={mt5SignalStatusClassName(mt5Signal)} title={mt5Signal.message}>{mt5SignalStatusLabel(mt5Signal)}</span>
+                : replayIndex !== null && trade?.filledAt !== undefined
+                  ? <TradeStatusText trade={trade} />
+                  : <ZoneEntryReadinessText readiness={zoneReadiness(zone, trade, entryDecision, {
+                      opportunityExpired: marketSymbol === 'XAUUSD' && isGoldZoneOpportunityExpired(
+                        zone, displayCandles, granularity, marketConfig.pipSize, Infinity,
+                        displayedTrade?.filledAt === undefined ? undefined
+                          : { price: displayedTrade.entry, filledAt: displayedTrade.filledAt, stopLoss: displayedTrade.stopLoss }),
+                      zoneUsed: marketSymbol === 'XAUUSD' && (displayedTapCount(zone) ?? 0) > 1,
+                    })} />}
           </td>
         </tr>
         {displayedTrade
@@ -8597,6 +8733,14 @@ export const OandaProChart: React.FC<{
         mtfRows.filter(row => !hasTradeDisplayExpired(row.trade ?? row.previewTrade)));
       const chochConfirmationLabel = TJL1_CONFIRMATION_LABELS[granularity].toUpperCase();
       const chochConfirmationSide = zone.isBuy ? 'ABOVE' : 'BELOW';
+      const observedPattern = zoneEntryEvidenceById.get(zone.id)?.evidence.observedSignal;
+      const readiness = zoneReadiness(zone, trade, entryDecision, {
+        opportunityExpired, zoneUsed: repeatedTap, extremeBlocked: extremeAPlusBlocked,
+        outsideHours: Boolean(outsideTimePreview) || (tradingTimeEnabled
+          && !isNepalTradingTime((trade?.signal.time ?? tradeDisplayAsOf)
+            + (trade ? TIMEFRAME_SECONDS[trade.signal.timeframe] : 0))),
+        scalping: Boolean(scalpTrade),
+      });
       return (
       <React.Fragment key={zone.id}>
       <tr className="border-t border-slate-100 text-slate-700">
@@ -8698,76 +8842,38 @@ export const OandaProChart: React.FC<{
                   chartTimeZone,
                 )}
               </div>}
-            </> : confluenceEngulfingLabel(zone, granularity) ?? '—' : '—'}
+            </> : confluenceEngulfingLabel(zone, granularity) ?? (observedPattern ? (
+              <span className="text-amber-700" title="Observed candle pattern only; the remaining entry conditions have not passed.">
+                {observedPattern.type} {observedPattern.direction === 'bullish' ? 'BULL' : 'BEAR'} · OBSERVED
+              </span>
+            ) : '—') : '—'}
         </td>
         <td className={`px-2 py-1 text-right font-bold whitespace-nowrap ${
           trade?.status === 'sl-hit' ? 'text-rose-700' : ''
         }`}>
           {completedStatus ? (
             <span className={completedStatus === 'SL HIT' ? 'text-rose-700' : 'text-emerald-700'}>{completedStatus}</span>
-          ) : extremeAPlusBlocked ? (
-            <span className="text-rose-700">EXTREME A+ HIGHER · NO TRADE</span>
-          ) : repeatedTap ? (
-            <span className="text-rose-700">TAP {tapCount} · NO NEW ENTRY</span>
-          ) : outsideTimePreview ? (
-            <span className={isCompletedTrade(outsideTimePreview)
-              ? outsideTimePreview.status === 'sl-hit' ? 'text-rose-700' : 'text-emerald-700'
-              : 'text-blue-700'}>
-              {tapBarsAgo} bars ·{' '}
-              {isCompletedTrade(outsideTimePreview)
-                ? tradeStatusLabel(outsideTimePreview)
-                : `ENTRY ${formatPrice(outsideTimePreview.entry)}`}
-            </span>
+          ) : outsideTimePreview && isCompletedTrade(outsideTimePreview) ? (
+            <TradeStatusText trade={outsideTimePreview} />
           ) : historicalTrade ? (
-            <span className={historicalTrade.status === 'sl-hit' ? 'text-rose-700' : 'text-indigo-700'}>
-              {tapBarsAgo} bars ·{' '}
-              {historicalEntry?.tradingTimeBlocked
-                ? isCompletedTrade(historicalTrade)
-                  ? tradeStatusLabel(historicalTrade)
-                  : `ENTRY ${formatPrice(historicalTrade.entry)}`
-                : `ENTRY ${formatPrice(historicalTrade.entry)} · REPLAY ${tradeStatusLabel(historicalTrade)}`}
-            </span>
+            historicalEntry?.tradingTimeBlocked && !isCompletedTrade(historicalTrade)
+              ? <ZoneEntryReadinessText readiness={zoneReadiness(zone, undefined, entryDecision, { outsideHours: true })} />
+              : <span className={historicalTrade.status === 'sl-hit' ? 'text-rose-700' : 'text-indigo-700'}>
+                  {tapBarsAgo} bars · ENTRY {formatPrice(historicalTrade.entry)} · REPLAY {tradeStatusLabel(historicalTrade)}
+                </span>
           ) : mt5Signal ? (
-            <span className={mt5SignalStatusClassName(mt5Signal)}>
+            <span className={mt5SignalStatusClassName(mt5Signal)} title={mt5Signal.message}>
               {mt5SignalStatusLabel(mt5Signal)}
             </span>
-          ) : entryDecision?.opposingZoneBlock ? (
-            <span className="text-rose-700">
-              {goldOpposingZoneBlockLabel(entryDecision.opposingZoneBlock)}
-            </span>
           ) : isCompletedTrade(trade) ? (
-            <span className={trade?.status === 'sl-hit' ? 'text-rose-700' : 'text-emerald-700'}>
-              {replayIndex !== null && historicalEntry && `ENTRY ${formatPrice(trade!.entry)} · `}
-              {tapBarsAgo} bars · <TradeStatusText trade={trade!} />
-            </span>
-          ) : opportunityExpired ? (
-            <span className="text-rose-700">DISTANCE REACHED · NO NEW ENTRY</span>
-          ) : mtfStatus ? (
-            <span className={mtfStatus.confirmed ? 'text-emerald-700' : 'text-violet-700'}>
+            <TradeStatusText trade={trade!} />
+          ) : replayIndex !== null && trade?.filledAt !== undefined ? (
+            <TradeStatusText trade={trade} />
+          ) : mtfStatus?.confirmed && !outsideTimePreview && !extremeAPlusBlocked && !repeatedTap ? (
+            <span className={mtfStatus.confirmed ? 'text-emerald-700' : 'text-violet-700'} title={readiness.title}>
               {mtfStatus.label}
             </span>
-          ) : entryDecision && !entryDecision.policy.allowed ? (
-            <span className="text-rose-700">
-              {directEntryPolicyLabel(entryDecision.policy)} · {usedZoneTrade ? 'ENTRY REFERENCE' : 'NO TRADE'}
-            </span>
-          ) : entryDecision?.policy.allowed && !trade ? (
-            <span className="text-rose-700">ENTRY INVALID · NO TRADE</span>
-          ) : scalpTrade ? (
-            <span className="text-indigo-700">SCALP ENTRY · {scalpTrade.signal.timeframe} · 1:{scalpTrade.rewardRisk}</span>
-          ) : <>
-            <span className="text-slate-500">{tapBarsAgo} bars</span>
-            <span className={!confluenceIsTradeable(zone) ? 'ml-1 text-rose-700' : 'ml-1 text-emerald-700'}>
-               - {pendingChoch
-                 ? `WAIT ${chochConfirmationLabel} CLOSE ${chochConfirmationSide} Â· NO TRADE`
-                 : !confluenceIsTradeable(zone)
-                 ? 'NO TRADE'
-                : entryDecision?.oppositePositionOpen
-                  ? 'OPPOSITE OPEN · TRADE 1:1'
-                  : entryDecision?.policy.reason === 'volume-confirmed'
-                    ? `VOLUME PASSED · TRADE 1:${trade?.rewardRisk ?? 3}`
-                    : 'TRADE'}
-            </span>
-          </>}
+          ) : <ZoneEntryReadinessText readiness={readiness} />}
           {!outsideTimePreview && !historicalEntry?.tradingTimeBlocked
             && (!repeatedTap || completedStatus) && !extremeAPlusBlocked
             && bestTrendlineBadge(engulfingTrade)}

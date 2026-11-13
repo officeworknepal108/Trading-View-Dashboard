@@ -15,6 +15,7 @@ import {
   measureTradeableFibZone,
   resolveZoneEngulfingSignal,
   resolveDirectEntryPolicy,
+  inspectZoneEntryEvidence,
   timeframeWindowCutoff,
   type EngulfingTradeSignal,
 } from '../src/services/tradeLevels';
@@ -27,6 +28,53 @@ const bullishSignal: EngulfingTradeSignal = {
   candleCount: 2,
   timeframe: 'M1',
 };
+
+test('entry diagnostics recognize the reported QML engulfing while explaining its missed Fib 0.5', () => {
+  const zone: StructureZone = { id: 'qml', name: 'QML', category: 'mg', isBuy: true,
+    active: true, status: 'valid', startTime: 0, endTime: 9000, activeFromTime: 900,
+    tapTime: 900, fibStatus: 'a-plus', fibBand: '0.5-0.618', fibLevel50: 3887.835,
+    bottom: 3883.055, top: 3890.29265 };
+  const candles: StructureCandle[] = [
+    { time: 900, open: 3896.42, high: 3897.555, low: 3890.18, close: 3890.745, complete: true },
+    { time: 1800, open: 3890.74, high: 3900.71, low: 3888.47, close: 3900.695, complete: true },
+  ];
+  const original = structuredClone({ zone, candles });
+  const evidence = inspectZoneEntryEvidence(zone, candles, 'M15');
+  assert.equal(evidence.observedSignal?.type, 'T1');
+  assert.equal(evidence.signal, undefined, 'observing a pattern must not manufacture an executable signal');
+  assert.deepEqual(evidence.waiting, ['FIB 0.5 TOUCH']);
+  assert.ok(evidence.details.join(' ').includes('3887.835'));
+  assert.deepEqual({ zone, candles }, original);
+  const forming = inspectZoneEntryEvidence(zone, [candles[0], { ...candles[1], complete: false }], 'M15');
+  assert.ok(forming.waiting.includes('CANDLE CLOSE'));
+  assert.ok(forming.waiting.includes('FIB 0.5 TOUCH'));
+  assert.equal(forming.signal, undefined);
+});
+
+test('diagnostics respect Fib-independent, deep, alternate-Fib and already-qualified entry routes', () => {
+  const base: StructureZone = { id: 'zone', name: 'QML', category: 'mg', isBuy: true,
+    active: true, status: 'valid', startTime: 0, endTime: 9000, tapTime: 900,
+    bottom: 100, top: 102, fibStatus: 'a-plus', fibBand: '0.5-0.618', fibLevel50: 95 };
+  const candles: StructureCandle[] = [
+    { time: 900, open: 103, high: 104, low: 101, close: 102, complete: true },
+    { time: 1800, open: 102, high: 106, low: 100, close: 105, complete: true },
+  ];
+  for (const name of ['DB', 'DT', 'TJL2', 'DBD', 'DTD', 'Internal DBD', 'Internal DTD'] as const) {
+    const zone = { ...base, name, majorLiquidity: !['DB', 'DT'].includes(name), fibStatus: undefined };
+    const evidence = inspectZoneEntryEvidence(zone, candles, 'M15');
+    assert.ok(!evidence.waiting.includes('FIB 0.5 TOUCH'), name);
+    assert.ok(!evidence.waiting.includes('A+ FIB ALIGNMENT'), name);
+  }
+  assert.ok(!inspectZoneEntryEvidence({ ...base, fibBand: 'deep' }, candles, 'M15').waiting.includes('FIB 0.5 TOUCH'));
+  assert.ok(!inspectZoneEntryEvidence({ ...base, swingFibStatus: 'a-plus', swingFibBand: '0.5-0.618' }, candles, 'M15')
+    .waiting.includes('FIB 0.5 TOUCH'), 'the alternate swing route does not require the structure Fib 0.5 touch');
+  const qualified = { ...base, engulfingType: 'T1' as const, engulfingDirection: 'bullish' as const,
+    engulfingTime: 1800, engulfingCandleCount: 2 };
+  assert.deepEqual(inspectZoneEntryEvidence(qualified, candles, 'M15').waiting, []);
+  assert.equal(inspectZoneEntryEvidence(qualified, candles, 'M15').signal?.time, 1800);
+  assert.ok(inspectZoneEntryEvidence({ ...base, fibStatus: undefined }, candles, 'M15').waiting.includes('A+ FIB ALIGNMENT'));
+  assert.deepEqual(inspectZoneEntryEvidence(base, [], 'M15').waiting, ['CANDLE DATA']);
+});
 
 test('an unfilled retained TJL1 entry requires its current zone, Fib and exact completed engulfing', () => {
   const signal: EngulfingTradeSignal = {

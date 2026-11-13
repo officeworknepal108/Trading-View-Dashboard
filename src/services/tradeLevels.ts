@@ -378,6 +378,80 @@ export function resolveZoneEngulfingSignal(
   return undefined;
 }
 
+export interface ZoneEntryEvidence {
+  signal?: EngulfingTradeSignal;
+  observedSignal?: EngulfingTradeSignal;
+  waiting: string[];
+  details: string[];
+}
+
+/** Explain an unqualified pattern without promoting it into an executable signal. */
+export function inspectZoneEntryEvidence(
+  zone: StructureZone, candles: StructureCandle[], timeframe: TradeTimeframe,
+): ZoneEntryEvidence {
+  const signal = resolveZoneEngulfingSignal(zone, timeframe);
+  if (signal) return { signal, observedSignal: signal, waiting: [], details: [] };
+  const waiting: string[] = [];
+  const details: string[] = [];
+  if (!candles.length) return { waiting: ['CANDLE DATA'], details: ['Waiting for source candles.'] };
+  const independent = (zone.majorLiquidity === true
+    && (zone.name === 'TJL2' || ['DBD', 'DTD', 'Internal DBD', 'Internal DTD'].includes(zone.name)))
+    || zone.name === 'DB' || zone.name === 'DT';
+  const alternateFib = (timeframe === 'M15' && isZoneEngulfingFibQualified(zone, 'h1Swing'))
+    || (isDaySwingFibEntryTimeframe(timeframe)
+      && (isZoneEngulfingFibQualified(zone, 'swing') || isZoneEngulfingFibQualified(zone, 'day')));
+  const structureFib = isZoneEngulfingFibQualified(zone, 'structure');
+  if (!structureFib && !alternateFib) {
+    waiting.push('A+ FIB ALIGNMENT');
+    details.push('No numerical A+ Fib entry route currently qualifies this zone.');
+  }
+  const requiresFib50 = !independent && !alternateFib && zone.fibBand === '0.5-0.618';
+  const validFrom = Math.max(zone.startTime, zone.activeFromTime ?? zone.startTime,
+    zone.confirmationTime ?? zone.startTime);
+  const touchesZone = (candle: StructureCandle) => candle.time > zone.startTime
+    && candle.time >= validFrom && candle.high >= zone.bottom && candle.low <= zone.top;
+  if (zone.tapTime === undefined && !candles.some(candle => candle.complete !== false && touchesZone(candle))) {
+    waiting.push('ZONE TOUCH');
+    details.push('No completed candle has revisited this zone after activation.');
+  }
+  const direction = zone.isBuy ? 'bullish' : 'bearish';
+  const evidence: ZoneEntryEvidence = { waiting, details };
+  // Completed patterns take priority. Looking at a forming pattern is display-only.
+  for (const forming of [false, true]) {
+    const source = forming && candles.at(-1)?.complete === false
+      ? [...candles.slice(0, -1), { ...candles.at(-1)!, complete: true }] : candles;
+    for (let end = source.length - 1; end >= 1 && source[end].time >= validFrom; end--) {
+      if (forming && end !== source.length - 1) break;
+      if (!forming && source[end].complete === false) continue;
+      if (forming && candles[end].complete !== false) continue;
+      const pattern = detectEngulfingPatternAt(source, end);
+      if (!pattern || pattern.direction !== direction) continue;
+      const patternCandles = source.slice(pattern.startIndex, pattern.endIndex + 1);
+      if (!patternCandles.some(touchesZone)) continue;
+      evidence.observedSignal = { type: pattern.type, direction, timeframe,
+        time: source[end].time, candleCount: pattern.candleCount };
+      if (forming) {
+        waiting.push('CANDLE CLOSE');
+        details.push('The observed engulfing candle is still forming; it is not an entry signal.');
+      }
+      if (requiresFib50 && (zone.fibLevel50 === undefined
+        || !patternCandles.some(candle => candle.low <= zone.fibLevel50! && candle.high >= zone.fibLevel50!))) {
+        waiting.push(zone.fibLevel50 === undefined ? 'FIB 0.5 DATA' : 'FIB 0.5 TOUCH');
+        details.push(zone.fibLevel50 === undefined ? 'The required Fib 0.5 price is unavailable.'
+          : `${pattern.type} observed, but none of its candles touched Fib 0.5 at ${zone.fibLevel50.toFixed(3)}.`);
+      }
+      if (!forming && waiting.length === 0) {
+        waiting.push('QUALIFYING ENGULFING');
+        details.push('A pattern is visible, but the strategy has not qualified it as an entry signal.');
+      }
+      return evidence;
+    }
+  }
+  waiting.push('ENGULFING');
+  details.push('No completed, direction-matching T1/T2/T3/T4 pattern qualifies at this active zone.');
+  return evidence;
+}
+
 /** Revalidate an unfilled cached setup against the current source zone and candles. */
 export function isUnfilledDirectSetupQualified(options: {
   zone: StructureZone | undefined;

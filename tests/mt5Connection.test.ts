@@ -31,7 +31,20 @@ test('MT5 account handshake resets old candles and queues while preserving autom
   const serverPath = fileURLToPath(new URL('../server.ts', import.meta.url));
   const tsxPath = new URL('../node_modules/tsx/dist/loader.mjs', import.meta.url).href;
   const cookie = await seedDashboardSession(workspace);
-  const child = spawn(process.execPath, ['--import', tsxPath, serverPath], {
+  // This isolated connection test must not depend on the live calendar or its rate limits.
+  const calendarFixture = `data:text/javascript,${encodeURIComponent(`
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = (input, init) => {
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+      if (url === 'https://nfs.faireconomy.media/ff_calendar_thisweek.json') {
+        return Promise.resolve(new Response(JSON.stringify([
+          { country: 'USD', impact: 'Low', date: '2026-01-01T00:00:00Z' }
+        ]), { status: 200, headers: { 'Content-Type': 'application/json' } }));
+      }
+      return originalFetch(input, init);
+    };
+  `)}`;
+  const child = spawn(process.execPath, ['--import', tsxPath, '--import', calendarFixture, serverPath], {
     cwd: workspace, windowsHide: true,
     env: { ...process.env, PORT: String(port), NODE_ENV: 'production', MT5_BRIDGE_TOKEN: 'isolated-test-token', AUTH_PUBLIC_URL: `http://127.0.0.1:${port}` },
     stdio: ['ignore', 'pipe', 'pipe'],
@@ -196,7 +209,11 @@ test('MT5 account handshake resets old candles and queues while preserving autom
       request('/api/mt5/signals/claim', second).then(response => response.json()),
       request(secondaryRoute('/api/mt5/signals/claim'), secondary).then(response => response.json()),
     ]);
-    assert.equal(claimed[0].signal?.account, '456');
+    const claimStatus = await (await request('/api/mt5/status')).json();
+    assert.equal(claimed[0].signal?.account, '456', JSON.stringify({
+      fresh: claimStatus.marketData?.fresh, risk: claimStatus.bridge?.dailyRisk,
+      news: claimStatus.newsCalendar, error: claimed[0].error,
+    }));
     assert.equal(claimed[1].signal?.account, '789');
     assert.equal(claimed[0].config.riskPercent, 0.5);
     assert.equal(claimed[1].config.riskPercent, 1.5);

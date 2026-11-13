@@ -8,12 +8,103 @@ import { MultiTimeframeEntryTable, mtfTableHitExpired, isSlTpTradeDisplayFinishe
   resolveZoneTableTrade, zoneTableCompletedStatus, TradeDetailsRow, ZoneTableEntryPrice,
   zoneTableMtfStatus, reconcileSavedMtfTrade, validateRecordedMtfTrade, ZoneTableEngulfingConfirmations,
   ZoneSourceTimeframeLabel, resolveZoneTableSourceTimeframe,
-  selectChochStatusTableZones, ChochStatusTableRow } from '../src/components/OandaProChart';
+  selectChochStatusTableZones, ChochStatusTableRow, explainZoneEntry, ZoneEntryReadinessText } from '../src/components/OandaProChart';
+import type { Mt5AutomationStatus } from '../src/services/mt5Automation';
 import type { JournalTradeRecord } from '../src/components/TradeJournal';
 import type { MtfRow } from '../src/services/mtf';
 import type { StructureZone } from '../src/services/marketStructure';
 
 const bar = (time: number, complete = true) => ({ time, open: 100, high: 102, low: 99, close: 101, volume: 1, complete });
+
+function entryDiagnosticOptions(overrides: Partial<Parameters<typeof explainZoneEntry>[0]> = {}): Parameters<typeof explainZoneEntry>[0] {
+  return { zone: { id: 'qml', name: 'QML', category: 'mg', isBuy: true, active: true,
+    status: 'valid', startTime: 0, endTime: 9000, bottom: 100, top: 102, chochClass: 'valid' },
+    timeframe: 'M15', confirmationLabel: '1H', now: 2700,
+    evidence: { signal: { type: 'T1', direction: 'bullish', time: 1800, timeframe: 'M15', candleCount: 2 },
+      waiting: [], details: [] }, ...overrides };
+}
+
+function entryDiagnosticAutomation(): Mt5AutomationStatus {
+  return { ok: true, config: { enabled: true, dryRun: false, tradingTimeEnabled: false,
+    telegramMessagesEnabled: false, scalpingEnabled: true, intradayEnabled: true, mtfLtfFibRequired: false,
+    symbol: 'XAUUSD', brokerSymbol: 'XAUUSD', enabledTimeframes: ['M5', 'M15', 'M30', 'H1'],
+    riskPercent: 0.25, maximumOpenTrades: 3, maximumDailyLossPercent: 2, maximumSpreadPoints: 100,
+    signalMaxAgeSeconds: 60, pendingExpiryMinutes: 30, moveStopToBreakEvenAtR: 1 },
+    bridge: { connected: true, terminalConnected: true, symbolResolved: true,
+      account: 'account-a', server: 'server-a', brokerSymbol: 'XAUUSD', dailyRisk: {
+        available: true, date: '2026-11-13', startingBalance: 10000, limitPercent: 2, limitMoney: 200,
+        realizedLossMoney: 0, floatingLossMoney: 0, usedMoney: 0, usedPercent: 0,
+        remainingMoney: 200, remainingPercent: 2, reservedRiskMoney: 0,
+        availableRiskMoney: 200, availableRiskPercent: 2, limitReached: false, riskUnbounded: false } },
+    marketData: { source: 'MT5_BROKER', fresh: true, lastUpdateAt: 2700000, timeframes: {} },
+    positions: [], counts: {}, recentSignals: [] };
+}
+
+test('Zone Table reports real waiting reasons, full hover details and no premature ENTRY READY', () => {
+  const options = entryDiagnosticOptions({ evidence: { waiting: ['FIB 0.5 TOUCH'],
+    details: ['T1 is visible, but the pattern missed 3887.835.'] }, outsideHours: true });
+  options.zone.chochClass = 'pending';
+  const before = structuredClone(options);
+  const status = explainZoneEntry(options);
+  assert.equal(status.mode, 'WAIT');
+  assert.ok(status.reasons.includes('FIB 0.5 TOUCH'));
+  assert.ok(status.reasons.includes('1H CLOSE ABOVE'));
+  assert.ok(status.reasons.includes('TRADING HOURS'));
+  assert.ok(status.title.includes('3887.835'));
+  const html = renderToStaticMarkup(React.createElement(ZoneEntryReadinessText, { readiness: status }));
+  assert.ok(html.includes('title=') && html.includes('WAIT'));
+  assert.ok(!html.includes('ENTRY READY'));
+  assert.deepEqual(options, before, 'rendering reasons must not change entry eligibility');
+  assert.equal(explainZoneEntry(entryDiagnosticOptions()).label, 'ENTRY READY');
+  assert.equal(explainZoneEntry(entryDiagnosticOptions({ zoneUsed: true })).mode, 'BLOCKED');
+  assert.equal(explainZoneEntry(entryDiagnosticOptions({ opportunityExpired: true })).mode, 'BLOCKED');
+  assert.ok(explainZoneEntry(entryDiagnosticOptions({ evidence: { waiting: ['ENGULFING'], details: [] } }))
+    .label.includes('WAIT'));
+});
+
+test('Zone Table applies live execution gates and ignores them in replay', () => {
+  const automation = entryDiagnosticAutomation();
+  const options = entryDiagnosticOptions({ automationSupported: true, automation });
+  assert.equal(explainZoneEntry(options).label, 'ENTRY READY');
+  automation.bridge.connected = false;
+  assert.ok(explainZoneEntry(options).reasons.includes('MT5 CONNECTION'));
+  assert.equal(explainZoneEntry({ ...options, replay: true }).label, 'ENTRY READY');
+  automation.bridge.connected = true;
+  automation.marketData.fresh = false;
+  assert.ok(explainZoneEntry(options).reasons.includes('FRESH MT5 DATA'));
+  automation.marketData.fresh = true;
+  automation.config.enabled = false;
+  assert.equal(explainZoneEntry(options).mode, 'DISABLED');
+  automation.config.enabled = true;
+  automation.config.dryRun = true;
+  assert.equal(explainZoneEntry(options).mode, 'SIMULATION');
+  automation.config.dryRun = false;
+  automation.newsCalendar = { available: false, error: 'Calendar feed unavailable.' };
+  assert.ok(explainZoneEntry(options).title.includes('Calendar feed unavailable.'));
+  automation.newsCalendar = { available: true, pausedUntil: 3000 };
+  assert.ok(explainZoneEntry(options).reasons.includes('NEWS WINDOW'));
+  automation.newsCalendar = undefined;
+  automation.bridge.dailyRisk = { available: false, error: 'Risk data unavailable.' };
+  assert.ok(explainZoneEntry(options).reasons.includes('DAILY RISK DATA'));
+  automation.bridge.dailyRisk = { ...entryDiagnosticAutomation().bridge.dailyRisk as Extract<NonNullable<Mt5AutomationStatus['bridge']['dailyRisk']>, { available: true }>, limitReached: true };
+  assert.equal(explainZoneEntry(options).mode, 'BLOCKED');
+});
+
+test('scanner entry reasons match the exact account, zone and signal and expire promptly', () => {
+  const automation = entryDiagnosticAutomation();
+  const check: NonNullable<Mt5AutomationStatus['entryChecks']>[number] = {
+    zoneId: 'qml', zoneTimeframe: 'M15', signalTimeframe: 'M15', signalAt: 1800,
+    symbol: 'XAUUSD', direction: 'BUY', checkedAt: 2695, account: 'account-a', server: 'server-a',
+    brokerSymbol: 'XAUUSD', mode: 'WAIT', reasons: ['VOLATILITY TO SETTLE', 'OPPOSING ZONE CLEARANCE'] };
+  const options = entryDiagnosticOptions({ automationSupported: true, automation });
+  automation.entryChecks = [check];
+  assert.ok(explainZoneEntry(options).reasons.includes('VOLATILITY TO SETTLE'));
+  for (const change of [{ account: 'other' }, { server: 'other' }, { brokerSymbol: 'other' },
+    { zoneId: 'other' }, { signalAt: 900 }, { checkedAt: 2600 }, { direction: 'SELL' as const }]) {
+    automation.entryChecks = [{ ...check, ...change }];
+    assert.equal(explainZoneEntry(options).label, 'ENTRY READY', JSON.stringify(change));
+  }
+});
 
 test('a fresh CHoCH shows a compact pending row before a revisit and leaves the table after confirmation', () => {
   for (const isBuy of [true, false]) {

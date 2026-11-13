@@ -687,6 +687,12 @@ export function mt5DailyRiskAllowsEntry(risk: Mt5DailyRisk | undefined): boolean
 
 export interface Mt5AutomationStatus {
   ok: boolean;
+  newsCalendar?: { available: boolean; error?: string; pausedUntil?: number };
+  entryChecks?: Array<Pick<Mt5SignalInput, 'zoneId' | 'setupId' | 'zoneTimeframe' | 'signalTimeframe'
+    | 'signalAt' | 'symbol' | 'direction'> & {
+    checkedAt: number; account?: string; server?: string; brokerSymbol?: string;
+    mode: 'WAIT' | 'BLOCKED' | 'DISABLED'; reasons: string[];
+  }>;
   config: Mt5AutomationConfig;
   bridge: {
     fibProfitEvents?: Mt5FibProfitEvent[];

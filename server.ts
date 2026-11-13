@@ -251,6 +251,7 @@ const createTerminalState = () => ({
   mt5MarketDataUpdatedAt: {} as Partial<Record<TradeTimeframe, number>>,
   mt5MarketDataVersion: 0,
   lastScannedMt5MarketDataVersion: -1,
+  entryChecks: [] as NonNullable<import('./src/services/mt5Automation').Mt5AutomationStatus['entryChecks']>,
   fibProfitSnapshot: undefined as OpposingFibProfitSnapshot | undefined,
   fibProfitVersion: -1,
   fibProfitRefreshAt: 0,
@@ -1262,14 +1263,29 @@ async function scanMt5AutomationSignals(): Promise<number> {
       { m15Structure: mtfData.M15?.structure, requireLtfFib: config.mtfLtfFibRequired }));
   const previousSignals = await readMt5Signals();
   const m15Lines = structures.M15?.lines ?? [];
+  const entryChecks: ReturnType<typeof mt5Context>['entryChecks'] = [];
+  const explainCandidate = (candidate: Mt5SignalInput, mode: 'WAIT' | 'BLOCKED' | 'DISABLED', reasons: string[]) => {
+    entryChecks.push({ zoneId: candidate.zoneId, setupId: candidate.setupId,
+      zoneTimeframe: candidate.zoneTimeframe, signalTimeframe: candidate.signalTimeframe,
+      signalAt: candidate.signalAt, symbol: candidate.symbol, direction: candidate.direction,
+      checkedAt: now, account: scanConnection?.account, server: scanConnection?.server,
+      brokerSymbol: scanConnection?.brokerSymbol, mode, reasons });
+  };
   for (const candidate of candidates) {
-    if (mt5SignalDisabledReason(config, candidate)) continue;
-    if (goldAutomationCountertrendBlocked(candidate)
-      || goldAutomationFastMoveBlocked(candidate)
-      || goldAutomationOpposingZoneBlocked(candidate, opposingZones)
-      || goldAutomationRepeatAreaBlocked(candidate, previousSignals, m15Lines)) continue;
-    if (candidate.calculatedAt < now - config.signalMaxAgeSeconds) continue;
-    if (candidate.signalAt > now + 5 || candidate.calculatedAt > now + 5) continue;
+    const disabled = mt5SignalDisabledReason(config, candidate);
+    if (disabled) { explainCandidate(candidate, 'DISABLED', [disabled]); continue; }
+    const waiting: string[] = [];
+    if (goldAutomationCountertrendBlocked(candidate)) waiting.push('TREND ALIGNMENT');
+    if (goldAutomationFastMoveBlocked(candidate)) waiting.push('VOLATILITY TO SETTLE');
+    if (goldAutomationOpposingZoneBlocked(candidate, opposingZones)) waiting.push('OPPOSING ZONE CLEARANCE');
+    if (goldAutomationRepeatAreaBlocked(candidate, previousSignals, m15Lines)) waiting.push('NEW 15M CHoCH AFTER SL');
+    if (waiting.length) { explainCandidate(candidate, 'WAIT', waiting); continue; }
+    if (candidate.calculatedAt < now - config.signalMaxAgeSeconds) {
+      explainCandidate(candidate, 'BLOCKED', ['SIGNAL EXPIRED']); continue;
+    }
+    if (candidate.signalAt > now + 5 || candidate.calculatedAt > now + 5) {
+      explainCandidate(candidate, 'WAIT', ['CANDLE TIME SYNCHRONIZATION']); continue;
+    }
     const existing = grouped.get(candidate.id);
     if (existing) {
       existing.confluenceZones = Array.from(new Set([
@@ -1277,10 +1293,17 @@ async function scanMt5AutomationSignals(): Promise<number> {
       ]));
     } else grouped.set(candidate.id, candidate);
   }
+  mt5Context().entryChecks = entryChecks.slice(-100);
   let queued = 0;
   for (const candidate of grouped.values()) {
     if (!mt5ConnectionMatches(scanConnection, mt5Context().mt5BridgeHeartbeat ?? {}) || !mt5ExecutionFeedIsFresh()) break;
-    const result = await enqueueMt5Signal(candidate, config, opposingZones);
+    let result: Awaited<ReturnType<typeof enqueueMt5Signal>>;
+    try { result = await enqueueMt5Signal(candidate, config, opposingZones); }
+    catch (error) {
+      explainCandidate(candidate, 'WAIT', [error instanceof Error ? error.message : 'MT5 entry verification failed.']);
+      mt5Context().entryChecks = entryChecks.slice(-100);
+      throw error;
+    }
     if (!result.duplicate) queued += 1;
   }
   mt5Context().lastScannedMt5MarketDataVersion = scanVersion;
@@ -1751,6 +1774,7 @@ async function startServer() {
         ok: true,
         config,
         opposingFibProfitTaking: opposingFibProfitSnapshot(),
+        entryChecks: mt5Context().entryChecks,
         bridge: {
           ...(mt5Context().mt5BridgeHeartbeat ?? {}),
           capital: await capitalView(),
@@ -1926,6 +1950,7 @@ async function startServer() {
     try {
       if (connection.terminalConnected && capitalSnapshot) await syncCapital(capitalSnapshot, connection);
       if (changed) {
+        mt5Context().entryChecks = [];
         for (const timeframe of AUTOMATION_TIMEFRAMES) {
           delete mt5Context().automationCandleCache[timeframe];
           delete mt5Context().mt5MarketDataUpdatedAt[timeframe];
