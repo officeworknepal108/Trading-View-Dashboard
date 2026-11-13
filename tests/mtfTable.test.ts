@@ -7,12 +7,74 @@ import { MultiTimeframeEntryTable, mtfTableHitExpired, isSlTpTradeDisplayFinishe
   completedTradeLabel, CompletedTradeRow, resolveRetainedTrade, zoneTableTradeExpired, internalSbrTableSourceVisible,
   resolveZoneTableTrade, zoneTableCompletedStatus, TradeDetailsRow, ZoneTableEntryPrice,
   zoneTableMtfStatus, reconcileSavedMtfTrade, validateRecordedMtfTrade, ZoneTableEngulfingConfirmations,
-  ZoneSourceTimeframeLabel, resolveZoneTableSourceTimeframe } from '../src/components/OandaProChart';
+  ZoneSourceTimeframeLabel, resolveZoneTableSourceTimeframe,
+  selectChochStatusTableZones, ChochStatusTableRow } from '../src/components/OandaProChart';
 import type { JournalTradeRecord } from '../src/components/TradeJournal';
 import type { MtfRow } from '../src/services/mtf';
 import type { StructureZone } from '../src/services/marketStructure';
 
 const bar = (time: number, complete = true) => ({ time, open: 100, high: 102, low: 99, close: 101, volume: 1, complete });
+
+test('a fresh CHoCH shows a compact pending row before a revisit and leaves the table after confirmation', () => {
+  for (const isBuy of [true, false]) {
+    const pending: StructureZone = { id: 'choch-level', name: isBuy ? 'RBS' : 'SBR', category: 'mg',
+      isBuy, active: true, status: 'valid', startTime: 100, endTime: 2000,
+      bottom: 100, top: 102, chochTime: 900, chochClass: 'pending', tradeable: false };
+    const original = structuredClone(pending);
+    const selected = selectChochStatusTableZones([pending], [bar(900), bar(1800, false)]);
+    assert.equal(selected.length, 1, 'no tap is needed to display confirmation');
+    const render = (zone: StructureZone) => renderToStaticMarkup(React.createElement('table', {},
+      React.createElement('tbody', {}, React.createElement(ChochStatusTableRow, { zone, timeframe: 'M15' }))));
+    const html = render(selected[0]);
+    assert.ok(html.includes(`WAIT 1H ${isBuy ? 'ABOVE' : 'BELOW'}`));
+    assert.ok(html.includes('CHoCH pending'));
+    assert.ok(!html.includes('VALID'));
+    for (const chochClass of ['valid', 'vip', 'air'] as const) {
+      const resolved = { ...pending, chochClass, chochConfirmationTime: 3600 };
+      const after = selectChochStatusTableZones([resolved], [bar(3600), bar(4500)]);
+      assert.equal(after.length, 0, 'resolved CHoCH must not keep a confirmation-only table row');
+      assert.ok(!render(resolved).includes('<tr'), 'the row renderer also hides resolved confirmation');
+    }
+    assert.deepEqual(pending, original, 'display never changes tap history or trade eligibility');
+  }
+});
+
+test('pending CHoCH shows only its RBS or SBR confirmation level, never its QML or DB/DT', () => {
+  for (const isBuy of [true, false]) {
+    for (const category of ['mg', 'internal'] as const) {
+      const prefix = category === 'internal' ? 'Internal ' : '';
+      const names = ['QML', isBuy ? 'DB' : 'DT', isBuy ? 'RBS' : 'SBR'];
+      const family = names.map(name => ({ id: `${prefix}${name}`, name: `${prefix}${name}` as StructureZone['name'],
+        category, isBuy, active: true, status: 'valid' as const, startTime: 100, endTime: 2000,
+        bottom: 100, top: 102, chochTime: 900, chochClass: 'pending' as const }));
+      const before = structuredClone(family);
+      const select = (zones: StructureZone[]) => selectChochStatusTableZones(zones, [bar(900), bar(1800)]);
+      assert.deepEqual(select(family).map(zone => zone.name), [`${prefix}${isBuy ? 'RBS' : 'SBR'}`]);
+      assert.equal(select([...family].reverse()).length, 1);
+      assert.equal(select([...family, { ...family[2], id: 'duplicate' }]).length, 1);
+      assert.equal(select(family.map(zone => ({ ...zone, chochClass: 'valid' as const }))).length, 0);
+      assert.equal(select(family.slice(0, 2)).length, 0, 'do not substitute QML or the extreme for a missing level');
+      assert.deepEqual(family, before, 'all chart zones remain unchanged');
+    }
+  }
+});
+
+test('CHoCH status rows exclude invalid, duplicate, future and resolved structures', () => {
+  const current: StructureZone = { id: 'current', name: 'RBS', category: 'mg', isBuy: true,
+    active: true, status: 'valid', startTime: 100, endTime: 2000,
+    bottom: 100, top: 102, chochTime: 900, chochClass: 'pending' };
+  const candles = [bar(900), ...Array.from({ length: 51 }, (_, i) => bar(1800 + i * 900))];
+  const select = (zone: StructureZone, ids = new Set<string>()) => selectChochStatusTableZones([zone], candles, ids);
+  assert.equal(select(current).length, 1, 'pending confirmation stays visible until resolved');
+  assert.equal(select({ ...current, chochClass: 'valid', chochConfirmationTime: 1800 }).length, 0);
+  assert.equal(select({ ...current, active: false, status: 'invalidated' }).length, 0);
+  assert.equal(select({ ...current, status: 'rejected' }).length, 0);
+  assert.equal(select({ ...current, chochClass: undefined }).length, 0);
+  assert.equal(select({ ...current, chochTime: 999999 }).length, 0);
+  assert.equal(select(current, new Set(['current'])).length, 0, 'ordinary table rows must not be duplicated');
+  assert.equal(selectChochStatusTableZones([{ ...current, chochClass: 'pending', chochConfirmationTime: undefined }],
+    [...candles, bar(47700)]).length, 1, 'unresolved confirmation remains visible');
+});
 
 test('Zone Table source labels retain 1Hr for a saved hourly zone with a 15-minute confirmation', () => {
   const source = resolveZoneTableSourceTimeframe({ recorded: 'H1', inferred: ['M15'] });
@@ -413,11 +475,11 @@ test('SL, TP and risk-free stay five candles without resurrecting an expired set
     };
     const before = JSON.stringify(record);
     const immediate = renderToStaticMarkup(React.createElement(MultiTimeframeEntryTable, { ...props, asOf: 1000, entryCandles: {} }));
-    assert.equal(immediate.includes('No active MTF setup'), false, result);
-    assert.equal(renderToStaticMarkup(React.createElement(MultiTimeframeEntryTable, props)).includes('No active MTF setup'),
+    assert.equal(immediate.includes('MTF table minimized'), false, result);
+    assert.equal(renderToStaticMarkup(React.createElement(MultiTimeframeEntryTable, props)).includes('MTF table minimized'),
       false, result);
     const expired = renderToStaticMarkup(React.createElement(MultiTimeframeEntryTable, { ...props, asOf: 1360 }));
-    assert.ok(expired.includes('No active MTF setup'), result);
+    assert.ok(expired.includes('MTF table minimized'), result);
     assert.ok(!expired.includes('MTF-1'), 'expired execution must not reappear as a setup');
     assert.equal(JSON.stringify(record), before, 'display filtering must leave journal history intact');
     const drawing = tradeDrawingFromRecord(record);
@@ -442,12 +504,12 @@ test('a live risk-free position hides after five bars while an ordinary open pos
     }],
   };
   const render = () => renderToStaticMarkup(React.createElement(MultiTimeframeEntryTable, props));
-  assert.ok(render().includes('No active MTF setup'));
+  assert.ok(render().includes('MTF table minimized'));
   props.asOf = 1300;
-  assert.ok(!render().includes('No active MTF setup'), 'risk-free stays visible through four completed candles');
+  assert.ok(!render().includes('MTF table minimized'), 'risk-free stays visible through four completed candles');
   props.asOf = 1360;
   props.liveTrades[0].position.signalStatus = 'ACTIVE';
-  assert.ok(!render().includes('No active MTF setup'), 'an active trade without an RF event has no expiry');
+  assert.ok(!render().includes('MTF table minimized'), 'an active trade without an RF event has no expiry');
 });
 
 test('entry/SL/TP drawings stay visible through RF while the position remains open', () => {
@@ -511,7 +573,7 @@ test('an unresolved MTF execution retains its source and prices without an activ
   for (const text of ['Internal DT', 'M1 QML', 'STATUS UNKNOWN', '4,021.480', '4,024.050', '4,014.010']) {
     assert.ok(html.includes(text), `missing ${text}`);
   }
-  assert.ok(!html.includes('No active MTF setup'));
+  assert.ok(!html.includes('MTF table minimized'));
   assert.ok(html.includes('Original entry-zone drawing not saved'), 'legacy records must not invent a zone');
   const duplicate = render([{
     id: 'M15-M1-external-choch-1793029860', setupId: 'MTF-1',
@@ -556,10 +618,10 @@ test('reload with delayed entry candles never flashes old SL, TP or RF records',
     const loading = renderReloadTable(props);
     assert.ok(loading.includes('Loading MTF data'));
     assert.ok(!loading.includes('ENTRY 100.000'), 'closed trade prices stay hidden during loading');
-    assert.ok(!loading.includes('No active MTF setup'), 'missing data is not an empty table');
+    assert.ok(!loading.includes('MTF table minimized'), 'missing data is not an empty table');
     const loaded = renderReloadTable({ ...props,
       entryCandles: { M1: [1060,1120,1180,1240,1300].map(time => bar(time)) } });
-    assert.ok(loaded.includes('No active MTF setup'));
+    assert.ok(loaded.includes('MTF table minimized'));
     assert.ok(!loaded.includes('ENTRY 100.000'), 'expired trades never flash back after loading');
     assert.deepEqual(record, original, 'table loading must not rewrite saved trades');
   }
@@ -574,7 +636,7 @@ test('loaded recent results retain exactly five completed candles and ignore oth
   assert.ok(retained.includes('TP HIT · 5 bars ago'));
   assert.ok(!retained.includes('ENTRY 100.000'));
   assert.ok(!retained.includes('Loading MTF data'));
-  assert.ok(renderReloadTable({ ...props, asOf: 1360, entryCandles: { M1: candles } }).includes('No active MTF setup'));
+  assert.ok(renderReloadTable({ ...props, asOf: 1360, entryCandles: { M1: candles } }).includes('MTF table minimized'));
 });
 
 test('initial MTF loading and failed feeds show status with retry instead of a false empty table', () => {

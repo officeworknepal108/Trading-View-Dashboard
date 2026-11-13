@@ -1238,6 +1238,48 @@ export function zoneTableCompletedStatus(
     ? 'TP HIT' : 'SL HIT';
 }
 
+/** One pending confirmation level per CHoCH: bullish RBS or bearish SBR. */
+export function selectChochStatusTableZones(
+  zones: readonly DisplayStructureZone[], candles: readonly OandaCandle[],
+  listedIds: ReadonlySet<string> = new Set(),
+): DisplayStructureZone[] {
+  const now = candles[candles.length - 1]?.time;
+  if (now === undefined) return [];
+  return zones.filter(zone => zone.active && (zone.status === 'valid' || zone.status === 'pending')
+    && zone.chochClass === 'pending' && zone.chochTime !== undefined && zone.chochTime <= now
+    && (zone.isBuy ? zone.name === 'RBS' || zone.name === 'Internal RBS'
+      : zone.name === 'SBR' || zone.name === 'Internal SBR')
+    && zone.doubleChochStatus === undefined
+    && !displayZoneMembers(zone).some(member => listedIds.has(member.id)))
+    .sort((a, b) => b.chochTime! - a.chochTime! || a.id.localeCompare(b.id))
+    .filter((zone, index, ordered) => ordered.findIndex(candidate => (
+      candidate.chochTime === zone.chochTime && candidate.isBuy === zone.isBuy
+      && candidate.category === zone.category
+    )) === index)
+    .slice(0, 8);
+}
+
+export const ChochStatusTableRow: React.FC<{
+  zone: DisplayStructureZone; timeframe: OandaGranularity;
+}> = ({ zone, timeframe }) => {
+  if (zone.chochClass !== 'pending' || (zone.isBuy
+    ? zone.name !== 'RBS' && zone.name !== 'Internal RBS'
+    : zone.name !== 'SBR' && zone.name !== 'Internal SBR')) return null;
+  const status = `WAIT ${TJL1_CONFIRMATION_LABELS[timeframe].toUpperCase()} ${zone.isBuy ? 'ABOVE' : 'BELOW'}`;
+  return <tr className="border-t border-slate-100 bg-violet-50/50 text-slate-700">
+    <td className="px-2 py-1 font-black text-slate-800">
+      CHoCH · {displayConfluenceZoneName(zone)}<ZoneSourceTimeframeLabel timeframe={timeframe} />
+    </td>
+    <td className={`px-2 py-1 font-bold ${zone.isBuy ? 'text-emerald-700' : 'text-rose-700'}`}>
+      {zone.isBuy ? 'BUY' : 'SELL'}
+    </td>
+    <td className="whitespace-nowrap px-2 py-1">{formatPrice(zone.bottom)} – {formatPrice(zone.top)}</td>
+    <td className="px-2 py-1 text-center text-slate-400">—</td>
+    <td className="whitespace-nowrap px-2 py-1 text-right font-black text-violet-700" role="status"
+      title="CHoCH pending: waiting for the higher-timeframe candle close. No trade confirmation yet.">{status}</td>
+  </tr>;
+};
+
 export function ZoneTableEngulfingConfirmations({ confirmations }: { confirmations: readonly ZoneTableConfirmation[] }) {
   if (!confirmations.length) return null;
   return <span className="ml-1 inline-flex flex-wrap gap-1 align-middle text-[8px] font-semibold text-slate-500" aria-label="Additional engulfing confirmations">
@@ -1454,6 +1496,15 @@ export function reconcileSavedMtfTrade(
   return { record, verified: fresh };
 }
 
+// Reset only when content appears or disappears, preserving manual toggles between transitions.
+function useAutoExpandedTable(hasContent: boolean): [boolean, () => void] {
+  const [state, setState] = useState(() => ({ hasContent, expanded: hasContent }));
+  if (state.hasContent !== hasContent) {
+    setState({ hasContent, expanded: hasContent });
+  }
+  return [state.expanded, () => setState(current => ({ ...current, expanded: !current.expanded }))];
+}
+
 export const MultiTimeframeEntryTable: React.FC<{
   rows: DisplayMtfRow[];
   liveTrades: LiveMt5TableTrade[];
@@ -1466,7 +1517,6 @@ export const MultiTimeframeEntryTable: React.FC<{
   onRetry?: () => void;
 }> = ({ rows, liveTrades, records, timeZone, entryCandles, asOf,
   requiredTimeframes = [], candleErrors = {}, onRetry }) => {
-  const [expanded, setExpanded] = useState(true);
   const reconciledRecords = records.map(record => reconcileSavedMtfTrade(
     record, entryCandles[record.signalTimeframe] ?? [], asOf));
   records = reconciledRecords.map(resolved => resolved.record);
@@ -1505,13 +1555,17 @@ export const MultiTimeframeEntryTable: React.FC<{
       && record.zoneTimeframe === row.higherTimeframe
       && record.signalTimeframe === row.lowerTimeframe && record.direction === row.direction
   )));
+  const hasContent = displayRows.length > 0 || visibleLiveTrades.length > 0
+    || savedRows.length > 0 || waitingForExpiryData;
+  const [expanded, toggleExpanded] = useAutoExpandedTable(hasContent);
   return (
     <div data-journal-exclude="true" className={`pointer-events-auto absolute right-3 top-3 z-20 overflow-hidden rounded-md border border-slate-300 bg-white/95 shadow-sm ${expanded ? 'w-fit max-w-[calc(100%_-_24px)]' : 'w-auto'}`}>
       <div className="flex items-center justify-between gap-3 border-b border-slate-200 bg-indigo-50 px-2 py-1 text-[9px] font-black uppercase tracking-wide text-indigo-700">
         <span>{expanded ? 'MTF table' : 'MTF table minimized'}</span>
         <button
           type="button"
-          onClick={() => setExpanded((visible) => !visible)}
+          onClick={toggleExpanded}
+          aria-expanded={expanded}
           className="rounded border border-indigo-200 bg-white px-1.5 py-0.5 text-[8px] font-black text-indigo-700 hover:bg-indigo-100"
           title={expanded ? 'Minimize MTF table' : 'Show MTF table'}
         >
@@ -2333,7 +2387,6 @@ export const OandaProChart: React.FC<{
   const [drawingTextEditor, setDrawingTextEditor] = useState<ChartDrawingTextEditor | null>(null);
   const [drawingDrag, setDrawingDrag] = useState<ChartDrawingDrag | null>(null);
   const [drawingRenderVersion, setDrawingRenderVersion] = useState(0);
-  const [showZoneTable, setShowZoneTable] = useState(true);
   const [replayIndex, setReplayIndex] = useState<number | null>(null);
   const [replayPlaying, setReplayPlaying] = useState(false);
   const [replaySelecting, setReplaySelecting] = useState(false);
@@ -5234,6 +5287,13 @@ export const OandaProChart: React.FC<{
       && (showInternal || zone.category !== 'internal'))
     .sort((a, b) => b.startTime - a.startTime)
     .slice(0, 4), [consolidatedDisplayZones, directTradeStyleEnabled, showInternal]);
+  const chochStatusTableRows = useMemo(() => {
+    if (!directTradeStyleEnabled) return [];
+    const listedIds = new Set<string>(zoneTableRows.flatMap(zone => displayZoneMembers(zone).map(member => member.id)));
+    return selectChochStatusTableZones(consolidatedDisplayZones.filter(zone => (
+      showInternal || zone.category !== 'internal'
+    )), displayCandles, listedIds);
+  }, [consolidatedDisplayZones, directTradeStyleEnabled, displayCandles, showInternal, zoneTableRows]);
   updateHeaderCandleRef.current = (timestamp?: number) => {
     const selected = timestamp === undefined ? undefined : headerCandlesByTime.get(timestamp);
     const candle = selected?.candle ?? latestCandle;
@@ -8201,6 +8261,583 @@ export const OandaProChart: React.FC<{
     );
   };
 
+  const zoneTableContent = (
+    <>
+    {replayIndex === null && marketSymbol === 'XAUUSD' && mt5Status?.bridge.connected
+      && mt5Status.bridge.fibProfitEvents?.map(event => (
+        <tr key={`fib-exit-${event.ticket}`} className="border-t border-cyan-200 bg-cyan-50/80">
+          <td className="px-2 py-1 font-black text-slate-800">
+            <div>MT5 #{event.ticket}</div>
+            <div className="text-[8px] text-slate-500">{event.zoneTimeframe} {event.zoneName ?? 'Opposing Fib zone'}</div>
+          </td>
+          <td className={`px-2 py-1 font-bold ${event.direction === 'BUY' ? 'text-emerald-700' : 'text-rose-700'}`}>{event.direction}</td>
+          <td className="whitespace-nowrap px-2 py-1 text-slate-600">
+            {event.originalVolume} → {event.remainingVolume} LOT
+          </td>
+          <td className="px-2 py-1 text-center font-black">
+            {event.phase === 'engulfing' ? 'OPPOSING CONFIRMED' : 'WAITING FOR CONFIRMATION'}
+          </td>
+          <td className="whitespace-nowrap px-2 py-1 text-right font-black text-cyan-800">{mt5FibProfitEventLabel(event)}</td>
+        </tr>
+      ))}
+    {scalpEntryTableRows.map(({ id, zone, trade: sourceTrade, tradingTimeBlocked }) => {
+      const trade = zoneTableTrade(sourceTrade, undefined, zone, id)!;
+      const sourceSetup = goldScalpingAccuracyTrades.find(candidate => candidate.trade.signal.time === trade.signal.time
+        && candidate.trade.entry === trade.entry);
+      const sourceZone = sourceSetup?.zone;
+      if (hasZoneTableTradeExpired(trade, sourceZone)) return null;
+      const bullish = trade.signal.direction === 'bullish';
+      return (
+        <tr key={`scalp-entry-${id}`} className="border-t border-indigo-200 bg-indigo-50/80">
+          <td className="px-2 py-1 font-black text-slate-800">
+            <div>SCALP · {zone}<ZoneSourceTimeframeLabel timeframe={sourceSetup?.zoneTimeframe
+              ?? chartEntryRecords.find(record => record.id === id)?.zoneTimeframe} /></div>
+            <div className="text-[8px] font-semibold text-slate-500">
+              {formatAccuracyTradeTime(
+                trade.signal.time + TIMEFRAME_SECONDS[trade.signal.timeframe],
+                chartTimeZone,
+              )}
+            </div>
+          </td>
+          <td className={`px-2 py-1 font-bold ${bullish ? 'text-emerald-700' : 'text-rose-700'}`}>
+            {bullish ? 'BUY' : 'SELL'}
+          </td>
+          <td className="whitespace-nowrap px-2 py-1 font-bold text-blue-700">
+            <ZoneTableEntryPrice trade={trade} zone={sourceZone} pipSize={marketConfig.pipSize} />
+          </td>
+          <td className="px-2 py-1 text-center font-black">{trade.signal.type}</td>
+          <td className={`whitespace-nowrap px-2 py-1 text-right font-black ${
+            tradingTimeBlocked ? 'text-rose-700' : 'text-indigo-700'
+          }`}>
+            {zoneTableCompletedStatus(trade) ?? (tradingTimeBlocked
+              ? 'OUTSIDE TRADING TIME · NO TRADE'
+              : <TradeStatusText trade={trade} />)}
+          </td>
+        </tr>
+      );
+    })}
+    {blockedGoldScalpingSetups.filter(({ trade }) => (
+      trade.signal.timeframe === granularity
+      && displayCandles.some((candle) => candle.time === trade.signal.time)
+      && latestCandle !== null
+      && latestCandle.time - trade.signal.time <= 50 * TIMEFRAME_SECONDS.M1
+    )).sort((first, second) => second.trade.signal.time - first.trade.signal.time)
+      .slice(0, 3).map(({ zone, zoneTimeframe, trade }) => (
+        <tr key={`blocked-scalp-${zoneTimeframe}-${zone.id}-${trade.signal.time}`}
+          className="border-t border-amber-200 bg-amber-50/80">
+          <td className="px-2 py-1 font-black text-slate-700">SCALP · {executionZoneName(zone)}<ZoneSourceTimeframeLabel timeframe={zoneTimeframe} /></td>
+          <td className="px-2 py-1 font-bold text-slate-600">BUY SETUP</td>
+          <td className="px-2 py-1 text-slate-400">—</td>
+          <td className="px-2 py-1 text-center font-black text-slate-600">{trade.signal.type}</td>
+          <td className="whitespace-nowrap px-2 py-1 text-right font-black text-amber-800">
+            BLOCKED · 15M + 1H BEARISH · NO ENTRY
+          </td>
+        </tr>
+      ))}
+    {blockedGoldScalpingOpposingSetups.filter(({ trade, zoneTimeframe }) => (
+      (trade.signal.timeframe === granularity || zoneTimeframe === granularity)
+      && latestCandle !== null
+      && latestCandle.time - trade.signal.time <= 50 * TIMEFRAME_SECONDS.M1
+    )).sort((first, second) => second.trade.signal.time - first.trade.signal.time)
+      .slice(0, 3).map(({ zone, zoneTimeframe, trade, opposingZoneBlock }) => (
+        <tr key={`opposing-scalp-${zoneTimeframe}-${zone.id}-${trade.signal.time}`}
+          className="border-t border-amber-200 bg-amber-50/80">
+          <td className="px-2 py-1 font-black text-slate-700">SCALP · {executionZoneName(zone)}<ZoneSourceTimeframeLabel timeframe={zoneTimeframe} /></td>
+          <td className="px-2 py-1 font-bold text-slate-600">
+            {trade.signal.direction === 'bullish' ? 'BUY' : 'SELL'} SETUP
+          </td>
+          <td className="px-2 py-1 text-slate-400">—</td>
+          <td className="px-2 py-1 text-center font-black text-slate-600">{trade.signal.type}</td>
+          <td className="whitespace-nowrap px-2 py-1 text-right font-black text-amber-800">
+            {goldOpposingZoneBlockLabel(opposingZoneBlock!)}
+          </td>
+        </tr>
+      ))}
+    {retainedDirectZoneTableRows.map(({ overlay, sourceZone, sourceTimeframe, trade, tapCount, additionalConfirmations }) => {
+      const bullish = trade.signal.direction === 'bullish';
+      const zoneLabel = tradeOverlayZoneLabel(overlay.label);
+      const currentFibLabels = sourceZone ? tradeZoneFibLabels(sourceZone) : [];
+      const fibLabels = currentFibLabels.length > 0 ? currentFibLabels : overlay.fibLabels ?? [];
+      return (
+        <React.Fragment key={`open-chart-trade-${overlay.id}`}>
+          <tr className={`border-t ${bullish ? 'border-emerald-200 bg-emerald-50' : 'border-rose-200 bg-rose-50'}`}>
+            <td className="px-2 py-1 font-black text-slate-800">
+              <span>{zoneLabel ?? 'OPEN CHART TRADE'}</span>
+              <ZoneSourceTimeframeLabel timeframe={sourceTimeframe} />
+              {(tapCount ?? 0) > 1 && (
+                <span className="ml-1 rounded bg-sky-100 px-1 py-0.5 text-[8px] font-black text-sky-800">
+                  TAP {tapCount}
+                </span>
+              )}
+              {(sourceZone ? isDeepDiscountZoneDisplay(sourceZone, trade.signal)
+                : isDefaultDeepDiscountZoneName(zoneLabel)) && (
+                <span className="ml-1 rounded bg-fuchsia-100 px-1 py-0.5 text-[8px] font-black text-fuchsia-800">
+                  DEEP DISCOUNT
+                </span>
+              )}
+              {fibLabels.map((label) => (
+                <span key={label} className="ml-1 rounded bg-fuchsia-100 px-1 py-0.5 text-[8px] font-black text-fuchsia-800">
+                  {label}
+                </span>
+              ))}
+            </td>
+            <td className={`px-2 py-1 font-bold ${bullish ? 'text-emerald-700' : 'text-rose-700'}`}>
+              {bullish ? 'BUY' : 'SELL'}
+            </td>
+            <td className="whitespace-nowrap px-2 py-1">
+              <ZoneTableEntryPrice trade={trade} zone={sourceZone} pipSize={marketConfig.pipSize} />
+            </td>
+            <td className={`whitespace-nowrap px-2 py-1 text-center font-black ${bullish ? 'text-emerald-700' : 'text-rose-700'}`}>
+              {trade.signal.type}
+              <ZoneTableEngulfingConfirmations confirmations={additionalConfirmations} />
+            </td>
+            <td className={`whitespace-nowrap px-2 py-1 text-right font-black ${trade.status === 'sl-hit' ? 'text-rose-700' : 'text-emerald-700'}`}>
+              {zoneTableCompletedStatus(trade) ?? <TradeStatusText trade={trade} />}
+              {bestTrendlineBadge(trade)}
+            </td>
+          </tr>
+          <TradeDetailsRow trade={trade} colSpan={5} />
+        </React.Fragment>
+      );
+    })}
+    {chochStatusTableRows.map(zone => (
+      <ChochStatusTableRow key={`choch-status-${zone.id}`} zone={zone} timeframe={granularity} />
+    ))}
+    {pendingConfirmationRows.map((zone) => (
+      <tr key={zone.id} className={`border-t text-slate-700 ${zone.isBuy ? 'border-emerald-100 bg-emerald-50/70' : 'border-rose-100 bg-rose-50/70'}`}>
+        <td className={`px-2 py-1 font-black ${zone.isBuy ? 'text-emerald-800' : 'text-rose-800'}`}>{displayZoneName(zone.name, zone.oneMinuteGenesisQml)}<ZoneSourceTimeframeLabel timeframe={granularity} /></td>
+        <td className={`px-2 py-1 font-bold ${zone.isBuy ? 'text-emerald-700' : 'text-rose-700'}`}>
+          {zone.isBuy ? 'BUY' : 'SELL'}
+        </td>
+        <td className="px-2 py-1 whitespace-nowrap">{formatPrice(zone.bottom)} – {formatPrice(zone.top)}</td>
+        <td className="px-2 py-1 text-center text-slate-400">—</td>
+        <td className={`px-2 py-1 text-right font-black whitespace-nowrap ${zone.isBuy ? 'text-emerald-700' : 'text-rose-700'}`}>
+          WAIT {TJL1_CONFIRMATION_LABELS[granularity].toUpperCase()} {zone.isBuy ? 'ABOVE' : 'BELOW'}
+        </td>
+      </tr>
+    ))}
+    {doubleChochRows.map((zone) => {
+      const pending = zone.doubleChochStatus === 'pending';
+      const confirmationLabel = TJL1_CONFIRMATION_LABELS[granularity].toUpperCase();
+      const confirmationSide = zone.doubleChochConfirmationDirection === 'up' ? 'ABOVE' : 'BELOW';
+      const trade = zoneTableTrade(confluenceMapValue<TradeLevels>(zone, directZoneTrades), zone);
+      const entryDecision = confluenceMapValue<DirectZoneEntryDecision>(zone, directZoneEntryDecisions);
+      const outsideTimePreview = !trade ? entryDecision?.previewTrade : undefined;
+      const displayedTrade = zoneTableTrade(trade ?? outsideTimePreview, zone);
+      const mt5Signal = confluenceMapValue<Mt5StoredSignal>(zone, directZoneMt5Signals);
+      if (hasZoneTableTradeExpired(displayedTrade, zone) || hasZoneTableTradeExpired(mt5Signal, zone)) return null;
+      const completedStatus = zoneTableCompletedStatus(displayedTrade, mt5Signal);
+      const measurement = confluenceFirstValue(zone, (member) => (
+        measureTradeableFibZone(member, marketConfig.pipSize)
+      )) ?? (completedStatus ? measureListedZone(zone, marketConfig.pipSize) : undefined);
+      return (
+        <React.Fragment key={`double-${zone.id}`}>
+        <tr className={`border-t text-slate-700 ${
+          pending ? 'border-amber-100 bg-amber-50/70' : 'border-emerald-100 bg-emerald-50/50'
+        }`}>
+          <td className="px-2 py-1 font-black text-slate-800">
+            <span>{displayZoneName(zone.name, zone.oneMinuteGenesisQml)}</span>
+            <ZoneSourceTimeframeLabel timeframe={mt5Signal?.zoneTimeframe ?? granularity} />
+            {displayedTapCount(zone) !== undefined && (
+              <span className="ml-1 rounded bg-sky-100 px-1 py-0.5 text-[8px] font-black text-sky-800">
+                TAP {displayedTapCount(zone)}
+              </span>
+            )}
+            <span className="ml-1 rounded bg-violet-100 px-1 py-0.5 text-[8px] font-black text-violet-800">
+              DOUBLE CHoCH
+            </span>
+            {displayZoneMembers(zone).some(member => isDeepDiscountZoneDisplay(member, displayedTrade?.signal)) && (
+              <span className="ml-1 rounded bg-fuchsia-100 px-1 py-0.5 text-[8px] font-black text-fuchsia-800">
+                DEEP DISCOUNT
+              </span>
+            )}
+            <span className={`ml-1 rounded px-1 py-0.5 text-[8px] font-black ${
+              pending ? 'bg-amber-100 text-amber-800' : 'bg-emerald-100 text-emerald-800'
+            }`}>
+              HTF {pending ? 'WAIT' : 'VALID'}
+            </span>
+            {zone.doubleChochOriginClass && (
+              <span className="ml-1 rounded bg-slate-100 px-1 py-0.5 text-[8px] font-black text-slate-600">
+                FROM {zone.doubleChochOriginClass.toUpperCase()}
+              </span>
+            )}
+            {showFib && zone.swingFibStatus === 'a-plus' && zone.swingFibBand && (
+              <span className="ml-1 rounded bg-violet-100 px-1 py-0.5 text-[8px] font-black text-violet-800">
+                SWING A+ FIB {zone.swingFibBand}
+              </span>
+            )}
+            {zone.h1SwingFibStatus === 'aligned' && zone.h1SwingFibBand && (
+              <span className="ml-1 rounded bg-violet-100 px-1 py-0.5 text-[8px] font-black text-violet-800">
+                1H SWING FIB ALIGNED {zone.h1SwingFibBand}
+              </span>
+            )}
+            {showFib && zone.dayFibStatus === 'a-plus' && zone.dayFibBand && (
+              <span className="ml-1 rounded bg-sky-100 px-1 py-0.5 text-[8px] font-black text-sky-800">
+                DAY FIB A+ {zone.dayFibBand}
+              </span>
+            )}
+          </td>
+          <td className={`px-2 py-1 font-bold ${zone.isBuy ? 'text-emerald-700' : 'text-rose-700'}`}>
+            {zone.isBuy ? 'BUY' : 'SELL'}
+          </td>
+          <td className="px-2 py-1 whitespace-nowrap">
+            <div>{formatPrice(zone.bottom)} – {formatPrice(zone.top)}</div>
+            {measurement && (
+              <div className="text-[8px] font-black text-slate-600">
+                {formatZonePips(measurement.pips)} PIPS
+              </div>
+            )}
+          </td>
+          <td className={`px-2 py-1 text-center font-black whitespace-nowrap ${
+            zone.isBuy ? 'text-emerald-700' : 'text-rose-700'
+          }`}>
+            {showEngulfing
+              ? displayedTrade
+                ? `${displayedTrade.signal.type} ${displayedTrade.signal.direction === 'bullish' ? 'BULL' : 'BEAR'}`
+                : displayEngulfingLabel(zone, granularity) ?? '—'
+              : '—'}
+          </td>
+          <td className={`px-2 py-1 text-right font-black whitespace-nowrap ${
+            trade?.status === 'sl-hit'
+              ? 'text-rose-700'
+              : outsideTimePreview ? 'text-rose-700'
+                : pending ? 'text-amber-700' : 'text-emerald-700'
+          }`}>
+            {completedStatus ? completedStatus : isCompletedTrade(outsideTimePreview)
+              ? <TradeStatusText trade={outsideTimePreview!} />
+              : outsideTimePreview || entryDecision?.policy.reason === 'outside-trading-time'
+              ? 'OUTSIDE TRADING TIME'
+              : mt5Signal
+              ? <span className={mt5SignalStatusClassName(mt5Signal)}>{mt5SignalStatusLabel(mt5Signal)}</span>
+              : isCompletedTrade(trade)
+              ? <>{zone.lastTapBarsAgo ?? zone.tapBarsAgo} bars · <TradeStatusText trade={trade!} /></>
+               : pending
+               ? `WAIT ${confirmationLabel} ${confirmationSide} · NO TRADE`
+               : zone.tradeable === false
+                 ? 'VALID DOUBLE CHoCH · NO TRADE'
+               : zone.tapTime === undefined
+                 ? 'VALID DOUBLE CHoCH · NO TRADE'
+                 : marketSymbol === 'XAUUSD' && isGoldZoneOpportunityExpired(
+                   zone, displayCandles, granularity, marketConfig.pipSize, Infinity,
+                   displayedTrade?.filledAt === undefined ? undefined
+                     : { price: displayedTrade.entry, filledAt: displayedTrade.filledAt, stopLoss: displayedTrade.stopLoss },
+                 )
+                   ? `${zone.lastTapBarsAgo ?? zone.tapBarsAgo} bars · DISTANCE REACHED · NO NEW ENTRY`
+                   : marketSymbol === 'XAUUSD' && (displayedTapCount(zone) ?? 0) > 1
+                     ? `${zone.lastTapBarsAgo ?? zone.tapBarsAgo} bars · TAP ${displayedTapCount(zone)} · NO NEW ENTRY`
+                   : `${zone.lastTapBarsAgo ?? zone.tapBarsAgo} bars · ${confirmationLabel} CONFIRMED · TRADE`}
+            {!outsideTimePreview && bestTrendlineBadge(displayedTrade)}
+          </td>
+        </tr>
+        {displayedTrade
+          && (completedStatus || marketSymbol !== 'XAUUSD' || (displayedTapCount(zone) ?? 0) <= 1)
+          && <TradeDetailsRow trade={displayedTrade} colSpan={5}
+            mt5Signal={mt5Signal} referenceOnly={outsideTimePreview !== undefined}
+            hideReferenceStatus={outsideTimePreview !== undefined} />}
+        </React.Fragment>
+      );
+    })}
+    {zoneTableRows.map((zone) => {
+      const scalpTrade = marketSymbol === 'XAUUSD' && scalpingEnabled
+        ? goldScalpingDirectTrades.find((candidate) => (
+          candidate.zoneTimeframe === granularity
+          && displayZoneMembers(zone).some((member) => member.id === candidate.zone.id)
+        ))?.trade
+        : undefined;
+      const scalpPreview = marketSymbol === 'XAUUSD' && scalpingEnabled && tradingTimeEnabled && !scalpTrade
+        ? goldScalpingAccuracyTrades.find((candidate) => (
+          candidate.zoneTimeframe === granularity
+          && displayZoneMembers(zone).some((member) => member.id === candidate.zone.id)
+          && (!isNepalTradingTime(candidate.trade.signal.time + TIMEFRAME_SECONDS[candidate.trade.signal.timeframe])
+            || (candidate.trade.filledAt !== undefined && !isNepalTradingTime(candidate.trade.filledAt)))
+        ))?.trade
+        : undefined;
+      const trade = zoneTableTrade(scalpTrade ?? confluenceMapValue<TradeLevels>(zone, directZoneTrades), zone);
+      const entryDecision = confluenceMapValue<DirectZoneEntryDecision>(zone, directZoneEntryDecisions);
+      const outsideTimePreview = !trade
+        ? entryDecision?.previewTrade ?? scalpPreview : undefined;
+      const historicalEntry = replayDirectHistoryByZone.get(zone.id);
+      const historicalTrade = !trade && !outsideTimePreview ? zoneTableTrade(historicalEntry?.trade, zone) : undefined;
+      const usedZoneTrade = zoneTableTrade(entryDecision?.usedZoneTrade, zone);
+      const engulfingTrade = zoneTableTrade(trade ?? outsideTimePreview ?? historicalTrade ?? usedZoneTrade, zone);
+      if (hasZoneTableTradeExpired(engulfingTrade, zone)) return null;
+      // Once listed, this zone's later engulfings belong beside its original entry type.
+      if (retainedDirectZoneTableRows.some(retained => retained.sourceZoneId
+        && displayZoneMembers(zone).some(member => directZoneTableGroupKey(
+          member.id, marketSymbol, zone.isBuy ? 'bullish' : 'bearish',
+        ) === directZoneTableGroupKey(retained.sourceZoneId!, marketSymbol, retained.trade.signal.direction)))) return null;
+      const scalpEngulfingTrade = scalpTrade ?? (!trade ? scalpPreview : undefined);
+      const deepDiscount = displayZoneMembers(zone).some(member => (
+        isDeepDiscountZoneDisplay(member, engulfingTrade?.signal)
+      ));
+      const mt5Signal = confluenceMapValue<Mt5StoredSignal>(zone, directZoneMt5Signals);
+      const completedStatus = zoneTableCompletedStatus(engulfingTrade, mt5Signal);
+      const measurement = confluenceFirstValue(zone, (member) => (
+        measureTradeableFibZone(member, marketConfig.pipSize)
+      )) ?? measureListedZone(zone, marketConfig.pipSize);
+      const tapBarsAgo = confluenceTapBarsAgo(zone);
+      const latestTap = confluenceLatestTap(zone);
+      const tapCount = displayedTapCount(zone);
+      const repeatedTap = marketSymbol === 'XAUUSD' && (tapCount ?? 0) > 1;
+      const opportunityExpired = marketSymbol === 'XAUUSD'
+        && displayZoneMembers(zone).every((member) => isGoldZoneOpportunityExpired(
+          member, displayCandles, granularity, marketConfig.pipSize,
+          Infinity, trade?.filledAt === undefined ? undefined
+            : { price: trade.entry, filledAt: trade.filledAt, stopLoss: trade.stopLoss },
+        ));
+      const confluenceLabels = confluenceBadgeLabels(zone);
+      const extremeAPlus = displayZoneMembers(zone).some((member) => (
+        extremeAPlusTjl2Selection.extremeZoneIds.has(member.id)
+      ));
+      const extremeAPlusBlocked = displayZoneMembers(zone).some((member) => (
+        extremeAPlusTjl2Selection.blockedZoneIds.has(member.id)
+      ));
+      const pendingChoch = zone.chochClass === 'pending';
+      const mtfStatus = zoneTableMtfStatus(displayZoneMembers(zone), granularity,
+        mtfRows.filter(row => !hasTradeDisplayExpired(row.trade ?? row.previewTrade)));
+      const chochConfirmationLabel = TJL1_CONFIRMATION_LABELS[granularity].toUpperCase();
+      const chochConfirmationSide = zone.isBuy ? 'ABOVE' : 'BELOW';
+      return (
+      <React.Fragment key={zone.id}>
+      <tr className="border-t border-slate-100 text-slate-700">
+        <td className="px-2 py-1 font-black text-slate-800">
+          <span>{displayConfluenceZoneName(zone)}</span>
+          <ZoneSourceTimeframeLabel timeframe={mt5Signal?.zoneTimeframe ?? granularity} />
+          {latestTap && (
+            <span className="ml-1 rounded bg-sky-100 px-1 py-0.5 text-[8px] font-black text-sky-800">
+              TAP {tapCount ?? latestTap.count}
+            </span>
+          )}
+          {extremeAPlus && (
+            <span className="ml-1 rounded bg-emerald-100 px-1 py-0.5 text-[8px] font-black text-emerald-800">
+              EXTREME A+
+            </span>
+          )}
+          {extremeAPlusBlocked && (
+            <span className="ml-1 rounded bg-rose-100 px-1 py-0.5 text-[8px] font-black text-rose-800">
+              EXTREME A+ HIGHER
+            </span>
+          )}
+          {deepDiscount && (
+            <span className="ml-1 rounded bg-fuchsia-100 px-1 py-0.5 text-[8px] font-black text-fuchsia-800">
+              DEEP DISCOUNT
+            </span>
+          )}
+          {confluenceLabels.map((label) => (
+            <span key={`${zone.id}-confluence-${label}`} className="ml-1 rounded bg-slate-100 px-1 py-0.5 text-[8px] font-black text-slate-700">
+              {label}
+            </span>
+          ))}
+          {zone.majorLiquidity && (
+            <span className="ml-1 rounded bg-cyan-100 px-1 py-0.5 text-[8px] font-black text-cyan-800">
+              MAJOR LIQUIDITY
+            </span>
+          )}
+          {zone.chochClass && (
+            <span className={`ml-1 rounded px-1 py-0.5 text-[8px] font-black ${
+              zone.chochClass === 'vip'
+                ? 'bg-amber-100 text-amber-800'
+                : zone.chochClass === 'valid'
+                  ? 'bg-emerald-100 text-emerald-800'
+                  : zone.chochClass === 'air'
+                    ? 'bg-rose-100 text-rose-700'
+                    : 'bg-violet-100 text-violet-700'
+            }`}>
+              {zone.category === 'internal' ? 'INT ' : ''}
+              {pendingChoch
+                ? `CHoCH · PENDING — WAIT ${chochConfirmationLabel} CLOSE ${chochConfirmationSide}`
+                : `CHoCH · ${zone.chochClass.toUpperCase()}`}
+            </span>
+          )}
+          {zone.chochClass === 'vip' && zone.vipSupportTimeframe && zone.vipSupportZone && (
+            <span className="ml-1 rounded bg-amber-50 px-1 py-0.5 text-[8px] font-black text-amber-700">
+              {zone.vipSupportTimeframe} {displayZoneName(zone.vipSupportZone)}
+            </span>
+          )}
+          {showFib && zone.fibStatus === 'a-plus'
+            && zone.fibBand && zone.fibBand !== 'DB/DT' && (
+            <span className="ml-1 rounded bg-fuchsia-100 px-1 py-0.5 text-[8px] font-black text-fuchsia-800">
+              {displayFibLabel(zone)}
+            </span>
+          )}
+          {showFib && zone.swingFibStatus === 'a-plus' && zone.swingFibBand && (
+            <span className="ml-1 rounded bg-violet-100 px-1 py-0.5 text-[8px] font-black text-violet-800">
+              SWING A+ FIB {zone.swingFibBand}
+            </span>
+          )}
+          {zone.h1SwingFibStatus === 'aligned' && zone.h1SwingFibBand && (
+            <span className="ml-1 rounded bg-violet-100 px-1 py-0.5 text-[8px] font-black text-violet-800">
+              1H SWING FIB ALIGNED {zone.h1SwingFibBand}
+            </span>
+          )}
+          {showFib && zone.dayFibStatus === 'a-plus' && zone.dayFibBand && (
+            <span className="ml-1 rounded bg-sky-100 px-1 py-0.5 text-[8px] font-black text-sky-800">
+              DAY FIB A+ {zone.dayFibBand}
+            </span>
+          )}
+        </td>
+        <td className={`px-2 py-1 font-bold ${zone.isBuy ? 'text-emerald-700' : 'text-rose-700'}`}>
+          {zone.isBuy ? 'BUY' : 'SELL'}
+        </td>
+        <td className="px-2 py-1 whitespace-nowrap">
+          <div>{formatPrice(zone.bottom)} – {formatPrice(zone.top)}</div>
+          {measurement && (
+            <div className="text-[8px] font-black text-slate-600">
+              {formatZonePips(measurement.pips)} PIPS
+            </div>
+          )}
+        </td>
+          <td className={`px-2 py-1 text-center font-black whitespace-nowrap ${
+            zone.isBuy ? 'text-emerald-700' : 'text-rose-700'
+          }`}>
+            {showEngulfing ? engulfingTrade ? <>
+              <div>{scalpEngulfingTrade ? 'SCALP ' : ''}{engulfingTrade.signal.timeframe !== granularity ? `${formatTradeTimeframe(engulfingTrade.signal.timeframe)} ` : ''}{engulfingTrade.signal.type} {engulfingTrade.signal.direction === 'bullish' ? 'BULL' : 'BEAR'}</div>
+              {(scalpEngulfingTrade || engulfingTrade.signal.timeframe !== granularity) && <div className="text-[8px] text-slate-500">
+                {formatTradeTimeframe(engulfingTrade.signal.timeframe)} CONFIRMED {formatAccuracyTradeTime(
+                  engulfingTrade.signal.time + TIMEFRAME_SECONDS[engulfingTrade.signal.timeframe],
+                  chartTimeZone,
+                )}
+              </div>}
+            </> : confluenceEngulfingLabel(zone, granularity) ?? '—' : '—'}
+        </td>
+        <td className={`px-2 py-1 text-right font-bold whitespace-nowrap ${
+          trade?.status === 'sl-hit' ? 'text-rose-700' : ''
+        }`}>
+          {completedStatus ? (
+            <span className={completedStatus === 'SL HIT' ? 'text-rose-700' : 'text-emerald-700'}>{completedStatus}</span>
+          ) : extremeAPlusBlocked ? (
+            <span className="text-rose-700">EXTREME A+ HIGHER · NO TRADE</span>
+          ) : repeatedTap ? (
+            <span className="text-rose-700">TAP {tapCount} · NO NEW ENTRY</span>
+          ) : outsideTimePreview ? (
+            <span className={isCompletedTrade(outsideTimePreview)
+              ? outsideTimePreview.status === 'sl-hit' ? 'text-rose-700' : 'text-emerald-700'
+              : 'text-blue-700'}>
+              {tapBarsAgo} bars ·{' '}
+              {isCompletedTrade(outsideTimePreview)
+                ? tradeStatusLabel(outsideTimePreview)
+                : `ENTRY ${formatPrice(outsideTimePreview.entry)}`}
+            </span>
+          ) : historicalTrade ? (
+            <span className={historicalTrade.status === 'sl-hit' ? 'text-rose-700' : 'text-indigo-700'}>
+              {tapBarsAgo} bars ·{' '}
+              {historicalEntry?.tradingTimeBlocked
+                ? isCompletedTrade(historicalTrade)
+                  ? tradeStatusLabel(historicalTrade)
+                  : `ENTRY ${formatPrice(historicalTrade.entry)}`
+                : `ENTRY ${formatPrice(historicalTrade.entry)} · REPLAY ${tradeStatusLabel(historicalTrade)}`}
+            </span>
+          ) : mt5Signal ? (
+            <span className={mt5SignalStatusClassName(mt5Signal)}>
+              {mt5SignalStatusLabel(mt5Signal)}
+            </span>
+          ) : entryDecision?.opposingZoneBlock ? (
+            <span className="text-rose-700">
+              {goldOpposingZoneBlockLabel(entryDecision.opposingZoneBlock)}
+            </span>
+          ) : isCompletedTrade(trade) ? (
+            <span className={trade?.status === 'sl-hit' ? 'text-rose-700' : 'text-emerald-700'}>
+              {replayIndex !== null && historicalEntry && `ENTRY ${formatPrice(trade!.entry)} · `}
+              {tapBarsAgo} bars · <TradeStatusText trade={trade!} />
+            </span>
+          ) : opportunityExpired ? (
+            <span className="text-rose-700">DISTANCE REACHED · NO NEW ENTRY</span>
+          ) : mtfStatus ? (
+            <span className={mtfStatus.confirmed ? 'text-emerald-700' : 'text-violet-700'}>
+              {mtfStatus.label}
+            </span>
+          ) : entryDecision && !entryDecision.policy.allowed ? (
+            <span className="text-rose-700">
+              {directEntryPolicyLabel(entryDecision.policy)} · {usedZoneTrade ? 'ENTRY REFERENCE' : 'NO TRADE'}
+            </span>
+          ) : entryDecision?.policy.allowed && !trade ? (
+            <span className="text-rose-700">ENTRY INVALID · NO TRADE</span>
+          ) : scalpTrade ? (
+            <span className="text-indigo-700">SCALP ENTRY · {scalpTrade.signal.timeframe} · 1:{scalpTrade.rewardRisk}</span>
+          ) : <>
+            <span className="text-slate-500">{tapBarsAgo} bars</span>
+            <span className={!confluenceIsTradeable(zone) ? 'ml-1 text-rose-700' : 'ml-1 text-emerald-700'}>
+               - {pendingChoch
+                 ? `WAIT ${chochConfirmationLabel} CLOSE ${chochConfirmationSide} Â· NO TRADE`
+                 : !confluenceIsTradeable(zone)
+                 ? 'NO TRADE'
+                : entryDecision?.oppositePositionOpen
+                  ? 'OPPOSITE OPEN · TRADE 1:1'
+                  : entryDecision?.policy.reason === 'volume-confirmed'
+                    ? `VOLUME PASSED · TRADE 1:${trade?.rewardRisk ?? 3}`
+                    : 'TRADE'}
+            </span>
+          </>}
+          {!outsideTimePreview && !historicalEntry?.tradingTimeBlocked
+            && (!repeatedTap || completedStatus) && !extremeAPlusBlocked
+            && bestTrendlineBadge(engulfingTrade)}
+        </td>
+      </tr>
+      {engulfingTrade && !historicalTrade
+        && (!repeatedTap || completedStatus || usedZoneTrade)
+        && <TradeDetailsRow
+          trade={engulfingTrade}
+          colSpan={5}
+          oppositePositionOpen={entryDecision?.oppositePositionOpen}
+          mt5Signal={mt5Signal}
+          referenceOnly={outsideTimePreview !== undefined || usedZoneTrade !== undefined}
+          hideReferenceStatus={usedZoneTrade !== undefined && !trade && !outsideTimePreview && !historicalTrade}
+        />}
+      {historicalTrade && (!repeatedTap || completedStatus) && (
+        <TradeDetailsRow trade={historicalTrade} colSpan={5}
+          referenceOnly={historicalEntry?.tradingTimeBlocked}
+          hideReferenceStatus={historicalEntry?.tradingTimeBlocked} />
+      )}
+      </React.Fragment>
+      );
+    })}
+    {retainedTradeZoneRows.map((zone) => {
+      const trade = zoneTableTrade(directZoneTrades.get(zone.id), zone)!;
+      const mt5Signal = directZoneMt5Signals.get(zone.id);
+      if (hasZoneTableTradeExpired(trade, zone) || hasZoneTableTradeExpired(mt5Signal, zone)) return null;
+      const completedStatus = zoneTableCompletedStatus(trade, mt5Signal);
+      return (
+        <React.Fragment key={`retained-trade-${zone.id}`}>
+          <tr className="border-t border-slate-200 bg-slate-50 text-slate-600">
+            <td className="px-2 py-1 font-black">
+              {displayZoneName(zone.name, zone.oneMinuteGenesisQml)}
+              <ZoneSourceTimeframeLabel timeframe={mt5Signal?.zoneTimeframe ?? granularity} />
+              {isDeepDiscountZoneDisplay(zone, trade.signal) && (
+                <span className="ml-1 rounded bg-fuchsia-100 px-1 py-0.5 text-[8px] font-black text-fuchsia-800">
+                  DEEP DISCOUNT
+                </span>
+              )}
+            </td>
+            <td className={`px-2 py-1 font-bold ${zone.isBuy ? 'text-emerald-700' : 'text-rose-700'}`}>
+              {zone.isBuy ? 'BUY' : 'SELL'}
+            </td>
+            <td className="whitespace-nowrap px-2 py-1">
+              {completedStatus
+                ? <ZoneTableEntryPrice trade={trade} mt5Signal={mt5Signal} zone={zone} pipSize={marketConfig.pipSize} />
+                : <>{formatPrice(zone.bottom)} – {formatPrice(zone.top)}</>}
+            </td>
+            <td className="whitespace-nowrap px-2 py-1 text-center font-black">
+              {displayEngulfingLabel(zone, granularity) ?? '—'}
+            </td>
+            <td className={`whitespace-nowrap px-2 py-1 text-right font-black ${mt5Signal
+              ? mt5SignalStatusClassName(mt5Signal)
+              : trade.status === 'sl-hit' ? 'text-rose-700' : 'text-emerald-700'
+            }`}>
+              {completedStatus ?? <>{zone.tapBarsAgo} bars · {mt5Signal
+                ? mt5SignalStatusLabel(mt5Signal)
+                : <TradeStatusText trade={trade} />}</>}
+              {bestTrendlineBadge(trade)}
+            </td>
+          </tr>
+          <TradeDetailsRow trade={trade} colSpan={5} mt5Signal={mt5Signal} />
+        </React.Fragment>
+      );
+    })}
+    </>
+  );
+  const hasZoneTableContent = React.Children.toArray(zoneTableContent.props.children).length > 0;
+  const [showZoneTable, toggleZoneTable] = useAutoExpandedTable(hasZoneTableContent);
+
   return (
     <section className="h-full w-full bg-slate-100 p-3 sm:p-4 overflow-hidden">
       <div className="h-full w-full overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm flex flex-col">
@@ -9148,13 +9785,13 @@ export const OandaProChart: React.FC<{
                     className={`mb-1 rounded border px-2 py-1 text-[9px] font-black ${showLtfChoch
                       ? 'border-violet-300 bg-violet-100 text-violet-800'
                       : 'border-slate-200 bg-white text-slate-600'} disabled:opacity-50`}
-                    title="After a chart zone tap, show lower-timeframe TJL1/TJL2 and its CHoCH on this chart"
+                    title="After a chart zone tap, show the current valid lower-timeframe TJL levels and confirmed CHoCH"
                   >
                     LTF CHocH {showLtfChoch ? 'ON' : 'OFF'}
                   </button>
                   {showLtfChoch && (
                     <div className="mb-2 text-[8px] text-slate-600">
-                      The latest lower TJL1/TJL2 pair appears after a chart zone tap. After CHoCH, its QML, SBR/RBS, and DB/DT zones remain while valid or pending.
+                      After a chart zone tap, only valid or pending TJL levels from the latest lower structure appear. If TJL1 is invalid, TJL2 remains until invalidated or CHoCH is confirmed. After CHoCH, its QML, SBR/RBS, and DB/DT zones remain while valid or pending.
                     </div>
                   )}
                   <div className="mb-2 flex flex-wrap gap-1">
@@ -9189,7 +9826,7 @@ export const OandaProChart: React.FC<{
                     <div className="text-[9px] text-slate-500">{ltfChochContext
                       ? ltfChochContext.confirmations.length > 0
                         ? 'CHoCH confirmed; no valid or pending CHoCH zones to show.'
-                        : 'Waiting for a chart zone tap or the latest lower TJL1/TJL2 pair.'
+                        : 'Waiting for a chart zone tap or valid TJL levels from the latest lower structure.'
                       : 'No active, valid zones on this timeframe.'}</div>
                   ) : (
                     <div className="space-y-1">
@@ -9911,7 +10548,8 @@ export const OandaProChart: React.FC<{
               <span>{showZoneTable ? 'Zone table' : 'Zone table minimized'}</span>
               <button
                 type="button"
-                onClick={() => setShowZoneTable((visible) => !visible)}
+                onClick={toggleZoneTable}
+                aria-expanded={showZoneTable}
                 className="rounded border border-violet-200 bg-white px-1.5 py-0.5 text-[8px] font-black text-violet-700 hover:bg-violet-100"
                 title={showZoneTable ? 'Minimize zone table' : 'Show zone table'}
               >
@@ -9930,577 +10568,8 @@ export const OandaProChart: React.FC<{
                 </tr>
               </thead>
               <tbody>
-                {replayIndex === null && marketSymbol === 'XAUUSD' && mt5Status?.bridge.connected
-                  && mt5Status.bridge.fibProfitEvents?.map(event => (
-                    <tr key={`fib-exit-${event.ticket}`} className="border-t border-cyan-200 bg-cyan-50/80">
-                      <td className="px-2 py-1 font-black text-slate-800">
-                        <div>MT5 #{event.ticket}</div>
-                        <div className="text-[8px] text-slate-500">{event.zoneTimeframe} {event.zoneName ?? 'Opposing Fib zone'}</div>
-                      </td>
-                      <td className={`px-2 py-1 font-bold ${event.direction === 'BUY' ? 'text-emerald-700' : 'text-rose-700'}`}>{event.direction}</td>
-                      <td className="whitespace-nowrap px-2 py-1 text-slate-600">
-                        {event.originalVolume} → {event.remainingVolume} LOT
-                      </td>
-                      <td className="px-2 py-1 text-center font-black">
-                        {event.phase === 'engulfing' ? 'OPPOSING CONFIRMED' : 'WAITING FOR CONFIRMATION'}
-                      </td>
-                      <td className="whitespace-nowrap px-2 py-1 text-right font-black text-cyan-800">{mt5FibProfitEventLabel(event)}</td>
-                    </tr>
-                  ))}
-                {scalpEntryTableRows.map(({ id, zone, trade: sourceTrade, tradingTimeBlocked }) => {
-                  const trade = zoneTableTrade(sourceTrade, undefined, zone, id)!;
-                  const sourceSetup = goldScalpingAccuracyTrades.find(candidate => candidate.trade.signal.time === trade.signal.time
-                    && candidate.trade.entry === trade.entry);
-                  const sourceZone = sourceSetup?.zone;
-                  if (hasZoneTableTradeExpired(trade, sourceZone)) return null;
-                  const bullish = trade.signal.direction === 'bullish';
-                  return (
-                    <tr key={`scalp-entry-${id}`} className="border-t border-indigo-200 bg-indigo-50/80">
-                      <td className="px-2 py-1 font-black text-slate-800">
-                        <div>SCALP · {zone}<ZoneSourceTimeframeLabel timeframe={sourceSetup?.zoneTimeframe
-                          ?? chartEntryRecords.find(record => record.id === id)?.zoneTimeframe} /></div>
-                        <div className="text-[8px] font-semibold text-slate-500">
-                          {formatAccuracyTradeTime(
-                            trade.signal.time + TIMEFRAME_SECONDS[trade.signal.timeframe],
-                            chartTimeZone,
-                          )}
-                        </div>
-                      </td>
-                      <td className={`px-2 py-1 font-bold ${bullish ? 'text-emerald-700' : 'text-rose-700'}`}>
-                        {bullish ? 'BUY' : 'SELL'}
-                      </td>
-                      <td className="whitespace-nowrap px-2 py-1 font-bold text-blue-700">
-                        <ZoneTableEntryPrice trade={trade} zone={sourceZone} pipSize={marketConfig.pipSize} />
-                      </td>
-                      <td className="px-2 py-1 text-center font-black">{trade.signal.type}</td>
-                      <td className={`whitespace-nowrap px-2 py-1 text-right font-black ${
-                        tradingTimeBlocked ? 'text-rose-700' : 'text-indigo-700'
-                      }`}>
-                        {zoneTableCompletedStatus(trade) ?? (tradingTimeBlocked
-                          ? 'OUTSIDE TRADING TIME · NO TRADE'
-                          : <TradeStatusText trade={trade} />)}
-                      </td>
-                    </tr>
-                  );
-                })}
-                {blockedGoldScalpingSetups.filter(({ trade }) => (
-                  trade.signal.timeframe === granularity
-                  && displayCandles.some((candle) => candle.time === trade.signal.time)
-                  && latestCandle !== null
-                  && latestCandle.time - trade.signal.time <= 50 * TIMEFRAME_SECONDS.M1
-                )).sort((first, second) => second.trade.signal.time - first.trade.signal.time)
-                  .slice(0, 3).map(({ zone, zoneTimeframe, trade }) => (
-                    <tr key={`blocked-scalp-${zoneTimeframe}-${zone.id}-${trade.signal.time}`}
-                      className="border-t border-amber-200 bg-amber-50/80">
-                      <td className="px-2 py-1 font-black text-slate-700">SCALP · {executionZoneName(zone)}<ZoneSourceTimeframeLabel timeframe={zoneTimeframe} /></td>
-                      <td className="px-2 py-1 font-bold text-slate-600">BUY SETUP</td>
-                      <td className="px-2 py-1 text-slate-400">—</td>
-                      <td className="px-2 py-1 text-center font-black text-slate-600">{trade.signal.type}</td>
-                      <td className="whitespace-nowrap px-2 py-1 text-right font-black text-amber-800">
-                        BLOCKED · 15M + 1H BEARISH · NO ENTRY
-                      </td>
-                    </tr>
-                  ))}
-                {blockedGoldScalpingOpposingSetups.filter(({ trade, zoneTimeframe }) => (
-                  (trade.signal.timeframe === granularity || zoneTimeframe === granularity)
-                  && latestCandle !== null
-                  && latestCandle.time - trade.signal.time <= 50 * TIMEFRAME_SECONDS.M1
-                )).sort((first, second) => second.trade.signal.time - first.trade.signal.time)
-                  .slice(0, 3).map(({ zone, zoneTimeframe, trade, opposingZoneBlock }) => (
-                    <tr key={`opposing-scalp-${zoneTimeframe}-${zone.id}-${trade.signal.time}`}
-                      className="border-t border-amber-200 bg-amber-50/80">
-                      <td className="px-2 py-1 font-black text-slate-700">SCALP · {executionZoneName(zone)}<ZoneSourceTimeframeLabel timeframe={zoneTimeframe} /></td>
-                      <td className="px-2 py-1 font-bold text-slate-600">
-                        {trade.signal.direction === 'bullish' ? 'BUY' : 'SELL'} SETUP
-                      </td>
-                      <td className="px-2 py-1 text-slate-400">—</td>
-                      <td className="px-2 py-1 text-center font-black text-slate-600">{trade.signal.type}</td>
-                      <td className="whitespace-nowrap px-2 py-1 text-right font-black text-amber-800">
-                        {goldOpposingZoneBlockLabel(opposingZoneBlock!)}
-                      </td>
-                    </tr>
-                  ))}
-                {retainedDirectZoneTableRows.map(({ overlay, sourceZone, sourceTimeframe, trade, tapCount, additionalConfirmations }) => {
-                  const bullish = trade.signal.direction === 'bullish';
-                  const zoneLabel = tradeOverlayZoneLabel(overlay.label);
-                  const currentFibLabels = sourceZone ? tradeZoneFibLabels(sourceZone) : [];
-                  const fibLabels = currentFibLabels.length > 0 ? currentFibLabels : overlay.fibLabels ?? [];
-                  return (
-                    <React.Fragment key={`open-chart-trade-${overlay.id}`}>
-                      <tr className={`border-t ${bullish ? 'border-emerald-200 bg-emerald-50' : 'border-rose-200 bg-rose-50'}`}>
-                        <td className="px-2 py-1 font-black text-slate-800">
-                          <span>{zoneLabel ?? 'OPEN CHART TRADE'}</span>
-                          <ZoneSourceTimeframeLabel timeframe={sourceTimeframe} />
-                          {(tapCount ?? 0) > 1 && (
-                            <span className="ml-1 rounded bg-sky-100 px-1 py-0.5 text-[8px] font-black text-sky-800">
-                              TAP {tapCount}
-                            </span>
-                          )}
-                          {(sourceZone ? isDeepDiscountZoneDisplay(sourceZone, trade.signal)
-                            : isDefaultDeepDiscountZoneName(zoneLabel)) && (
-                            <span className="ml-1 rounded bg-fuchsia-100 px-1 py-0.5 text-[8px] font-black text-fuchsia-800">
-                              DEEP DISCOUNT
-                            </span>
-                          )}
-                          {fibLabels.map((label) => (
-                            <span key={label} className="ml-1 rounded bg-fuchsia-100 px-1 py-0.5 text-[8px] font-black text-fuchsia-800">
-                              {label}
-                            </span>
-                          ))}
-                        </td>
-                        <td className={`px-2 py-1 font-bold ${bullish ? 'text-emerald-700' : 'text-rose-700'}`}>
-                          {bullish ? 'BUY' : 'SELL'}
-                        </td>
-                        <td className="whitespace-nowrap px-2 py-1">
-                          <ZoneTableEntryPrice trade={trade} zone={sourceZone} pipSize={marketConfig.pipSize} />
-                        </td>
-                        <td className={`whitespace-nowrap px-2 py-1 text-center font-black ${bullish ? 'text-emerald-700' : 'text-rose-700'}`}>
-                          {trade.signal.type}
-                          <ZoneTableEngulfingConfirmations confirmations={additionalConfirmations} />
-                        </td>
-                        <td className={`whitespace-nowrap px-2 py-1 text-right font-black ${trade.status === 'sl-hit' ? 'text-rose-700' : 'text-emerald-700'}`}>
-                          {zoneTableCompletedStatus(trade) ?? <TradeStatusText trade={trade} />}
-                          {bestTrendlineBadge(trade)}
-                        </td>
-                      </tr>
-                      <TradeDetailsRow trade={trade} colSpan={5} />
-                    </React.Fragment>
-                  );
-                })}
-                {pendingConfirmationRows.map((zone) => (
-                  <tr key={zone.id} className={`border-t text-slate-700 ${zone.isBuy ? 'border-emerald-100 bg-emerald-50/70' : 'border-rose-100 bg-rose-50/70'}`}>
-                    <td className={`px-2 py-1 font-black ${zone.isBuy ? 'text-emerald-800' : 'text-rose-800'}`}>{displayZoneName(zone.name, zone.oneMinuteGenesisQml)}<ZoneSourceTimeframeLabel timeframe={granularity} /></td>
-                    <td className={`px-2 py-1 font-bold ${zone.isBuy ? 'text-emerald-700' : 'text-rose-700'}`}>
-                      {zone.isBuy ? 'BUY' : 'SELL'}
-                    </td>
-                    <td className="px-2 py-1 whitespace-nowrap">{formatPrice(zone.bottom)} – {formatPrice(zone.top)}</td>
-                    <td className="px-2 py-1 text-center text-slate-400">—</td>
-                    <td className={`px-2 py-1 text-right font-black whitespace-nowrap ${zone.isBuy ? 'text-emerald-700' : 'text-rose-700'}`}>
-                      WAIT {TJL1_CONFIRMATION_LABELS[granularity].toUpperCase()} {zone.isBuy ? 'ABOVE' : 'BELOW'}
-                    </td>
-                  </tr>
-                ))}
-                {doubleChochRows.map((zone) => {
-                  const pending = zone.doubleChochStatus === 'pending';
-                  const confirmationLabel = TJL1_CONFIRMATION_LABELS[granularity].toUpperCase();
-                  const confirmationSide = zone.doubleChochConfirmationDirection === 'up' ? 'ABOVE' : 'BELOW';
-                  const trade = zoneTableTrade(confluenceMapValue<TradeLevels>(zone, directZoneTrades), zone);
-                  const entryDecision = confluenceMapValue<DirectZoneEntryDecision>(zone, directZoneEntryDecisions);
-                  const outsideTimePreview = !trade ? entryDecision?.previewTrade : undefined;
-                  const displayedTrade = zoneTableTrade(trade ?? outsideTimePreview, zone);
-                  const mt5Signal = confluenceMapValue<Mt5StoredSignal>(zone, directZoneMt5Signals);
-                  if (hasZoneTableTradeExpired(displayedTrade, zone) || hasZoneTableTradeExpired(mt5Signal, zone)) return null;
-                  const completedStatus = zoneTableCompletedStatus(displayedTrade, mt5Signal);
-                  const measurement = confluenceFirstValue(zone, (member) => (
-                    measureTradeableFibZone(member, marketConfig.pipSize)
-                  )) ?? (completedStatus ? measureListedZone(zone, marketConfig.pipSize) : undefined);
-                  return (
-                    <React.Fragment key={`double-${zone.id}`}>
-                    <tr className={`border-t text-slate-700 ${
-                      pending ? 'border-amber-100 bg-amber-50/70' : 'border-emerald-100 bg-emerald-50/50'
-                    }`}>
-                      <td className="px-2 py-1 font-black text-slate-800">
-                        <span>{displayZoneName(zone.name, zone.oneMinuteGenesisQml)}</span>
-                        <ZoneSourceTimeframeLabel timeframe={mt5Signal?.zoneTimeframe ?? granularity} />
-                        {displayedTapCount(zone) !== undefined && (
-                          <span className="ml-1 rounded bg-sky-100 px-1 py-0.5 text-[8px] font-black text-sky-800">
-                            TAP {displayedTapCount(zone)}
-                          </span>
-                        )}
-                        <span className="ml-1 rounded bg-violet-100 px-1 py-0.5 text-[8px] font-black text-violet-800">
-                          DOUBLE CHoCH
-                        </span>
-                        {displayZoneMembers(zone).some(member => isDeepDiscountZoneDisplay(member, displayedTrade?.signal)) && (
-                          <span className="ml-1 rounded bg-fuchsia-100 px-1 py-0.5 text-[8px] font-black text-fuchsia-800">
-                            DEEP DISCOUNT
-                          </span>
-                        )}
-                        <span className={`ml-1 rounded px-1 py-0.5 text-[8px] font-black ${
-                          pending ? 'bg-amber-100 text-amber-800' : 'bg-emerald-100 text-emerald-800'
-                        }`}>
-                          HTF {pending ? 'WAIT' : 'VALID'}
-                        </span>
-                        {zone.doubleChochOriginClass && (
-                          <span className="ml-1 rounded bg-slate-100 px-1 py-0.5 text-[8px] font-black text-slate-600">
-                            FROM {zone.doubleChochOriginClass.toUpperCase()}
-                          </span>
-                        )}
-                        {showFib && zone.swingFibStatus === 'a-plus' && zone.swingFibBand && (
-                          <span className="ml-1 rounded bg-violet-100 px-1 py-0.5 text-[8px] font-black text-violet-800">
-                            SWING A+ FIB {zone.swingFibBand}
-                          </span>
-                        )}
-                        {zone.h1SwingFibStatus === 'aligned' && zone.h1SwingFibBand && (
-                          <span className="ml-1 rounded bg-violet-100 px-1 py-0.5 text-[8px] font-black text-violet-800">
-                            1H SWING FIB ALIGNED {zone.h1SwingFibBand}
-                          </span>
-                        )}
-                        {showFib && zone.dayFibStatus === 'a-plus' && zone.dayFibBand && (
-                          <span className="ml-1 rounded bg-sky-100 px-1 py-0.5 text-[8px] font-black text-sky-800">
-                            DAY FIB A+ {zone.dayFibBand}
-                          </span>
-                        )}
-                      </td>
-                      <td className={`px-2 py-1 font-bold ${zone.isBuy ? 'text-emerald-700' : 'text-rose-700'}`}>
-                        {zone.isBuy ? 'BUY' : 'SELL'}
-                      </td>
-                      <td className="px-2 py-1 whitespace-nowrap">
-                        <div>{formatPrice(zone.bottom)} – {formatPrice(zone.top)}</div>
-                        {measurement && (
-                          <div className="text-[8px] font-black text-slate-600">
-                            {formatZonePips(measurement.pips)} PIPS
-                          </div>
-                        )}
-                      </td>
-                      <td className={`px-2 py-1 text-center font-black whitespace-nowrap ${
-                        zone.isBuy ? 'text-emerald-700' : 'text-rose-700'
-                      }`}>
-                        {showEngulfing
-                          ? displayedTrade
-                            ? `${displayedTrade.signal.type} ${displayedTrade.signal.direction === 'bullish' ? 'BULL' : 'BEAR'}`
-                            : displayEngulfingLabel(zone, granularity) ?? '—'
-                          : '—'}
-                      </td>
-                      <td className={`px-2 py-1 text-right font-black whitespace-nowrap ${
-                        trade?.status === 'sl-hit'
-                          ? 'text-rose-700'
-                          : outsideTimePreview ? 'text-rose-700'
-                            : pending ? 'text-amber-700' : 'text-emerald-700'
-                      }`}>
-                        {completedStatus ? completedStatus : isCompletedTrade(outsideTimePreview)
-                          ? <TradeStatusText trade={outsideTimePreview!} />
-                          : outsideTimePreview || entryDecision?.policy.reason === 'outside-trading-time'
-                          ? 'OUTSIDE TRADING TIME'
-                          : mt5Signal
-                          ? <span className={mt5SignalStatusClassName(mt5Signal)}>{mt5SignalStatusLabel(mt5Signal)}</span>
-                          : isCompletedTrade(trade)
-                          ? <>{zone.lastTapBarsAgo ?? zone.tapBarsAgo} bars · <TradeStatusText trade={trade!} /></>
-                           : pending
-                           ? `WAIT ${confirmationLabel} ${confirmationSide} · NO TRADE`
-                           : zone.tradeable === false
-                             ? 'VALID DOUBLE CHoCH · NO TRADE'
-                           : zone.tapTime === undefined
-                             ? 'VALID DOUBLE CHoCH · NO TRADE'
-                             : marketSymbol === 'XAUUSD' && isGoldZoneOpportunityExpired(
-                               zone, displayCandles, granularity, marketConfig.pipSize, Infinity,
-                               displayedTrade?.filledAt === undefined ? undefined
-                                 : { price: displayedTrade.entry, filledAt: displayedTrade.filledAt, stopLoss: displayedTrade.stopLoss },
-                             )
-                               ? `${zone.lastTapBarsAgo ?? zone.tapBarsAgo} bars · DISTANCE REACHED · NO NEW ENTRY`
-                               : marketSymbol === 'XAUUSD' && (displayedTapCount(zone) ?? 0) > 1
-                                 ? `${zone.lastTapBarsAgo ?? zone.tapBarsAgo} bars · TAP ${displayedTapCount(zone)} · NO NEW ENTRY`
-                               : `${zone.lastTapBarsAgo ?? zone.tapBarsAgo} bars · ${confirmationLabel} CONFIRMED · TRADE`}
-                        {!outsideTimePreview && bestTrendlineBadge(displayedTrade)}
-                      </td>
-                    </tr>
-                    {displayedTrade
-                      && (completedStatus || marketSymbol !== 'XAUUSD' || (displayedTapCount(zone) ?? 0) <= 1)
-                      && <TradeDetailsRow trade={displayedTrade} colSpan={5}
-                        mt5Signal={mt5Signal} referenceOnly={outsideTimePreview !== undefined}
-                        hideReferenceStatus={outsideTimePreview !== undefined} />}
-                    </React.Fragment>
-                  );
-                })}
-                {zoneTableRows.map((zone) => {
-                  const scalpTrade = marketSymbol === 'XAUUSD' && scalpingEnabled
-                    ? goldScalpingDirectTrades.find((candidate) => (
-                      candidate.zoneTimeframe === granularity
-                      && displayZoneMembers(zone).some((member) => member.id === candidate.zone.id)
-                    ))?.trade
-                    : undefined;
-                  const scalpPreview = marketSymbol === 'XAUUSD' && scalpingEnabled && tradingTimeEnabled && !scalpTrade
-                    ? goldScalpingAccuracyTrades.find((candidate) => (
-                      candidate.zoneTimeframe === granularity
-                      && displayZoneMembers(zone).some((member) => member.id === candidate.zone.id)
-                      && (!isNepalTradingTime(candidate.trade.signal.time + TIMEFRAME_SECONDS[candidate.trade.signal.timeframe])
-                        || (candidate.trade.filledAt !== undefined && !isNepalTradingTime(candidate.trade.filledAt)))
-                    ))?.trade
-                    : undefined;
-                  const trade = zoneTableTrade(scalpTrade ?? confluenceMapValue<TradeLevels>(zone, directZoneTrades), zone);
-                  const entryDecision = confluenceMapValue<DirectZoneEntryDecision>(zone, directZoneEntryDecisions);
-                  const outsideTimePreview = !trade
-                    ? entryDecision?.previewTrade ?? scalpPreview : undefined;
-                  const historicalEntry = replayDirectHistoryByZone.get(zone.id);
-                  const historicalTrade = !trade && !outsideTimePreview ? zoneTableTrade(historicalEntry?.trade, zone) : undefined;
-                  const usedZoneTrade = zoneTableTrade(entryDecision?.usedZoneTrade, zone);
-                  const engulfingTrade = zoneTableTrade(trade ?? outsideTimePreview ?? historicalTrade ?? usedZoneTrade, zone);
-                  if (hasZoneTableTradeExpired(engulfingTrade, zone)) return null;
-                  // Once listed, this zone's later engulfings belong beside its original entry type.
-                  if (retainedDirectZoneTableRows.some(retained => retained.sourceZoneId
-                    && displayZoneMembers(zone).some(member => directZoneTableGroupKey(
-                      member.id, marketSymbol, zone.isBuy ? 'bullish' : 'bearish',
-                    ) === directZoneTableGroupKey(retained.sourceZoneId!, marketSymbol, retained.trade.signal.direction)))) return null;
-                  const scalpEngulfingTrade = scalpTrade ?? (!trade ? scalpPreview : undefined);
-                  const deepDiscount = displayZoneMembers(zone).some(member => (
-                    isDeepDiscountZoneDisplay(member, engulfingTrade?.signal)
-                  ));
-                  const mt5Signal = confluenceMapValue<Mt5StoredSignal>(zone, directZoneMt5Signals);
-                  const completedStatus = zoneTableCompletedStatus(engulfingTrade, mt5Signal);
-                  const measurement = confluenceFirstValue(zone, (member) => (
-                    measureTradeableFibZone(member, marketConfig.pipSize)
-                  )) ?? measureListedZone(zone, marketConfig.pipSize);
-                  const tapBarsAgo = confluenceTapBarsAgo(zone);
-                  const latestTap = confluenceLatestTap(zone);
-                  const tapCount = displayedTapCount(zone);
-                  const repeatedTap = marketSymbol === 'XAUUSD' && (tapCount ?? 0) > 1;
-                  const opportunityExpired = marketSymbol === 'XAUUSD'
-                    && displayZoneMembers(zone).every((member) => isGoldZoneOpportunityExpired(
-                      member, displayCandles, granularity, marketConfig.pipSize,
-                      Infinity, trade?.filledAt === undefined ? undefined
-                        : { price: trade.entry, filledAt: trade.filledAt, stopLoss: trade.stopLoss },
-                    ));
-                  const confluenceLabels = confluenceBadgeLabels(zone);
-                  const extremeAPlus = displayZoneMembers(zone).some((member) => (
-                    extremeAPlusTjl2Selection.extremeZoneIds.has(member.id)
-                  ));
-                  const extremeAPlusBlocked = displayZoneMembers(zone).some((member) => (
-                    extremeAPlusTjl2Selection.blockedZoneIds.has(member.id)
-                  ));
-                  const pendingChoch = zone.chochClass === 'pending';
-                  const mtfStatus = zoneTableMtfStatus(displayZoneMembers(zone), granularity,
-                    mtfRows.filter(row => !hasTradeDisplayExpired(row.trade ?? row.previewTrade)));
-                  const chochConfirmationLabel = TJL1_CONFIRMATION_LABELS[granularity].toUpperCase();
-                  const chochConfirmationSide = zone.isBuy ? 'ABOVE' : 'BELOW';
-                  return (
-                  <React.Fragment key={zone.id}>
-                  <tr className="border-t border-slate-100 text-slate-700">
-                    <td className="px-2 py-1 font-black text-slate-800">
-                      <span>{displayConfluenceZoneName(zone)}</span>
-                      <ZoneSourceTimeframeLabel timeframe={mt5Signal?.zoneTimeframe ?? granularity} />
-                      {latestTap && (
-                        <span className="ml-1 rounded bg-sky-100 px-1 py-0.5 text-[8px] font-black text-sky-800">
-                          TAP {tapCount ?? latestTap.count}
-                        </span>
-                      )}
-                      {extremeAPlus && (
-                        <span className="ml-1 rounded bg-emerald-100 px-1 py-0.5 text-[8px] font-black text-emerald-800">
-                          EXTREME A+
-                        </span>
-                      )}
-                      {extremeAPlusBlocked && (
-                        <span className="ml-1 rounded bg-rose-100 px-1 py-0.5 text-[8px] font-black text-rose-800">
-                          EXTREME A+ HIGHER
-                        </span>
-                      )}
-                      {deepDiscount && (
-                        <span className="ml-1 rounded bg-fuchsia-100 px-1 py-0.5 text-[8px] font-black text-fuchsia-800">
-                          DEEP DISCOUNT
-                        </span>
-                      )}
-                      {confluenceLabels.map((label) => (
-                        <span key={`${zone.id}-confluence-${label}`} className="ml-1 rounded bg-slate-100 px-1 py-0.5 text-[8px] font-black text-slate-700">
-                          {label}
-                        </span>
-                      ))}
-                      {zone.majorLiquidity && (
-                        <span className="ml-1 rounded bg-cyan-100 px-1 py-0.5 text-[8px] font-black text-cyan-800">
-                          MAJOR LIQUIDITY
-                        </span>
-                      )}
-                      {zone.chochClass && (
-                        <span className={`ml-1 rounded px-1 py-0.5 text-[8px] font-black ${
-                          zone.chochClass === 'vip'
-                            ? 'bg-amber-100 text-amber-800'
-                            : zone.chochClass === 'valid'
-                              ? 'bg-emerald-100 text-emerald-800'
-                              : zone.chochClass === 'air'
-                                ? 'bg-rose-100 text-rose-700'
-                                : 'bg-violet-100 text-violet-700'
-                        }`}>
-                          {zone.category === 'internal' ? 'INT ' : ''}
-                          {pendingChoch
-                            ? mtfStatus?.label ?? `WAIT ${chochConfirmationLabel} CLOSE ${chochConfirmationSide}`
-                            : zone.chochClass.toUpperCase()}
-                        </span>
-                      )}
-                      {zone.chochClass === 'vip' && zone.vipSupportTimeframe && zone.vipSupportZone && (
-                        <span className="ml-1 rounded bg-amber-50 px-1 py-0.5 text-[8px] font-black text-amber-700">
-                          {zone.vipSupportTimeframe} {displayZoneName(zone.vipSupportZone)}
-                        </span>
-                      )}
-                      {showFib && zone.fibStatus === 'a-plus'
-                        && zone.fibBand && zone.fibBand !== 'DB/DT' && (
-                        <span className="ml-1 rounded bg-fuchsia-100 px-1 py-0.5 text-[8px] font-black text-fuchsia-800">
-                          {displayFibLabel(zone)}
-                        </span>
-                      )}
-                      {showFib && zone.swingFibStatus === 'a-plus' && zone.swingFibBand && (
-                        <span className="ml-1 rounded bg-violet-100 px-1 py-0.5 text-[8px] font-black text-violet-800">
-                          SWING A+ FIB {zone.swingFibBand}
-                        </span>
-                      )}
-                      {zone.h1SwingFibStatus === 'aligned' && zone.h1SwingFibBand && (
-                        <span className="ml-1 rounded bg-violet-100 px-1 py-0.5 text-[8px] font-black text-violet-800">
-                          1H SWING FIB ALIGNED {zone.h1SwingFibBand}
-                        </span>
-                      )}
-                      {showFib && zone.dayFibStatus === 'a-plus' && zone.dayFibBand && (
-                        <span className="ml-1 rounded bg-sky-100 px-1 py-0.5 text-[8px] font-black text-sky-800">
-                          DAY FIB A+ {zone.dayFibBand}
-                        </span>
-                      )}
-                    </td>
-                    <td className={`px-2 py-1 font-bold ${zone.isBuy ? 'text-emerald-700' : 'text-rose-700'}`}>
-                      {zone.isBuy ? 'BUY' : 'SELL'}
-                    </td>
-                    <td className="px-2 py-1 whitespace-nowrap">
-                      <div>{formatPrice(zone.bottom)} – {formatPrice(zone.top)}</div>
-                      {measurement && (
-                        <div className="text-[8px] font-black text-slate-600">
-                          {formatZonePips(measurement.pips)} PIPS
-                        </div>
-                      )}
-                    </td>
-                      <td className={`px-2 py-1 text-center font-black whitespace-nowrap ${
-                        zone.isBuy ? 'text-emerald-700' : 'text-rose-700'
-                      }`}>
-                        {showEngulfing ? engulfingTrade ? <>
-                          <div>{scalpEngulfingTrade ? 'SCALP ' : ''}{engulfingTrade.signal.timeframe !== granularity ? `${formatTradeTimeframe(engulfingTrade.signal.timeframe)} ` : ''}{engulfingTrade.signal.type} {engulfingTrade.signal.direction === 'bullish' ? 'BULL' : 'BEAR'}</div>
-                          {(scalpEngulfingTrade || engulfingTrade.signal.timeframe !== granularity) && <div className="text-[8px] text-slate-500">
-                            {formatTradeTimeframe(engulfingTrade.signal.timeframe)} CONFIRMED {formatAccuracyTradeTime(
-                              engulfingTrade.signal.time + TIMEFRAME_SECONDS[engulfingTrade.signal.timeframe],
-                              chartTimeZone,
-                            )}
-                          </div>}
-                        </> : confluenceEngulfingLabel(zone, granularity) ?? '—' : '—'}
-                    </td>
-                    <td className={`px-2 py-1 text-right font-bold whitespace-nowrap ${
-                      trade?.status === 'sl-hit' ? 'text-rose-700' : ''
-                    }`}>
-                      {completedStatus ? (
-                        <span className={completedStatus === 'SL HIT' ? 'text-rose-700' : 'text-emerald-700'}>{completedStatus}</span>
-                      ) : extremeAPlusBlocked ? (
-                        <span className="text-rose-700">EXTREME A+ HIGHER · NO TRADE</span>
-                      ) : repeatedTap ? (
-                        <span className="text-rose-700">TAP {tapCount} · NO NEW ENTRY</span>
-                      ) : outsideTimePreview ? (
-                        <span className={isCompletedTrade(outsideTimePreview)
-                          ? outsideTimePreview.status === 'sl-hit' ? 'text-rose-700' : 'text-emerald-700'
-                          : 'text-blue-700'}>
-                          {tapBarsAgo} bars ·{' '}
-                          {isCompletedTrade(outsideTimePreview)
-                            ? tradeStatusLabel(outsideTimePreview)
-                            : `ENTRY ${formatPrice(outsideTimePreview.entry)}`}
-                        </span>
-                      ) : historicalTrade ? (
-                        <span className={historicalTrade.status === 'sl-hit' ? 'text-rose-700' : 'text-indigo-700'}>
-                          {tapBarsAgo} bars ·{' '}
-                          {historicalEntry?.tradingTimeBlocked
-                            ? isCompletedTrade(historicalTrade)
-                              ? tradeStatusLabel(historicalTrade)
-                              : `ENTRY ${formatPrice(historicalTrade.entry)}`
-                            : `ENTRY ${formatPrice(historicalTrade.entry)} · REPLAY ${tradeStatusLabel(historicalTrade)}`}
-                        </span>
-                      ) : mt5Signal ? (
-                        <span className={mt5SignalStatusClassName(mt5Signal)}>
-                          {mt5SignalStatusLabel(mt5Signal)}
-                        </span>
-                      ) : entryDecision?.opposingZoneBlock ? (
-                        <span className="text-rose-700">
-                          {goldOpposingZoneBlockLabel(entryDecision.opposingZoneBlock)}
-                        </span>
-                      ) : isCompletedTrade(trade) ? (
-                        <span className={trade?.status === 'sl-hit' ? 'text-rose-700' : 'text-emerald-700'}>
-                          {replayIndex !== null && historicalEntry && `ENTRY ${formatPrice(trade!.entry)} · `}
-                          {tapBarsAgo} bars · <TradeStatusText trade={trade!} />
-                        </span>
-                      ) : opportunityExpired ? (
-                        <span className="text-rose-700">DISTANCE REACHED · NO NEW ENTRY</span>
-                      ) : mtfStatus ? (
-                        <span className={mtfStatus.confirmed ? 'text-emerald-700' : 'text-violet-700'}>
-                          {mtfStatus.label}
-                        </span>
-                      ) : entryDecision && !entryDecision.policy.allowed ? (
-                        <span className="text-rose-700">
-                          {directEntryPolicyLabel(entryDecision.policy)} · {usedZoneTrade ? 'ENTRY REFERENCE' : 'NO TRADE'}
-                        </span>
-                      ) : entryDecision?.policy.allowed && !trade ? (
-                        <span className="text-rose-700">ENTRY INVALID · NO TRADE</span>
-                      ) : scalpTrade ? (
-                        <span className="text-indigo-700">SCALP ENTRY · {scalpTrade.signal.timeframe} · 1:{scalpTrade.rewardRisk}</span>
-                      ) : <>
-                        <span className="text-slate-500">{tapBarsAgo} bars</span>
-                        <span className={!confluenceIsTradeable(zone) ? 'ml-1 text-rose-700' : 'ml-1 text-emerald-700'}>
-                           - {pendingChoch
-                             ? `WAIT ${chochConfirmationLabel} CLOSE ${chochConfirmationSide} Â· NO TRADE`
-                             : !confluenceIsTradeable(zone)
-                             ? 'NO TRADE'
-                            : entryDecision?.oppositePositionOpen
-                              ? 'OPPOSITE OPEN · TRADE 1:1'
-                              : entryDecision?.policy.reason === 'volume-confirmed'
-                                ? `VOLUME PASSED · TRADE 1:${trade?.rewardRisk ?? 3}`
-                                : 'TRADE'}
-                        </span>
-                      </>}
-                      {!outsideTimePreview && !historicalEntry?.tradingTimeBlocked
-                        && (!repeatedTap || completedStatus) && !extremeAPlusBlocked
-                        && bestTrendlineBadge(engulfingTrade)}
-                    </td>
-                  </tr>
-                  {engulfingTrade && !historicalTrade
-                    && (!repeatedTap || completedStatus || usedZoneTrade)
-                    && <TradeDetailsRow
-                      trade={engulfingTrade}
-                      colSpan={5}
-                      oppositePositionOpen={entryDecision?.oppositePositionOpen}
-                      mt5Signal={mt5Signal}
-                      referenceOnly={outsideTimePreview !== undefined || usedZoneTrade !== undefined}
-                      hideReferenceStatus={usedZoneTrade !== undefined && !trade && !outsideTimePreview && !historicalTrade}
-                    />}
-                  {historicalTrade && (!repeatedTap || completedStatus) && (
-                    <TradeDetailsRow trade={historicalTrade} colSpan={5}
-                      referenceOnly={historicalEntry?.tradingTimeBlocked}
-                      hideReferenceStatus={historicalEntry?.tradingTimeBlocked} />
-                  )}
-                  </React.Fragment>
-                  );
-                })}
-                {retainedTradeZoneRows.map((zone) => {
-                  const trade = zoneTableTrade(directZoneTrades.get(zone.id), zone)!;
-                  const mt5Signal = directZoneMt5Signals.get(zone.id);
-                  if (hasZoneTableTradeExpired(trade, zone) || hasZoneTableTradeExpired(mt5Signal, zone)) return null;
-                  const completedStatus = zoneTableCompletedStatus(trade, mt5Signal);
-                  return (
-                    <React.Fragment key={`retained-trade-${zone.id}`}>
-                      <tr className="border-t border-slate-200 bg-slate-50 text-slate-600">
-                        <td className="px-2 py-1 font-black">
-                          {displayZoneName(zone.name, zone.oneMinuteGenesisQml)}
-                          <ZoneSourceTimeframeLabel timeframe={mt5Signal?.zoneTimeframe ?? granularity} />
-                          {isDeepDiscountZoneDisplay(zone, trade.signal) && (
-                            <span className="ml-1 rounded bg-fuchsia-100 px-1 py-0.5 text-[8px] font-black text-fuchsia-800">
-                              DEEP DISCOUNT
-                            </span>
-                          )}
-                        </td>
-                        <td className={`px-2 py-1 font-bold ${zone.isBuy ? 'text-emerald-700' : 'text-rose-700'}`}>
-                          {zone.isBuy ? 'BUY' : 'SELL'}
-                        </td>
-                        <td className="whitespace-nowrap px-2 py-1">
-                          {completedStatus
-                            ? <ZoneTableEntryPrice trade={trade} mt5Signal={mt5Signal} zone={zone} pipSize={marketConfig.pipSize} />
-                            : <>{formatPrice(zone.bottom)} – {formatPrice(zone.top)}</>}
-                        </td>
-                        <td className="whitespace-nowrap px-2 py-1 text-center font-black">
-                          {displayEngulfingLabel(zone, granularity) ?? '—'}
-                        </td>
-                        <td className={`whitespace-nowrap px-2 py-1 text-right font-black ${mt5Signal
-                          ? mt5SignalStatusClassName(mt5Signal)
-                          : trade.status === 'sl-hit' ? 'text-rose-700' : 'text-emerald-700'
-                        }`}>
-                          {completedStatus ?? <>{zone.tapBarsAgo} bars · {mt5Signal
-                            ? mt5SignalStatusLabel(mt5Signal)
-                            : <TradeStatusText trade={trade} />}</>}
-                          {bestTrendlineBadge(trade)}
-                        </td>
-                      </tr>
-                      <TradeDetailsRow trade={trade} colSpan={5} mt5Signal={mt5Signal} />
-                    </React.Fragment>
-                  );
-                })}
-                {pendingConfirmationRows.length === 0 && doubleChochRows.length === 0
-                  && zoneTableRows.length === 0 && retainedTradeZoneRows.length === 0
-                  && retainedDirectZoneTableRows.length === 0
-                  && scalpEntryTableRows.length === 0 && (
+                {zoneTableContent}
+                {!hasZoneTableContent && (
                   <tr>
                     <td colSpan={5} className="px-2 py-2 text-center text-slate-400">No active zone rows</td>
                   </tr>

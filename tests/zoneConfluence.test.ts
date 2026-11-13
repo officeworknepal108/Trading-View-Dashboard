@@ -164,6 +164,47 @@ test('LTF CHoCH shows the newest TJL pair, then all valid or pending CHoCH zones
   assert.equal(invalidated.confirmations[0]?.line.id, 'confirmed');
 });
 
+test('LTF CHoCH retains the current TJL2 after TJL1 invalidates without reviving an old pair', () => {
+  for (const isBuy of [true, false]) {
+    const higher = zone({ id: 'higher', isBuy, tapTime: 500 });
+    const levels = [
+      zone({ id: 'old-tjl1', name: 'TJL1', isBuy: !isBuy, tjlPairTime: 200 }),
+      zone({ id: 'old-tjl2', name: 'TJL2', isBuy: !isBuy, tjlPairTime: 200 }),
+      zone({ id: 'current-tjl1', name: 'TJL1', isBuy: !isBuy, tjlPairTime: 480,
+        active: false, status: 'invalidated', invalidatedAt: 520 }),
+      zone({ id: 'current-tjl2', name: 'TJL2', isBuy: !isBuy, tjlPairTime: 480 }),
+      zone({ id: 'future-tjl2', name: 'TJL2', isBuy: !isBuy, tjlPairTime: 900 }),
+      zone({ id: 'other-side', name: 'TJL2', isBuy, tjlPairTime: 490 }),
+    ];
+    const original = structuredClone(levels);
+    for (const ordered of [levels, [...levels].reverse()]) {
+      const selected = selectLtfChochContext([higher], ordered, [], 550, []);
+      assert.deepEqual(selected.zones.map(item => item.zone.id), ['current-tjl2']);
+      assert.equal(selected.zones[0].visibleFromTime, 500);
+      assert.deepEqual(selected.confirmations, [], 'invalid TJL1 alone never confirms CHoCH');
+    }
+    assert.deepEqual(levels, original, 'display selection must not mutate trading structure');
+    const withoutTjl1 = levels.filter(item => item.id !== 'current-tjl1');
+    assert.deepEqual(selectLtfChochContext([higher], withoutTjl1, [], 550, [])
+      .zones.map(item => item.zone.id), ['current-tjl2']);
+  }
+});
+
+test('LTF CHoCH does not fall back to old levels after the latest structure has no valid levels', () => {
+  const higher = zone({ id: 'higher', tapTime: 500 });
+  const old = ['TJL1', 'TJL2'].map(name => zone({
+    id: `old-${name}`, name: name as StructureZone['name'], isBuy: false, tjlPairTime: 200,
+  }));
+  for (const status of ['invalidated', 'superseded', 'rejected'] as const) {
+    const current = ['TJL1', 'TJL2'].map(name => zone({
+      id: `current-${name}`, name: name as StructureZone['name'], isBuy: false,
+      tjlPairTime: 480, active: false, status,
+    }));
+    assert.deepEqual(selectLtfChochContext([higher], [...old, ...current], [], 550, []),
+      { zones: [], confirmations: [] });
+  }
+});
+
 test('LTF CHoCH badges count repeated structures in the same zone without resetting on a retap', () => {
   const higher = zone({ id: 'm15-buy', tapTime: 500, lastTapTime: 850 });
   const lines: StructureLine[] = [600, 700, 900].map((time) => ({

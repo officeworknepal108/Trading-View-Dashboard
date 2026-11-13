@@ -194,20 +194,24 @@ export function selectLtfChochContext(
   const pairs = new Map<number, { tjl1?: StructureZone; tjl2?: StructureZone }>();
   for (const zone of lowerZones) {
     if (zone.category !== 'mg' || (zone.name !== 'TJL1' && zone.name !== 'TJL2')
-      || zone.isBuy === tappedZone.isBuy || !zone.active
-      || (zone.status !== 'valid' && zone.status !== 'pending')
+      || zone.isBuy === tappedZone.isBuy
       || zone.tjlPairTime === undefined || zone.tjlPairTime > currentTime
-      || zone.startTime > currentTime || zone.top <= zone.bottom) continue;
+      || zone.startTime > currentTime || zone.top <= zone.bottom
+      || !Number.isFinite(zone.top) || !Number.isFinite(zone.bottom)) continue;
     const pair = pairs.get(zone.tjlPairTime) ?? {};
     if (zone.name === 'TJL1') pair.tjl1 = zone;
     else pair.tjl2 = zone;
     pairs.set(zone.tjlPairTime, pair);
   }
+  // Select the current structure before filtering validity. A broken TJL1 must
+  // leave its valid TJL2 visible, never revive an older complete pair.
   const latestPair = [...pairs.entries()]
-    .filter(([, pair]) => pair.tjl1 && pair.tjl2)
     .sort(([firstTime], [secondTime]) => secondTime - firstTime)[0]?.[1];
+  const currentLevels = latestPair ? [latestPair.tjl1, latestPair.tjl2]
+    .filter((zone): zone is StructureZone => zone !== undefined && zone.active
+      && (zone.status === 'valid' || zone.status === 'pending')) : [];
   return {
-    zones: latestPair ? [display(latestPair.tjl1!), display(latestPair.tjl2!)] : [],
+    zones: currentLevels.map(display),
     confirmations: [],
   };
 }
