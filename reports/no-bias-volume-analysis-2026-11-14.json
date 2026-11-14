@@ -1,0 +1,577 @@
+{
+  "source": "C:\\Users\\ABHI\\Downloads\\Volume-Engulfing-Study-XAUUSD-M15 (1).csv",
+  "sha256": "d58711f9d1a19e6935638965ba2ebad5ed6c50b8302e1a95f61aa2472d354262",
+  "bias": "none",
+  "timeRule": "T1 confirmation 00:00 inclusive to before 06:00 UTC; 05:45 to before 11:45 Nepal",
+  "splitSignalUTC": "2026-11-02T10:15:00.000Z",
+  "policies": {
+    "Original without bias": {
+      "all": {
+        "entries": 170,
+        "tp": 82,
+        "sl": 82,
+        "other": 6,
+        "winRate": 50.0,
+        "closedNetR": 0
+      },
+      "earlier": {
+        "entries": 109,
+        "tp": 56,
+        "sl": 52,
+        "other": 1,
+        "winRate": 51.85,
+        "closedNetR": 4
+      },
+      "later": {
+        "entries": 61,
+        "tp": 26,
+        "sl": 30,
+        "other": 5,
+        "winRate": 46.43,
+        "closedNetR": -4
+      }
+    },
+    "T1 time-filtered; all T2/T3": {
+      "all": {
+        "entries": 107,
+        "tp": 56,
+        "sl": 46,
+        "other": 5,
+        "winRate": 54.9,
+        "closedNetR": 10
+      },
+      "earlier": {
+        "entries": 66,
+        "tp": 35,
+        "sl": 30,
+        "other": 1,
+        "winRate": 53.85,
+        "closedNetR": 5
+      },
+      "later": {
+        "entries": 41,
+        "tp": 21,
+        "sl": 16,
+        "other": 4,
+        "winRate": 56.76,
+        "closedNetR": 5
+      }
+    },
+    "T1 time-filtered; T2 SELL only; all T3": {
+      "all": {
+        "entries": 77,
+        "tp": 47,
+        "sl": 26,
+        "other": 4,
+        "winRate": 64.38,
+        "closedNetR": 21
+      },
+      "earlier": {
+        "entries": 50,
+        "tp": 30,
+        "sl": 19,
+        "other": 1,
+        "winRate": 61.22,
+        "closedNetR": 11
+      },
+      "later": {
+        "entries": 27,
+        "tp": 17,
+        "sl": 7,
+        "other": 3,
+        "winRate": 70.83,
+        "closedNetR": 10
+      }
+    },
+    "Skip T1; T2 SELL only; all T3": {
+      "all": {
+        "entries": 46,
+        "tp": 31,
+        "sl": 13,
+        "other": 2,
+        "winRate": 70.45,
+        "closedNetR": 18
+      },
+      "earlier": {
+        "entries": 29,
+        "tp": 20,
+        "sl": 8,
+        "other": 1,
+        "winRate": 71.43,
+        "closedNetR": 12
+      },
+      "later": {
+        "entries": 17,
+        "tp": 11,
+        "sl": 5,
+        "other": 1,
+        "winRate": 68.75,
+        "closedNetR": 6
+      }
+    },
+    "T3 only": {
+      "all": {
+        "entries": 28,
+        "tp": 18,
+        "sl": 9,
+        "other": 1,
+        "winRate": 66.67,
+        "closedNetR": 9
+      },
+      "earlier": {
+        "entries": 19,
+        "tp": 11,
+        "sl": 7,
+        "other": 1,
+        "winRate": 61.11,
+        "closedNetR": 4
+      },
+      "later": {
+        "entries": 9,
+        "tp": 7,
+        "sl": 2,
+        "other": 0,
+        "winRate": 77.78,
+        "closedNetR": 5
+      }
+    }
+  },
+  "types": {
+    "T1": {
+      "all": {
+        "entries": 94,
+        "tp": 42,
+        "sl": 49,
+        "other": 3,
+        "winRate": 46.15,
+        "closedNetR": -7
+      },
+      "earlier": {
+        "entries": 64,
+        "tp": 31,
+        "sl": 33,
+        "other": 0,
+        "winRate": 48.44,
+        "closedNetR": -2
+      },
+      "later": {
+        "entries": 30,
+        "tp": 11,
+        "sl": 16,
+        "other": 3,
+        "winRate": 40.74,
+        "closedNetR": -5
+      }
+    },
+    "T2": {
+      "all": {
+        "entries": 48,
+        "tp": 22,
+        "sl": 24,
+        "other": 2,
+        "winRate": 47.83,
+        "closedNetR": -2
+      },
+      "earlier": {
+        "entries": 26,
+        "tp": 14,
+        "sl": 12,
+        "other": 0,
+        "winRate": 53.85,
+        "closedNetR": 2
+      },
+      "later": {
+        "entries": 22,
+        "tp": 8,
+        "sl": 12,
+        "other": 2,
+        "winRate": 40.0,
+        "closedNetR": -4
+      }
+    },
+    "T3": {
+      "all": {
+        "entries": 28,
+        "tp": 18,
+        "sl": 9,
+        "other": 1,
+        "winRate": 66.67,
+        "closedNetR": 9
+      },
+      "earlier": {
+        "entries": 19,
+        "tp": 11,
+        "sl": 7,
+        "other": 1,
+        "winRate": 61.11,
+        "closedNetR": 4
+      },
+      "later": {
+        "entries": 9,
+        "tp": 7,
+        "sl": 2,
+        "other": 0,
+        "winRate": 77.78,
+        "closedNetR": 5
+      }
+    }
+  },
+  "directions": {
+    "T1": {
+      "bullish": {
+        "all": {
+          "entries": 43,
+          "tp": 16,
+          "sl": 26,
+          "other": 1,
+          "winRate": 38.1,
+          "closedNetR": -10
+        },
+        "earlier": {
+          "entries": 29,
+          "tp": 11,
+          "sl": 18,
+          "other": 0,
+          "winRate": 37.93,
+          "closedNetR": -7
+        },
+        "later": {
+          "entries": 14,
+          "tp": 5,
+          "sl": 8,
+          "other": 1,
+          "winRate": 38.46,
+          "closedNetR": -3
+        }
+      },
+      "bearish": {
+        "all": {
+          "entries": 51,
+          "tp": 26,
+          "sl": 23,
+          "other": 2,
+          "winRate": 53.06,
+          "closedNetR": 3
+        },
+        "earlier": {
+          "entries": 35,
+          "tp": 20,
+          "sl": 15,
+          "other": 0,
+          "winRate": 57.14,
+          "closedNetR": 5
+        },
+        "later": {
+          "entries": 16,
+          "tp": 6,
+          "sl": 8,
+          "other": 2,
+          "winRate": 42.86,
+          "closedNetR": -2
+        }
+      }
+    },
+    "T2": {
+      "bullish": {
+        "all": {
+          "entries": 30,
+          "tp": 9,
+          "sl": 20,
+          "other": 1,
+          "winRate": 31.03,
+          "closedNetR": -11
+        },
+        "earlier": {
+          "entries": 16,
+          "tp": 5,
+          "sl": 11,
+          "other": 0,
+          "winRate": 31.25,
+          "closedNetR": -6
+        },
+        "later": {
+          "entries": 14,
+          "tp": 4,
+          "sl": 9,
+          "other": 1,
+          "winRate": 30.77,
+          "closedNetR": -5
+        }
+      },
+      "bearish": {
+        "all": {
+          "entries": 18,
+          "tp": 13,
+          "sl": 4,
+          "other": 1,
+          "winRate": 76.47,
+          "closedNetR": 9
+        },
+        "earlier": {
+          "entries": 10,
+          "tp": 9,
+          "sl": 1,
+          "other": 0,
+          "winRate": 90.0,
+          "closedNetR": 8
+        },
+        "later": {
+          "entries": 8,
+          "tp": 4,
+          "sl": 3,
+          "other": 1,
+          "winRate": 57.14,
+          "closedNetR": 1
+        }
+      }
+    },
+    "T3": {
+      "bullish": {
+        "all": {
+          "entries": 16,
+          "tp": 9,
+          "sl": 6,
+          "other": 1,
+          "winRate": 60.0,
+          "closedNetR": 3
+        },
+        "earlier": {
+          "entries": 10,
+          "tp": 4,
+          "sl": 5,
+          "other": 1,
+          "winRate": 44.44,
+          "closedNetR": -1
+        },
+        "later": {
+          "entries": 6,
+          "tp": 5,
+          "sl": 1,
+          "other": 0,
+          "winRate": 83.33,
+          "closedNetR": 4
+        }
+      },
+      "bearish": {
+        "all": {
+          "entries": 12,
+          "tp": 9,
+          "sl": 3,
+          "other": 0,
+          "winRate": 75.0,
+          "closedNetR": 6
+        },
+        "earlier": {
+          "entries": 9,
+          "tp": 7,
+          "sl": 2,
+          "other": 0,
+          "winRate": 77.78,
+          "closedNetR": 5
+        },
+        "later": {
+          "entries": 3,
+          "tp": 2,
+          "sl": 1,
+          "other": 0,
+          "winRate": 66.67,
+          "closedNetR": 1
+        }
+      }
+    }
+  },
+  "volumeChecks": [
+    {
+      "rule": "V2/V1 <= 0.5",
+      "results": {
+        "all": {
+          "entries": 4,
+          "tp": 3,
+          "sl": 1,
+          "other": 0,
+          "winRate": 75.0,
+          "closedNetR": 2
+        },
+        "earlier": {
+          "entries": 3,
+          "tp": 2,
+          "sl": 1,
+          "other": 0,
+          "winRate": 66.67,
+          "closedNetR": 1
+        },
+        "later": {
+          "entries": 1,
+          "tp": 1,
+          "sl": 0,
+          "other": 0,
+          "winRate": 100.0,
+          "closedNetR": 1
+        }
+      }
+    },
+    {
+      "rule": "V2/V1 >= 0.5",
+      "results": {
+        "all": {
+          "entries": 90,
+          "tp": 39,
+          "sl": 48,
+          "other": 3,
+          "winRate": 44.83,
+          "closedNetR": -9
+        },
+        "earlier": {
+          "entries": 61,
+          "tp": 29,
+          "sl": 32,
+          "other": 0,
+          "winRate": 47.54,
+          "closedNetR": -3
+        },
+        "later": {
+          "entries": 29,
+          "tp": 10,
+          "sl": 16,
+          "other": 3,
+          "winRate": 38.46,
+          "closedNetR": -6
+        }
+      }
+    },
+    {
+      "rule": "V2/V1 <= 0.65",
+      "results": {
+        "all": {
+          "entries": 13,
+          "tp": 6,
+          "sl": 7,
+          "other": 0,
+          "winRate": 46.15,
+          "closedNetR": -1
+        },
+        "earlier": {
+          "entries": 8,
+          "tp": 4,
+          "sl": 4,
+          "other": 0,
+          "winRate": 50.0,
+          "closedNetR": 0
+        },
+        "later": {
+          "entries": 5,
+          "tp": 2,
+          "sl": 3,
+          "other": 0,
+          "winRate": 40.0,
+          "closedNetR": -1
+        }
+      }
+    },
+    {
+      "rule": "V2/V1 >= 0.65",
+      "results": {
+        "all": {
+          "entries": 81,
+          "tp": 36,
+          "sl": 42,
+          "other": 3,
+          "winRate": 46.15,
+          "closedNetR": -6
+        },
+        "earlier": {
+          "entries": 56,
+          "tp": 27,
+          "sl": 29,
+          "other": 0,
+          "winRate": 48.21,
+          "closedNetR": -2
+        },
+        "later": {
+          "entries": 25,
+          "tp": 9,
+          "sl": 13,
+          "other": 3,
+          "winRate": 40.91,
+          "closedNetR": -4
+        }
+      }
+    },
+    {
+      "rule": "V2/V1 <= 0.8",
+      "results": {
+        "all": {
+          "entries": 42,
+          "tp": 19,
+          "sl": 22,
+          "other": 1,
+          "winRate": 46.34,
+          "closedNetR": -3
+        },
+        "earlier": {
+          "entries": 29,
+          "tp": 13,
+          "sl": 16,
+          "other": 0,
+          "winRate": 44.83,
+          "closedNetR": -3
+        },
+        "later": {
+          "entries": 13,
+          "tp": 6,
+          "sl": 6,
+          "other": 1,
+          "winRate": 50.0,
+          "closedNetR": 0
+        }
+      }
+    },
+    {
+      "rule": "V2/V1 >= 0.8",
+      "results": {
+        "all": {
+          "entries": 52,
+          "tp": 23,
+          "sl": 27,
+          "other": 2,
+          "winRate": 46.0,
+          "closedNetR": -4
+        },
+        "earlier": {
+          "entries": 35,
+          "tp": 18,
+          "sl": 17,
+          "other": 0,
+          "winRate": 51.43,
+          "closedNetR": 1
+        },
+        "later": {
+          "entries": 17,
+          "tp": 5,
+          "sl": 10,
+          "other": 2,
+          "winRate": 33.33,
+          "closedNetR": -5
+        }
+      }
+    }
+  ],
+  "oldReportRows": 91,
+  "commonOutcomesUnchanged": true,
+  "newlyIncluded": {
+    "entries": 79,
+    "tp": 33,
+    "sl": 42,
+    "other": 4,
+    "winRate": 44.0,
+    "closedNetR": -9
+  },
+  "limitations": [
+    "Same market period as the H4 report; this is not an independent date-range test.",
+    "Rules and combinations were explored after examining this export. Earlier/later splits are consistency checks, not untouched validation.",
+    "Small retained samples and market direction may explain results; do not interpret SELL-only performance as a permanent advantage.",
+    "Only exported outcomes are filtered; candles were not available to resimulate entry, SL, TP or verify the buffer version.",
+    "Win rate and net R exclude active/cancelled trades; gross results exclude costs and may include overlapping positions.",
+    "No source code, study settings or live trading rules were changed."
+  ]
+}

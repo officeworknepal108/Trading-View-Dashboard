@@ -9,7 +9,7 @@ export interface TelegramTradeAlert {
   zoneTimeframe: TradeTimeframe; signalTimeframe: TradeTimeframe; engulfingType: string;
   source?: 'MTF' | 'ENGULFING'; higherZoneName?: string; entryZoneName?: string;
   entry: number; stopLoss: number; takeProfit: number; riskPips: number; rewardRisk: number;
-  tradeStyle?: 'SCALPING' | 'INTRADAY'; riskFree?: number; openedAt: number;
+  tradeStyle?: 'SCALPING' | 'INTRADAY' | 'SCALP_1_1'; riskFree?: number; openedAt: number;
   rfAt?: number; partialClosedVolume?: number; remainingVolume?: number;
   closedAt?: number; exitPrice?: number; returnR?: number;
 }
@@ -29,7 +29,8 @@ const entryTime = (seconds: number) => new Intl.DateTimeFormat('en-GB', {
 }).format(seconds * 1000) + ' Nepal';
 
 export function formatTelegramTradeMessage(alert: TelegramTradeAlert, number: TelegramTradeNumber): string {
-  const style = alert.tradeStyle ?? (['M1', 'M5'].includes(alert.zoneTimeframe) ? 'SCALPING' : 'INTRADAY');
+  const style = alert.tradeStyle === 'SCALP_1_1' ? 'SCALP 1:1'
+    : alert.tradeStyle ?? (['M1', 'M5'].includes(alert.zoneTimeframe) ? 'SCALPING' : 'INTRADAY');
   const identity = `${alert.symbol} ${alert.direction} · ${style}`;
   const heading = (event: string) => `Trade #${number.tradeNumber} — ${event}\n${identity}`;
   if (alert.kind === 'tp' || alert.kind === 'sl') {

@@ -1,0 +1,66 @@
+{
+  "matched": 6,
+  "staleSignalsRejected": 6,
+  "records": [
+    {
+      "time": "2026-08-11T23:15:00.000Z",
+      "type": "T1",
+      "direction": "bullish",
+      "id": "SCALP_1_1:M15:1786490100:BUY:4373.010:4359.655:4386.365",
+      "orderType": "MARKET",
+      "entry": 4373.01,
+      "stopLoss": 4359.655,
+      "takeProfit": 4386.365000000001
+    },
+    {
+      "time": "2026-08-04T06:15:00.000Z",
+      "type": "T1",
+      "direction": "bearish",
+      "id": "SCALP_1_1:M15:1785824100:SELL:4059.895:4069.215:4050.575",
+      "orderType": "MARKET",
+      "entry": 4059.895,
+      "stopLoss": 4069.215,
+      "takeProfit": 4050.575
+    },
+    {
+      "time": "2026-08-11T01:15:00.000Z",
+      "type": "T2",
+      "direction": "bullish",
+      "id": "SCALP_1_1:M15:1786410900:BUY:4410.780:4390.780:4430.780",
+      "orderType": "LIMIT",
+      "entry": 4410.78,
+      "stopLoss": 4390.78,
+      "takeProfit": 4430.78
+    },
+    {
+      "time": "2026-08-03T10:30:00.000Z",
+      "type": "T2",
+      "direction": "bearish",
+      "id": "SCALP_1_1:M15:1785753000:SELL:4049.305:4060.130:4038.480",
+      "orderType": "MARKET",
+      "entry": 4049.305,
+      "stopLoss": 4060.13,
+      "takeProfit": 4038.4799999999996
+    },
+    {
+      "time": "2026-08-11T16:30:00.000Z",
+      "type": "T3",
+      "direction": "bullish",
+      "id": "SCALP_1_1:M15:1786465800:BUY:4384.815:4375.520:4394.110",
+      "orderType": "MARKET",
+      "entry": 4384.815,
+      "stopLoss": 4375.52,
+      "takeProfit": 4394.109999999999
+    },
+    {
+      "time": "2026-08-31T20:15:00.000Z",
+      "type": "T3",
+      "direction": "bearish",
+      "id": "SCALP_1_1:M15:1788207300:SELL:4447.305:4458.925:4435.685",
+      "orderType": "MARKET",
+      "entry": 4447.305,
+      "stopLoss": 4458.925,
+      "takeProfit": 4435.685
+    }
+  ]
+}

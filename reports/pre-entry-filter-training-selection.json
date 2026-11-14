@@ -1,0 +1,1067 @@
+{
+  "candidateCount": 88,
+  "minimumTrainingClosedTrades": 40,
+  "trainingPeriod": "August-September, outcomes closed before October 1",
+  "eligibleCandidates": 85,
+  "selected": [
+    {
+      "base": "No bias SELL",
+      "rule": "Confirmation range 0.75-2 ATR",
+      "train": {
+        "n": 119,
+        "tp": 72,
+        "sl": 47,
+        "win": 60.5,
+        "R": 25,
+        "wilsonLower95": 51.52
+      }
+    },
+    {
+      "base": "No bias SELL",
+      "rule": "Pattern near prior 20-bar extreme (25%)",
+      "train": {
+        "n": 84,
+        "tp": 52,
+        "sl": 32,
+        "win": 61.9,
+        "R": 20,
+        "wilsonLower95": 51.22
+      }
+    },
+    {
+      "base": "No bias SELL",
+      "rule": "No extra candle rule",
+      "train": {
+        "n": 181,
+        "tp": 103,
+        "sl": 78,
+        "win": 56.91,
+        "R": 25,
+        "wilsonLower95": 49.62
+      }
+    }
+  ],
+  "ranking": "highest training Wilson 95% lower bound; then net R",
+  "allTrainingRanks": [
+    {
+      "base": "No bias SELL",
+      "rule": "Confirmation range 0.75-2 ATR",
+      "train": {
+        "n": 119,
+        "tp": 72,
+        "sl": 47,
+        "win": 60.5,
+        "R": 25,
+        "wilsonLower95": 51.52
+      }
+    },
+    {
+      "base": "No bias SELL",
+      "rule": "Pattern near prior 20-bar extreme (25%)",
+      "train": {
+        "n": 84,
+        "tp": 52,
+        "sl": 32,
+        "win": 61.9,
+        "R": 20,
+        "wilsonLower95": 51.22
+      }
+    },
+    {
+      "base": "No bias SELL",
+      "rule": "No extra candle rule",
+      "train": {
+        "n": 181,
+        "tp": 103,
+        "sl": 78,
+        "win": 56.91,
+        "R": 25,
+        "wilsonLower95": 49.62
+      }
+    },
+    {
+      "base": "No bias SELL",
+      "rule": "Confirmation range <=2 ATR",
+      "train": {
+        "n": 176,
+        "tp": 99,
+        "sl": 77,
+        "win": 56.25,
+        "R": 22,
+        "wilsonLower95": 48.86
+      }
+    },
+    {
+      "base": "No bias SELL",
+      "rule": "Confirmation range <=1.5 ATR",
+      "train": {
+        "n": 156,
+        "tp": 87,
+        "sl": 69,
+        "win": 55.77,
+        "R": 18,
+        "wilsonLower95": 47.93
+      }
+    },
+    {
+      "base": "No bias SELL",
+      "rule": "Entry risk <=2 ATR",
+      "train": {
+        "n": 156,
+        "tp": 87,
+        "sl": 69,
+        "win": 55.77,
+        "R": 18,
+        "wilsonLower95": 47.93
+      }
+    },
+    {
+      "base": "No bias SELL",
+      "rule": "Range<=2ATR + risk<=2ATR",
+      "train": {
+        "n": 156,
+        "tp": 87,
+        "sl": 69,
+        "win": 55.77,
+        "R": 18,
+        "wilsonLower95": 47.93
+      }
+    },
+    {
+      "base": "No bias SELL",
+      "rule": "Pattern near prior 20-bar extreme (50%)",
+      "train": {
+        "n": 135,
+        "tp": 76,
+        "sl": 59,
+        "win": 56.3,
+        "R": 17,
+        "wilsonLower95": 47.87
+      }
+    },
+    {
+      "base": "No bias",
+      "rule": "Pattern near prior 20-bar extreme (25%)",
+      "train": {
+        "n": 169,
+        "tp": 93,
+        "sl": 76,
+        "win": 55.03,
+        "R": 17,
+        "wilsonLower95": 47.5
+      }
+    },
+    {
+      "base": "No bias SELL",
+      "rule": "Entry risk <=1.5 ATR",
+      "train": {
+        "n": 113,
+        "tp": 64,
+        "sl": 49,
+        "win": 56.64,
+        "R": 15,
+        "wilsonLower95": 47.43
+      }
+    },
+    {
+      "base": "No bias SELL",
+      "rule": "Liquidity sweep + near20 extreme25",
+      "train": {
+        "n": 53,
+        "tp": 32,
+        "sl": 21,
+        "win": 60.38,
+        "R": 11,
+        "wilsonLower95": 46.94
+      }
+    },
+    {
+      "base": "No bias SELL",
+      "rule": "Close in directional top 20%",
+      "train": {
+        "n": 128,
+        "tp": 71,
+        "sl": 57,
+        "win": 55.47,
+        "R": 14,
+        "wilsonLower95": 46.82
+      }
+    },
+    {
+      "base": "No bias",
+      "rule": "Pattern near prior 20-bar extreme (50%)",
+      "train": {
+        "n": 244,
+        "tp": 129,
+        "sl": 115,
+        "win": 52.87,
+        "R": 14,
+        "wilsonLower95": 46.61
+      }
+    },
+    {
+      "base": "No bias SELL",
+      "rule": "Body60 + near20 extreme25",
+      "train": {
+        "n": 59,
+        "tp": 35,
+        "sl": 24,
+        "win": 59.32,
+        "R": 11,
+        "wilsonLower95": 46.59
+      }
+    },
+    {
+      "base": "No bias SELL",
+      "rule": "Close80 + near20 extreme25",
+      "train": {
+        "n": 59,
+        "tp": 35,
+        "sl": 24,
+        "win": 59.32,
+        "R": 11,
+        "wilsonLower95": 46.59
+      }
+    },
+    {
+      "base": "No bias",
+      "rule": "No extra candle rule",
+      "train": {
+        "n": 334,
+        "tp": 173,
+        "sl": 161,
+        "win": 51.8,
+        "R": 12,
+        "wilsonLower95": 46.45
+      }
+    },
+    {
+      "base": "No bias SELL",
+      "rule": "Body >=60% of candle",
+      "train": {
+        "n": 127,
+        "tp": 70,
+        "sl": 57,
+        "win": 55.12,
+        "R": 13,
+        "wilsonLower95": 46.44
+      }
+    },
+    {
+      "base": "H4 bias SELL",
+      "rule": "Confirmation range 0.75-2 ATR",
+      "train": {
+        "n": 90,
+        "tp": 51,
+        "sl": 39,
+        "win": 56.67,
+        "R": 12,
+        "wilsonLower95": 46.36
+      }
+    },
+    {
+      "base": "No bias",
+      "rule": "Confirmation range 0.75-2 ATR",
+      "train": {
+        "n": 212,
+        "tp": 112,
+        "sl": 100,
+        "win": 52.83,
+        "R": 12,
+        "wilsonLower95": 46.12
+      }
+    },
+    {
+      "base": "No bias SELL",
+      "rule": "Body60 + range<=2ATR",
+      "train": {
+        "n": 124,
+        "tp": 68,
+        "sl": 56,
+        "win": 54.84,
+        "R": 12,
+        "wilsonLower95": 46.07
+      }
+    },
+    {
+      "base": "No bias",
+      "rule": "Volume ratio <=0.80",
+      "train": {
+        "n": 142,
+        "tp": 77,
+        "sl": 65,
+        "win": 54.23,
+        "R": 12,
+        "wilsonLower95": 46.03
+      }
+    },
+    {
+      "base": "No bias",
+      "rule": "Entry risk <=2 ATR",
+      "train": {
+        "n": 282,
+        "tp": 146,
+        "sl": 136,
+        "win": 51.77,
+        "R": 10,
+        "wilsonLower95": 45.96
+      }
+    },
+    {
+      "base": "No bias",
+      "rule": "Range<=2ATR + risk<=2ATR",
+      "train": {
+        "n": 282,
+        "tp": 146,
+        "sl": 136,
+        "win": 51.77,
+        "R": 10,
+        "wilsonLower95": 45.96
+      }
+    },
+    {
+      "base": "H4 bias SELL",
+      "rule": "No extra candle rule",
+      "train": {
+        "n": 137,
+        "tp": 74,
+        "sl": 63,
+        "win": 54.01,
+        "R": 11,
+        "wilsonLower95": 45.67
+      }
+    },
+    {
+      "base": "No bias",
+      "rule": "Confirmation range <=2 ATR",
+      "train": {
+        "n": 320,
+        "tp": 163,
+        "sl": 157,
+        "win": 50.94,
+        "R": 6,
+        "wilsonLower95": 45.48
+      }
+    },
+    {
+      "base": "No bias",
+      "rule": "Entry risk <=1.5 ATR",
+      "train": {
+        "n": 201,
+        "tp": 105,
+        "sl": 96,
+        "win": 52.24,
+        "R": 9,
+        "wilsonLower95": 45.36
+      }
+    },
+    {
+      "base": "H4 bias SELL",
+      "rule": "Entry risk <=1.5 ATR",
+      "train": {
+        "n": 84,
+        "tp": 47,
+        "sl": 37,
+        "win": 55.95,
+        "R": 10,
+        "wilsonLower95": 45.31
+      }
+    },
+    {
+      "base": "H4 bias SELL",
+      "rule": "Entry risk <=2 ATR",
+      "train": {
+        "n": 120,
+        "tp": 65,
+        "sl": 55,
+        "win": 54.17,
+        "R": 10,
+        "wilsonLower95": 45.26
+      }
+    },
+    {
+      "base": "H4 bias SELL",
+      "rule": "Range<=2ATR + risk<=2ATR",
+      "train": {
+        "n": 120,
+        "tp": 65,
+        "sl": 55,
+        "win": 54.17,
+        "R": 10,
+        "wilsonLower95": 45.26
+      }
+    },
+    {
+      "base": "No bias",
+      "rule": "Body60 + near20 extreme25",
+      "train": {
+        "n": 112,
+        "tp": 61,
+        "sl": 51,
+        "win": 54.46,
+        "R": 10,
+        "wilsonLower95": 45.25
+      }
+    },
+    {
+      "base": "No bias",
+      "rule": "Close80 + near20 extreme25",
+      "train": {
+        "n": 112,
+        "tp": 61,
+        "sl": 51,
+        "win": 54.46,
+        "R": 10,
+        "wilsonLower95": 45.25
+      }
+    },
+    {
+      "base": "H4 bias SELL",
+      "rule": "Confirmation range <=2 ATR",
+      "train": {
+        "n": 133,
+        "tp": 71,
+        "sl": 62,
+        "win": 53.38,
+        "R": 9,
+        "wilsonLower95": 44.93
+      }
+    },
+    {
+      "base": "No bias",
+      "rule": "Confirmation range <=1.5 ATR",
+      "train": {
+        "n": 284,
+        "tp": 144,
+        "sl": 140,
+        "win": 50.7,
+        "R": 4,
+        "wilsonLower95": 44.92
+      }
+    },
+    {
+      "base": "H4 bias SELL",
+      "rule": "Pattern near prior 20-bar extreme (25%)",
+      "train": {
+        "n": 63,
+        "tp": 36,
+        "sl": 27,
+        "win": 57.14,
+        "R": 9,
+        "wilsonLower95": 44.86
+      }
+    },
+    {
+      "base": "H4 bias SELL",
+      "rule": "Confirmation range <=1.5 ATR",
+      "train": {
+        "n": 119,
+        "tp": 64,
+        "sl": 55,
+        "win": 53.78,
+        "R": 9,
+        "wilsonLower95": 44.85
+      }
+    },
+    {
+      "base": "No bias SELL",
+      "rule": "Liquidity sweep",
+      "train": {
+        "n": 110,
+        "tp": 59,
+        "sl": 51,
+        "win": 53.64,
+        "R": 8,
+        "wilsonLower95": 44.35
+      }
+    },
+    {
+      "base": "H4 bias",
+      "rule": "Entry risk <=1.5 ATR",
+      "train": {
+        "n": 106,
+        "tp": 57,
+        "sl": 49,
+        "win": 53.77,
+        "R": 8,
+        "wilsonLower95": 44.32
+      }
+    },
+    {
+      "base": "No bias",
+      "rule": "Body >=60% of candle",
+      "train": {
+        "n": 216,
+        "tp": 110,
+        "sl": 106,
+        "win": 50.93,
+        "R": 4,
+        "wilsonLower95": 44.3
+      }
+    },
+    {
+      "base": "No bias",
+      "rule": "Liquidity sweep",
+      "train": {
+        "n": 201,
+        "tp": 102,
+        "sl": 99,
+        "win": 50.75,
+        "R": 3,
+        "wilsonLower95": 43.89
+      }
+    },
+    {
+      "base": "No bias SELL",
+      "rule": "Volume ratio <=0.80",
+      "train": {
+        "n": 77,
+        "tp": 42,
+        "sl": 35,
+        "win": 54.55,
+        "R": 7,
+        "wilsonLower95": 43.47
+      }
+    },
+    {
+      "base": "No bias",
+      "rule": "Body60 + range<=2ATR",
+      "train": {
+        "n": 205,
+        "tp": 103,
+        "sl": 102,
+        "win": 50.24,
+        "R": 1,
+        "wilsonLower95": 43.46
+      }
+    },
+    {
+      "base": "H4 bias",
+      "rule": "No extra candle rule",
+      "train": {
+        "n": 176,
+        "tp": 89,
+        "sl": 87,
+        "win": 50.57,
+        "R": 2,
+        "wilsonLower95": 43.25
+      }
+    },
+    {
+      "base": "No bias",
+      "rule": "Close in directional top 20%",
+      "train": {
+        "n": 228,
+        "tp": 113,
+        "sl": 115,
+        "win": 49.56,
+        "R": -2,
+        "wilsonLower95": 43.13
+      }
+    },
+    {
+      "base": "No bias",
+      "rule": "Liquidity sweep + near20 extreme25",
+      "train": {
+        "n": 105,
+        "tp": 55,
+        "sl": 50,
+        "win": 52.38,
+        "R": 5,
+        "wilsonLower95": 42.91
+      }
+    },
+    {
+      "base": "No bias",
+      "rule": "Volume<=0.8 + body60",
+      "train": {
+        "n": 95,
+        "tp": 50,
+        "sl": 45,
+        "win": 52.63,
+        "R": 5,
+        "wilsonLower95": 42.69
+      }
+    },
+    {
+      "base": "H4 bias",
+      "rule": "Pattern near prior 20-bar extreme (25%)",
+      "train": {
+        "n": 89,
+        "tp": 47,
+        "sl": 42,
+        "win": 52.81,
+        "R": 5,
+        "wilsonLower95": 42.54
+      }
+    },
+    {
+      "base": "H4 bias",
+      "rule": "Entry risk <=2 ATR",
+      "train": {
+        "n": 151,
+        "tp": 76,
+        "sl": 75,
+        "win": 50.33,
+        "R": 1,
+        "wilsonLower95": 42.45
+      }
+    },
+    {
+      "base": "H4 bias",
+      "rule": "Range<=2ATR + risk<=2ATR",
+      "train": {
+        "n": 151,
+        "tp": 76,
+        "sl": 75,
+        "win": 50.33,
+        "R": 1,
+        "wilsonLower95": 42.45
+      }
+    },
+    {
+      "base": "H4 bias SELL",
+      "rule": "Close in directional top 20%",
+      "train": {
+        "n": 98,
+        "tp": 51,
+        "sl": 47,
+        "win": 52.04,
+        "R": 4,
+        "wilsonLower95": 42.26
+      }
+    },
+    {
+      "base": "H4 bias",
+      "rule": "Confirmation range <=2 ATR",
+      "train": {
+        "n": 169,
+        "tp": 84,
+        "sl": 85,
+        "win": 49.7,
+        "R": -1,
+        "wilsonLower95": 42.26
+      }
+    },
+    {
+      "base": "H4 bias",
+      "rule": "Confirmation range <=1.5 ATR",
+      "train": {
+        "n": 150,
+        "tp": 75,
+        "sl": 75,
+        "win": 50.0,
+        "R": 0,
+        "wilsonLower95": 42.1
+      }
+    },
+    {
+      "base": "H4 bias SELL",
+      "rule": "Pattern near prior 20-bar extreme (50%)",
+      "train": {
+        "n": 103,
+        "tp": 53,
+        "sl": 50,
+        "win": 51.46,
+        "R": 3,
+        "wilsonLower95": 41.93
+      }
+    },
+    {
+      "base": "No bias SELL",
+      "rule": "Close in directional top 10%",
+      "train": {
+        "n": 76,
+        "tp": 40,
+        "sl": 36,
+        "win": 52.63,
+        "R": 4,
+        "wilsonLower95": 41.55
+      }
+    },
+    {
+      "base": "H4 bias SELL",
+      "rule": "Body >=60% of candle",
+      "train": {
+        "n": 100,
+        "tp": 51,
+        "sl": 49,
+        "win": 51.0,
+        "R": 2,
+        "wilsonLower95": 41.35
+      }
+    },
+    {
+      "base": "H4 bias",
+      "rule": "Confirmation range 0.75-2 ATR",
+      "train": {
+        "n": 114,
+        "tp": 57,
+        "sl": 57,
+        "win": 50.0,
+        "R": 0,
+        "wilsonLower95": 40.97
+      }
+    },
+    {
+      "base": "H4 bias",
+      "rule": "Pattern near prior 20-bar extreme (50%)",
+      "train": {
+        "n": 134,
+        "tp": 66,
+        "sl": 68,
+        "win": 49.25,
+        "R": -2,
+        "wilsonLower95": 40.93
+      }
+    },
+    {
+      "base": "No bias",
+      "rule": "Body60 + liquidity sweep",
+      "train": {
+        "n": 112,
+        "tp": 56,
+        "sl": 56,
+        "win": 50.0,
+        "R": 0,
+        "wilsonLower95": 40.89
+      }
+    },
+    {
+      "base": "No bias SELL",
+      "rule": "Body >=75% of candle",
+      "train": {
+        "n": 75,
+        "tp": 39,
+        "sl": 36,
+        "win": 52.0,
+        "R": 3,
+        "wilsonLower95": 40.87
+      }
+    },
+    {
+      "base": "H4 bias SELL",
+      "rule": "Body60 + range<=2ATR",
+      "train": {
+        "n": 97,
+        "tp": 49,
+        "sl": 48,
+        "win": 50.52,
+        "R": 1,
+        "wilsonLower95": 40.74
+      }
+    },
+    {
+      "base": "No bias SELL",
+      "rule": "Volume<=0.8 + body60",
+      "train": {
+        "n": 56,
+        "tp": 30,
+        "sl": 26,
+        "win": 53.57,
+        "R": 4,
+        "wilsonLower95": 40.7
+      }
+    },
+    {
+      "base": "H4 bias",
+      "rule": "Close in directional top 20%",
+      "train": {
+        "n": 127,
+        "tp": 62,
+        "sl": 65,
+        "win": 48.82,
+        "R": -3,
+        "wilsonLower95": 40.29
+      }
+    },
+    {
+      "base": "H4 bias",
+      "rule": "Body >=60% of candle",
+      "train": {
+        "n": 123,
+        "tp": 60,
+        "sl": 63,
+        "win": 48.78,
+        "R": -3,
+        "wilsonLower95": 40.12
+      }
+    },
+    {
+      "base": "H4 bias SELL",
+      "rule": "Close80 + near20 extreme25",
+      "train": {
+        "n": 44,
+        "tp": 24,
+        "sl": 20,
+        "win": 54.55,
+        "R": 4,
+        "wilsonLower95": 40.07
+      }
+    },
+    {
+      "base": "H4 bias SELL",
+      "rule": "Liquidity sweep + near20 extreme25",
+      "train": {
+        "n": 42,
+        "tp": 23,
+        "sl": 19,
+        "win": 54.76,
+        "R": 4,
+        "wilsonLower95": 39.95
+      }
+    },
+    {
+      "base": "H4 bias",
+      "rule": "Body60 + near20 extreme25",
+      "train": {
+        "n": 66,
+        "tp": 34,
+        "sl": 32,
+        "win": 51.52,
+        "R": 2,
+        "wilsonLower95": 39.71
+      }
+    },
+    {
+      "base": "H4 bias SELL",
+      "rule": "Liquidity sweep",
+      "train": {
+        "n": 86,
+        "tp": 43,
+        "sl": 43,
+        "win": 50.0,
+        "R": 0,
+        "wilsonLower95": 39.66
+      }
+    },
+    {
+      "base": "No bias",
+      "rule": "Body >=75% of candle",
+      "train": {
+        "n": 118,
+        "tp": 57,
+        "sl": 61,
+        "win": 48.31,
+        "R": -4,
+        "wilsonLower95": 39.49
+      }
+    },
+    {
+      "base": "H4 bias",
+      "rule": "Volume ratio <=0.80",
+      "train": {
+        "n": 73,
+        "tp": 37,
+        "sl": 36,
+        "win": 50.68,
+        "R": 1,
+        "wilsonLower95": 39.47
+      }
+    },
+    {
+      "base": "H4 bias",
+      "rule": "Liquidity sweep + near20 extreme25",
+      "train": {
+        "n": 60,
+        "tp": 31,
+        "sl": 29,
+        "win": 51.67,
+        "R": 2,
+        "wilsonLower95": 39.31
+      }
+    },
+    {
+      "base": "H4 bias SELL",
+      "rule": "Body60 + near20 extreme25",
+      "train": {
+        "n": 47,
+        "tp": 25,
+        "sl": 22,
+        "win": 53.19,
+        "R": 3,
+        "wilsonLower95": 39.23
+      }
+    },
+    {
+      "base": "H4 bias",
+      "rule": "Liquidity sweep",
+      "train": {
+        "n": 110,
+        "tp": 53,
+        "sl": 57,
+        "win": 48.18,
+        "R": -4,
+        "wilsonLower95": 39.06
+      }
+    },
+    {
+      "base": "H4 bias",
+      "rule": "Body60 + range<=2ATR",
+      "train": {
+        "n": 117,
+        "tp": 56,
+        "sl": 61,
+        "win": 47.86,
+        "R": -5,
+        "wilsonLower95": 39.02
+      }
+    },
+    {
+      "base": "No bias SELL",
+      "rule": "Body60 + liquidity sweep",
+      "train": {
+        "n": 68,
+        "tp": 34,
+        "sl": 34,
+        "win": 50.0,
+        "R": 0,
+        "wilsonLower95": 38.44
+      }
+    },
+    {
+      "base": "H4 bias",
+      "rule": "Close80 + near20 extreme25",
+      "train": {
+        "n": 64,
+        "tp": 32,
+        "sl": 32,
+        "win": 50.0,
+        "R": 0,
+        "wilsonLower95": 38.1
+      }
+    },
+    {
+      "base": "No bias",
+      "rule": "Close in directional top 10%",
+      "train": {
+        "n": 135,
+        "tp": 61,
+        "sl": 74,
+        "win": 45.19,
+        "R": -13,
+        "wilsonLower95": 37.04
+      }
+    },
+    {
+      "base": "H4 bias SELL",
+      "rule": "Close in directional top 10%",
+      "train": {
+        "n": 57,
+        "tp": 28,
+        "sl": 29,
+        "win": 49.12,
+        "R": -1,
+        "wilsonLower95": 36.62
+      }
+    },
+    {
+      "base": "H4 bias",
+      "rule": "Body60 + liquidity sweep",
+      "train": {
+        "n": 72,
+        "tp": 34,
+        "sl": 38,
+        "win": 47.22,
+        "R": -4,
+        "wilsonLower95": 36.13
+      }
+    },
+    {
+      "base": "H4 bias",
+      "rule": "Body >=75% of candle",
+      "train": {
+        "n": 66,
+        "tp": 31,
+        "sl": 35,
+        "win": 46.97,
+        "R": -4,
+        "wilsonLower95": 35.43
+      }
+    },
+    {
+      "base": "H4 bias",
+      "rule": "Volume<=0.8 + body60",
+      "train": {
+        "n": 55,
+        "tp": 26,
+        "sl": 29,
+        "win": 47.27,
+        "R": -3,
+        "wilsonLower95": 34.69
+      }
+    },
+    {
+      "base": "H4 bias SELL",
+      "rule": "Volume ratio <=0.80",
+      "train": {
+        "n": 55,
+        "tp": 26,
+        "sl": 29,
+        "win": 47.27,
+        "R": -3,
+        "wilsonLower95": 34.69
+      }
+    },
+    {
+      "base": "H4 bias SELL",
+      "rule": "Body60 + liquidity sweep",
+      "train": {
+        "n": 60,
+        "tp": 28,
+        "sl": 32,
+        "win": 46.67,
+        "R": -4,
+        "wilsonLower95": 34.63
+      }
+    },
+    {
+      "base": "H4 bias",
+      "rule": "Close in directional top 10%",
+      "train": {
+        "n": 76,
+        "tp": 34,
+        "sl": 42,
+        "win": 44.74,
+        "R": -8,
+        "wilsonLower95": 34.08
+      }
+    },
+    {
+      "base": "H4 bias SELL",
+      "rule": "Body >=75% of candle",
+      "train": {
+        "n": 56,
+        "tp": 26,
+        "sl": 30,
+        "win": 46.43,
+        "R": -4,
+        "wilsonLower95": 34.02
+      }
+    },
+    {
+      "base": "No bias",
+      "rule": "Volume ratio <=0.65",
+      "train": {
+        "n": 48,
+        "tp": 22,
+        "sl": 26,
+        "win": 45.83,
+        "R": -4,
+        "wilsonLower95": 32.58
+      }
+    },
+    {
+      "base": "H4 bias SELL",
+      "rule": "Volume<=0.8 + body60",
+      "train": {
+        "n": 42,
+        "tp": 18,
+        "sl": 24,
+        "win": 42.86,
+        "R": -6,
+        "wilsonLower95": 29.12
+      }
+    }
+  ]
+}

@@ -487,7 +487,8 @@ export function studyEntryLevels(sourceCandles: StructureCandle[], entryCandle: 
     result: undefined, resolvedAt: undefined };
 }
 
-export function evaluateStudyOutcome(levels: TradeLevels, execution: StructureCandle[],
+export function evaluateStudyOutcome(levels: Omit<TradeLevels, 'signal'> & {
+  signal: Pick<EngulfingTradeSignal, 'direction'> }, execution: StructureCandle[],
   mode: 'fixed' | 'half-at-1r' | 'risk-free', tradingTimeEnabled = false,
   pendingZoneValid: (at: number) => boolean = () => true): Pick<TrendlineStudyRecord,
   'outcome' | 'returnR' | 'filledAt' | 'resolvedAt'> {

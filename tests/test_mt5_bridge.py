@@ -52,6 +52,58 @@ class PartialCloseVolumeTests(BridgeTestCase):
                 bridge.calculate_volume(signal, {"riskPercent": 0.25}, symbol)
 
 
+class ScalpOneToOneTests(BridgeTestCase):
+    def test_risk_is_independent_and_invalid_selection_is_rejected(self):
+        config = {"riskPercent": 2, "scalpOneToOneRiskPercent": 0.75}
+        self.assertEqual(bridge.signal_risk_percent({"tradeStyle": "SCALP_1_1"}, config), 0.75)
+        self.assertEqual(bridge.signal_risk_percent({"tradeStyle": "INTRADAY"}, config), 2)
+        self.assertEqual(bridge.signal_risk_percent({"tradeStyle": "SCALP_1_1"}, {"riskPercent": 2}), 0.25)
+        with self.assertRaisesRegex(RuntimeError, "Invalid Scalp"):
+            bridge.signal_risk_percent({"tradeStyle": "SCALP_1_1"}, {**config, "scalpOneToOneRiskPercent": 5})
+
+    def test_volume_and_live_risk_guard_both_use_selected_scalp_risk(self):
+        symbol = SimpleNamespace(name="XAUUSD", volume_step=0.01, volume_min=0.01, volume_max=100)
+        signal = {"direction": "BUY", "entry": 100, "stopLoss": 90, "orderType": "MARKET",
+                  "riskPips": 100, "tradeStyle": "SCALP_1_1"}
+        config = {"riskPercent": 2, "scalpOneToOneRiskPercent": 0.5}
+        def profit(_side, _symbol, volume, opened, closed):
+            return (closed - opened) * volume * 100
+        with patch.object(bridge.mt5, "account_info", return_value=SimpleNamespace(equity=10_000)), \
+             patch.object(bridge.mt5, "order_calc_profit", side_effect=profit):
+            self.assertEqual(bridge.calculate_volume(signal, config, symbol), 0.05)
+            self.assertEqual(bridge.checked_live_entry_price(signal, config, symbol,
+                SimpleNamespace(ask=100, bid=99.9), 0.05), 100)
+            with self.assertRaisesRegex(RuntimeError, "per-trade risk"):
+                bridge.checked_live_entry_price(signal, config, symbol,
+                    SimpleNamespace(ask=101, bid=100.9), 0.05)
+
+    def test_unfilled_scalp_order_is_missed_at_its_one_r_target(self):
+        buy = {"direction": "BUY", "entry": 100, "stopLoss": 90, "tradeStyle": "SCALP_1_1"}
+        sell = {**buy, "direction": "SELL", "stopLoss": 110}
+        self.assertFalse(bridge.pending_order_passed_one_and_half_r(buy, SimpleNamespace(bid=109.9, ask=110)))
+        self.assertTrue(bridge.pending_order_passed_one_and_half_r(buy, SimpleNamespace(bid=110, ask=110.1)))
+        self.assertTrue(bridge.pending_order_passed_one_and_half_r(sell, SimpleNamespace(bid=89.9, ask=90)))
+
+    def test_disabling_scalp_cancels_only_unfilled_orders(self):
+        record = {"status": "PLACED", "direction": "BUY", "symbol": "XAUUSD",
+                  "entry": 100, "stopLoss": 90, "brokerTicket": 123, "tradeStyle": "SCALP_1_1"}
+        state = {"pending": record}
+        with patch.object(bridge.mt5, "orders_get", return_value=[SimpleNamespace(ticket=123)]), \
+             patch.object(bridge.mt5, "order_send", return_value=SimpleNamespace(retcode=bridge.mt5.TRADE_RETCODE_DONE)) as send, \
+             patch.object(bridge, "update_status") as update:
+            bridge.manage_open_signals(state, [], {"scalpOneToOneEnabled": False})
+            self.assertEqual(send.call_args.args[0]["action"], bridge.mt5.TRADE_ACTION_REMOVE)
+            self.assertEqual(update.call_args.args[:2], ("pending", "CANCELLED"))
+            self.assertEqual(state, {})
+
+    def test_fixed_target_positions_are_excluded_from_opposing_fib_exits(self):
+        position = SimpleNamespace(ticket=77, identifier=77, magic=123, symbol="XAUUSD")
+        record = {"brokerTicket": 77, "account": "test-account", "server": "test-server",
+                  "brokerSymbol": "XAUUSD", "zoneTimeframe": "M15", "tradeStyle": "SCALP_1_1"}
+        self.assertIsNone(bridge.position_fib_exit_timeframe(position, {"recentSignals": [record]}, {}))
+        self.assertIsNone(bridge.position_fib_exit_timeframe(position, {}, {"trade": record}))
+
+
 class LiveEntryGuardTests(BridgeTestCase):
     def test_rejects_wide_spread_and_adverse_price_that_exceeds_cash_risk(self) -> None:
         signal = {"direction": "BUY", "orderType": "MARKET",

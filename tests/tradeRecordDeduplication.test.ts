@@ -73,3 +73,12 @@ test('a broker fill replaces all recalculated chart prices for the same identifi
   assert.equal(deduplicateTradeRecords([chart, broker,
     { ...broker, id: 'MT5:another-ticket', brokerTicket: 59002375236 }]).length, 2);
 });
+
+
+test('Scalp 1:1 stays separate from an older strategy at identical execution prices', () => {
+  const records = deduplicateTradeRecords([
+    { ...base, id: 'old', tradeStyle: 'INTRADAY' },
+    { ...base, id: 'new', tradeStyle: 'SCALP_1_1' },
+  ]);
+  assert.equal(records.length, 2);
+});

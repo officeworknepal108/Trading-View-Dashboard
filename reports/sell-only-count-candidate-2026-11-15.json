@@ -1,0 +1,243 @@
+{
+  "configuration": {
+    "symbol": "XAUUSD",
+    "studyTimeframe": "M15",
+    "types": [
+      "T1",
+      "T2",
+      "T3"
+    ],
+    "direction": "SELL only",
+    "timeframeBias": "none",
+    "entry": "Original next-open/capped policy",
+    "volume": "Original type-specific pass conditions",
+    "stopBufferPips": 20,
+    "TP": "1R",
+    "extraTimeOrLocationFilter": false
+  },
+  "baseline": {
+    "setups": 312,
+    "tp": 161,
+    "sl": 142,
+    "other": 9,
+    "winRate": 53.135313531353134,
+    "netR": 19,
+    "profitFactor": 1.1338028169014085,
+    "outcomes": {
+      "tp": 161,
+      "sl": 142,
+      "cancelled": 7,
+      "ambiguous": 1,
+      "active": 1
+    }
+  },
+  "candidate": {
+    "setups": 303,
+    "tp": 173,
+    "sl": 124,
+    "other": 6,
+    "winRate": 58.24915824915825,
+    "netR": 49,
+    "profitFactor": 1.3951612903225807,
+    "outcomes": {
+      "tp": 173,
+      "sl": 124,
+      "cancelled": 4,
+      "ambiguous": 1,
+      "active": 1
+    }
+  },
+  "monthly": {
+    "2026-08": {
+      "setups": 88,
+      "tp": 44,
+      "sl": 42,
+      "other": 2,
+      "winRate": 51.16279069767442,
+      "netR": 2,
+      "profitFactor": 1.0476190476190477,
+      "outcomes": {
+        "tp": 44,
+        "sl": 42,
+        "cancelled": 1,
+        "ambiguous": 1
+      }
+    },
+    "2026-09": {
+      "setups": 96,
+      "tp": 59,
+      "sl": 36,
+      "other": 1,
+      "winRate": 62.10526315789474,
+      "netR": 23,
+      "profitFactor": 1.6388888888888888,
+      "outcomes": {
+        "tp": 59,
+        "sl": 36,
+        "cancelled": 1
+      }
+    },
+    "2026-10": {
+      "setups": 92,
+      "tp": 58,
+      "sl": 34,
+      "other": 0,
+      "winRate": 63.04347826086956,
+      "netR": 24,
+      "profitFactor": 1.7058823529411764,
+      "outcomes": {
+        "sl": 34,
+        "tp": 58
+      }
+    },
+    "2026-11": {
+      "setups": 27,
+      "tp": 12,
+      "sl": 12,
+      "other": 3,
+      "winRate": 50.0,
+      "netR": 0,
+      "profitFactor": 1.0,
+      "outcomes": {
+        "sl": 12,
+        "tp": 12,
+        "cancelled": 2,
+        "active": 1
+      }
+    }
+  },
+  "earlier": {
+    "setups": 184,
+    "tp": 103,
+    "sl": 78,
+    "other": 3,
+    "winRate": 56.9060773480663,
+    "netR": 25,
+    "profitFactor": 1.3205128205128205,
+    "outcomes": {
+      "tp": 103,
+      "sl": 78,
+      "cancelled": 2,
+      "ambiguous": 1
+    }
+  },
+  "later": {
+    "setups": 119,
+    "tp": 70,
+    "sl": 46,
+    "other": 3,
+    "winRate": 60.3448275862069,
+    "netR": 24,
+    "profitFactor": 1.5217391304347827,
+    "outcomes": {
+      "sl": 46,
+      "tp": 70,
+      "cancelled": 2,
+      "active": 1
+    }
+  },
+  "types": {
+    "T1": {
+      "setups": 170,
+      "tp": 97,
+      "sl": 70,
+      "other": 3,
+      "winRate": 58.08383233532934,
+      "netR": 27,
+      "profitFactor": 1.3857142857142857,
+      "outcomes": {
+        "tp": 97,
+        "sl": 70,
+        "cancelled": 2,
+        "active": 1
+      }
+    },
+    "T2": {
+      "setups": 85,
+      "tp": 48,
+      "sl": 34,
+      "other": 3,
+      "winRate": 58.53658536585366,
+      "netR": 14,
+      "profitFactor": 1.411764705882353,
+      "outcomes": {
+        "tp": 48,
+        "sl": 34,
+        "ambiguous": 1,
+        "cancelled": 2
+      }
+    },
+    "T3": {
+      "setups": 48,
+      "tp": 28,
+      "sl": 20,
+      "other": 0,
+      "winRate": 58.333333333333336,
+      "netR": 8,
+      "profitFactor": 1.4,
+      "outcomes": {
+        "sl": 20,
+        "tp": 28
+      }
+    }
+  },
+  "selectionChange": {
+    "removedFromH4": {
+      "setups": 67,
+      "tp": 23,
+      "sl": 39,
+      "other": 5,
+      "winRate": 37.096774193548384,
+      "netR": -16,
+      "profitFactor": 0.5897435897435898,
+      "outcomes": {
+        "cancelled": 4,
+        "sl": 39,
+        "tp": 23,
+        "active": 1
+      }
+    },
+    "addedToH4": {
+      "setups": 58,
+      "tp": 35,
+      "sl": 21,
+      "other": 2,
+      "winRate": 62.5,
+      "netR": 14,
+      "profitFactor": 1.6666666666666667,
+      "outcomes": {
+        "sl": 21,
+        "tp": 35,
+        "cancelled": 1,
+        "active": 1
+      }
+    },
+    "H4SellOnly": {
+      "setups": 245,
+      "tp": 138,
+      "sl": 103,
+      "other": 4,
+      "winRate": 57.261410788381745,
+      "netR": 35,
+      "profitFactor": 1.3398058252427185,
+      "outcomes": {
+        "tp": 138,
+        "sl": 103,
+        "cancelled": 3,
+        "ambiguous": 1
+      }
+    }
+  },
+  "source": "C:\\Users\\ABHI\\Downloads\\Volume-Engulfing-Study-XAUUSD-M15 (5).csv",
+  "sha256": "adfc870997a49aa796a0d553e6068206801d1f73f0de1b85ae772a6897e2cf89",
+  "originalSource": "C:\\Users\\ABHI\\Downloads\\Volume-Engulfing-Study-XAUUSD-M15 (4).csv",
+  "sha256Original": "462b0a9a94bb4fdcd8ba22424b25c8baca30bd3719596998009c078eb5c88552",
+  "notes": [
+    "Same previously analysed early-August to mid-November period; not fresh independent or live validation.",
+    "Direction-only candidate was already included among training-selected candidates in the earlier feature review. This is a review of a stronger observed configuration, not a newly proven edge.",
+    "The 303 setups are not a simple subset of the 312 H4 setups: H4 BUY entries are excluded and additional SELL entries with no H4 requirement are included.",
+    "SELL advantage may be specific to the market period; a rising market or different regime is needed for separate validation.",
+    "Gross normalized R excludes costs, overlapping-position constraints and position sizing. Cancelled/ambiguous/active outcomes are excluded from win rate and net R.",
+    "No source code, live rule, dashboard filter, entry, buffer or target was changed."
+  ]
+}

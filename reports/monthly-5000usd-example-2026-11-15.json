@@ -1,0 +1,72 @@
+{
+  "assumptions": {
+    "startingUSD": 5000,
+    "fixedRiskUSDPerTrade": 50,
+    "compounding": false,
+    "grouping": "UTC resolved/exit month",
+    "costsIncluded": false,
+    "allowOverlappingStudyTrades": true
+  },
+  "results": {
+    "Current EMA": {
+      "2026-08": {
+        "tp": 16,
+        "sl": 29,
+        "netR": -13,
+        "pnlUSD": -650,
+        "balanceUSD": 4350
+      },
+      "2026-09": {
+        "tp": 59,
+        "sl": 37,
+        "netR": 22,
+        "pnlUSD": 1100,
+        "balanceUSD": 5450
+      },
+      "2026-10": {
+        "tp": 56,
+        "sl": 34,
+        "netR": 22,
+        "pnlUSD": 1100,
+        "balanceUSD": 6550
+      },
+      "2026-11": {
+        "tp": 12,
+        "sl": 15,
+        "netR": -3,
+        "pnlUSD": -150,
+        "balanceUSD": 6400
+      }
+    },
+    "EMA + H1 continuation/Far": {
+      "2026-08": {
+        "tp": 16,
+        "sl": 26,
+        "netR": -10,
+        "pnlUSD": -500,
+        "balanceUSD": 4500
+      },
+      "2026-09": {
+        "tp": 58,
+        "sl": 36,
+        "netR": 22,
+        "pnlUSD": 1100,
+        "balanceUSD": 5600
+      },
+      "2026-10": {
+        "tp": 55,
+        "sl": 34,
+        "netR": 21,
+        "pnlUSD": 1050,
+        "balanceUSD": 6650
+      },
+      "2026-11": {
+        "tp": 10,
+        "sl": 12,
+        "netR": -2,
+        "pnlUSD": -100,
+        "balanceUSD": 6550
+      }
+    }
+  }
+}

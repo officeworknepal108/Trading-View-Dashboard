@@ -122,7 +122,7 @@ function validVolume(candle: StructureCandle | undefined): number | undefined {
  */
 export function assessEngulfingVolumeLogic(
   candles: StructureCandle[],
-  signal: EngulfingTradeSignal,
+  signal: Pick<EngulfingTradeSignal, 'type' | 'time'>,
 ): EngulfingVolumeAssessment {
   if (!['T1', 'T2', 'T3'].includes(signal.type)) {
     return { applicable: false, passes: false, bestQuality: false };

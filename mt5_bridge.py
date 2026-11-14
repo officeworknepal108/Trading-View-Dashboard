@@ -390,6 +390,18 @@ def calculate_partial_close_volume(initial_volume: float, current_volume: float,
     return close_volume
 
 
+def signal_risk_percent(signal: dict[str, Any], config: dict[str, Any]) -> float:
+    if signal.get("tradeStyle") == "SCALP_1_1":
+        value = float(config.get("scalpOneToOneRiskPercent", 0.25))
+        if value not in (0.25, 0.5, 0.75, 1.0, 1.5, 2.0):
+            raise RuntimeError("Invalid Scalp 1:1 risk selection.")
+    else:
+        value = float(config["riskPercent"])
+    if not math.isfinite(value) or value <= 0:
+        raise RuntimeError("Invalid per-trade risk selection.")
+    return value
+
+
 def calculate_volume(signal: dict[str, Any], config: dict[str, Any], symbol_info: Any) -> float:
     account = mt5.account_info()
     if not account:
@@ -397,7 +409,7 @@ def calculate_volume(signal: dict[str, Any], config: dict[str, Any], symbol_info
     sl_pips = float(signal.get("riskPips", 0))
     if not math.isfinite(sl_pips) or sl_pips <= 0:
         raise RuntimeError("SL pip distance must be a positive number.")
-    risk_money = float(account.equity) * float(config["riskPercent"]) / 100.0
+    risk_money = float(account.equity) * signal_risk_percent(signal, config) / 100.0
     formula_one_lot_loss = sl_pips * 10.0
     raw_volume = risk_money / formula_one_lot_loss
 
@@ -448,7 +460,7 @@ def checked_live_entry_price(signal: dict[str, Any], config: dict[str, Any],
     account = mt5.account_info()
     if not account or not math.isfinite(float(account.equity)) or float(account.equity) <= 0:
         raise RuntimeError("Unable to verify live MT5 account risk.")
-    risk_budget = float(account.equity) * float(config["riskPercent"]) / 100.0
+    risk_budget = float(account.equity) * signal_risk_percent(signal, config) / 100.0
     loss_at_stop = mt5.order_calc_profit(
         mt5.ORDER_TYPE_BUY if buy else mt5.ORDER_TYPE_SELL,
         symbol_info.name, volume, price, stop,
@@ -681,6 +693,13 @@ def opposite_position_alert(signal: dict[str, Any], symbol: str) -> str | None:
 
 
 def check_safety(signal: dict[str, Any], config: dict[str, Any]) -> tuple[Any, Any]:
+    if signal.get("tradeStyle") == "SCALP_1_1" and not config.get("scalpOneToOneEnabled", False):
+        raise RuntimeError("Scalp 1:1 automatic trading is disabled.")
+    if signal.get("tradeStyle") == "SCALP_1_1":
+        risk = abs(float(signal["entry"]) - float(signal["stopLoss"]))
+        reward = abs(float(signal["takeProfit"]) - float(signal["entry"]))
+        if signal.get("signalTimeframe") != "M15" or risk <= 0 or abs(reward - risk) > 0.00001:
+            raise RuntimeError("Scalp 1:1 requires M15 confirmation and a fixed 1:1 target.")
     enabled_timeframes = config.get("enabledTimeframes", ["M1", "M5", "M15", "M30", "H1"])
     signal_timeframe = str(signal.get("signalTimeframe", ""))
     zone_timeframe = str(signal.get("zoneTimeframe", ""))
@@ -996,6 +1015,8 @@ def position_fib_exit_timeframe(position: Any, status_payload: dict[str, Any],
                if (record.get('account'), record.get('server')) == ACTIVE_ACCOUNT
                and record.get('brokerSymbol') == position.symbol
                and any(int(record.get(field) or 0) in identifiers for field in ('brokerPosition', 'brokerTicket'))]
+    if any(record.get('tradeStyle') == 'SCALP_1_1' for record in matches):
+        return None  # Fixed SL/TP only; no opposing-Fib partial or full exit.
     timeframes = {record.get('zoneTimeframe') for record in matches}
     value = next(iter(timeframes)) if len(timeframes) == 1 else None
     return value if isinstance(value, str) and value in FIB_EXIT_TIMEFRAME_SECONDS else None
@@ -1244,9 +1265,13 @@ def pending_order_passed_one_and_half_r(record: dict[str, Any], tick: Any) -> bo
     risk = abs(entry - stop_loss)
     if risk <= 0 or tick is None:
         return False
+    multiple = 1.0 if record.get("tradeStyle") == "SCALP_1_1" else 1.5
+    if record.get("tradeStyle") == "SCALP_1_1":
+        return (float(tick.bid) >= entry + risk if record["direction"] == "BUY"
+                else float(tick.ask) <= entry - risk)
     if record["direction"] == "BUY":
-        return float(tick.bid) > entry + 1.5 * risk
-    return float(tick.ask) < entry - 1.5 * risk
+        return float(tick.bid) > entry + multiple * risk
+    return float(tick.ask) < entry - multiple * risk
 
 
 def manage_open_signals(
@@ -1259,6 +1284,11 @@ def manage_open_signals(
         assert_execution_account()
         server_signal = server_by_id.get(signal_id, {})
         status = server_signal.get("status", record.get("status"))
+        disabled_scalp_order = (status == "PLACED" and record.get("tradeStyle") == "SCALP_1_1"
+                               and not config.get("scalpOneToOneEnabled", False)
+                               and bool(mt5.orders_get(ticket=int(record.get("brokerTicket") or 0)) or []))
+        if disabled_scalp_order:
+            status = "CANCELLED"  # Stop unfilled orders; an open position keeps its SL/TP.
         if status == "PLACED" and config.get("tradingTimeEnabled", False) and not is_nepal_trading_time():
             ticket = int(record.get("brokerTicket") or 0)
             if ticket and (mt5.orders_get(ticket=ticket) or []):
@@ -1288,6 +1318,8 @@ def manage_open_signals(
                 if not removal or removal.retcode != mt5.TRADE_RETCODE_DONE:
                     print(f"Could not remove expired pending order {ticket}: {mt5.last_error()}", file=sys.stderr)
                     continue
+            if disabled_scalp_order:
+                update_status(signal_id, "CANCELLED", message="Scalp 1:1 disabled; unfilled order cancelled.")
         if status in {"TP", "SL", "RF", "CANCELLED", "REJECTED", "EXPIRED", "SIMULATED"}:
             state.pop(signal_id, None)
             continue
@@ -1301,14 +1333,16 @@ def manage_open_signals(
                         "action": mt5.TRADE_ACTION_REMOVE,
                         "order": ticket,
                         "magic": MAGIC_NUMBER,
-                        "comment": "Pending passed 1.5R",
+                        "comment": "Pending passed 1R" if record.get("tradeStyle") == "SCALP_1_1" else "Pending passed 1.5R",
                     })
                     if not removal or removal.retcode != mt5.TRADE_RETCODE_DONE:
                         print(f"Could not remove 1.5R-expired pending order {ticket}: {mt5.last_error()}", file=sys.stderr)
                         continue
                     update_status(
                         signal_id, "CANCELLED",
-                        message="Pending order cancelled after price moved beyond 1.5R before entry.",
+                        message=("Pending order cancelled at the original 1R target before entry."
+                                 if record.get("tradeStyle") == "SCALP_1_1"
+                                 else "Pending order cancelled after price moved beyond 1.5R before entry."),
                     )
                     state.pop(signal_id, None)
                     print(f"CANCELLED: pending order {ticket} moved beyond 1.5R before entry")
@@ -1357,7 +1391,7 @@ def manage_open_signals(
             )
             state.pop(signal_id, None)
             continue
-        if record.get('opposingFibProfitTaken'):
+        if record.get('tradeStyle') == 'SCALP_1_1' or record.get('opposingFibProfitTaken'):
             continue  # Its remaining position must reach the original TP/SL, without another 1R partial close.
         is_buy = position.type == mt5.POSITION_TYPE_BUY
         tick = mt5.symbol_info_tick(position.symbol)

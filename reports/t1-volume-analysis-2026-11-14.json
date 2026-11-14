@@ -1,0 +1,294 @@
+{
+  "source": "C:\\Users\\ABHI\\Downloads\\Volume-Engulfing-Study-XAUUSD-M15.csv",
+  "sha256": "dee218baab48347040fa6d8d2a36c6909761757aa4d13f6aa11fd50505123ccb",
+  "study": "XAUUSD M15 / H4 bias / fixed 1:1",
+  "baselineT1": {
+    "entries": 53,
+    "tp": 27,
+    "sl": 26,
+    "other": 0,
+    "winRate": 50.94,
+    "netR": 1,
+    "maxConsecutiveSL": 5
+  },
+  "filteredT1": {
+    "entries": 18,
+    "tp": 12,
+    "sl": 6,
+    "other": 0,
+    "winRate": 66.67,
+    "netR": 6,
+    "maxConsecutiveSL": 2
+  },
+  "baselineAll": {
+    "entries": 91,
+    "tp": 49,
+    "sl": 40,
+    "other": 2,
+    "winRate": 55.06,
+    "netR": 9,
+    "maxConsecutiveSL": 5
+  },
+  "onlyT1TimeFilteredAll": {
+    "entries": 56,
+    "tp": 34,
+    "sl": 20,
+    "other": 2,
+    "winRate": 62.96,
+    "netR": 14,
+    "maxConsecutiveSL": 4
+  },
+  "timeRule": "Keep T1 confirmations at 00:00 inclusive through 06:00 exclusive UTC (05:45 to before 11:45 Nepal). Leave T2/T3 unchanged.",
+  "early": {
+    "baseline": {
+      "entries": 35,
+      "tp": 20,
+      "sl": 15,
+      "other": 0,
+      "winRate": 57.14,
+      "netR": 5,
+      "maxConsecutiveSL": 4
+    },
+    "filtered": {
+      "entries": 11,
+      "tp": 7,
+      "sl": 4,
+      "other": 0,
+      "winRate": 63.64,
+      "netR": 3,
+      "maxConsecutiveSL": 2
+    }
+  },
+  "later": {
+    "fromSignalUTC": "2026-11-02T10:15:00.000Z",
+    "baseline": {
+      "entries": 18,
+      "tp": 7,
+      "sl": 11,
+      "other": 0,
+      "winRate": 38.89,
+      "netR": -4,
+      "maxConsecutiveSL": 5
+    },
+    "filtered": {
+      "entries": 7,
+      "tp": 5,
+      "sl": 2,
+      "other": 0,
+      "winRate": 71.43,
+      "netR": 3,
+      "maxConsecutiveSL": 2
+    }
+  },
+  "directions": {
+    "bullish": {
+      "entries": 9,
+      "tp": 2,
+      "sl": 7,
+      "other": 0,
+      "winRate": 22.22,
+      "netR": -5,
+      "maxConsecutiveSL": 3
+    },
+    "bearish": {
+      "entries": 44,
+      "tp": 25,
+      "sl": 19,
+      "other": 0,
+      "winRate": 56.82,
+      "netR": 6,
+      "maxConsecutiveSL": 4
+    }
+  },
+  "volumeChecks": [
+    {
+      "filter": "V2/V1 <= 0.5",
+      "all": {
+        "entries": 3,
+        "tp": 2,
+        "sl": 1,
+        "other": 0,
+        "winRate": 66.67,
+        "netR": 1,
+        "maxConsecutiveSL": 1
+      },
+      "early": {
+        "entries": 2,
+        "tp": 1,
+        "sl": 1,
+        "other": 0,
+        "winRate": 50.0,
+        "netR": 0,
+        "maxConsecutiveSL": 1
+      },
+      "later": {
+        "entries": 1,
+        "tp": 1,
+        "sl": 0,
+        "other": 0,
+        "winRate": 100.0,
+        "netR": 1,
+        "maxConsecutiveSL": 0
+      }
+    },
+    {
+      "filter": "V2/V1 >= 0.5",
+      "all": {
+        "entries": 50,
+        "tp": 25,
+        "sl": 25,
+        "other": 0,
+        "winRate": 50.0,
+        "netR": 0,
+        "maxConsecutiveSL": 5
+      },
+      "early": {
+        "entries": 33,
+        "tp": 19,
+        "sl": 14,
+        "other": 0,
+        "winRate": 57.58,
+        "netR": 5,
+        "maxConsecutiveSL": 4
+      },
+      "later": {
+        "entries": 17,
+        "tp": 6,
+        "sl": 11,
+        "other": 0,
+        "winRate": 35.29,
+        "netR": -5,
+        "maxConsecutiveSL": 5
+      }
+    },
+    {
+      "filter": "V2/V1 <= 0.65",
+      "all": {
+        "entries": 9,
+        "tp": 4,
+        "sl": 5,
+        "other": 0,
+        "winRate": 44.44,
+        "netR": -1,
+        "maxConsecutiveSL": 3
+      },
+      "early": {
+        "entries": 5,
+        "tp": 2,
+        "sl": 3,
+        "other": 0,
+        "winRate": 40.0,
+        "netR": -1,
+        "maxConsecutiveSL": 3
+      },
+      "later": {
+        "entries": 4,
+        "tp": 2,
+        "sl": 2,
+        "other": 0,
+        "winRate": 50.0,
+        "netR": 0,
+        "maxConsecutiveSL": 2
+      }
+    },
+    {
+      "filter": "V2/V1 >= 0.65",
+      "all": {
+        "entries": 44,
+        "tp": 23,
+        "sl": 21,
+        "other": 0,
+        "winRate": 52.27,
+        "netR": 2,
+        "maxConsecutiveSL": 4
+      },
+      "early": {
+        "entries": 30,
+        "tp": 18,
+        "sl": 12,
+        "other": 0,
+        "winRate": 60.0,
+        "netR": 6,
+        "maxConsecutiveSL": 4
+      },
+      "later": {
+        "entries": 14,
+        "tp": 5,
+        "sl": 9,
+        "other": 0,
+        "winRate": 35.71,
+        "netR": -4,
+        "maxConsecutiveSL": 4
+      }
+    },
+    {
+      "filter": "V2/V1 <= 0.8",
+      "all": {
+        "entries": 24,
+        "tp": 13,
+        "sl": 11,
+        "other": 0,
+        "winRate": 54.17,
+        "netR": 2,
+        "maxConsecutiveSL": 4
+      },
+      "early": {
+        "entries": 16,
+        "tp": 9,
+        "sl": 7,
+        "other": 0,
+        "winRate": 56.25,
+        "netR": 2,
+        "maxConsecutiveSL": 4
+      },
+      "later": {
+        "entries": 8,
+        "tp": 4,
+        "sl": 4,
+        "other": 0,
+        "winRate": 50.0,
+        "netR": 0,
+        "maxConsecutiveSL": 3
+      }
+    },
+    {
+      "filter": "V2/V1 >= 0.8",
+      "all": {
+        "entries": 29,
+        "tp": 14,
+        "sl": 15,
+        "other": 0,
+        "winRate": 48.28,
+        "netR": -1,
+        "maxConsecutiveSL": 3
+      },
+      "early": {
+        "entries": 19,
+        "tp": 11,
+        "sl": 8,
+        "other": 0,
+        "winRate": 57.89,
+        "netR": 3,
+        "maxConsecutiveSL": 3
+      },
+      "later": {
+        "entries": 10,
+        "tp": 3,
+        "sl": 7,
+        "other": 0,
+        "winRate": 30.0,
+        "netR": -4,
+        "maxConsecutiveSL": 3
+      }
+    }
+  ],
+  "notes": [
+    "Exploratory analysis of one exported snapshot; chronological checks are not a new independent sample.",
+    "Only recorded outcomes were filtered. No changes to buffer, entry, SL, TP, H4 bias, or T2/T3.",
+    "Confirmation is signal UTC plus 15 minutes, available before entry; no outcome is used to select trades.",
+    "The CSV does not identify buffer version or include candle prices; this analysis cannot verify the buffer or resimulate outcomes.",
+    "Gross R ignores spread, commission, slippage and execution constraints. Trades may overlap.",
+    "SELL-only observations are confounded with time: all 35 early T1 trades were SELL.",
+    "The retained later sample has only 7 trades; verify on another date range before treating this as an improvement."
+  ]
+}

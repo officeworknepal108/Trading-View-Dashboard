@@ -1,0 +1,140 @@
+{
+  "objective": "Increase TP count and reduce SL count compared with training baseline; then higher TP count, then fewer SL",
+  "trainPeriod": "August-September; outcomes closed before October 1",
+  "baseline": {
+    "setups": 183,
+    "tp": 89,
+    "sl": 87,
+    "other": 7,
+    "winRate": 50.56818181818182,
+    "netR": 2,
+    "counts": {
+      "tp": 89,
+      "sl": 87,
+      "cancelled": 6,
+      "ambiguous": 1
+    }
+  },
+  "trainingResults": [
+    {
+      "variant": {
+        "name": "Original 20 pips",
+        "fixed": 20
+      },
+      "train": {
+        "setups": 183,
+        "tp": 89,
+        "sl": 87,
+        "other": 7,
+        "winRate": 50.56818181818182,
+        "netR": 2,
+        "counts": {
+          "tp": 89,
+          "sl": 87,
+          "cancelled": 6,
+          "ambiguous": 1
+        }
+      }
+    },
+    {
+      "variant": {
+        "name": "30-pip buffer",
+        "fixed": 30
+      },
+      "train": {
+        "setups": 183,
+        "tp": 92,
+        "sl": 82,
+        "other": 9,
+        "winRate": 52.87356321839081,
+        "netR": 10,
+        "counts": {
+          "tp": 92,
+          "sl": 82,
+          "cancelled": 8,
+          "ambiguous": 1
+        }
+      }
+    },
+    {
+      "variant": {
+        "name": "40-pip buffer",
+        "fixed": 40
+      },
+      "train": {
+        "setups": 183,
+        "tp": 91,
+        "sl": 81,
+        "other": 11,
+        "winRate": 52.906976744186046,
+        "netR": 10,
+        "counts": {
+          "tp": 91,
+          "sl": 81,
+          "cancelled": 11
+        }
+      }
+    },
+    {
+      "variant": {
+        "name": "60-pip buffer",
+        "fixed": 60
+      },
+      "train": {
+        "setups": 183,
+        "tp": 87,
+        "sl": 81,
+        "other": 15,
+        "winRate": 51.785714285714285,
+        "netR": 6,
+        "counts": {
+          "tp": 87,
+          "sl": 81,
+          "cancelled": 15
+        }
+      }
+    },
+    {
+      "variant": {
+        "name": "25% of previous ATR buffer",
+        "atr": 0.25
+      },
+      "train": {
+        "setups": 183,
+        "tp": 91,
+        "sl": 83,
+        "other": 9,
+        "winRate": 52.298850574712645,
+        "netR": 8,
+        "counts": {
+          "tp": 91,
+          "sl": 83,
+          "cancelled": 8,
+          "ambiguous": 1
+        }
+      }
+    },
+    {
+      "variant": {
+        "name": "50% of previous ATR buffer",
+        "atr": 0.5
+      },
+      "train": {
+        "setups": 183,
+        "tp": 90,
+        "sl": 81,
+        "other": 12,
+        "winRate": 52.63157894736842,
+        "netR": 9,
+        "counts": {
+          "tp": 90,
+          "sl": 81,
+          "cancelled": 10,
+          "ambiguous": 1,
+          "missed": 1
+        }
+      }
+    }
+  ],
+  "selected": "30-pip buffer"
+}

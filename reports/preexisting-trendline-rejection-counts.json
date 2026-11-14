@@ -1,0 +1,80 @@
+{
+  "Any H1/H4 line rejection": {
+    "earlier": {
+      "setups": 35,
+      "tp": 15,
+      "sl": 18,
+      "other": 2,
+      "winRate": 45.45454545454545,
+      "netR": -3
+    },
+    "later": {
+      "setups": 33,
+      "tp": 19,
+      "sl": 14,
+      "other": 0,
+      "winRate": 57.57575757575758,
+      "netR": 5
+    },
+    "all": {
+      "setups": 68,
+      "tp": 34,
+      "sl": 32,
+      "other": 2,
+      "winRate": 51.515151515151516,
+      "netR": 2
+    }
+  },
+  "H1 continuation rejection": {
+    "earlier": {
+      "setups": 28,
+      "tp": 9,
+      "sl": 17,
+      "other": 2,
+      "winRate": 34.61538461538461,
+      "netR": -8
+    },
+    "later": {
+      "setups": 23,
+      "tp": 13,
+      "sl": 10,
+      "other": 0,
+      "winRate": 56.52173913043478,
+      "netR": 3
+    },
+    "all": {
+      "setups": 51,
+      "tp": 22,
+      "sl": 27,
+      "other": 2,
+      "winRate": 44.89795918367347,
+      "netR": -5
+    }
+  },
+  "H4 continuation rejection": {
+    "earlier": {
+      "setups": 8,
+      "tp": 3,
+      "sl": 4,
+      "other": 1,
+      "winRate": 42.857142857142854,
+      "netR": -1
+    },
+    "later": {
+      "setups": 13,
+      "tp": 9,
+      "sl": 4,
+      "other": 0,
+      "winRate": 69.23076923076923,
+      "netR": 5
+    },
+    "all": {
+      "setups": 21,
+      "tp": 12,
+      "sl": 8,
+      "other": 1,
+      "winRate": 60.0,
+      "netR": 4
+    }
+  }
+}

@@ -1,0 +1,1305 @@
+{
+  "No bias": {
+    "source": "C:\\Users\\ABHI\\Downloads\\Volume-Engulfing-Study-XAUUSD-M15 (2).csv",
+    "sha256": "ed1c01bfc959be4b79abe8fe5efc7a346baba0c0efd3ab6fa0e4450f8ea9bf00",
+    "first": "2026-08-31T11:15:00.000Z",
+    "last": "2026-11-13T21:00:00.000Z",
+    "baseline": {
+      "entries": 431,
+      "tp": 216,
+      "sl": 208,
+      "other": 7,
+      "winRate": 50.94,
+      "closedNetR": 8,
+      "outcomes": {
+        "sl": 208,
+        "tp": 216,
+        "cancelled": 5,
+        "active": 2
+      }
+    },
+    "types": {
+      "T1": {
+        "all": {
+          "entries": 242,
+          "tp": 121,
+          "sl": 118,
+          "other": 3,
+          "winRate": 50.63,
+          "closedNetR": 3,
+          "outcomes": {
+            "sl": 118,
+            "tp": 121,
+            "cancelled": 2,
+            "active": 1
+          }
+        },
+        "directions": {
+          "bullish": {
+            "entries": 115,
+            "tp": 48,
+            "sl": 66,
+            "other": 1,
+            "winRate": 42.11,
+            "closedNetR": -18,
+            "outcomes": {
+              "sl": 66,
+              "tp": 48,
+              "cancelled": 1
+            }
+          },
+          "bearish": {
+            "entries": 127,
+            "tp": 73,
+            "sl": 52,
+            "other": 2,
+            "winRate": 58.4,
+            "closedNetR": 21,
+            "outcomes": {
+              "tp": 73,
+              "sl": 52,
+              "cancelled": 1,
+              "active": 1
+            }
+          }
+        },
+        "volumeGroups": {
+          "V2 < V1": {
+            "entries": 242,
+            "tp": 121,
+            "sl": 118,
+            "other": 3,
+            "winRate": 50.63,
+            "closedNetR": 3,
+            "outcomes": {
+              "sl": 118,
+              "tp": 121,
+              "cancelled": 2,
+              "active": 1
+            }
+          }
+        }
+      },
+      "T2": {
+        "all": {
+          "entries": 121,
+          "tp": 58,
+          "sl": 60,
+          "other": 3,
+          "winRate": 49.15,
+          "closedNetR": -2,
+          "outcomes": {
+            "tp": 58,
+            "sl": 60,
+            "cancelled": 2,
+            "active": 1
+          }
+        },
+        "directions": {
+          "bullish": {
+            "entries": 65,
+            "tp": 24,
+            "sl": 39,
+            "other": 2,
+            "winRate": 38.1,
+            "closedNetR": -15,
+            "outcomes": {
+              "tp": 24,
+              "sl": 39,
+              "cancelled": 1,
+              "active": 1
+            }
+          },
+          "bearish": {
+            "entries": 56,
+            "tp": 34,
+            "sl": 21,
+            "other": 1,
+            "winRate": 61.82,
+            "closedNetR": 13,
+            "outcomes": {
+              "sl": 21,
+              "tp": 34,
+              "cancelled": 1
+            }
+          }
+        },
+        "volumeGroups": {
+          "V3 < V2 and V1": {
+            "entries": 83,
+            "tp": 38,
+            "sl": 43,
+            "other": 2,
+            "winRate": 46.91,
+            "closedNetR": -5,
+            "outcomes": {
+              "tp": 38,
+              "sl": 43,
+              "cancelled": 1,
+              "active": 1
+            }
+          },
+          "V3 < V2 only": {
+            "entries": 38,
+            "tp": 20,
+            "sl": 17,
+            "other": 1,
+            "winRate": 54.05,
+            "closedNetR": 3,
+            "outcomes": {
+              "sl": 17,
+              "tp": 20,
+              "cancelled": 1
+            }
+          }
+        }
+      },
+      "T3": {
+        "all": {
+          "entries": 68,
+          "tp": 37,
+          "sl": 30,
+          "other": 1,
+          "winRate": 55.22,
+          "closedNetR": 7,
+          "outcomes": {
+            "sl": 30,
+            "tp": 37,
+            "cancelled": 1
+          }
+        },
+        "directions": {
+          "bullish": {
+            "entries": 34,
+            "tp": 16,
+            "sl": 17,
+            "other": 1,
+            "winRate": 48.48,
+            "closedNetR": -1,
+            "outcomes": {
+              "sl": 17,
+              "tp": 16,
+              "cancelled": 1
+            }
+          },
+          "bearish": {
+            "entries": 34,
+            "tp": 21,
+            "sl": 13,
+            "other": 0,
+            "winRate": 61.76,
+            "closedNetR": 8,
+            "outcomes": {
+              "sl": 13,
+              "tp": 21
+            }
+          }
+        },
+        "volumeGroups": {
+          "V3 < V2 and V1": {
+            "entries": 59,
+            "tp": 31,
+            "sl": 27,
+            "other": 1,
+            "winRate": 53.45,
+            "closedNetR": 4,
+            "outcomes": {
+              "sl": 27,
+              "tp": 31,
+              "cancelled": 1
+            }
+          },
+          "V3 < V2 only": {
+            "entries": 9,
+            "tp": 6,
+            "sl": 3,
+            "other": 0,
+            "winRate": 66.67,
+            "closedNetR": 3,
+            "outcomes": {
+              "tp": 6,
+              "sl": 3
+            }
+          }
+        }
+      }
+    },
+    "filters": {
+      "Original": {
+        "all": {
+          "entries": 431,
+          "tp": 216,
+          "sl": 208,
+          "other": 7,
+          "winRate": 50.94,
+          "closedNetR": 8,
+          "outcomes": {
+            "sl": 208,
+            "tp": 216,
+            "cancelled": 5,
+            "active": 2
+          }
+        },
+        "monthly": {
+          "2026-08": {
+            "entries": 6,
+            "tp": 3,
+            "sl": 3,
+            "other": 0,
+            "winRate": 50.0,
+            "closedNetR": 0,
+            "outcomes": {
+              "sl": 3,
+              "tp": 3
+            }
+          },
+          "2026-09": {
+            "entries": 172,
+            "tp": 88,
+            "sl": 83,
+            "other": 1,
+            "winRate": 51.46,
+            "closedNetR": 5,
+            "outcomes": {
+              "tp": 88,
+              "sl": 83,
+              "cancelled": 1
+            }
+          },
+          "2026-10": {
+            "entries": 191,
+            "tp": 98,
+            "sl": 92,
+            "other": 1,
+            "winRate": 51.58,
+            "closedNetR": 6,
+            "outcomes": {
+              "sl": 92,
+              "tp": 98,
+              "cancelled": 1
+            }
+          },
+          "2026-11": {
+            "entries": 62,
+            "tp": 27,
+            "sl": 30,
+            "other": 5,
+            "winRate": 47.37,
+            "closedNetR": -3,
+            "outcomes": {
+              "tp": 27,
+              "sl": 30,
+              "cancelled": 3,
+              "active": 2
+            }
+          }
+        }
+      },
+      "T1 time window; all T2/T3": {
+        "all": {
+          "entries": 264,
+          "tp": 135,
+          "sl": 123,
+          "other": 6,
+          "winRate": 52.33,
+          "closedNetR": 12,
+          "outcomes": {
+            "tp": 135,
+            "sl": 123,
+            "cancelled": 5,
+            "active": 1
+          }
+        },
+        "monthly": {
+          "2026-08": {
+            "entries": 3,
+            "tp": 1,
+            "sl": 2,
+            "other": 0,
+            "winRate": 33.33,
+            "closedNetR": -1,
+            "outcomes": {
+              "tp": 1,
+              "sl": 2
+            }
+          },
+          "2026-09": {
+            "entries": 104,
+            "tp": 51,
+            "sl": 52,
+            "other": 1,
+            "winRate": 49.51,
+            "closedNetR": -1,
+            "outcomes": {
+              "tp": 51,
+              "sl": 52,
+              "cancelled": 1
+            }
+          },
+          "2026-10": {
+            "entries": 115,
+            "tp": 61,
+            "sl": 53,
+            "other": 1,
+            "winRate": 53.51,
+            "closedNetR": 8,
+            "outcomes": {
+              "sl": 53,
+              "tp": 61,
+              "cancelled": 1
+            }
+          },
+          "2026-11": {
+            "entries": 42,
+            "tp": 22,
+            "sl": 16,
+            "other": 4,
+            "winRate": 57.89,
+            "closedNetR": 6,
+            "outcomes": {
+              "tp": 22,
+              "sl": 16,
+              "cancelled": 3,
+              "active": 1
+            }
+          }
+        }
+      },
+      "T1 time window; T2 SELL only; all T3": {
+        "all": {
+          "entries": 199,
+          "tp": 111,
+          "sl": 84,
+          "other": 4,
+          "winRate": 56.92,
+          "closedNetR": 27,
+          "outcomes": {
+            "sl": 84,
+            "tp": 111,
+            "cancelled": 4
+          }
+        },
+        "monthly": {
+          "2026-08": {
+            "entries": 2,
+            "tp": 0,
+            "sl": 2,
+            "other": 0,
+            "winRate": 0.0,
+            "closedNetR": -2,
+            "outcomes": {
+              "sl": 2
+            }
+          },
+          "2026-09": {
+            "entries": 89,
+            "tp": 46,
+            "sl": 43,
+            "other": 0,
+            "winRate": 51.69,
+            "closedNetR": 3,
+            "outcomes": {
+              "tp": 46,
+              "sl": 43
+            }
+          },
+          "2026-10": {
+            "entries": 80,
+            "tp": 47,
+            "sl": 32,
+            "other": 1,
+            "winRate": 59.49,
+            "closedNetR": 15,
+            "outcomes": {
+              "sl": 32,
+              "tp": 47,
+              "cancelled": 1
+            }
+          },
+          "2026-11": {
+            "entries": 28,
+            "tp": 18,
+            "sl": 7,
+            "other": 3,
+            "winRate": 72.0,
+            "closedNetR": 11,
+            "outcomes": {
+              "tp": 18,
+              "sl": 7,
+              "cancelled": 3
+            }
+          }
+        }
+      },
+      "Skip T1; T2 SELL only; all T3": {
+        "all": {
+          "entries": 124,
+          "tp": 71,
+          "sl": 51,
+          "other": 2,
+          "winRate": 58.2,
+          "closedNetR": 20,
+          "outcomes": {
+            "sl": 51,
+            "tp": 71,
+            "cancelled": 2
+          }
+        },
+        "monthly": {
+          "2026-08": {
+            "entries": 2,
+            "tp": 0,
+            "sl": 2,
+            "other": 0,
+            "winRate": 0.0,
+            "closedNetR": -2,
+            "outcomes": {
+              "sl": 2
+            }
+          },
+          "2026-09": {
+            "entries": 57,
+            "tp": 27,
+            "sl": 30,
+            "other": 0,
+            "winRate": 47.37,
+            "closedNetR": -3,
+            "outcomes": {
+              "sl": 30,
+              "tp": 27
+            }
+          },
+          "2026-10": {
+            "entries": 48,
+            "tp": 33,
+            "sl": 14,
+            "other": 1,
+            "winRate": 70.21,
+            "closedNetR": 19,
+            "outcomes": {
+              "tp": 33,
+              "sl": 14,
+              "cancelled": 1
+            }
+          },
+          "2026-11": {
+            "entries": 17,
+            "tp": 11,
+            "sl": 5,
+            "other": 1,
+            "winRate": 68.75,
+            "closedNetR": 6,
+            "outcomes": {
+              "sl": 5,
+              "cancelled": 1,
+              "tp": 11
+            }
+          }
+        }
+      },
+      "All SELL (exploratory)": {
+        "all": {
+          "entries": 217,
+          "tp": 128,
+          "sl": 86,
+          "other": 3,
+          "winRate": 59.81,
+          "closedNetR": 42,
+          "outcomes": {
+            "sl": 86,
+            "tp": 128,
+            "cancelled": 2,
+            "active": 1
+          }
+        },
+        "monthly": {
+          "2026-08": {
+            "entries": 2,
+            "tp": 0,
+            "sl": 2,
+            "other": 0,
+            "winRate": 0.0,
+            "closedNetR": -2,
+            "outcomes": {
+              "sl": 2
+            }
+          },
+          "2026-09": {
+            "entries": 96,
+            "tp": 57,
+            "sl": 39,
+            "other": 0,
+            "winRate": 59.38,
+            "closedNetR": 18,
+            "outcomes": {
+              "tp": 57,
+              "sl": 39
+            }
+          },
+          "2026-10": {
+            "entries": 92,
+            "tp": 59,
+            "sl": 33,
+            "other": 0,
+            "winRate": 64.13,
+            "closedNetR": 26,
+            "outcomes": {
+              "sl": 33,
+              "tp": 59
+            }
+          },
+          "2026-11": {
+            "entries": 27,
+            "tp": 12,
+            "sl": 12,
+            "other": 3,
+            "winRate": 50.0,
+            "closedNetR": 0,
+            "outcomes": {
+              "sl": 12,
+              "tp": 12,
+              "cancelled": 2,
+              "active": 1
+            }
+          }
+        }
+      },
+      "T1 only, time window": {
+        "all": {
+          "entries": 75,
+          "tp": 40,
+          "sl": 33,
+          "other": 2,
+          "winRate": 54.79,
+          "closedNetR": 7,
+          "outcomes": {
+            "tp": 40,
+            "sl": 33,
+            "cancelled": 2
+          }
+        },
+        "monthly": {
+          "2026-08": {
+            "entries": 0,
+            "tp": 0,
+            "sl": 0,
+            "other": 0,
+            "winRate": null,
+            "closedNetR": 0,
+            "outcomes": {}
+          },
+          "2026-09": {
+            "entries": 32,
+            "tp": 19,
+            "sl": 13,
+            "other": 0,
+            "winRate": 59.38,
+            "closedNetR": 6,
+            "outcomes": {
+              "tp": 19,
+              "sl": 13
+            }
+          },
+          "2026-10": {
+            "entries": 32,
+            "tp": 14,
+            "sl": 18,
+            "other": 0,
+            "winRate": 43.75,
+            "closedNetR": -4,
+            "outcomes": {
+              "sl": 18,
+              "tp": 14
+            }
+          },
+          "2026-11": {
+            "entries": 11,
+            "tp": 7,
+            "sl": 2,
+            "other": 2,
+            "winRate": 77.78,
+            "closedNetR": 5,
+            "outcomes": {
+              "tp": 7,
+              "cancelled": 2,
+              "sl": 2
+            }
+          }
+        }
+      }
+    }
+  },
+  "H4 bias": {
+    "source": "C:\\Users\\ABHI\\Downloads\\Volume-Engulfing-Study-XAUUSD-M15 (3).csv",
+    "sha256": "a9684e15d1946cd04e613cef310b65a3442ad538a72378e1b1a8417346a7f829",
+    "first": "2026-08-31T16:45:00.000Z",
+    "last": "2026-11-13T20:15:00.000Z",
+    "baseline": {
+      "entries": 227,
+      "tp": 129,
+      "sl": 96,
+      "other": 2,
+      "winRate": 57.33,
+      "closedNetR": 33,
+      "outcomes": {
+        "sl": 96,
+        "tp": 129,
+        "cancelled": 1,
+        "active": 1
+      }
+    },
+    "types": {
+      "T1": {
+        "all": {
+          "entries": 129,
+          "tp": 74,
+          "sl": 55,
+          "other": 0,
+          "winRate": 57.36,
+          "closedNetR": 19,
+          "outcomes": {
+            "tp": 74,
+            "sl": 55
+          }
+        },
+        "directions": {
+          "bullish": {
+            "entries": 9,
+            "tp": 2,
+            "sl": 7,
+            "other": 0,
+            "winRate": 22.22,
+            "closedNetR": -5,
+            "outcomes": {
+              "sl": 7,
+              "tp": 2
+            }
+          },
+          "bearish": {
+            "entries": 120,
+            "tp": 72,
+            "sl": 48,
+            "other": 0,
+            "winRate": 60.0,
+            "closedNetR": 24,
+            "outcomes": {
+              "tp": 72,
+              "sl": 48
+            }
+          }
+        },
+        "volumeGroups": {
+          "V2 < V1": {
+            "entries": 129,
+            "tp": 74,
+            "sl": 55,
+            "other": 0,
+            "winRate": 57.36,
+            "closedNetR": 19,
+            "outcomes": {
+              "tp": 74,
+              "sl": 55
+            }
+          }
+        }
+      },
+      "T2": {
+        "all": {
+          "entries": 62,
+          "tp": 33,
+          "sl": 27,
+          "other": 2,
+          "winRate": 55.0,
+          "closedNetR": 6,
+          "outcomes": {
+            "sl": 27,
+            "tp": 33,
+            "cancelled": 1,
+            "active": 1
+          }
+        },
+        "directions": {
+          "bullish": {
+            "entries": 11,
+            "tp": 3,
+            "sl": 7,
+            "other": 1,
+            "winRate": 30.0,
+            "closedNetR": -4,
+            "outcomes": {
+              "sl": 7,
+              "tp": 3,
+              "active": 1
+            }
+          },
+          "bearish": {
+            "entries": 51,
+            "tp": 30,
+            "sl": 20,
+            "other": 1,
+            "winRate": 60.0,
+            "closedNetR": 10,
+            "outcomes": {
+              "sl": 20,
+              "tp": 30,
+              "cancelled": 1
+            }
+          }
+        },
+        "volumeGroups": {
+          "V3 < V2 and V1": {
+            "entries": 45,
+            "tp": 23,
+            "sl": 20,
+            "other": 2,
+            "winRate": 53.49,
+            "closedNetR": 3,
+            "outcomes": {
+              "sl": 20,
+              "tp": 23,
+              "cancelled": 1,
+              "active": 1
+            }
+          },
+          "V3 < V2 only": {
+            "entries": 17,
+            "tp": 10,
+            "sl": 7,
+            "other": 0,
+            "winRate": 58.82,
+            "closedNetR": 3,
+            "outcomes": {
+              "sl": 7,
+              "tp": 10
+            }
+          }
+        }
+      },
+      "T3": {
+        "all": {
+          "entries": 36,
+          "tp": 22,
+          "sl": 14,
+          "other": 0,
+          "winRate": 61.11,
+          "closedNetR": 8,
+          "outcomes": {
+            "sl": 14,
+            "tp": 22
+          }
+        },
+        "directions": {
+          "bullish": {
+            "entries": 4,
+            "tp": 3,
+            "sl": 1,
+            "other": 0,
+            "winRate": 75.0,
+            "closedNetR": 2,
+            "outcomes": {
+              "sl": 1,
+              "tp": 3
+            }
+          },
+          "bearish": {
+            "entries": 32,
+            "tp": 19,
+            "sl": 13,
+            "other": 0,
+            "winRate": 59.38,
+            "closedNetR": 6,
+            "outcomes": {
+              "sl": 13,
+              "tp": 19
+            }
+          }
+        },
+        "volumeGroups": {
+          "V3 < V2 and V1": {
+            "entries": 32,
+            "tp": 19,
+            "sl": 13,
+            "other": 0,
+            "winRate": 59.38,
+            "closedNetR": 6,
+            "outcomes": {
+              "sl": 13,
+              "tp": 19
+            }
+          },
+          "V3 < V2 only": {
+            "entries": 4,
+            "tp": 3,
+            "sl": 1,
+            "other": 0,
+            "winRate": 75.0,
+            "closedNetR": 2,
+            "outcomes": {
+              "tp": 3,
+              "sl": 1
+            }
+          }
+        }
+      }
+    },
+    "filters": {
+      "Original": {
+        "all": {
+          "entries": 227,
+          "tp": 129,
+          "sl": 96,
+          "other": 2,
+          "winRate": 57.33,
+          "closedNetR": 33,
+          "outcomes": {
+            "sl": 96,
+            "tp": 129,
+            "cancelled": 1,
+            "active": 1
+          }
+        },
+        "monthly": {
+          "2026-08": {
+            "entries": 2,
+            "tp": 0,
+            "sl": 2,
+            "other": 0,
+            "winRate": 0.0,
+            "closedNetR": -2,
+            "outcomes": {
+              "sl": 2
+            }
+          },
+          "2026-09": {
+            "entries": 96,
+            "tp": 57,
+            "sl": 39,
+            "other": 0,
+            "winRate": 59.38,
+            "closedNetR": 18,
+            "outcomes": {
+              "tp": 57,
+              "sl": 39
+            }
+          },
+          "2026-10": {
+            "entries": 92,
+            "tp": 59,
+            "sl": 33,
+            "other": 0,
+            "winRate": 64.13,
+            "closedNetR": 26,
+            "outcomes": {
+              "sl": 33,
+              "tp": 59
+            }
+          },
+          "2026-11": {
+            "entries": 37,
+            "tp": 13,
+            "sl": 22,
+            "other": 2,
+            "winRate": 37.14,
+            "closedNetR": -9,
+            "outcomes": {
+              "sl": 22,
+              "tp": 13,
+              "cancelled": 1,
+              "active": 1
+            }
+          }
+        }
+      },
+      "T1 time window; all T2/T3": {
+        "all": {
+          "entries": 136,
+          "tp": 81,
+          "sl": 53,
+          "other": 2,
+          "winRate": 60.45,
+          "closedNetR": 28,
+          "outcomes": {
+            "sl": 53,
+            "tp": 81,
+            "cancelled": 1,
+            "active": 1
+          }
+        },
+        "monthly": {
+          "2026-08": {
+            "entries": 2,
+            "tp": 0,
+            "sl": 2,
+            "other": 0,
+            "winRate": 0.0,
+            "closedNetR": -2,
+            "outcomes": {
+              "sl": 2
+            }
+          },
+          "2026-09": {
+            "entries": 57,
+            "tp": 32,
+            "sl": 25,
+            "other": 0,
+            "winRate": 56.14,
+            "closedNetR": 7,
+            "outcomes": {
+              "tp": 32,
+              "sl": 25
+            }
+          },
+          "2026-10": {
+            "entries": 51,
+            "tp": 38,
+            "sl": 13,
+            "other": 0,
+            "winRate": 74.51,
+            "closedNetR": 25,
+            "outcomes": {
+              "sl": 13,
+              "tp": 38
+            }
+          },
+          "2026-11": {
+            "entries": 26,
+            "tp": 11,
+            "sl": 13,
+            "other": 2,
+            "winRate": 45.83,
+            "closedNetR": -2,
+            "outcomes": {
+              "sl": 13,
+              "tp": 11,
+              "cancelled": 1,
+              "active": 1
+            }
+          }
+        }
+      },
+      "T1 time window; T2 SELL only; all T3": {
+        "all": {
+          "entries": 125,
+          "tp": 78,
+          "sl": 46,
+          "other": 1,
+          "winRate": 62.9,
+          "closedNetR": 32,
+          "outcomes": {
+            "sl": 46,
+            "tp": 78,
+            "cancelled": 1
+          }
+        },
+        "monthly": {
+          "2026-08": {
+            "entries": 2,
+            "tp": 0,
+            "sl": 2,
+            "other": 0,
+            "winRate": 0.0,
+            "closedNetR": -2,
+            "outcomes": {
+              "sl": 2
+            }
+          },
+          "2026-09": {
+            "entries": 57,
+            "tp": 32,
+            "sl": 25,
+            "other": 0,
+            "winRate": 56.14,
+            "closedNetR": 7,
+            "outcomes": {
+              "tp": 32,
+              "sl": 25
+            }
+          },
+          "2026-10": {
+            "entries": 51,
+            "tp": 38,
+            "sl": 13,
+            "other": 0,
+            "winRate": 74.51,
+            "closedNetR": 25,
+            "outcomes": {
+              "sl": 13,
+              "tp": 38
+            }
+          },
+          "2026-11": {
+            "entries": 15,
+            "tp": 8,
+            "sl": 6,
+            "other": 1,
+            "winRate": 57.14,
+            "closedNetR": 2,
+            "outcomes": {
+              "sl": 6,
+              "tp": 8,
+              "cancelled": 1
+            }
+          }
+        }
+      },
+      "Skip T1; T2 SELL only; all T3": {
+        "all": {
+          "entries": 87,
+          "tp": 52,
+          "sl": 34,
+          "other": 1,
+          "winRate": 60.47,
+          "closedNetR": 18,
+          "outcomes": {
+            "sl": 34,
+            "tp": 52,
+            "cancelled": 1
+          }
+        },
+        "monthly": {
+          "2026-08": {
+            "entries": 2,
+            "tp": 0,
+            "sl": 2,
+            "other": 0,
+            "winRate": 0.0,
+            "closedNetR": -2,
+            "outcomes": {
+              "sl": 2
+            }
+          },
+          "2026-09": {
+            "entries": 42,
+            "tp": 22,
+            "sl": 20,
+            "other": 0,
+            "winRate": 52.38,
+            "closedNetR": 2,
+            "outcomes": {
+              "sl": 20,
+              "tp": 22
+            }
+          },
+          "2026-10": {
+            "entries": 35,
+            "tp": 27,
+            "sl": 8,
+            "other": 0,
+            "winRate": 77.14,
+            "closedNetR": 19,
+            "outcomes": {
+              "tp": 27,
+              "sl": 8
+            }
+          },
+          "2026-11": {
+            "entries": 8,
+            "tp": 3,
+            "sl": 4,
+            "other": 1,
+            "winRate": 42.86,
+            "closedNetR": -1,
+            "outcomes": {
+              "sl": 4,
+              "cancelled": 1,
+              "tp": 3
+            }
+          }
+        }
+      },
+      "All SELL (exploratory)": {
+        "all": {
+          "entries": 203,
+          "tp": 121,
+          "sl": 81,
+          "other": 1,
+          "winRate": 59.9,
+          "closedNetR": 40,
+          "outcomes": {
+            "sl": 81,
+            "tp": 121,
+            "cancelled": 1
+          }
+        },
+        "monthly": {
+          "2026-08": {
+            "entries": 2,
+            "tp": 0,
+            "sl": 2,
+            "other": 0,
+            "winRate": 0.0,
+            "closedNetR": -2,
+            "outcomes": {
+              "sl": 2
+            }
+          },
+          "2026-09": {
+            "entries": 96,
+            "tp": 57,
+            "sl": 39,
+            "other": 0,
+            "winRate": 59.38,
+            "closedNetR": 18,
+            "outcomes": {
+              "tp": 57,
+              "sl": 39
+            }
+          },
+          "2026-10": {
+            "entries": 92,
+            "tp": 59,
+            "sl": 33,
+            "other": 0,
+            "winRate": 64.13,
+            "closedNetR": 26,
+            "outcomes": {
+              "sl": 33,
+              "tp": 59
+            }
+          },
+          "2026-11": {
+            "entries": 13,
+            "tp": 5,
+            "sl": 7,
+            "other": 1,
+            "winRate": 41.67,
+            "closedNetR": -2,
+            "outcomes": {
+              "sl": 7,
+              "tp": 5,
+              "cancelled": 1
+            }
+          }
+        }
+      },
+      "T1 only, time window": {
+        "all": {
+          "entries": 38,
+          "tp": 26,
+          "sl": 12,
+          "other": 0,
+          "winRate": 68.42,
+          "closedNetR": 14,
+          "outcomes": {
+            "tp": 26,
+            "sl": 12
+          }
+        },
+        "monthly": {
+          "2026-08": {
+            "entries": 0,
+            "tp": 0,
+            "sl": 0,
+            "other": 0,
+            "winRate": null,
+            "closedNetR": 0,
+            "outcomes": {}
+          },
+          "2026-09": {
+            "entries": 15,
+            "tp": 10,
+            "sl": 5,
+            "other": 0,
+            "winRate": 66.67,
+            "closedNetR": 5,
+            "outcomes": {
+              "tp": 10,
+              "sl": 5
+            }
+          },
+          "2026-10": {
+            "entries": 16,
+            "tp": 11,
+            "sl": 5,
+            "other": 0,
+            "winRate": 68.75,
+            "closedNetR": 6,
+            "outcomes": {
+              "sl": 5,
+              "tp": 11
+            }
+          },
+          "2026-11": {
+            "entries": 7,
+            "tp": 5,
+            "sl": 2,
+            "other": 0,
+            "winRate": 71.43,
+            "closedNetR": 3,
+            "outcomes": {
+              "tp": 5,
+              "sl": 2
+            }
+          }
+        }
+      }
+    }
+  },
+  "pairedComparison": {
+    "shared": 227,
+    "levelsAndOutcomesMatch": true,
+    "removedByH4": {
+      "entries": 204,
+      "tp": 87,
+      "sl": 112,
+      "other": 5,
+      "winRate": 43.72,
+      "closedNetR": -25,
+      "outcomes": {
+        "sl": 112,
+        "tp": 87,
+        "cancelled": 4,
+        "active": 1
+      }
+    },
+    "grossNetRChange": 25
+  },
+  "priorOverlap": {
+    "noBiasRowsAlreadyAnalysed": 431,
+    "newNoBiasRows": 0,
+    "priceLevelsAndOutcomesMatch": true,
+    "volumeRevisions": [
+      {
+        "signal": "2026-11-11T13:15:00.000Z",
+        "type": "T2",
+        "field": "V2",
+        "old": "6310",
+        "new": "6300"
+      }
+    ]
+  },
+  "H4 T1 time consistency": {
+    "earlierBeforeOriginal": {
+      "entries": 20,
+      "tp": 14,
+      "sl": 6,
+      "other": 0,
+      "winRate": 70.0,
+      "closedNetR": 8,
+      "outcomes": {
+        "tp": 14,
+        "sl": 6
+      }
+    },
+    "originalPeriod": {
+      "entries": 18,
+      "tp": 12,
+      "sl": 6,
+      "other": 0,
+      "winRate": 66.67,
+      "closedNetR": 6,
+      "outcomes": {
+        "tp": 12,
+        "sl": 6
+      }
+    }
+  },
+  "limitations": [
+    "The two exports cover the same study window; first/last qualifying signals differ because of filtering.",
+    "All 431 no-bias trades were already in the prior extended test; this is not independent validation.",
+    "H4 bias selected 203 SELL trades and 24 BUY trades, so its sample is heavily weighted toward selling.",
+    "T1 time window is confirmation at 00:00 inclusive to before 06:00 UTC (05:45 to before 11:45 Nepal).",
+    "Win rate and closed net R exclude active/cancelled trades and trading costs. Trades may overlap.",
+    "No source code, study rules or live trading settings changed."
+  ]
+}

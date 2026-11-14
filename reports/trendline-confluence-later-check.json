@@ -1,0 +1,133 @@
+{
+  "selected": {
+    "rule": "H1 continuation Far",
+    "training": {
+      "closed": 136,
+      "tp": 74,
+      "sl": 62,
+      "winRate": 54.41176470588235,
+      "netR": 12,
+      "lower95": 46.03480081241269
+    }
+  },
+  "baseline": {
+    "all": {
+      "setups": 264,
+      "tp": 143,
+      "sl": 115,
+      "other": 6,
+      "winRate": 55.42635658914729,
+      "netR": 28
+    },
+    "earlier": {
+      "setups": 146,
+      "tp": 75,
+      "sl": 66,
+      "other": 5,
+      "winRate": 53.191489361702125,
+      "netR": 9
+    },
+    "later": {
+      "setups": 118,
+      "tp": 68,
+      "sl": 49,
+      "other": 1,
+      "winRate": 58.11965811965812,
+      "netR": 19
+    },
+    "monthly": {
+      "2026-08": {
+        "setups": 50,
+        "tp": 16,
+        "sl": 30,
+        "other": 4,
+        "winRate": 34.78260869565217,
+        "netR": -14
+      },
+      "2026-09": {
+        "setups": 96,
+        "tp": 59,
+        "sl": 36,
+        "other": 1,
+        "winRate": 62.10526315789474,
+        "netR": 23
+      },
+      "2026-10": {
+        "setups": 90,
+        "tp": 56,
+        "sl": 34,
+        "other": 0,
+        "winRate": 62.22222222222222,
+        "netR": 22
+      },
+      "2026-11": {
+        "setups": 28,
+        "tp": 12,
+        "sl": 15,
+        "other": 1,
+        "winRate": 44.44444444444444,
+        "netR": -3
+      }
+    }
+  },
+  "candidate": {
+    "all": {
+      "setups": 252,
+      "tp": 139,
+      "sl": 108,
+      "other": 5,
+      "winRate": 56.2753036437247,
+      "netR": 31
+    },
+    "earlier": {
+      "setups": 140,
+      "tp": 74,
+      "sl": 62,
+      "other": 4,
+      "winRate": 54.411764705882355,
+      "netR": 12
+    },
+    "later": {
+      "setups": 112,
+      "tp": 65,
+      "sl": 46,
+      "other": 1,
+      "winRate": 58.55855855855856,
+      "netR": 19
+    },
+    "monthly": {
+      "2026-08": {
+        "setups": 47,
+        "tp": 16,
+        "sl": 27,
+        "other": 4,
+        "winRate": 37.2093023255814,
+        "netR": -11
+      },
+      "2026-09": {
+        "setups": 93,
+        "tp": 58,
+        "sl": 35,
+        "other": 0,
+        "winRate": 62.365591397849464,
+        "netR": 23
+      },
+      "2026-10": {
+        "setups": 89,
+        "tp": 55,
+        "sl": 34,
+        "other": 0,
+        "winRate": 61.79775280898876,
+        "netR": 21
+      },
+      "2026-11": {
+        "setups": 23,
+        "tp": 10,
+        "sl": 12,
+        "other": 1,
+        "winRate": 45.45454545454545,
+        "netR": -2
+      }
+    }
+  }
+}

@@ -1,0 +1,255 @@
+{
+  "rule": "H4 EMA20/EMA50 alignment",
+  "original": {
+    "all": {
+      "setups": 312,
+      "tp": 161,
+      "sl": 142,
+      "other": 9,
+      "win": 53.135313531353134,
+      "R": 19,
+      "counts": {
+        "tp": 161,
+        "sl": 142,
+        "cancelled": 7,
+        "ambiguous": 1,
+        "active": 1
+      }
+    },
+    "earlier": {
+      "setups": 183,
+      "tp": 89,
+      "sl": 87,
+      "other": 7,
+      "win": 50.56818181818182,
+      "R": 2,
+      "counts": {
+        "tp": 89,
+        "sl": 87,
+        "cancelled": 6,
+        "ambiguous": 1
+      }
+    },
+    "later": {
+      "setups": 129,
+      "tp": 72,
+      "sl": 55,
+      "other": 2,
+      "win": 56.69291338582677,
+      "R": 17,
+      "counts": {
+        "sl": 55,
+        "tp": 72,
+        "cancelled": 1,
+        "active": 1
+      }
+    },
+    "monthly": {
+      "2026-08": {
+        "setups": 87,
+        "tp": 30,
+        "sl": 51,
+        "other": 6,
+        "win": 37.03703703703704,
+        "R": -21,
+        "counts": {
+          "tp": 30,
+          "sl": 51,
+          "cancelled": 5,
+          "ambiguous": 1
+        }
+      },
+      "2026-09": {
+        "setups": 96,
+        "tp": 59,
+        "sl": 36,
+        "other": 1,
+        "win": 62.10526315789474,
+        "R": 23,
+        "counts": {
+          "tp": 59,
+          "sl": 36,
+          "cancelled": 1
+        }
+      },
+      "2026-10": {
+        "setups": 92,
+        "tp": 58,
+        "sl": 34,
+        "other": 0,
+        "win": 63.04347826086956,
+        "R": 24,
+        "counts": {
+          "sl": 34,
+          "tp": 58
+        }
+      },
+      "2026-11": {
+        "setups": 37,
+        "tp": 14,
+        "sl": 21,
+        "other": 2,
+        "win": 40.0,
+        "R": -7,
+        "counts": {
+          "sl": 21,
+          "tp": 14,
+          "cancelled": 1,
+          "active": 1
+        }
+      }
+    },
+    "directions": {
+      "bullish": {
+        "setups": 67,
+        "tp": 23,
+        "sl": 39,
+        "other": 5,
+        "win": 37.096774193548384,
+        "R": -16,
+        "counts": {
+          "cancelled": 4,
+          "sl": 39,
+          "tp": 23,
+          "active": 1
+        }
+      },
+      "bearish": {
+        "setups": 245,
+        "tp": 138,
+        "sl": 103,
+        "other": 4,
+        "win": 57.261410788381745,
+        "R": 35,
+        "counts": {
+          "tp": 138,
+          "sl": 103,
+          "cancelled": 3,
+          "ambiguous": 1
+        }
+      }
+    }
+  },
+  "candidate": {
+    "all": {
+      "setups": 264,
+      "tp": 143,
+      "sl": 115,
+      "other": 6,
+      "win": 55.42635658914729,
+      "R": 28,
+      "counts": {
+        "sl": 115,
+        "tp": 143,
+        "cancelled": 6
+      }
+    },
+    "earlier": {
+      "setups": 146,
+      "tp": 75,
+      "sl": 66,
+      "other": 5,
+      "win": 53.191489361702125,
+      "R": 9,
+      "counts": {
+        "sl": 66,
+        "tp": 75,
+        "cancelled": 5
+      }
+    },
+    "later": {
+      "setups": 118,
+      "tp": 68,
+      "sl": 49,
+      "other": 1,
+      "win": 58.11965811965812,
+      "R": 19,
+      "counts": {
+        "sl": 49,
+        "tp": 68,
+        "cancelled": 1
+      }
+    },
+    "monthly": {
+      "2026-08": {
+        "setups": 50,
+        "tp": 16,
+        "sl": 30,
+        "other": 4,
+        "win": 34.78260869565217,
+        "R": -14,
+        "counts": {
+          "sl": 30,
+          "tp": 16,
+          "cancelled": 4
+        }
+      },
+      "2026-09": {
+        "setups": 96,
+        "tp": 59,
+        "sl": 36,
+        "other": 1,
+        "win": 62.10526315789474,
+        "R": 23,
+        "counts": {
+          "tp": 59,
+          "sl": 36,
+          "cancelled": 1
+        }
+      },
+      "2026-10": {
+        "setups": 90,
+        "tp": 56,
+        "sl": 34,
+        "other": 0,
+        "win": 62.22222222222222,
+        "R": 22,
+        "counts": {
+          "sl": 34,
+          "tp": 56
+        }
+      },
+      "2026-11": {
+        "setups": 28,
+        "tp": 12,
+        "sl": 15,
+        "other": 1,
+        "win": 44.44444444444444,
+        "R": -3,
+        "counts": {
+          "sl": 15,
+          "tp": 12,
+          "cancelled": 1
+        }
+      }
+    },
+    "directions": {
+      "bullish": {
+        "setups": 58,
+        "tp": 21,
+        "sl": 33,
+        "other": 4,
+        "win": 38.888888888888886,
+        "R": -12,
+        "counts": {
+          "cancelled": 4,
+          "sl": 33,
+          "tp": 21
+        }
+      },
+      "bearish": {
+        "setups": 206,
+        "tp": 122,
+        "sl": 82,
+        "other": 2,
+        "win": 59.80392156862745,
+        "R": 40,
+        "counts": {
+          "sl": 82,
+          "tp": 122,
+          "cancelled": 2
+        }
+      }
+    }
+  }
+}

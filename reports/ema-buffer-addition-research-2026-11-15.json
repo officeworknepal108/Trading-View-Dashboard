@@ -1,0 +1,83 @@
+[
+  {
+    "rule": "Original 20 pips",
+    "all": {
+      "setups": 264,
+      "tp": 143,
+      "sl": 115,
+      "other": 6,
+      "winRate": 55.42635658914729,
+      "netR": 28
+    },
+    "earlier": {
+      "setups": 146,
+      "tp": 75,
+      "sl": 66,
+      "other": 5,
+      "winRate": 53.191489361702125,
+      "netR": 9
+    },
+    "later": {
+      "setups": 118,
+      "tp": 68,
+      "sl": 49,
+      "other": 1,
+      "winRate": 58.11965811965812,
+      "netR": 19
+    }
+  },
+  {
+    "rule": "30-pip buffer",
+    "all": {
+      "setups": 264,
+      "tp": 144,
+      "sl": 111,
+      "other": 9,
+      "winRate": 56.470588235294116,
+      "netR": 33
+    },
+    "earlier": {
+      "setups": 146,
+      "tp": 76,
+      "sl": 63,
+      "other": 7,
+      "winRate": 54.67625899280576,
+      "netR": 13
+    },
+    "later": {
+      "setups": 118,
+      "tp": 68,
+      "sl": 48,
+      "other": 2,
+      "winRate": 58.62068965517241,
+      "netR": 20
+    }
+  },
+  {
+    "rule": "25% of previous ATR buffer",
+    "all": {
+      "setups": 264,
+      "tp": 142,
+      "sl": 114,
+      "other": 8,
+      "winRate": 55.46875,
+      "netR": 28
+    },
+    "earlier": {
+      "setups": 146,
+      "tp": 75,
+      "sl": 64,
+      "other": 7,
+      "winRate": 53.9568345323741,
+      "netR": 11
+    },
+    "later": {
+      "setups": 118,
+      "tp": 67,
+      "sl": 50,
+      "other": 1,
+      "winRate": 57.26495726495727,
+      "netR": 17
+    }
+  }
+]

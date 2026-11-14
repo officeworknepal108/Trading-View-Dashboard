@@ -147,6 +147,11 @@ export function mt5FibProfitEventLabel(event: Mt5FibProfitEvent): string {
 export const MT5_RISK_PERCENT_OPTIONS = [
   0.25, 0.5, 1, 1.5, 2, 2.5, 3, 3.5, 4, 4.5, 5,
 ] as const;
+export const SCALP_ONE_TO_ONE_RISK_OPTIONS = [0.25, 0.5, 0.75, 1, 1.5, 2] as const;
+export function normalizeScalpOneToOneRisk(value: unknown, fallback = 0.25): number {
+  return SCALP_ONE_TO_ONE_RISK_OPTIONS.includes(value as typeof SCALP_ONE_TO_ONE_RISK_OPTIONS[number])
+    ? value as number : fallback;
+}
 
 export const MT5_ENTRY_TIMEFRAME_OPTIONS = ['M1', 'M5', 'M15', 'M30', 'H1'] as const;
 export type Mt5EntryTimeframe = typeof MT5_ENTRY_TIMEFRAME_OPTIONS[number];
@@ -181,11 +186,12 @@ export function isMt5SignalAllowedByTimeframes(
 
 /** The dashboard, alerts and execution use the same trade-style switches. */
 export function isTradeStyleEnabled(
-  config: { scalpingEnabled: boolean; intradayEnabled: boolean },
-  trade: { tradeStyle?: 'SCALPING' | 'INTRADAY'; zoneTimeframe?: TradeTimeframe },
+  config: { scalpingEnabled: boolean; intradayEnabled: boolean; scalpOneToOneEnabled?: boolean },
+  trade: { tradeStyle?: 'SCALPING' | 'INTRADAY' | 'SCALP_1_1'; zoneTimeframe?: TradeTimeframe },
 ): boolean {
   const style = trade.tradeStyle
     ?? (trade.zoneTimeframe === 'M1' || trade.zoneTimeframe === 'M5' ? 'SCALPING' : 'INTRADAY');
+  if (style === 'SCALP_1_1') return config.scalpOneToOneEnabled === true;
   return style === 'SCALPING' ? config.scalpingEnabled : config.intradayEnabled;
 }
 
@@ -194,6 +200,7 @@ export function mt5SignalDisabledReason(
     enabledTimeframes: readonly Mt5EntryTimeframe[];
     scalpingEnabled: boolean;
     intradayEnabled: boolean;
+    scalpOneToOneEnabled?: boolean;
     mtfLtfFibRequired?: boolean;
   },
   signal: Pick<Mt5SignalInput, 'zoneTimeframe' | 'signalTimeframe' | 'tradeStyle'>
@@ -207,6 +214,7 @@ export function mt5SignalDisabledReason(
     return `${signal.zoneTimeframe} setup / ${signal.signalTimeframe} entry automatic trading is disabled.`;
   }
   if (isTradeStyleEnabled(config, signal)) return undefined;
+  if (signal.tradeStyle === 'SCALP_1_1') return 'Scalp 1:1 automatic trading is disabled.';
   const scalping = signal.tradeStyle === 'SCALPING' || (signal.tradeStyle === undefined
     && (signal.zoneTimeframe === 'M1' || signal.zoneTimeframe === 'M5'));
   return `${scalping ? 'Scalping' : 'Intraday'} automatic trading is disabled.`;
@@ -276,6 +284,8 @@ export interface Mt5AutomationConfig {
   dryRun: boolean;
   scalpingEnabled: boolean;
   intradayEnabled: boolean;
+  scalpOneToOneEnabled?: boolean;
+  scalpOneToOneRiskPercent?: number;
   mtfLtfFibRequired: boolean;
   symbol: string;
   brokerSymbol: string;
@@ -300,7 +310,7 @@ export interface Mt5SignalInput {
   orderType: 'MARKET' | 'LIMIT';
   source: 'ENGULFING' | 'MTF';
   mtfLtfFibRequiredAtSignal?: boolean;
-  tradeStyle?: 'SCALPING' | 'INTRADAY';
+  tradeStyle?: 'SCALPING' | 'INTRADAY' | 'SCALP_1_1';
   zoneName: string;
   zoneTimeframe: TradeTimeframe;
   signalTimeframe: TradeTimeframe;
@@ -431,7 +441,7 @@ export function goldAutomationOpposingZoneBlocked(
   signal: Mt5SignalInput,
   zones: readonly StructureZone[],
 ): boolean {
-  return goldOpposingZoneBeforeOneR(signal, zones) !== undefined;
+  return signal.tradeStyle !== 'SCALP_1_1' && goldOpposingZoneBeforeOneR(signal, zones) !== undefined;
 }
 
 /** One unusually large completed minute must not consume the whole planned stop. */
@@ -456,6 +466,7 @@ export function goldAutomationRepeatAreaBlocked(
   previous: readonly Mt5StoredSignal[],
   m15Lines: readonly StructureLine[],
 ): boolean {
+  if (signal.tradeStyle === 'SCALP_1_1') return false;
   const lower = Math.min(signal.entry, signal.stopLoss);
   const upper = Math.max(signal.entry, signal.stopLoss);
   return previous.some((prior) => {
@@ -846,6 +857,7 @@ export function applySignalOppositePositionTarget(
   signal: Mt5SignalInput,
   positions: readonly { direction: 'BUY' | 'SELL' }[] | undefined,
 ): Mt5SignalInput {
+  if (signal.tradeStyle === 'SCALP_1_1') return signal;
   const requestedNormalRewardRisk = signal.normalRewardRisk ?? signal.rewardRisk;
   const normalRewardRisk = Number.isFinite(requestedNormalRewardRisk)
     && requestedNormalRewardRisk > 0

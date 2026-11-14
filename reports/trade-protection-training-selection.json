@@ -1,0 +1,180 @@
+{
+  "method": "Select largest earlier-period net R; TP count breaks ties; do not choose on later outcomes",
+  "training": [
+    {
+      "variant": {
+        "name": "Original",
+        "trigger": null,
+        "remainingRisk": 1
+      },
+      "train": {
+        "setups": 183,
+        "tp": 89,
+        "fullSL": 87,
+        "reducedSL": 0,
+        "breakEven": 0,
+        "other": 7,
+        "closed": 176,
+        "TPRateIncludingBE": 50.56818181818182,
+        "netR": 2,
+        "counts": {
+          "tp": 89,
+          "sl": 87,
+          "cancelled": 6,
+          "ambiguous": 1
+        }
+      }
+    },
+    {
+      "variant": {
+        "name": "Close >= 0.25R; remaining risk 0R",
+        "trigger": 0.25,
+        "remainingRisk": 0
+      },
+      "train": {
+        "setups": 183,
+        "tp": 61,
+        "fullSL": 55,
+        "reducedSL": 0,
+        "breakEven": 57,
+        "other": 10,
+        "closed": 173,
+        "TPRateIncludingBE": 35.26011560693642,
+        "netR": 6,
+        "counts": {
+          "tp": 61,
+          "be": 57,
+          "sl": 55,
+          "cancelled": 6,
+          "ambiguous": 4
+        }
+      }
+    },
+    {
+      "variant": {
+        "name": "Close >= 0.25R; remaining risk 0.5R",
+        "trigger": 0.25,
+        "remainingRisk": 0.5
+      },
+      "train": {
+        "setups": 183,
+        "tp": 81,
+        "fullSL": 55,
+        "reducedSL": 40,
+        "breakEven": 0,
+        "other": 7,
+        "closed": 176,
+        "TPRateIncludingBE": 46.02272727272727,
+        "netR": 6.000000000000143,
+        "counts": {
+          "tp": 81,
+          "reduced-sl": 40,
+          "sl": 55,
+          "cancelled": 6,
+          "ambiguous": 1
+        }
+      }
+    },
+    {
+      "variant": {
+        "name": "Close >= 0.5R; remaining risk 0R",
+        "trigger": 0.5,
+        "remainingRisk": 0
+      },
+      "train": {
+        "setups": 183,
+        "tp": 76,
+        "fullSL": 79,
+        "reducedSL": 0,
+        "breakEven": 19,
+        "other": 9,
+        "closed": 174,
+        "TPRateIncludingBE": 43.67816091954023,
+        "netR": -3,
+        "counts": {
+          "tp": 76,
+          "be": 19,
+          "sl": 79,
+          "cancelled": 6,
+          "ambiguous": 3
+        }
+      }
+    },
+    {
+      "variant": {
+        "name": "Close >= 0.5R; remaining risk 0.5R",
+        "trigger": 0.5,
+        "remainingRisk": 0.5
+      },
+      "train": {
+        "setups": 183,
+        "tp": 85,
+        "fullSL": 79,
+        "reducedSL": 12,
+        "breakEven": 0,
+        "other": 7,
+        "closed": 176,
+        "TPRateIncludingBE": 48.29545454545455,
+        "netR": -5.329070518200751e-15,
+        "counts": {
+          "tp": 85,
+          "reduced-sl": 12,
+          "sl": 79,
+          "cancelled": 6,
+          "ambiguous": 1
+        }
+      }
+    },
+    {
+      "variant": {
+        "name": "Close >= 0.75R; remaining risk 0R",
+        "trigger": 0.75,
+        "remainingRisk": 0
+      },
+      "train": {
+        "setups": 183,
+        "tp": 86,
+        "fullSL": 86,
+        "reducedSL": 0,
+        "breakEven": 1,
+        "other": 10,
+        "closed": 173,
+        "TPRateIncludingBE": 49.71098265895954,
+        "netR": 0,
+        "counts": {
+          "tp": 86,
+          "sl": 86,
+          "cancelled": 6,
+          "ambiguous": 4,
+          "be": 1
+        }
+      }
+    },
+    {
+      "variant": {
+        "name": "Close >= 0.75R; remaining risk 0.5R",
+        "trigger": 0.75,
+        "remainingRisk": 0.5
+      },
+      "train": {
+        "setups": 183,
+        "tp": 89,
+        "fullSL": 86,
+        "reducedSL": 1,
+        "breakEven": 0,
+        "other": 7,
+        "closed": 176,
+        "TPRateIncludingBE": 50.56818181818182,
+        "netR": 2.5,
+        "counts": {
+          "tp": 89,
+          "sl": 86,
+          "cancelled": 6,
+          "ambiguous": 1,
+          "reduced-sl": 1
+        }
+      }
+    }
+  ],
+  "selected": "Close >= 0.25R; remaining risk 0.5R"
+}

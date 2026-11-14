@@ -1,4 +1,6 @@
 import 'dotenv/config';
+import { buildScalpOneToOneSignals } from './src/services/scalpOneToOne';
+import { normalizeScalpOneToOneRisk } from './src/services/mt5Automation';
 import { DashboardAuth } from './src/server/authentication';
 import { denyPrivateFiles, privateFilePatterns } from './src/server/privateFiles';
 import { clientVisibleTrades } from './src/server/clientJournal';
@@ -126,6 +128,8 @@ const DEFAULT_MT5_CONFIG: Mt5AutomationConfig = {
   dryRun: true,
   scalpingEnabled: true,
   intradayEnabled: true,
+  scalpOneToOneEnabled: false,
+  scalpOneToOneRiskPercent: 0.25,
   mtfLtfFibRequired: false,
   symbol: 'XAUUSD',
   brokerSymbol: 'XAUUSDm',
@@ -277,7 +281,7 @@ let configWriteQueue: Promise<unknown> = Promise.resolve();
 let telegramAlertQueue: Promise<unknown> = Promise.resolve();
 let sharedFibProfitAnalysis: { key: string; zones: OpposingFibProfitZone[]; at: number } | undefined;
 const sharedStrategyFields = ['tradingTimeEnabled', 'telegramMessagesEnabled', 'scalpingEnabled',
-  'intradayEnabled', 'mtfLtfFibRequired', 'enabledTimeframes', 'maximumSpreadPoints',
+  'intradayEnabled', 'scalpOneToOneEnabled', 'mtfLtfFibRequired', 'enabledTimeframes', 'maximumSpreadPoints',
   'signalMaxAgeSeconds', 'pendingExpiryMinutes', 'moveStopToBreakEvenAtR'] as const;
 
 function appendManagedBridgeLog(chunk: string, channel: 'OUT' | 'ERR'): void {
@@ -436,6 +440,8 @@ async function readMt5Config(): Promise<Mt5AutomationConfig> {
       telegramMessagesEnabled: parsed?.telegramMessagesEnabled !== false,
       scalpingEnabled: parsed?.scalpingEnabled !== false,
       intradayEnabled: parsed?.intradayEnabled !== false,
+      scalpOneToOneEnabled: parsed?.scalpOneToOneEnabled === true,
+      scalpOneToOneRiskPercent: normalizeScalpOneToOneRisk(parsed?.scalpOneToOneRiskPercent),
       mtfLtfFibRequired: parsed?.mtfLtfFibRequired === true,
       enabledTimeframes: normalizeMt5EnabledTimeframes(
         parsed?.enabledTimeframes,
@@ -582,6 +588,10 @@ function sanitizeMt5Config(candidate: any, current: Mt5AutomationConfig): Mt5Aut
     dryRun: candidate?.dryRun !== false,
     scalpingEnabled: candidate?.scalpingEnabled !== false,
     intradayEnabled: candidate?.intradayEnabled !== false,
+    scalpOneToOneEnabled: candidate?.scalpOneToOneEnabled === undefined
+      ? current.scalpOneToOneEnabled === true : candidate.scalpOneToOneEnabled === true,
+    scalpOneToOneRiskPercent: normalizeScalpOneToOneRisk(candidate?.scalpOneToOneRiskPercent,
+      current.scalpOneToOneRiskPercent ?? 0.25),
     mtfLtfFibRequired: candidate?.mtfLtfFibRequired === undefined
       ? current.mtfLtfFibRequired : candidate.mtfLtfFibRequired === true,
     brokerSymbol: typeof candidate?.brokerSymbol === 'string'
@@ -613,6 +623,9 @@ async function enqueueMt5Signal(
   const executionConnection = mt5Context().mt5BridgeHeartbeat ? { ...mt5Context().mt5BridgeHeartbeat } : undefined;
   const error = validateMt5Signal(candidate);
   if (error) throw new Error(error);
+  if (candidate.tradeStyle === 'SCALP_1_1' && !scannerQualified) {
+    throw new Error('Scalp 1:1 signals must be qualified by the server strategy scanner.');
+  }
   const disabledReason = mt5SignalDisabledReason(config, candidate);
   if (disabledReason) throw new Error(disabledReason);
   const now = Math.floor(Date.now() / 1000);
@@ -643,6 +656,7 @@ async function enqueueMt5Signal(
       && signal.signalTimeframe === candidate.signalTimeframe
       && signal.direction === candidate.direction
       && signal.signalAt === candidate.signalAt
+      && (signal.tradeStyle === 'SCALP_1_1') === (candidate.tradeStyle === 'SCALP_1_1')
     ));
     const priorSetupAttempts = candidate.setupId === undefined ? [] : signals.filter((signal) => (
       signal.setupId === candidate.setupId && consumedSetupStatuses.has(signal.status)
@@ -661,7 +675,7 @@ async function enqueueMt5Signal(
       await writeMt5Signals(signals);
       return { signal: existing, duplicate: true };
     }
-    if (candidate.symbol === 'XAUUSD') {
+    if (candidate.symbol === 'XAUUSD' && candidate.tradeStyle !== 'SCALP_1_1') {
       const zones = opposingZones ?? await loadGoldOpposingZones();
       if (!zones) throw new Error('Unable to verify opposing Gold zones; new entry is paused.');
       if (goldAutomationOpposingZoneBlocked(candidate, zones)) {
@@ -1024,6 +1038,16 @@ async function scanMt5AutomationSignals(): Promise<number> {
   );
   const candidates: Mt5SignalInput[] = [];
   const now = Math.floor(Date.now() / 1000);
+
+  if (config.scalpOneToOneEnabled) {
+    try {
+      candidates.push(...buildScalpOneToOneSignals(candles, now,
+        config.pendingExpiryMinutes, config.signalMaxAgeSeconds));
+    } catch (error) {
+      // Insufficient closed history must never fall back to a weaker strategy.
+      console.warn('Scalp 1:1 waiting for history:', error instanceof Error ? error.message : error);
+    }
+  }
 
   for (const zoneTimeframe of AUTOMATION_DIRECT_TIMEFRAMES) {
     const sourceCandles = candles[zoneTimeframe];
@@ -1511,7 +1535,7 @@ function validTelegramTradeAlert(value: any): value is TelegramTradeAlert {
     && [value.entry, value.stopLoss, value.takeProfit, value.riskPips, value.rewardRisk, value.openedAt]
       .every((number) => Number.isFinite(number) && number > 0)
     && value.entry !== value.stopLoss
-    && (value.tradeStyle === undefined || ['SCALPING', 'INTRADAY'].includes(value.tradeStyle))
+    && (value.tradeStyle === undefined || ['SCALPING', 'INTRADAY', 'SCALP_1_1'].includes(value.tradeStyle))
     && (value.kind !== 'entry' || value.tradeStyle !== 'SCALPING'
       || Number.isFinite(value.riskFree) && value.riskFree > 0)
     && value.openedAt <= now + 5
@@ -2193,9 +2217,9 @@ async function startServer() {
           || confirmedRf || confirmedResult)
           && (await readMt5Config()).telegramMessagesEnabled) {
           const telegramAlert: TelegramTradeAlert = {
-            tradeKey: [updated.symbol, updated.direction === 'BUY' ? 'bullish' : 'bearish',
+            tradeKey: (updated.tradeStyle === 'SCALP_1_1' ? 'SCALP_1_1:' : '') + [updated.symbol, updated.direction === 'BUY' ? 'bullish' : 'bearish',
               updated.signalTimeframe, updated.signalAt, updated.entry.toFixed(5)].join(':'),
-            id: status === 'PLACED' || cancelledBeyondOneAndHalfR || confirmedRf ? updated.id : [
+            id: updated.tradeStyle === 'SCALP_1_1' || status === 'PLACED' || cancelledBeyondOneAndHalfR || confirmedRf ? updated.id : [
               updated.symbol,
               updated.direction === 'BUY' ? 'bullish' : 'bearish',
               updated.signalTimeframe,

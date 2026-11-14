@@ -139,6 +139,15 @@ test('MT5 account handshake resets old candles and queues while preserving autom
     assert.equal((await request('/api/mt5/config', { ...status.config, maximumDailyLossPercent: 8 }, 'PUT')).status, 200);
     status = await (await request('/api/mt5/status')).json();
     assert.equal(status.config.maximumDailyLossPercent, 5, 'server caps the daily loss control at 5%');
+    assert.equal(status.config.scalpOneToOneEnabled, false);
+    assert.equal(status.config.scalpOneToOneRiskPercent, 0.25);
+    assert.equal((await request('/api/mt5/config', { ...status.config, scalpOneToOneRiskPercent: 0.75 }, 'PUT')).status, 200);
+    status = await (await request('/api/mt5/status')).json();
+    assert.equal(status.config.scalpOneToOneRiskPercent, 0.75);
+    assert.equal(status.config.riskPercent, 0.5, 'Scalp 1:1 selection leaves general risk unchanged');
+    assert.equal((await request('/api/mt5/config', { ...status.config, scalpOneToOneRiskPercent: 5 }, 'PUT')).status, 200);
+    status = await (await request('/api/mt5/status')).json();
+    assert.equal(status.config.scalpOneToOneRiskPercent, 0.75, 'invalid scalp risk preserves the saved selection');
     const dailyRisk = { available: true, date: '2026-10-24', startingBalance: 10000, limitPercent: 2,
       limitMoney: 200, realizedLossMoney: 120, floatingLossMoney: 80, usedMoney: 200, usedPercent: 2,
       remainingMoney: 0, remainingPercent: 0, reservedRiskMoney: 120, availableRiskMoney: 0,
@@ -168,7 +177,7 @@ test('MT5 account handshake resets old candles and queues while preserving autom
     assert.equal(secondaryStatus.marketData.timeframes.M1.count, 10);
     assert.equal((await request('/api/mt5/market-data', { ...snapshot, ...secondary, symbol: secondary.brokerSymbol })).status, 409);
     assert.equal((await request(secondaryRoute('/api/mt5/config'), {
-      ...secondaryStatus.config, riskPercent: 1.5, maximumDailyLossPercent: 3,
+      ...secondaryStatus.config, riskPercent: 1.5, scalpOneToOneRiskPercent: 1, maximumDailyLossPercent: 3,
       tradingTimeEnabled: true, mtfLtfFibRequired: true,
     }, 'PUT')).status, 200);
     status = await (await request('/api/mt5/status')).json();
@@ -178,6 +187,8 @@ test('MT5 account handshake resets old candles and queues while preserving autom
     assert.equal(status.config.mtfLtfFibRequired, true, 'strategy settings are shared');
     assert.equal(status.config.tradingTimeEnabled, true);
     assert.equal(secondaryStatus.config.riskPercent, 1.5);
+    assert.equal(status.config.scalpOneToOneRiskPercent, 0.75, 'primary scalp risk stays independent');
+    assert.equal(secondaryStatus.config.scalpOneToOneRiskPercent, 1, 'secondary has its own scalp risk');
     assert.equal(secondaryStatus.config.maximumDailyLossPercent, 3);
     assert.equal(secondaryStatus.config.enabled, false);
     assert.equal(secondaryStatus.counts.ACTIVE, undefined, 'account 1 signals cannot leak into account 2');

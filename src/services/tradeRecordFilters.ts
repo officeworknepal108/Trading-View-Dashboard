@@ -13,7 +13,7 @@ export interface CanonicalTradeRecord extends FilterableTradeRecord {
   id: string; symbol?: string; zoneTimeframe: TradeTimeframe;
   signalAt?: number; openedAt?: number; engulfingType: string; engulfingCandleCount?: number;
   entry: number; stopLoss: number; takeProfit: number; rewardRisk: number; riskPips: number;
-  tradeStyle?: 'SCALPING' | 'INTRADAY'; fibSource?: string; fibBand?: string;
+  tradeStyle?: 'SCALPING' | 'INTRADAY' | 'SCALP_1_1'; fibSource?: string; fibBand?: string;
   brokerTicket?: number; mt5Managed?: boolean;
 }
 
@@ -53,7 +53,7 @@ export interface TradeRecordFilters {
   side: 'ALL' | 'BUY' | 'SELL';
   result: 'ALL' | TradeResult;
   zones: 'ALL' | string[];
-  tradeStyle?: 'ALL' | 'SCALPING' | 'INTRADAY';
+  tradeStyle?: 'ALL' | 'SCALPING' | 'INTRADAY' | 'SCALP_1_1';
   tradingTime?: 'ALL' | 'TRADING' | 'NON_TRADING';
 }
 
@@ -419,7 +419,7 @@ export function accuracyResultMatchesCandles(
     // Match the existing trade engine's TP priority when both exits share a candle.
     if (tpHit) return index === lastIndex && record.result === 'tp';
     if (slHit) {
-      const result = record.tradeStyle !== 'INTRADAY' && reachedOneR ? 'rf' : 'sl';
+      const result = record.tradeStyle !== 'INTRADAY' && record.tradeStyle !== 'SCALP_1_1' && reachedOneR ? 'rf' : 'sl';
       return index === lastIndex && record.result === result;
     }
   }

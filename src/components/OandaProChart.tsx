@@ -1,6 +1,7 @@
 import { detectAutoTrendlines, type AutoTrendline } from '../services/autoTrendlines';
 export { detectAutoTrendlines } from '../services/autoTrendlines';
 import { TrendlineStudy } from './TrendlineStudy';
+import { VolumeEngulfingStudy } from './VolumeEngulfingStudy';
 import { Mt5CapitalPanel } from './Mt5CapitalPanel';
 import { bestTrendlineSetupRank, collectStudySupport, measureStudySupportDistance, preEntryTrendlineMarks, studyClosedCandles, studyTimeframes, trendlineSupportsBuy, type EntryArrowStudyEntry } from '../services/trendlineStudy';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -164,6 +165,7 @@ import {
   MT5_DEFAULT_ENABLED_TIMEFRAMES,
   MT5_ENTRY_TIMEFRAME_OPTIONS,
   MT5_RISK_PERCENT_OPTIONS,
+  SCALP_ONE_TO_ONE_RISK_OPTIONS,
   goldM1BuyCountertrendBlocked,
   goldM5ScalpingBuyCountertrendBlocked,
   goldOpposingZoneBeforeOneR,
@@ -175,6 +177,7 @@ import {
   MT5_FIB_EXIT_TIMEFRAMES,
   type Mt5AutomationStatus,
   type Mt5StoredSignal,
+  type Mt5SignalInput,
 } from '../services/mt5Automation';
 
 type OandaGranularity = 'M1' | 'M5' | 'M15' | 'M30' | 'H1' | 'H4' | 'D' | 'W';
@@ -2259,7 +2262,7 @@ const EngulfingAccuracyTable: React.FC<{
     setFilters((current) => ({ ...current, timeframes: [timeframe] }));
   }, [timeframe]);
   const [tradingTimeFilter, setTradingTimeFilter] = useState<AccuracyTradingTimeFilter>('ALL');
-  const [tradeStyleFilter, setTradeStyleFilter] = useState<'ALL' | 'SCALPING' | 'INTRADAY'>('ALL');
+  const [tradeStyleFilter, setTradeStyleFilter] = useState<'ALL' | 'SCALPING' | 'INTRADAY' | 'SCALP_1_1'>('ALL');
   const selectedStyle = marketSymbol === 'XAUUSD' ? tradeStyleFilter : 'ALL';
   const matchesStyle = (record: AccuracyTradeRecord) => selectedStyle === 'ALL'
     || record.tradeStyle === selectedStyle;
@@ -2360,13 +2363,14 @@ const EngulfingAccuracyTable: React.FC<{
         </select>
         {marketSymbol === 'XAUUSD' && <select
           value={tradeStyleFilter}
-          onChange={(event) => setTradeStyleFilter(event.target.value as 'ALL' | 'SCALPING' | 'INTRADAY')}
+          onChange={(event) => setTradeStyleFilter(event.target.value as 'ALL' | 'SCALPING' | 'INTRADAY' | 'SCALP_1_1')}
           className="rounded border border-indigo-200 bg-white px-1.5 py-0.5 text-[9px] font-bold text-indigo-700"
           aria-label="Filter accuracy by trade style"
         >
           <option value="ALL">ALL STYLES</option>
           <option value="SCALPING">SCALPING</option>
           <option value="INTRADAY">INTRADAY</option>
+          <option value="SCALP_1_1">SCALP 1:1</option>
         </select>}
         <button
           type="button"
@@ -2414,6 +2418,7 @@ const EngulfingAccuracyTable: React.FC<{
                 {header('Trade style')}
                 {resultRow('INTRADAY', accuracyCounts(summaryRecords.filter((record) => record.tradeStyle === 'INTRADAY')))}
                 {resultRow('SCALPING', accuracyCounts(summaryRecords.filter((record) => record.tradeStyle === 'SCALPING')))}
+                {resultRow('SCALP 1:1', accuracyCounts(summaryRecords.filter((record) => record.tradeStyle === 'SCALP_1_1')))}
               </>}
               {header('Trade source')}
               {resultRow('ENGULFING', accuracyCounts(
@@ -2525,7 +2530,7 @@ const EngulfingAccuracyTable: React.FC<{
                     {formatTradeTimeframe(record.signalTimeframe)}
                   </td>
                   <td className="px-1.5 py-1 font-bold text-slate-600">{record.source}</td>
-                  <td className="px-1.5 py-1 font-bold text-indigo-700">{record.tradeStyle ?? '—'}</td>
+                  <td className="px-1.5 py-1 font-bold text-indigo-700">{record.tradeStyle === 'SCALP_1_1' ? 'SCALP 1:1' : record.tradeStyle ?? '—'}</td>
                   <td className="whitespace-nowrap px-1.5 py-1 text-left font-bold text-slate-700">
                     {record.zoneName}
                   </td>
@@ -2734,6 +2739,7 @@ export const OandaProChart: React.FC<{
   const [showEntryArrows, setShowEntryArrows] = useState(false);
   const [showAccuracyTable, setShowAccuracyTable] = useState(false);
   const [showTrendlineStudy, setShowTrendlineStudy] = useState(false);
+  const [showVolumeStudy, setShowVolumeStudy] = useState(false);
   const [visibleAccuracyRecordIds, setVisibleAccuracyRecordIds] = useState<string[] | null>(null);
   const [showAccuracyOptions, setShowAccuracyOptions] = useState(false);
   const [showAllAccuracyTrades, setShowAllAccuracyTrades] = useState(false);
@@ -2756,10 +2762,11 @@ export const OandaProChart: React.FC<{
   const dailyRiskMoney = (value: number) => `${mt5Status?.bridge.currency === 'USD' ? '$' : `${mt5Status?.bridge.currency || 'USD'} `}${value.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
   const scalpingEnabled = mt5Status?.config.scalpingEnabled ?? true;
   const intradayEnabled = mt5Status?.config.intradayEnabled ?? true;
+  const scalpOneToOneEnabled = mt5Status?.config.scalpOneToOneEnabled === true;
   const tradeStyleEnabled = useCallback((trade: {
-    tradeStyle?: 'SCALPING' | 'INTRADAY'; zoneTimeframe?: TradeTimeframe;
-  }) => isTradeStyleEnabled({ scalpingEnabled, intradayEnabled }, trade),
-  [scalpingEnabled, intradayEnabled]);
+    tradeStyle?: 'SCALPING' | 'INTRADAY' | 'SCALP_1_1'; zoneTimeframe?: TradeTimeframe;
+  }) => isTradeStyleEnabled({ scalpingEnabled, intradayEnabled, scalpOneToOneEnabled }, trade),
+  [scalpingEnabled, intradayEnabled, scalpOneToOneEnabled]);
   const directTradeStyleEnabled = tradeStyleEnabled({
     tradeStyle: marketSymbol === 'XAUUSD' ? 'INTRADAY' : undefined,
     zoneTimeframe: granularity,
@@ -2770,7 +2777,9 @@ export const OandaProChart: React.FC<{
       || (overlay.setupId !== undefined && overlay.setupId === signal.setupId)
     ));
     return tradeStyleEnabled(stored ?? {
-      tradeStyle: overlay.id.startsWith('GOLD_SCALP:') || overlay.label?.includes('SCALP')
+      tradeStyle: overlay.id.startsWith('SCALP_1_1:') || overlay.setupId?.startsWith('SCALP_1_1:')
+        || overlay.label?.toUpperCase().includes('SCALP 1:1')
+        ? 'SCALP_1_1' : overlay.id.startsWith('GOLD_SCALP:') || overlay.label?.includes('SCALP')
         ? 'SCALPING' : marketSymbol === 'XAUUSD' ? 'INTRADAY' : undefined,
       zoneTimeframe: overlay.chartTimeframe ?? granularity,
     });
@@ -4408,7 +4417,7 @@ export const OandaProChart: React.FC<{
     const records: JournalTradeRecord[] = [];
     const add = (id: string, zoneId: string | undefined, zoneName: string,
       zoneTimeframe: TradeTimeframe, source: 'ENGULFING' | 'MTF',
-      trade: TradeLevels | undefined, tradeStyle?: 'SCALPING' | 'INTRADAY', mtfContext?: MtfRow) => {
+      trade: TradeLevels | undefined, tradeStyle?: 'SCALPING' | 'INTRADAY' | 'SCALP_1_1', mtfContext?: MtfRow) => {
       if (!trade || trade.filledAt === undefined || isCompletedTrade(trade)) return;
       if (blockedGoldChartEntry(
         trade.signal.time, trade.signal.timeframe, trade.signal.direction,
@@ -4841,7 +4850,7 @@ export const OandaProChart: React.FC<{
         symbol: 'XAUUSD' as const,
         setupId: position.setupId,
         trade,
-        label: `${storedSignal?.tradeStyle === 'SCALPING' ? 'SCALP · ' : ''}${position.zoneTimeframe ?? '?'}→${position.signalTimeframe ?? '?'} · 1:${position.rewardRisk ?? rewardRisk}`,
+        label: `${storedSignal?.tradeStyle === 'SCALP_1_1' ? 'SCALP 1:1 · ' : storedSignal?.tradeStyle === 'SCALPING' ? 'SCALP · ' : ''}${position.zoneTimeframe ?? '?'}→${position.signalTimeframe ?? '?'} · 1:${position.rewardRisk ?? rewardRisk}`,
         chartTimeframe: signalTimeframe,
       }];
     })
@@ -5069,7 +5078,7 @@ export const OandaProChart: React.FC<{
     const addEntry = (details: {
       zoneName: string; zoneTimeframe: TradeTimeframe;
       source?: 'MTF' | 'ENGULFING'; higherZoneName?: string; entryZoneName?: string;
-      tradeStyle?: 'SCALPING' | 'INTRADAY';
+      tradeStyle?: 'SCALPING' | 'INTRADAY' | 'SCALP_1_1';
       trade: TradeLevels;
     }) => {
       const { trade } = details;
@@ -8737,8 +8746,65 @@ export const OandaProChart: React.FC<{
     });
   };
 
+  const [scalpOneToOnePreview, setScalpOneToOnePreview] = useState<Mt5SignalInput[]>([]);
+  useEffect(() => {
+    setScalpOneToOnePreview([]);
+    if (!scalpOneToOneEnabled || marketSymbol !== 'XAUUSD' || granularity !== 'M15' || replayIndex !== null) return;
+    // Structure/trendline calculations stay off the chart rendering thread.
+    const task = new Worker(new URL('../services/scalpOneToOne.worker.ts', import.meta.url), { type: 'module' });
+    task.onmessage = (event: MessageEvent<{ signals: Mt5SignalInput[] }>) => setScalpOneToOnePreview(event.data.signals);
+    task.onerror = () => setScalpOneToOnePreview([]);
+    task.postMessage({ candles: {
+      M15: tableTimeframeData.M15?.candles, H1: tableTimeframeData.H1?.candles,
+      H4: tableTimeframeData.H4?.candles,
+    }, now: tradeDisplayAsOf, pendingExpiryMinutes: mt5Status?.config.pendingExpiryMinutes ?? 240 });
+    return () => { task.onmessage = null; task.terminate(); };
+  }, [scalpOneToOneEnabled, marketSymbol, granularity, replayIndex, tableTimeframeData,
+    tradeDisplayAsOf, mt5Status?.config.pendingExpiryMinutes]);
+  const scalpOneToOneBrokerSignals = (mt5Status?.recentSignals ?? []).filter(signal => signal.tradeStyle === 'SCALP_1_1'
+      && mt5Status?.bridge.account === signal.account && mt5Status?.bridge.server === signal.server
+      && mt5Status?.bridge.brokerSymbol === signal.brokerSymbol);
+  const scalpOneToOneTableSignals: Array<Mt5StoredSignal & { preview?: boolean }> = [
+    ...scalpOneToOneBrokerSignals,
+    ...scalpOneToOnePreview.filter(signal => !scalpOneToOneBrokerSignals.some(stored =>
+      stored.tradeStyle === 'SCALP_1_1' && stored.signalAt === signal.signalAt)).map(signal => ({
+      ...signal, status: 'QUEUED' as const, createdAt: signal.calculatedAt,
+      updatedAt: signal.calculatedAt, preview: true,
+    })),
+  ];
   const zoneTableContent = (
     <>
+    {replayIndex === null && marketSymbol === 'XAUUSD' && scalpOneToOneEnabled
+      && granularity === 'M15' && scalpOneToOneTableSignals
+        .filter(signal => signal.signalAt <= tradeDisplayAsOf
+          && !tradeDisplayExpired(signal, displayCandles, tradeDisplayAsOf))
+        .sort((a, b) => b.signalAt - a.signalAt).slice(0, 8).map(signal => {
+          const trade: TradeLevels = {
+            entry: signal.executionPrice ?? signal.entry, stopLoss: signal.stopLoss,
+            takeProfit: signal.takeProfit, riskFree: signal.takeProfit, riskFreeEnabled: false,
+            riskPips: signal.riskPips, rewardRisk: 1,
+            status: signal.status === 'TP' ? 'tp-hit' : signal.status === 'SL' ? 'sl-hit'
+              : ['ACTIVE', 'RISK_FREE'].includes(signal.status) ? 'active' : 'pending',
+            pendingAtCreation: signal.orderType === 'LIMIT', calculatedAt: signal.calculatedAt,
+            filledAt: signal.openedAt, resolvedAt: signal.closedAt,
+            signal: { type: signal.engulfingType as EngulfingTradeSignal['type'],
+              direction: signal.direction === 'BUY' ? 'bullish' : 'bearish',
+              timeframe: 'M15', time: signal.signalAt, candleCount: signal.engulfingType === 'T1' ? 2 : 3 },
+          };
+          return <React.Fragment key={`scalp-1-1-${signal.id}`}>
+            <tr className="border-t border-cyan-200 bg-cyan-50/80">
+              <td className="px-2 py-1 font-black text-cyan-800"><div>SCALP 1:1 · M15</div>
+                <div className="text-[8px] font-semibold text-slate-500">{formatAccuracyTradeTime(signal.calculatedAt, chartTimeZone)}</div></td>
+              <td className={`px-2 py-1 font-bold ${signal.direction === 'BUY' ? 'text-emerald-700' : 'text-rose-700'}`}>{signal.direction}</td>
+              <td className="px-2 py-1 font-bold text-blue-700">{formatPrice(trade.entry)}</td>
+              <td className="px-2 py-1 text-center font-black">{signal.engulfingType}</td>
+              <td className={`px-2 py-1 text-right font-black ${mt5SignalStatusClassName(signal)}`}>{signal.preview ? 'SETUP CONFIRMED · CHART ONLY' : mt5SignalStatusLabel(signal)}</td>
+            </tr>
+            {signal.preview ? <tr className="border-t border-indigo-100 bg-indigo-50/70"><td colSpan={5} className="px-2 py-1 text-[9px] font-black text-slate-700">
+              ENTRY {formatPrice(trade.entry)} · SL {formatPrice(trade.stopLoss)} · TP {formatPrice(trade.takeProfit)} · R:R 1:1 · CHART ONLY
+            </td></tr> : <TradeDetailsRow trade={trade} colSpan={5} mt5Signal={signal} />}
+          </React.Fragment>;
+        })}
     {replayIndex === null && marketSymbol === 'XAUUSD' && mt5Status?.bridge.connected
       && mt5Status.bridge.fibProfitEvents?.map(event => (
         <tr key={`fib-exit-${event.ticket}`} className="border-t border-cyan-200 bg-cyan-50/80">
@@ -9456,9 +9522,15 @@ export const OandaProChart: React.FC<{
                       />
                       Intraday
                     </label>
+                    <label className="flex items-center gap-1 font-bold text-cyan-800">
+                      <input type="checkbox" aria-label="Enable Scalp 1:1"
+                        checked={mt5Status.config.scalpOneToOneEnabled === true}
+                        onChange={event => void updateMt5Config({ scalpOneToOneEnabled: event.target.checked })} />
+                      Scalp 1:1
+                    </label>
                   </div>
                   <span className="mt-1 block text-[8px] font-semibold text-slate-500">
-                    Gold scalping uses M15/H1 zones with M1/M5 confirmation. Both switches can be on.
+                    Gold scalping uses M15/H1 zones with M1/M5 confirmation. Each style can be enabled independently.
                     {' '}OFF hides that style across the dashboard and stops its alerts and new orders.
                   </span>
                 </fieldset>
@@ -9504,6 +9576,20 @@ export const OandaProChart: React.FC<{
                   </select>
                   <span className="mt-1 block text-[8px] font-semibold text-slate-500">
                     Lot size = cash risk ÷ (SL pips × 10)
+                  </span>
+                </label>
+                <label className="mb-2 block font-bold text-cyan-800">
+                  Scalp 1:1 risk per trade
+                  <select aria-label="Scalp 1:1 risk per trade"
+                    value={mt5Status.config.scalpOneToOneRiskPercent ?? 0.25}
+                    onChange={event => void updateMt5Config({ scalpOneToOneRiskPercent: Number(event.target.value) })}
+                    className="mt-1 w-full rounded border border-cyan-200 bg-white px-2 py-1">
+                    {SCALP_ONE_TO_ONE_RISK_OPTIONS.map(risk => <option key={risk} value={risk}>{risk}%</option>)}
+                  </select>
+                  <span className="mt-1 block text-[8px] font-semibold text-slate-500">
+                    Independent of the risk above. Uses MT5 equity: {mt5Status.bridge.currency || '$'}{' '}
+                    {(Math.max(0, mt5Status.bridge.equity ?? 0) * (mt5Status.config.scalpOneToOneRiskPercent ?? 0.25) / 100).toFixed(2)} at SL.
+                    {' '}M15 / H4 bias, H4 EMA20/50, H1 continuation/Far, 30-pip buffer, one entry, fixed 1:1 TP.
                   </span>
                 </label>
                 <label className="mb-2 block font-bold text-slate-700">
@@ -10096,10 +10182,15 @@ export const OandaProChart: React.FC<{
             >
               ENTRY ARROWS {showEntryArrows ? 'ON' : 'OFF'}
             </button>
-            <button type="button" onClick={() => setShowTrendlineStudy(value => !value)}
+            <button type="button" onClick={() => { setShowTrendlineStudy(value => !value); setShowVolumeStudy(false); }}
               aria-pressed={showTrendlineStudy}
               className="whitespace-nowrap rounded-full border border-violet-200 bg-violet-50 px-1.5 py-0.5 text-[8px] font-black text-violet-800">
               TRENDLINE STUDY {showTrendlineStudy ? 'ON' : 'OFF'}
+            </button>
+            <button type="button" onClick={() => { setShowVolumeStudy(value => !value); setShowTrendlineStudy(false); }}
+              aria-pressed={showVolumeStudy}
+              className="whitespace-nowrap rounded-full border border-teal-200 bg-teal-50 px-1.5 py-0.5 text-[8px] font-black text-teal-800">
+              VOLUME ENGULFING STUDY {showVolumeStudy ? 'ON' : 'OFF'}
             </button>
             <div className="relative flex">
               <button
@@ -10592,6 +10683,12 @@ export const OandaProChart: React.FC<{
           }}
         >
           <div ref={hostRef} className="absolute inset-0" />
+          {showVolumeStudy && <VolumeEngulfingStudy
+            symbol={marketSymbol} timeframe={granularity}
+            chartCandles={displayCandles} candles={vipCandles}
+            chartRef={chartRef} seriesRef={candleSeriesRef}
+            onClose={() => setShowVolumeStudy(false)}
+          />}
           {showTrendlineStudy && <TrendlineStudy
             symbol={marketSymbol} pipSize={marketConfig.pipSize} timeframe={granularity}
             entryArrows={entryArrowStudyEntries}

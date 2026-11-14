@@ -1,0 +1,162 @@
+{
+  "method": "EMA + H1 continuation/Far research test",
+  "startingBalance": 5000,
+  "fixedRiskPerTrade": 50,
+  "grouping": "Monday-Sunday, UTC exit date",
+  "weeks": [
+    {
+      "start": "2026-08-03",
+      "end": "2026-08-09",
+      "tp": 1,
+      "sl": 4,
+      "winRate": 20.0,
+      "netR": -3,
+      "pnlUSD": -150,
+      "balanceUSD": 4850
+    },
+    {
+      "start": "2026-08-10",
+      "end": "2026-08-16",
+      "tp": 3,
+      "sl": 7,
+      "winRate": 30.0,
+      "netR": -4,
+      "pnlUSD": -200,
+      "balanceUSD": 4650
+    },
+    {
+      "start": "2026-08-17",
+      "end": "2026-08-23",
+      "tp": 1,
+      "sl": 5,
+      "winRate": 16.666666666666668,
+      "netR": -4,
+      "pnlUSD": -200,
+      "balanceUSD": 4450
+    },
+    {
+      "start": "2026-08-24",
+      "end": "2026-08-30",
+      "tp": 7,
+      "sl": 9,
+      "winRate": 43.75,
+      "netR": -2,
+      "pnlUSD": -100,
+      "balanceUSD": 4350
+    },
+    {
+      "start": "2026-08-31",
+      "end": "2026-09-06",
+      "tp": 14,
+      "sl": 8,
+      "winRate": 63.63636363636363,
+      "netR": 6,
+      "pnlUSD": 300,
+      "balanceUSD": 4650
+    },
+    {
+      "start": "2026-09-07",
+      "end": "2026-09-13",
+      "tp": 14,
+      "sl": 7,
+      "winRate": 66.66666666666667,
+      "netR": 7,
+      "pnlUSD": 350,
+      "balanceUSD": 5000
+    },
+    {
+      "start": "2026-09-14",
+      "end": "2026-09-20",
+      "tp": 10,
+      "sl": 7,
+      "winRate": 58.8235294117647,
+      "netR": 3,
+      "pnlUSD": 150,
+      "balanceUSD": 5150
+    },
+    {
+      "start": "2026-09-21",
+      "end": "2026-09-27",
+      "tp": 16,
+      "sl": 9,
+      "winRate": 64.0,
+      "netR": 7,
+      "pnlUSD": 350,
+      "balanceUSD": 5500
+    },
+    {
+      "start": "2026-09-28",
+      "end": "2026-10-04",
+      "tp": 11,
+      "sl": 10,
+      "winRate": 52.38095238095238,
+      "netR": 1,
+      "pnlUSD": 50,
+      "balanceUSD": 5550
+    },
+    {
+      "start": "2026-10-05",
+      "end": "2026-10-11",
+      "tp": 11,
+      "sl": 9,
+      "winRate": 55.0,
+      "netR": 2,
+      "pnlUSD": 100,
+      "balanceUSD": 5650
+    },
+    {
+      "start": "2026-10-12",
+      "end": "2026-10-18",
+      "tp": 11,
+      "sl": 5,
+      "winRate": 68.75,
+      "netR": 6,
+      "pnlUSD": 300,
+      "balanceUSD": 5950
+    },
+    {
+      "start": "2026-10-19",
+      "end": "2026-10-25",
+      "tp": 9,
+      "sl": 9,
+      "winRate": 50.0,
+      "netR": 0,
+      "pnlUSD": 0,
+      "balanceUSD": 5950
+    },
+    {
+      "start": "2026-10-26",
+      "end": "2026-11-01",
+      "tp": 21,
+      "sl": 7,
+      "winRate": 75.0,
+      "netR": 14,
+      "pnlUSD": 700,
+      "balanceUSD": 6650
+    },
+    {
+      "start": "2026-11-02",
+      "end": "2026-11-08",
+      "tp": 7,
+      "sl": 9,
+      "winRate": 43.75,
+      "netR": -2,
+      "pnlUSD": -100,
+      "balanceUSD": 6550
+    },
+    {
+      "start": "2026-11-09",
+      "end": "2026-11-15",
+      "tp": 3,
+      "sl": 3,
+      "winRate": 50.0,
+      "netR": 0,
+      "pnlUSD": 0,
+      "balanceUSD": 6550
+    }
+  ],
+  "totalTP": 139,
+  "totalSL": 108,
+  "totalPnL": 1550,
+  "endingBalance": 6550
+}

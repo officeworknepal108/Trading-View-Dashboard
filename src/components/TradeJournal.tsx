@@ -43,7 +43,7 @@ export interface JournalTradeRecord {
   result: TradeResult | 'open' | 'risk-free';
   completedAt: number;
   source: 'ENGULFING' | 'MTF';
-  tradeStyle?: 'SCALPING' | 'INTRADAY';
+  tradeStyle?: 'SCALPING' | 'INTRADAY' | 'SCALP_1_1';
   direction: 'bullish' | 'bearish';
   signalTimeframe: TradeTimeframe;
   engulfingType: string;
@@ -226,7 +226,7 @@ export function calculateJournalCashSummary(trades: JournalTradeRecord[]): Journ
 
 function tradeResultR(trade: JournalTradeRecord): number | undefined {
   if (!['tp', 'sl', 'rf'].includes(trade.result)) return undefined;
-  if (trade.tradeStyle === 'INTRADAY' && !trade.partialClosedAt) {
+  if ((trade.tradeStyle === 'INTRADAY' || trade.tradeStyle === 'SCALP_1_1') && !trade.partialClosedAt) {
     if (trade.result === 'tp') return trade.rewardRisk;
     if (trade.result === 'sl') return -1;
   }
@@ -966,7 +966,7 @@ export const TradeJournal: React.FC<TradeJournalProps> = ({ records, timeframe, 
           <option value="ALL">ALL SIDES</option><option value="BUY">BUY</option><option value="SELL">SELL</option>
         </select>
         <select aria-label="Trade style" value={tradeStyleFilter} onChange={(event) => setTradeStyleFilter(event.target.value as TradeRecordFilters['tradeStyle'])} className="rounded border border-slate-200 px-2 py-1 text-[9px] font-bold">
-          <option value="ALL">ALL STYLES</option><option value="SCALPING">SCALPING</option><option value="INTRADAY">INTRADAY</option>
+          <option value="ALL">ALL STYLES</option><option value="SCALPING">SCALPING</option><option value="INTRADAY">INTRADAY</option><option value="SCALP_1_1">SCALP 1:1</option>
         </select>
         <select aria-label="Trading time" value={tradingTimeFilter} onChange={(event) => setTradingTimeFilter(event.target.value as TradeRecordFilters['tradingTime'])} className="rounded border border-slate-200 px-2 py-1 text-[9px] font-bold">
           <option value="ALL">ALL TRADING TIMES</option><option value="TRADING">IN SESSION</option><option value="NON_TRADING">OUTSIDE TIME</option>
