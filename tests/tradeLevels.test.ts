@@ -35,7 +35,7 @@ test('incomplete Fib patterns allow a later qualified engulfing; a first valid p
       { time: 60, open: 103, high: 104, low: 101.5, close: 102, complete: true },
       { time: 120, open: 102, high: 106, low: 101.5, close: 105, complete: true },
       { time: 180, open: 105, high: 106, low: 100, close: 103, complete: true },
-      { time: 240, open: 103, high: 109, low: 103, close: 108, complete: true },
+      { time: 240, open: 103, high: 109, low: 102.9, close: 108, complete: true },
     ].map(c => isBuy ? c : { ...c, open: 210 - c.open, high: 210 - c.low, low: 210 - c.high, close: 210 - c.close });
     const zone: StructureZone = { id: 'qml', name: 'QML', category: 'mg', isBuy,
       startTime: 0, endTime: 9000, bottom: isBuy ? 100 : 108, top: isBuy ? 102 : 110,

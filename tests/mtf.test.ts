@@ -709,7 +709,8 @@ test('the LTF source pair must overlap the HTF zone even when the CHOCH break ca
     candle(300, 108, 109, 101, 102),
     candle(400, 109, 112, 108, 111),
     candle(500, 111, 112.2, 110, 110.5),
-    candle(600, 110.6, 110.7, 108.5, 109.8),
+    // Valid T3: the bearish body (0.8) exceeds its lower wick (0.5).
+    candle(600, 110.6, 110.7, 109.3, 109.8),
   ];
   const higherZone = zone({
     id: 'm15-tjl2', name: 'TJL2', category: 'mg', isBuy: false,

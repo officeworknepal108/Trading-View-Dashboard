@@ -874,18 +874,21 @@ function candleIsBearish(candle: StructureCandle): boolean {
 /**
  * The final confirmation candle must have enough directional body strength.
  * For a bullish confirmation only its upper wick is relevant; for a bearish
- * confirmation only its lower wick is relevant. An equal body and wick passes.
+ * confirmation only its lower wick is relevant. The body must be strictly
+ * larger than that wick for every engulfing type, including Type 3.
+ * A bullish confirmation must also have a lower wick; a bearish confirmation
+ * must also have an upper wick.
  */
 function confirmationCandleHasDirectionalBodyStrength(candle: StructureCandle): boolean {
   if (candleIsBullish(candle)) {
     const body = candle.close - candle.open;
     const upperWick = Math.max(0, candle.high - candle.close);
-    return body >= upperWick;
+    return candle.low < candle.open && body > upperWick;
   }
   if (candleIsBearish(candle)) {
     const body = candle.open - candle.close;
     const lowerWick = Math.max(0, candle.close - candle.low);
-    return body >= lowerWick;
+    return candle.high > candle.open && body > lowerWick;
   }
   return false;
 }
@@ -903,6 +906,7 @@ export function detectEngulfingPatternAt(
   const current = candles[endIndex];
   if (!current || current.complete === false) return undefined;
   const hasDirectionalBodyStrength = confirmationCandleHasDirectionalBodyStrength(current);
+  if (!hasDirectionalBodyStrength) return undefined;
 
   const maximumType4Count = Math.max(3, Math.min(10, Math.floor(type4MaxCandles)));
   // Prefer the longest valid sequence so the original tap candle is retained
@@ -948,9 +952,8 @@ export function detectEngulfingPatternAt(
       : undefined;
 
     // Type 3 uses the same mixed-direction sweep, but its third continuation
-    // candle closes through only the MIDDLE candle's extreme. Unlike the other
-    // engulfing types, the continuation candle's directional wick may exceed
-    // its body; the sweep and close geometry define this pattern. Type 2 is
+    // candle closes through only the MIDDLE candle's extreme. Its body must
+    // pass the same directional-wick check as every other type. Type 2 is
     // checked first so a strong close through the first candle is not mislabeled.
     if (candleIsBearish(first) && candleIsBullish(second)
       && second.low < first.low && candleIsBullish(current) && current.close > second.high) {

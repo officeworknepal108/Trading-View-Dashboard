@@ -944,7 +944,7 @@ test('Type 4 contains all middle candles inside the first candle over 3–10 can
   }, 'one inside candle is sufficient between the tap and breakout candles');
 });
 
-test('Types 1, 2, and 4 reject a weak confirmation while Type 3 follows sweep geometry', () => {
+test('all four engulfing types require a body strictly larger than the directional wick', () => {
   const patterns: Array<{ type: 'T1' | 'T2' | 'T3' | 'T4'; candles: StructureCandle[] }> = [
     {
       type: 'T1',
@@ -980,45 +980,60 @@ test('Types 1, 2, and 4 reject a weak confirmation while Type 3 follows sweep ge
   ];
 
   for (const { type, candles } of patterns) {
-    const endIndex = candles.length - 1;
-    assert.equal(detectEngulfingPatternAt(candles, endIndex)?.type, type);
-    const weakConfirmation = candles.map((candle) => ({ ...candle }));
-    const final = weakConfirmation[endIndex];
-    final.high = final.close + (final.close - final.open) + 0.01;
-    if (type === 'T3') {
-      assert.equal(detectEngulfingPatternAt(weakConfirmation, endIndex)?.type, 'T3');
-    } else {
-      assert.equal(
-        detectEngulfingPatternAt(weakConfirmation, endIndex),
-        undefined,
-        `${type} must be rejected when the bullish upper wick is larger than its body`,
-      );
+    for (const isBuy of [true, false]) {
+      const source = isBuy ? candles : candles.map((candle) => ({
+        ...candle, open: -candle.open, close: -candle.close,
+        high: -candle.low, low: -candle.high,
+      }));
+      const endIndex = source.length - 1;
+      assert.equal(detectEngulfingPatternAt(source, endIndex)?.type, type);
+      for (const wickSize of [0, 0.01]) {
+        const modified = source.map((candle) => ({ ...candle }));
+        const final = modified[endIndex];
+        if (isBuy) final.low = final.open - wickSize;
+        else final.high = final.open + wickSize;
+        assert.equal(
+          detectEngulfingPatternAt(modified, endIndex)?.type,
+          wickSize > 0 ? type : undefined,
+          `${type} ${isBuy ? 'BUY requires a lower' : 'SELL requires an upper'} confirmation wick`,
+        );
+      }
+      for (const excess of [-0.01, 0, 0.01]) {
+        const modified = source.map((candle) => ({ ...candle }));
+        const final = modified[endIndex];
+        const wick = Math.abs(final.close - final.open) + excess;
+        if (isBuy) final.high = final.close + wick;
+        else final.low = final.close - wick;
+        assert.equal(
+          detectEngulfingPatternAt(modified, endIndex)?.type,
+          excess < 0 ? type : undefined,
+          `${type} ${isBuy ? 'BUY upper' : 'SELL lower'} wick: body must be strictly larger`,
+        );
+      }
     }
   }
 });
 
-test('bearish Type 3 accepts the chart-confirmed continuation candle with a longer lower wick', () => {
+test('bearish Type 3 rejects the chart-confirmed continuation candle with a longer lower wick', () => {
   const candles: StructureCandle[] = [
     { time: 1, open: 4168.790, high: 4172.390, low: 4168.785, close: 4172.150, complete: true },
     { time: 2, open: 4172.135, high: 4172.415, low: 4170.760, close: 4170.920, complete: true },
     { time: 3, open: 4171.070, high: 4172.075, low: 4169.725, close: 4170.475, complete: true },
   ];
 
-  assert.deepEqual(detectEngulfingPatternAt(candles, 2), {
-    type: 'T3', direction: 'bearish', candleCount: 3, startIndex: 0, endIndex: 2,
-  });
+  assert.equal(detectEngulfingPatternAt(candles, 2), undefined);
 });
 
-test('bearish confirmation uses its lower wick and accepts a wick equal to the body', () => {
+test('bearish confirmation uses its lower wick and rejects a wick equal to the body', () => {
   const bearish: StructureCandle[] = [
     { time: 1, open: 10, high: 13, low: 9, close: 12, complete: true },
     { time: 2, open: 12, high: 13.5, low: 5, close: 8.5, complete: true },
   ];
 
   assert.equal(
-    detectEngulfingPatternAt(bearish, 1)?.direction,
-    'bearish',
-    'a lower wick equal to the bearish body remains valid',
+    detectEngulfingPatternAt(bearish, 1),
+    undefined,
+    'a lower wick equal to the bearish body must be rejected',
   );
 
   bearish[1].low = 4.99;
