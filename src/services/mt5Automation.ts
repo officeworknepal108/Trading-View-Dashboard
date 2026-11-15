@@ -148,6 +148,18 @@ export const MT5_RISK_PERCENT_OPTIONS = [
   0.25, 0.5, 1, 1.5, 2, 2.5, 3, 3.5, 4, 4.5, 5,
 ] as const;
 export const SCALP_ONE_TO_ONE_RISK_OPTIONS = [0.25, 0.5, 0.75, 1, 1.5, 2] as const;
+export const SCALP_ONE_TO_ONE_MINIMUM_VOLUME_GAP = 250;
+
+/** Raw candle-volume units: T1 compares V1/V2; T2/T3 compare V2/V3. */
+export function scalpOneToOneVolumePasses(type: string | undefined,
+  v1: number | undefined, v2: number | undefined, v3?: number): boolean {
+  if (!type || !['T1', 'T2', 'T3'].includes(type)) return false;
+  const volumes = type === 'T1' ? [v1, v2] : [v1, v2, v3];
+  if (volumes.some(value => typeof value !== 'number' || !Number.isFinite(value) || value < 0)) return false;
+  const reference = type === 'T1' ? v1! : v2!;
+  const confirming = type === 'T1' ? v2! : v3!;
+  return reference - confirming >= SCALP_ONE_TO_ONE_MINIMUM_VOLUME_GAP;
+}
 export function normalizeScalpOneToOneRisk(value: unknown, fallback = 0.25): number {
   return SCALP_ONE_TO_ONE_RISK_OPTIONS.includes(value as typeof SCALP_ONE_TO_ONE_RISK_OPTIONS[number])
     ? value as number : fallback;
@@ -204,7 +216,7 @@ export function mt5SignalDisabledReason(
     mtfLtfFibRequired?: boolean;
   },
   signal: Pick<Mt5SignalInput, 'zoneTimeframe' | 'signalTimeframe' | 'tradeStyle'>
-    & Partial<Pick<Mt5SignalInput, 'source' | 'mtfLtfFibRequiredAtSignal'>>,
+    & Partial<Pick<Mt5SignalInput, 'source' | 'mtfLtfFibRequiredAtSignal' | 'engulfingType' | 'journalContext'>>,
 ): string | undefined {
   if (signal.source === 'MTF' && typeof config.mtfLtfFibRequired === 'boolean'
     && signal.mtfLtfFibRequiredAtSignal !== config.mtfLtfFibRequired) {
@@ -213,7 +225,13 @@ export function mt5SignalDisabledReason(
   if (!isMt5SignalAllowedByTimeframes(config.enabledTimeframes, signal)) {
     return `${signal.zoneTimeframe} setup / ${signal.signalTimeframe} entry automatic trading is disabled.`;
   }
-  if (isTradeStyleEnabled(config, signal)) return undefined;
+  if (isTradeStyleEnabled(config, signal)) {
+    if (signal.tradeStyle === 'SCALP_1_1' && !scalpOneToOneVolumePasses(signal.engulfingType,
+      signal.journalContext?.volume1, signal.journalContext?.volume2, signal.journalContext?.volume3)) {
+      return 'Scalp 1:1 requires a minimum 250-unit candle-volume decrease.';
+    }
+    return undefined;
+  }
   if (signal.tradeStyle === 'SCALP_1_1') return 'Scalp 1:1 automatic trading is disabled.';
   const scalping = signal.tradeStyle === 'SCALPING' || (signal.tradeStyle === undefined
     && (signal.zoneTimeframe === 'M1' || signal.zoneTimeframe === 'M5'));

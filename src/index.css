@@ -23,3 +23,16 @@ body,
 button {
   font: inherit;
 }
+
+/* Match the compact entry-arrow summary throughout the indicator menus.
+   Keep this scoped rule above Tailwind's layered utilities in the cascade,
+   including the global button font reset. */
+.indicator-controls-panel,
+.indicator-controls-panel :where(button, summary, label, select, option, input, span, div, p) {
+  font-size: 9px;
+  line-height: 1.4;
+}
+
+.indicator-controls-panel :where(button, summary) {
+  font-weight: 900;
+}

@@ -453,6 +453,7 @@ export const TradeJournal: React.FC<TradeJournalProps> = ({ records, timeframe, 
   const [dateFilter, setDateFilter] = useState('ALL');
   const [sourceFilter, setSourceFilter] = useState<TradeRecordFilters['source']>('ALL');
   const [tradeStyleFilter, setTradeStyleFilter] = useState<TradeRecordFilters['tradeStyle']>('ALL');
+  const [includeScalpOneToOne, setIncludeScalpOneToOne] = useState(true);
   const [tradingTimeFilter, setTradingTimeFilter] = useState<TradeRecordFilters['tradingTime']>('ALL');
   const [sideFilter, setSideFilter] = useState<TradeRecordFilters['side']>('ALL');
   const [zoneFilter, setZoneFilter] = useState<TradeRecordFilters['zones']>('ALL');
@@ -659,12 +660,13 @@ export const TradeJournal: React.FC<TradeJournalProps> = ({ records, timeframe, 
       zones: zoneFilter,
     }, timeZone, marketSymbol);
     return coreFiltered.filter((trade) => (
-      (volumeFilter === 'ALL' || volumeStatus(trade) === volumeFilter)
+      (includeScalpOneToOne || trade.tradeStyle !== 'SCALP_1_1')
+      && (volumeFilter === 'ALL' || volumeStatus(trade) === volumeFilter)
       && (resultFilter === 'ALL' || trade.result === resultFilter)
       && (!query || [trade.zoneName, trade.engulfingType, volumeStatus(trade), trade.session, trade.reason, trade.autoReason, trade.mistake, trade.lesson]
         .some((value) => value?.toLowerCase().includes(query)))
     ));
-  }, [dateFilter, datePeriod, resultFilter, search, sideFilter, sourceFilter, timeframeFilter, timeZone, trades, tradeStyleFilter, tradingTimeFilter, volumeFilter, zoneFilter, historyAsOf, marketSymbol]);
+  }, [dateFilter, datePeriod, resultFilter, search, sideFilter, sourceFilter, timeframeFilter, timeZone, trades, tradeStyleFilter, tradingTimeFilter, volumeFilter, zoneFilter, historyAsOf, marketSymbol, includeScalpOneToOne]);
 
   useEffect(() => {
     if (filteredTrades.some((trade) => trade.id === selectedId)) return;
@@ -968,6 +970,11 @@ export const TradeJournal: React.FC<TradeJournalProps> = ({ records, timeframe, 
         <select aria-label="Trade style" value={tradeStyleFilter} onChange={(event) => setTradeStyleFilter(event.target.value as TradeRecordFilters['tradeStyle'])} className="rounded border border-slate-200 px-2 py-1 text-[9px] font-bold">
           <option value="ALL">ALL STYLES</option><option value="SCALPING">SCALPING</option><option value="INTRADAY">INTRADAY</option><option value="SCALP_1_1">SCALP 1:1</option>
         </select>
+        {marketSymbol === 'XAUUSD' && <button type="button" aria-pressed={includeScalpOneToOne}
+          onClick={() => setIncludeScalpOneToOne(value => !value)}
+          className="rounded border border-emerald-200 bg-emerald-50 px-2 py-1 text-[9px] font-black text-emerald-800">
+          SCALP 1:1 RESULTS {includeScalpOneToOne ? 'ON' : 'OFF'}
+        </button>}
         <select aria-label="Trading time" value={tradingTimeFilter} onChange={(event) => setTradingTimeFilter(event.target.value as TradeRecordFilters['tradingTime'])} className="rounded border border-slate-200 px-2 py-1 text-[9px] font-bold">
           <option value="ALL">ALL TRADING TIMES</option><option value="TRADING">IN SESSION</option><option value="NON_TRADING">OUTSIDE TIME</option>
         </select>
@@ -1161,7 +1168,11 @@ export const TradeJournal: React.FC<TradeJournalProps> = ({ records, timeframe, 
                   <td className="px-2 py-1.5">{formatJournalTime(trade.completedAt, timeZone)}</td>
                   <td className="whitespace-nowrap px-2 py-1.5 font-bold">{trade.session || inferTradingSession(trade.completedAt)}</td>
                   <td className="px-2 py-1.5 font-bold">{displayTimeframe(trade.zoneTimeframe)}</td>
-                  <td className="whitespace-nowrap px-2 py-1.5 text-left font-bold">{trade.zoneName}</td>
+                  <td className="whitespace-nowrap px-2 py-1.5 text-left font-bold">{trade.zoneName}
+                    {trade.tradeStyle === 'SCALP_1_1' && <div className="text-[8px] text-slate-500">
+                      {trade.mt5Managed || trade.brokerTicket !== undefined ? 'MT5' : 'CHART ONLY'}
+                    </div>}
+                  </td>
                   <td className={`px-2 py-1.5 font-black ${trade.direction === 'bullish' ? 'text-emerald-700' : 'text-rose-700'}`}>{trade.direction === 'bullish' ? 'BUY' : 'SELL'}</td>
                   <td className="whitespace-nowrap px-2 py-1.5">{displayTimeframe(trade.signalTimeframe)} {trade.engulfingType}</td>
                   <td title={volumeValues(trade)} className={`whitespace-nowrap px-2 py-1.5 font-black ${volumeStatus(trade) === 'best' ? 'text-emerald-700' : volumeStatus(trade) === 'valid' ? 'text-blue-700' : volumeStatus(trade) === 'failed' ? 'text-rose-700' : 'text-slate-500'}`}>{VOLUME_STATUS_LABELS[volumeStatus(trade)]}</td>

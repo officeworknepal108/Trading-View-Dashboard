@@ -2263,6 +2263,7 @@ const EngulfingAccuracyTable: React.FC<{
   }, [timeframe]);
   const [tradingTimeFilter, setTradingTimeFilter] = useState<AccuracyTradingTimeFilter>('ALL');
   const [tradeStyleFilter, setTradeStyleFilter] = useState<'ALL' | 'SCALPING' | 'INTRADAY' | 'SCALP_1_1'>('ALL');
+  const [includeScalpOneToOne, setIncludeScalpOneToOne] = useState(true);
   const selectedStyle = marketSymbol === 'XAUUSD' ? tradeStyleFilter : 'ALL';
   const matchesStyle = (record: AccuracyTradeRecord) => selectedStyle === 'ALL'
     || record.tradeStyle === selectedStyle;
@@ -2277,12 +2278,12 @@ const EngulfingAccuracyTable: React.FC<{
         : selectTwoMonthAccuracyRecords(allRecords, historyAsOf),
       filters, timeZone, marketSymbol)
       .filter((record) => matchesAccuracyTradingTime(record, tradingTimeFilter)
-        && matchesStyle(record)),
-    [activeTab, allRecords, mt5Records, filters, timeZone, tradingTimeFilter, selectedStyle, historyAsOf, marketSymbol],
+        && matchesStyle(record) && (includeScalpOneToOne || record.tradeStyle !== 'SCALP_1_1')),
+    [activeTab, allRecords, mt5Records, filters, timeZone, tradingTimeFilter, selectedStyle, historyAsOf, marketSymbol, includeScalpOneToOne],
   );
-  const summaryRecords = filteredAllRecords.filter((record) => (
+  const summaryRecords = useMemo(() => filteredAllRecords.filter((record) => (
     record.result === 'tp' || record.result === 'sl' || record.result === 'rf'
-  ));
+  )), [filteredAllRecords]);
   const visibleChartIds = useMemo(() => {
     const selectedIds = new Set(summaryRecords.map((record) => record.id));
     return new Set(records.filter((record) => selectedIds.has(record.id)).map((record) => record.id));
@@ -2372,6 +2373,12 @@ const EngulfingAccuracyTable: React.FC<{
           <option value="INTRADAY">INTRADAY</option>
           <option value="SCALP_1_1">SCALP 1:1</option>
         </select>}
+        {marketSymbol === 'XAUUSD' && <button type="button"
+          aria-pressed={includeScalpOneToOne}
+          onClick={() => setIncludeScalpOneToOne(value => !value)}
+          className="rounded border border-emerald-200 bg-emerald-50 px-2 py-1 text-[9px] font-black text-emerald-800">
+          SCALP 1:1 RESULTS {includeScalpOneToOne ? 'ON' : 'OFF'}
+        </button>}
         <button
           type="button"
           onClick={onClose}
@@ -2533,6 +2540,9 @@ const EngulfingAccuracyTable: React.FC<{
                   <td className="px-1.5 py-1 font-bold text-indigo-700">{record.tradeStyle === 'SCALP_1_1' ? 'SCALP 1:1' : record.tradeStyle ?? '—'}</td>
                   <td className="whitespace-nowrap px-1.5 py-1 text-left font-bold text-slate-700">
                     {record.zoneName}
+                    {record.tradeStyle === 'SCALP_1_1' && <div className="text-[8px] text-slate-500">
+                      {record.mt5Managed || record.brokerTicket !== undefined ? 'MT5' : 'CHART ONLY'}
+                    </div>}
                   </td>
                   <td className={`px-1.5 py-1 font-black ${
                     record.direction === 'bullish' ? 'text-emerald-700' : 'text-rose-700'
@@ -2736,7 +2746,14 @@ export const OandaProChart: React.FC<{
   const [telegramMessagesEnabled, setTelegramMessagesEnabled] = useState(true);
   const [showInvalidZones, setShowInvalidZones] = useState(false);
   const [showTradeLevels, setShowTradeLevels] = useState(true);
-  const [showEntryArrows, setShowEntryArrows] = useState(false);
+  const [showScalpOneToOneArrows, setShowScalpOneToOneArrows] = useState(false);
+  const [showOtherEntryArrows, setShowOtherEntryArrows] = useState(false);
+  const showEntryArrows = showScalpOneToOneArrows || showOtherEntryArrows;
+  const enableEntryArrows = () => {
+    if (showEntryArrows) return;
+    setShowScalpOneToOneArrows(true);
+    setShowOtherEntryArrows(true);
+  };
   const [showAccuracyTable, setShowAccuracyTable] = useState(false);
   const [showTrendlineStudy, setShowTrendlineStudy] = useState(false);
   const [showVolumeStudy, setShowVolumeStudy] = useState(false);
@@ -2765,7 +2782,8 @@ export const OandaProChart: React.FC<{
   const scalpOneToOneEnabled = mt5Status?.config.scalpOneToOneEnabled === true;
   const tradeStyleEnabled = useCallback((trade: {
     tradeStyle?: 'SCALPING' | 'INTRADAY' | 'SCALP_1_1'; zoneTimeframe?: TradeTimeframe;
-  }) => isTradeStyleEnabled({ scalpingEnabled, intradayEnabled, scalpOneToOneEnabled }, trade),
+  }) => trade.tradeStyle === 'SCALP_1_1'
+    || isTradeStyleEnabled({ scalpingEnabled, intradayEnabled, scalpOneToOneEnabled }, trade),
   [scalpingEnabled, intradayEnabled, scalpOneToOneEnabled]);
   const directTradeStyleEnabled = tradeStyleEnabled({
     tradeStyle: marketSymbol === 'XAUUSD' ? 'INTRADAY' : undefined,
@@ -4412,6 +4430,42 @@ export const OandaProChart: React.FC<{
     vipCandles,
   ]);
 
+  const [scalpOneToOnePreview, setScalpOneToOnePreview] = useState<Mt5SignalInput[]>([]);
+  const [scalpOneToOneChartRecords, setScalpOneToOneChartRecords] = useState<JournalTradeRecord[]>([]);
+  const [scalpOneToOneHistoryStatus, setScalpOneToOneHistoryStatus] = useState('');
+  const scalpOneToOneHistoryRequested = marketSymbol === 'XAUUSD'
+    && (showScalpOneToOneArrows || showAccuracyTable || showJournal || scalpOneToOneEnabled);
+  const scalpOneToOneScanTime = Math.floor(tradeDisplayAsOf / 900) * 900;
+  // Use an unfinished bar's open only, keeping long scans alive as its wick changes.
+  const scalpOneToOneHistoryInput = useMemo(() => !scalpOneToOneHistoryRequested ? '' : JSON.stringify({ candles: Object.fromEntries(
+    (['M15', 'H1', 'H4'] as const).map(timeframe => [timeframe,
+      tableTimeframeData[timeframe]?.candles.map(candle => (
+        candle.complete === false || candle.time + TIMEFRAME_SECONDS[timeframe] > scalpOneToOneScanTime
+          ? { ...candle, complete: false, high: candle.open, low: candle.open, close: candle.open, volume: 0 }
+          : candle
+      )),
+    ])), now: scalpOneToOneScanTime,
+    pendingExpiryMinutes: mt5Status?.config.pendingExpiryMinutes ?? 240 }),
+    [scalpOneToOneHistoryRequested, tableTimeframeData, scalpOneToOneScanTime, mt5Status?.config.pendingExpiryMinutes]);
+  useEffect(() => {
+    if (!scalpOneToOneHistoryRequested) {
+      setScalpOneToOnePreview([]); setScalpOneToOneChartRecords([]);
+      setScalpOneToOneHistoryStatus(''); return;
+    }
+    setScalpOneToOneHistoryStatus('Loading Scalp 1:1 chart results...');
+    const task = new Worker(new URL('../services/scalpOneToOne.worker.ts', import.meta.url), { type: 'module' });
+    task.onmessage = (event: MessageEvent<{ signals?: Mt5SignalInput[]; records?: JournalTradeRecord[]; error?: string; progress?: number }>) => {
+      if (event.data.signals) setScalpOneToOnePreview(event.data.signals);
+      if (event.data.records) setScalpOneToOneChartRecords(event.data.records);
+      setScalpOneToOneHistoryStatus(event.data.error ?? (event.data.progress !== undefined
+        ? `Loading Scalp 1:1 chart results... ${event.data.progress}%`
+        : 'Scalp 1:1 chart results use loaded history; MT5 executions are recorded separately.'));
+    };
+    task.onerror = () => setScalpOneToOneHistoryStatus('Scalp 1:1 history unavailable.');
+    task.postMessage(JSON.parse(scalpOneToOneHistoryInput));
+    return () => { task.onmessage = null; task.terminate(); };
+  }, [scalpOneToOneHistoryRequested, scalpOneToOneHistoryInput]);
+
   const openChartJournalTrades = useMemo<JournalTradeRecord[]>(() => {
     if (replayIndex !== null) return [];
     const records: JournalTradeRecord[] = [];
@@ -4461,11 +4515,11 @@ export const OandaProChart: React.FC<{
       : record
   )), [visibleSavedJournalTrades, replayIndex, marketSymbol, tableTimeframeData, tradeDisplayAsOf]);
   const canonicalTradeRecords = useMemo(() => buildCanonicalTradeRecords(
-    reconciledMtfJournalTrades, accuracyTradeRecords, {
+    reconciledMtfJournalTrades, [...accuracyTradeRecords, ...scalpOneToOneChartRecords], {
       marketSymbol, pipSize: marketConfig.pipSize, requireLtfFib: mtfLtfFibRequired,
       timeframeData: tableTimeframeData, qualifyMtf: savedChartMtfEntryQualification,
     },
-  ), [accuracyTradeRecords, marketConfig.pipSize, marketSymbol, mtfLtfFibRequired,
+  ), [accuracyTradeRecords, scalpOneToOneChartRecords, marketConfig.pipSize, marketSymbol, mtfLtfFibRequired,
     savedChartMtfEntryQualification, reconciledMtfJournalTrades, tableTimeframeData]);
   const visibleCanonicalTradeRecords = useMemo(() => canonicalTradeRecords.filter((record) => (
     tradeStyleEnabled(record) && !blockedGoldHistoricalTrade(record)
@@ -5082,7 +5136,7 @@ export const OandaProChart: React.FC<{
       trade: TradeLevels;
     }) => {
       const { trade } = details;
-      if (!tradeStyleEnabled(details)) return;
+      if (!isTradeStyleEnabled({ scalpingEnabled, intradayEnabled, scalpOneToOneEnabled }, details)) return;
       if (trade.filledAt === undefined || trade.filledAt > now + 5
         || now - trade.filledAt > 180) return;
       const id = [marketSymbol, trade.signal.direction, trade.signal.timeframe,
@@ -5152,6 +5206,7 @@ export const OandaProChart: React.FC<{
       addEntry({ zoneName: executionZoneName(zone), zoneTimeframe, tradeStyle: 'SCALPING', trade });
     }
     for (const record of [...allSavedAccuracyRecords].sort((first, second) => second.completedAt - first.completedAt)) {
+      if (record.tradeStyle === 'SCALP_1_1' && !record.mt5Managed && record.brokerTicket === undefined) continue;
       if (record.symbol && record.symbol !== marketSymbol) continue;
       if (!record.openedAt || !record.signalAt || !['tp', 'sl'].includes(record.result)
         || now - record.completedAt > 86_400) continue;
@@ -5212,7 +5267,7 @@ export const OandaProChart: React.FC<{
     }).catch(() => undefined).finally(() => {
       telegramAlertSendingRef.current = false;
     });
-  }, [allSavedAccuracyRecords, directZoneEntryDecisions, displayZones, goldScalpingAccuracyTrades, granularity, marketSymbol, mt5Status?.config?.telegramMessagesEnabled, mtfRows, replayIndex, telegramMessagesEnabled, tradeOverlays, tradeStyleEnabled]);
+  }, [allSavedAccuracyRecords, directZoneEntryDecisions, displayZones, goldScalpingAccuracyTrades, granularity, marketSymbol, mt5Status?.config?.telegramMessagesEnabled, mtfRows, replayIndex, telegramMessagesEnabled, tradeOverlays, scalpingEnabled, intradayEnabled, scalpOneToOneEnabled]);
 
   const chartEntryRecords = useMemo(() => selectTradeChartRecords(
     deduplicateTradeRecords([
@@ -5402,6 +5457,9 @@ export const OandaProChart: React.FC<{
     return Array.from(entries.values());
   }, [blockedGoldHistoricalTrade, chartEntryRecords, displayCandles, granularity, marketSymbol, replayIndex,
     directTradeStyleEnabled, directZoneEntryDecisions, displayZones, retainedDirectChartTradesForTimeframe, tradingTimeEnabled, visibleAccuracyRecordIds]);
+  const visibleEntryHovers = useMemo(() => entryHovers.filter(entry => (
+    entry.style === 'SCALP_1_1' ? showScalpOneToOneArrows : showOtherEntryArrows
+  )), [entryHovers, showScalpOneToOneArrows, showOtherEntryArrows]);
   const trendlineSetupLabel = useMemo(() => {
     const records = new Map<string, JournalTradeRecord>(chartEntryRecords.map(record => [record.id, record] as const));
     const key = (trade: TradeLevels) => `${trade.signal.time}:${tradeOverlayExecutionKey(trade)}`;
@@ -5443,7 +5501,7 @@ export const OandaProChart: React.FC<{
   const entryArrowStudyEntries = useMemo<EntryArrowStudyEntry[]>(() => {
     if (!showTrendlineStudy) return [];
     const records = new Map<string, JournalTradeRecord>(chartEntryRecords.map(record => [record.id, record] as const));
-    return entryHovers.map(entry => {
+    return visibleEntryHovers.map(entry => {
       const record = records.get(entry.id);
       const zones = record ? resolveArrowTradeZones(record, mt5Status?.recentSignals ?? [], id => (
         savedChartMtfEntryQualification({ id, signalTime: record.signalAt!, direction: record.direction,
@@ -5456,7 +5514,7 @@ export const OandaProChart: React.FC<{
         entryZone: zones?.entryZone ?? entry.zone, source: entry.source, fib: entry.fib,
         style: entry.style, tradingTimeBlocked: entry.tradingTimeBlocked };
     });
-  }, [showTrendlineStudy, chartEntryRecords, entryHovers, mt5Status?.recentSignals, savedChartMtfEntryQualification]);
+  }, [showTrendlineStudy, chartEntryRecords, visibleEntryHovers, mt5Status?.recentSignals, savedChartMtfEntryQualification]);
   const latestCandle = displayCandles[displayCandles.length - 1] || null;
   const previousCandle = displayCandles.length > 1 ? displayCandles[displayCandles.length - 2] : null;
   const headerCandlesByTime = useMemo(() => new Map(displayCandles.map((candle, index) => (
@@ -5598,8 +5656,8 @@ export const OandaProChart: React.FC<{
     return entries;
   }, [directTradeStyleEnabled, displayCandles, displayZones, expiredGoldZoneBeforeSignal, extremeAPlusTjl2Selection.blockedZoneIds, granularity, marketSymbol, pendingM15DbBlocksSignal, redundantStandaloneZoneIds, replayIndex, replayResultCutoff, tradingTimeEnabled]);
   // Keep completed SL/TP entry arrows and hover details in the same visible history.
-  entryHoversRef.current = showEntryArrows ? entryHovers : [];
-  const entryMarkers = useMemo(() => entryHovers.map(({ candleTime, trade, style, source }) => {
+  entryHoversRef.current = visibleEntryHovers;
+  const entryMarkers = useMemo(() => visibleEntryHovers.map(({ candleTime, trade, style, source }) => {
     const bullish = trade.signal.direction === 'bullish';
     const projectedScalp = (granularity === 'M15' || granularity === 'H1') && style === 'SCALPING'
       && (trade.signal.timeframe === 'M1' || trade.signal.timeframe === 'M5');
@@ -5610,13 +5668,14 @@ export const OandaProChart: React.FC<{
       position: bullish ? 'belowBar' as const : 'aboveBar' as const,
       color: bullish ? '#059669' : '#e11d48',
       shape: bullish ? 'arrowUp' as const : 'arrowDown' as const,
-      text: secondSetupLabel ? [trade.result?.toUpperCase(), secondSetupLabel].filter(Boolean).join(' · ')
+      text: style === 'SCALP_1_1' ? trade.result?.toUpperCase()
+        : secondSetupLabel ? [trade.result?.toUpperCase(), secondSetupLabel].filter(Boolean).join(' · ')
         : trade.result?.toUpperCase() ?? (granularity === 'H1' && ['M15', 'M30'].includes(trade.signal.timeframe)
           ? `${formatTradeTimeframe(trade.signal.timeframe)} ENTRY${source.includes('ZONE ALREADY USED') ? ' REF' : ''}` : undefined),
       size: projectedScalp ? 1 : 2,
     };
   }).sort((first, second) => Number(first.time) - Number(second.time) || second.size - first.size),
-  [granularity, entryHovers, trendlineSetupLabel]);
+  [granularity, visibleEntryHovers, trendlineSetupLabel]);
   const replayDirectHistoryByZone = useMemo(() => {
     const entries = new Map<string, EntryHover>();
     if (replayIndex === null) return entries;
@@ -8746,21 +8805,6 @@ export const OandaProChart: React.FC<{
     });
   };
 
-  const [scalpOneToOnePreview, setScalpOneToOnePreview] = useState<Mt5SignalInput[]>([]);
-  useEffect(() => {
-    setScalpOneToOnePreview([]);
-    if (!scalpOneToOneEnabled || marketSymbol !== 'XAUUSD' || granularity !== 'M15' || replayIndex !== null) return;
-    // Structure/trendline calculations stay off the chart rendering thread.
-    const task = new Worker(new URL('../services/scalpOneToOne.worker.ts', import.meta.url), { type: 'module' });
-    task.onmessage = (event: MessageEvent<{ signals: Mt5SignalInput[] }>) => setScalpOneToOnePreview(event.data.signals);
-    task.onerror = () => setScalpOneToOnePreview([]);
-    task.postMessage({ candles: {
-      M15: tableTimeframeData.M15?.candles, H1: tableTimeframeData.H1?.candles,
-      H4: tableTimeframeData.H4?.candles,
-    }, now: tradeDisplayAsOf, pendingExpiryMinutes: mt5Status?.config.pendingExpiryMinutes ?? 240 });
-    return () => { task.onmessage = null; task.terminate(); };
-  }, [scalpOneToOneEnabled, marketSymbol, granularity, replayIndex, tableTimeframeData,
-    tradeDisplayAsOf, mt5Status?.config.pendingExpiryMinutes]);
   const scalpOneToOneBrokerSignals = (mt5Status?.recentSignals ?? []).filter(signal => signal.tradeStyle === 'SCALP_1_1'
       && mt5Status?.bridge.account === signal.account && mt5Status?.bridge.server === signal.server
       && mt5Status?.bridge.brokerSymbol === signal.brokerSymbol);
@@ -9589,7 +9633,7 @@ export const OandaProChart: React.FC<{
                   <span className="mt-1 block text-[8px] font-semibold text-slate-500">
                     Independent of the risk above. Uses MT5 equity: {mt5Status.bridge.currency || '$'}{' '}
                     {(Math.max(0, mt5Status.bridge.equity ?? 0) * (mt5Status.config.scalpOneToOneRiskPercent ?? 0.25) / 100).toFixed(2)} at SL.
-                    {' '}M15 / H4 bias, H4 EMA20/50, H1 continuation/Far, 30-pip buffer, one entry, fixed 1:1 TP.
+                    {' '}M15 / H4 bias, H4 EMA20/50, H1 continuation/Far, minimum 250-unit volume decrease, 30-pip buffer, one entry, fixed 1:1 TP.
                   </span>
                 </label>
                 <label className="mb-2 block font-bold text-slate-700">
@@ -9721,7 +9765,7 @@ export const OandaProChart: React.FC<{
               INDICATORS {showIndicatorControls ? '▴' : '▾'}
             </button>
             {showIndicatorControls && (
-            <div className="absolute right-0 top-full z-[60] mt-1 w-[min(720px,calc(100vw-2rem))] rounded-lg border border-indigo-100 bg-white p-2 shadow-xl ring-1 ring-slate-900/5">
+            <div className="indicator-controls-panel absolute right-0 top-full z-[60] mt-1 w-[min(720px,calc(100vw-2rem))] rounded-lg border border-indigo-100 bg-white p-2 shadow-xl ring-1 ring-slate-900/5">
               <div className="relative mb-1.5 flex min-h-8 items-center justify-center border-b border-slate-100 pb-1.5 pr-8">
                 <div className="text-center">
                   <div className="text-[10px] font-black tracking-wide text-slate-700">INDICATOR CONTROLS</div>
@@ -10169,19 +10213,32 @@ export const OandaProChart: React.FC<{
                 RESTORE ZONE POSITIONS
               </button>
             )}
-            <button
-              type="button"
-              onClick={() => setShowEntryArrows((value) => !value)}
-              aria-pressed={showEntryArrows}
-              className={`whitespace-nowrap rounded-full border px-1.5 py-0.5 text-[8px] font-black transition ${
-                showEntryArrows
-                  ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
-                  : 'border-slate-200 bg-white text-slate-500'
-              }`}
-              title="Show or hide intraday and scalping entry arrows"
-            >
-              ENTRY ARROWS {showEntryArrows ? 'ON' : 'OFF'}
-            </button>
+            <details className="relative">
+              <summary
+                className={`cursor-pointer list-none whitespace-nowrap rounded-full border px-1.5 py-0.5 text-[8px] font-black transition ${
+                  showEntryArrows
+                    ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
+                    : 'border-slate-200 bg-white text-slate-500'
+                }`}
+                title="Choose which entry arrows to display"
+                aria-label="Entry arrow options"
+              >
+                ENTRY ARROWS {showEntryArrows ? showScalpOneToOneArrows && showOtherEntryArrows ? 'ALL' : showScalpOneToOneArrows ? '1:1 ONLY' : 'OTHER ONLY' : 'OFF'} ▾
+              </summary>
+              <div className="absolute left-0 top-full z-50 mt-1 w-44 rounded-md border border-emerald-200 bg-white p-2 text-[10px] shadow-lg">
+                <label className="flex cursor-pointer items-center gap-2 py-1 font-bold text-slate-700">
+                  <input type="checkbox" checked={showScalpOneToOneArrows}
+                    onChange={event => setShowScalpOneToOneArrows(event.target.checked)} />
+                  Scalp 1:1
+                </label>
+                <label className="flex cursor-pointer items-center gap-2 py-1 font-bold text-slate-700">
+                  <input type="checkbox" checked={showOtherEntryArrows}
+                    onChange={event => setShowOtherEntryArrows(event.target.checked)} />
+                  Other entries
+                </label>
+                <div className="mt-1 border-t border-slate-100 pt-1 text-[9px] text-slate-500">Select both to show all arrows.</div>
+              </div>
+            </details>
             <button type="button" onClick={() => { setShowTrendlineStudy(value => !value); setShowVolumeStudy(false); }}
               aria-pressed={showTrendlineStudy}
               className="whitespace-nowrap rounded-full border border-violet-200 bg-violet-50 px-1.5 py-0.5 text-[8px] font-black text-violet-800">
@@ -10197,7 +10254,7 @@ export const OandaProChart: React.FC<{
                 type="button"
                 onClick={() => {
                   if (showAccuracyTable) setVisibleAccuracyRecordIds(null);
-                  else setShowEntryArrows(true);
+                  else enableEntryArrows();
                   setShowAccuracyTable((value) => !value);
                 }}
                 className={`whitespace-nowrap rounded-l-full border border-r-0 px-1.5 py-0.5 text-[8px] font-black transition ${
@@ -10234,7 +10291,7 @@ export const OandaProChart: React.FC<{
                     type="button"
                     onClick={() => {
                       setShowAllAccuracyTrades((value) => !value);
-                      setShowEntryArrows(true);
+                      enableEntryArrows();
                       setShowAccuracyTable(true);
                     }}
                     className={`flex w-full items-center justify-between whitespace-nowrap rounded border px-1.5 py-1 text-[8px] font-black leading-none ${
@@ -10696,11 +10753,12 @@ export const OandaProChart: React.FC<{
             chartRef={chartRef} seriesRef={candleSeriesRef} hostRef={hostRef}
             onClose={() => setShowTrendlineStudy(false)}
           />}
-          {hoveredEntry && showEntryArrows && (() => {
+          {hoveredEntry && visibleEntryHovers.some(entry => entry.id === hoveredEntry.entry.id) && (() => {
             const { entry, x, y } = hoveredEntry;
             const { trade } = entry;
             const record = chartEntryRecords.find((candidate) => candidate.id === entry.id);
             const bullish = trade.signal.direction === 'bullish';
+            const scalpOneToOne = entry.style === 'SCALP_1_1';
             const mtf = record?.source === 'MTF';
             const timeframeName = (timeframe: TradeTimeframe) => timeframe === 'D'
               ? '1-day' : `${timeframe.slice(1)}-${timeframe.startsWith('H') ? 'hour' : 'minute'}`;
@@ -10722,8 +10780,11 @@ export const OandaProChart: React.FC<{
               }}
             >
               <div className={`text-xs font-black ${bullish ? 'text-emerald-700' : 'text-rose-700'}`}>
-                {bullish ? '🟢' : '🔴'} {marketSymbol} {bullish ? 'BUY' : 'SELL'} · {entry.style}
+                {bullish ? '🟢' : '🔴'} {marketSymbol} {bullish ? 'BUY' : 'SELL'} · {scalpOneToOne ? 'SCALP 1:1' : entry.style}
               </div>
+              {scalpOneToOne && <div className="mt-1 font-bold text-emerald-700">
+                {record?.mt5Managed || record?.brokerTicket !== undefined ? `MT5 execution · Ticket ${record?.brokerTicket ?? 'pending'}` : 'CHART ONLY · Simulated result'}
+              </div>}
               <div className="mt-1 font-bold text-slate-800">{status}</div>
               {entry.tradingTimeBlocked && <div className="mt-1 text-amber-700">⚠️ Outside trading hours</div>}
               <div className="mt-3 border-t border-slate-100 pt-2">
@@ -10731,7 +10792,8 @@ export const OandaProChart: React.FC<{
                 <div>Main zone: <b>{record ? `${timeframeName(record.zoneTimeframe)} ` : ''}{zoneName(mainZone)}</b></div>
                 {mtf && <div>Entry zone: <b>{timeframeName(trade.signal.timeframe)} {zoneName(entryZone)}</b></div>}
                 <div>Confirmation: <b>{timeframeName(trade.signal.timeframe)} {bullish ? 'bullish' : 'bearish'} engulfing {trade.signal.type}</b></div>
-                {!mtf && <div>Entry method: <b>Candle confirmation at the main zone</b></div>}
+                {scalpOneToOne ? <div>Entry method: <b>M15 volume decrease ≥ 250 units · H4 bias + EMA20/50 · H1 continuation/Far · fixed 1:1</b></div>
+                  : !mtf && <div>Entry method: <b>Candle confirmation at the main zone</b></div>}
                 {entry.fib !== 'Not recorded' && <div>Fibonacci: <b>{entry.fib}</b></div>}
               </div>
               <div className="mt-3 border-t border-slate-100 pt-2">
@@ -11106,10 +11168,15 @@ export const OandaProChart: React.FC<{
             </table>
             </>}
           </div>
+          {marketSymbol === 'XAUUSD' && (showAccuracyTable || showJournal) && scalpOneToOneHistoryStatus && (
+            <div role="status" className="px-2 py-1 text-[9px] font-semibold text-emerald-800">{scalpOneToOneHistoryStatus}</div>
+          )}
           {showAccuracyTable && (
             <EngulfingAccuracyTable
               canViewMt5={canAdmin}
-              records={timeframeAccuracyRecords}
+              records={timeframeAccuracyRecords.filter(record => (
+                record.tradeStyle === 'SCALP_1_1' ? showScalpOneToOneArrows : showOtherEntryArrows
+              ))}
               allRecords={replayVisibleAccuracyRecords}
               mt5Records={executedMt5Trades.filter((trade) => (
                 (trade.symbol ?? 'XAUUSD') === marketSymbol

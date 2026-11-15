@@ -130,6 +130,10 @@ export function isGoldTradeRecordRoute(record: {
   rewardRisk: number;
   fibSource?: string;
 }, requireLtfFib = false): boolean {
+  if (record.tradeStyle === 'SCALP_1_1') {
+    return record.source === 'ENGULFING' && record.zoneTimeframe === 'M15'
+      && record.signalTimeframe === 'M15' && record.rewardRisk === 1;
+  }
   if (record.tradeStyle === 'SCALPING') {
     return record.rewardRisk === 3 && (
       (record.source === 'MTF' && record.signalTimeframe === 'M1'

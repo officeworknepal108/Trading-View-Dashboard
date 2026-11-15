@@ -463,6 +463,12 @@ export function buildCanonicalTradeRecords<T extends CanonicalTradeRecord>(
   return candidates.flatMap((record): T[] => {
     // Broker executions are facts; another feed must not rewrite their fill or result.
     if (brokerRecord(record)) return [record];
+    // The dedicated volume study verifies this strategy's bias, EMA, H1 support
+    // and fixed exits. Generic zone/Fib validation describes another strategy.
+    if (record.tradeStyle === 'SCALP_1_1') {
+      return current.some(candidate => candidate.id === record.id
+        && candidate.tradeStyle === 'SCALP_1_1') ? [record] : [];
+    }
     const signalCandles = timeframeData[record.signalTimeframe]?.candles;
     let verified = { ...record,
       tradeStyle: record.tradeStyle ?? (marketSymbol === 'XAUUSD' ? 'INTRADAY' : undefined) };
