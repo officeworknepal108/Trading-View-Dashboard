@@ -33,3 +33,10 @@ __pycache__/
 data/*.secondary.json
 .mt5_bridge_state.secondary.json
 .mt5_daily_risk_state.secondary.json
+
+# Local recovery backups and dashboard screenshots
+/backups/bridge-recovery-20261113-071506/
+/backups/dashboard-all-changes-20261115-024615.zip
+/dashboard-screen.png
+/reports/volume-study-browser.png
+/reports/volume-study-current-screen.png
