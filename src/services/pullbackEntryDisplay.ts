@@ -16,7 +16,7 @@ export function chartPullbackState(signal: Mt5SignalInput, candles: readonly Str
   const seconds = signal.signalTimeframe === 'D' ? 86400
     : Number(signal.signalTimeframe.slice(1)) * (signal.signalTimeframe.startsWith('H') ? 3600 : 60);
   if (signal.calculatedAt > asOf) return { status: 'waiting' };
-  if (!(signal.scalpEntry || signal.intradayEntry) || !(signal.expiresAt > signal.calculatedAt)
+  if (!(signal.expiresAt > signal.calculatedAt)
     || ![signal.entry, signal.stopLoss, signal.takeProfit].every(value => Number.isFinite(value) && value > 0)) return { status: 'unavailable' };
   const sign = signal.direction === 'BUY' ? 1 : -1;
   if (sign * (signal.entry - signal.stopLoss) <= 0 || sign * (signal.takeProfit - signal.entry) <= 0) return { status: 'unavailable' };
@@ -27,7 +27,9 @@ export function chartPullbackState(signal: Mt5SignalInput, candles: readonly Str
     return { status: 'expired', beforeEntryExit: {
       level: sign * (bars[0].open - signal.stopLoss) <= 0 ? 'sl' : 'tp', at: bars[0].time } };
   type Path = { mask: number; exit: number; filledAt?: number; exitAt?: number };
-  let paths: Path[] = [{ mask: 0, exit: 0 }];
+  // Saved single-entry market setups filled at their entry candle's open on the chart.
+  const immediate = signal.orderType === 'MARKET' && !(signal.scalpEntry || signal.intradayEntry);
+  let paths: Path[] = [{ mask: immediate ? 1 : 0, exit: 0, filledAt: immediate ? signal.calculatedAt : undefined }];
   let previousTime: number | undefined;
   for (const bar of bars) {
     // A data gap cannot prove a new fill or establish which exit happened first.

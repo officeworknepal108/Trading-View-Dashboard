@@ -176,3 +176,24 @@ test('a data gap preserves a proven fill without inventing a later winning outco
   const chart = chartPullbackState(signal, [chartBar, { ...chartBar, time: 3600, high: 3051 }], 4500);
   assert.equal(chart.status, 'filled'); assert.equal(chart.filledAt, 1800); assert.equal(chart.outcome, undefined);
 });
+
+test('legacy single-entry market setup resolves its chart exit despite MT5 rejection', () => {
+  const legacy = { ...signal, intradayEntry: undefined, scalpEntry: undefined,
+    orderType: 'MARKET' as const, direction: 'SELL' as const, status: 'REJECTED' as const,
+    entry: 3874.620, stopLoss: 3890.765, takeProfit: 3858.475 };
+  const bars = [
+    { time: 1800, open: 3874.620, high: 3880, low: 3870, close: 3872, complete: true },
+    { time: 2700, open: 3872, high: 3875, low: 3858, close: 3860, complete: true },
+  ];
+  const chart = chartPullbackState(legacy, bars, 3600);
+  assert.equal(chart.status, 'filled'); assert.equal(chart.filledAt, 1800);
+  assert.deepEqual(chart.outcome, { level: 'tp', at: 2700 });
+  assert.equal(chartExecutionStatus(chart, false), 'CHART: TP HIT · MT5: Not executed');
+});
+
+test('legacy single-entry limit requires an in-window chart fill before reporting a result', () => {
+  const legacy = { ...signal, intradayEntry: undefined, scalpEntry: undefined };
+  assert.equal(chartPullbackState(legacy, [chartBar], 2700).status, 'filled');
+  assert.equal(chartPullbackState(legacy, [{ ...chartBar, low: 3009.5 },
+    { ...chartBar, time: 2700, low: 3000 }], 3600).status, 'expired');
+});

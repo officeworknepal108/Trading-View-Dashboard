@@ -174,3 +174,22 @@ test('chart-filled Scalp entries tick despite MT5 rejection and status uses 6px 
   assert.match(text(html), /CHART: Filled · MT5: Not executed/);
   assert.match(html, /text-\[6px\] font-normal/);
 });
+
+test('old single-entry Scalp shows its chart result, then disappears after five completed candles', () => {
+  const signal = { ...tradeToMt5Signal({ source: 'ENGULFING', zoneName: 'Scalp 1:1', zoneTimeframe: 'M15',
+    trade, now: 1800, pendingExpiryMinutes: 240 }), tradeStyle: 'SCALP_1_1' as const,
+    direction: 'SELL' as const, orderType: 'MARKET' as const, status: 'REJECTED' as const,
+    entry: 3874.620, stopLoss: 3890.765, takeProfit: 3858.475, createdAt: 1800, updatedAt: 1800 };
+  const bars = [
+    { time: 1800, open: 3874.620, high: 3880, low: 3870, close: 3872, volume: 1000, complete: true },
+    { time: 2700, open: 3872, high: 3875, low: 3858, close: 3860, volume: 1000, complete: true },
+    ...[3600, 4500, 5400, 6300, 7200].map(time => ({ time, open: 3860, high: 3861, low: 3859, close: 3860, volume: 1000, complete: true })),
+  ];
+  const props = { signals: [signal], style: 'SCALP_1_1' as const, asOf: 8099,
+    entryCandles: { M15: bars }, timeZone: 'Asia/Kathmandu' as const };
+  const html = renderToStaticMarkup(React.createElement(PullbackSetupRows, props));
+  assert.equal((html.match(/<tr /g) ?? []).length, 1);
+  assert.match(text(html), /CHART: TP HIT · MT5: Not executed/);
+  assert.doesNotMatch(text(html), /ENTRY|Waiting for candle data/);
+  assert.equal(renderToStaticMarkup(React.createElement(PullbackSetupRows, { ...props, asOf: 8100 })), '');
+});

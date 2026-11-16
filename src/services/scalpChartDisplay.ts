@@ -167,7 +167,7 @@ export function buildScalpChartDisplays(options: {
     const rejected = signal.displayState === 'REJECTED';
     const preview = signal.displayState === 'PREVIEW' || signal.displayState === 'SIMULATED';
     const chartFilled = chart.status === 'filled';
-    const statusText = signal.scalpEntry ? chartExecutionStatus(chart, false)
+    const statusText = signal.scalpEntry || chart.status !== 'unavailable' ? chartExecutionStatus(chart, false)
       : rejected ? 'ORDER REJECTED · NO FILL' : preview ? 'CHART SETUP ONLY · NO BROKER FILL' : 'MT5 PENDING LIMIT · NOT FILLED';
     const leg = signal.scalpEntry?.leg;
     result.push({ id: `SCALP_SETUP:${signal.id}`, symbol: 'XAUUSD', setupId: signal.setupId,
