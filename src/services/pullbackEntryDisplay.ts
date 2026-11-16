@@ -3,6 +3,7 @@ import { scalpPullbackSignalError, type Mt5AutomationStatus, type Mt5SignalInput
 import { intradayPullbackSignalError } from './intradayPullback';
 import { scalpPullbackBarStates } from './scalpOneToOne';
 import type { StructureCandle } from './marketStructure';
+import { pullbackExpirySeconds } from './pullbackExpiry';
 
 export interface ChartPullbackState {
   status: 'filled' | 'waiting' | 'expired' | 'ambiguous' | 'unavailable';
@@ -39,8 +40,10 @@ export function chartPullbackState(signal: Mt5SignalInput, candles: readonly Str
       return { status: previousTime + seconds >= signal.expiresAt ? 'expired' : 'unavailable' };
     }
     previousTime = bar.time;
-    const next = paths.flatMap(path => path.exit ? [path] : scalpPullbackBarStates(bar, [signal], path.mask,
-      bar.time < signal.expiresAt).map(state => ({ ...state,
+    const modes = bar.time < signal.expiresAt && bar.time + seconds > signal.expiresAt && asOf > signal.expiresAt
+      ? [true, false] : [bar.time < signal.expiresAt];
+    const next = paths.flatMap(path => path.exit ? [path] : modes.flatMap(allow => scalpPullbackBarStates(bar, [signal], path.mask,
+      allow)).map(state => ({ ...state,
       filledAt: path.filledAt ?? (state.mask ? bar.time : undefined), exitAt: state.exit ? bar.time : undefined })));
     paths = [...new Map(next.map(path => [`${path.mask}:${path.exit}:${path.filledAt}:${path.exitAt}`, path])).values()];
     if (!paths.length) return { status: 'unavailable' };
@@ -175,7 +178,7 @@ export function scalpReplayTableSignals(records: readonly JournalTradeRecord[], 
       direction: record.direction === 'bullish' ? 'BUY' : 'SELL', engulfingType: record.engulfingType,
       orderType: 'LIMIT', entry: record.entry, stopLoss: record.stopLoss, takeProfit: record.takeProfit,
       riskFree: record.takeProfit, riskPips: record.riskPips, rewardRisk: record.rewardRisk, scalpEntry: record.scalpEntry,
-      expiresAt: record.signalAt! + 1800, status: closed ? record.result === 'tp' ? 'TP' : 'SL' : 'ACTIVE',
+      expiresAt: record.signalAt! + 900 + pullbackExpirySeconds(record.scalpEntry?.version ?? 1, 900), status: closed ? record.result === 'tp' ? 'TP' : 'SL' : 'ACTIVE',
       openedAt: record.openedAt, closedAt: closed ? record.completedAt : undefined,
       createdAt: record.signalAt! + 900, updatedAt: closed ? record.completedAt : record.openedAt!,
       preview: true, simulatedFill: true };

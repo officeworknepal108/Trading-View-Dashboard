@@ -20,6 +20,15 @@ const record: JournalTradeRecord = { id: 'chart10', source: 'ENGULFING', symbol:
   entry: 3009, stopLoss: 2990, takeProfit: 3050, riskPips: 190, rewardRisk: 41 / 19,
   openedAt: 1900, completedAt: 1900, result: 'open', tradeStyle: 'INTRADAY', intradayEntry: signal.intradayEntry };
 
+test('a 75-minute deadline inside an M30 bar cannot prove a post-deadline dip filled in time', () => {
+  const s = { ...signal, signalTimeframe: 'M30' as const, signalAt: 1800, calculatedAt: 3600,
+    expiresAt: 8100, intradayEntry: { ...signal.intradayEntry!, version: 3 as const } };
+  const bars = [3600, 5400, 7200].map(time => ({ time, open: 3010, high: 3012,
+    low: time === 7200 ? 3008 : 3009.5, close: 3010, complete: true }));
+  assert.equal(chartPullbackState(s, bars, 9000).status, 'ambiguous');
+  assert.equal(chartPullbackState(s, bars.slice(0, 2), 7200).status, 'waiting');
+});
+
 test('pending-order placement and ticket allocation do not count as a fill', () => {
   for (const status of ['QUEUED', 'CLAIMED', 'PLACED', 'REJECTED', 'EXPIRED', 'CANCELLED', 'SIMULATED'] as const)
     assert.equal(confirmedPullbackFill({ ...signal, status }, 2000), false, status);

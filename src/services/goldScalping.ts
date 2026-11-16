@@ -135,7 +135,7 @@ export function isGoldTradeRecordRoute(record: {
   if (record.tradeStyle === 'SCALP_1_1') {
     return record.source === 'ENGULFING' && record.zoneTimeframe === 'M15'
       && record.signalTimeframe === 'M15' && (record.scalpEntry
-        ? [1, 2].includes(record.scalpEntry.version) && (record.scalpEntry.leg === 10 && record.scalpEntry.riskShare === 0.6
+        ? [1, 2, 3].includes(record.scalpEntry.version) && (record.scalpEntry.leg === 10 && record.scalpEntry.riskShare === 0.6
           || record.scalpEntry.leg === 25 && record.scalpEntry.riskShare === 0.4)
           && Number.isFinite(record.rewardRisk) && record.rewardRisk > 0
         : record.rewardRisk === 1);
@@ -155,7 +155,7 @@ export function isGoldTradeRecordRoute(record: {
     ? getDirectTradeRule(record.zoneTimeframe, record.signalTimeframe)
     : goldIntradayMtfTradeRule(record.zoneTimeframe, record.signalTimeframe);
   const layered = record.intradayEntry;
-  const validReward = layered ? [1, 2].includes(layered.version)
+  const validReward = layered ? [1, 2, 3].includes(layered.version)
     && (layered.leg === 10 && layered.riskShare === 0.6 || layered.leg === 25 && layered.riskShare === 0.4)
     && Number.isFinite(record.rewardRisk) && record.rewardRisk > 0 : record.rewardRisk === rule?.rewardRisk;
   return rule !== undefined && validReward

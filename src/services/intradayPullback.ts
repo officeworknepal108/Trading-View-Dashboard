@@ -5,6 +5,7 @@ import type { StructureCandle } from './marketStructure';
 import type { JournalTradeRecord } from '../components/TradeJournal';
 import { scalpPullbackBarStates } from './scalpOneToOne';
 import { isNepalTradingTime } from './tradingTime';
+import { PULLBACK_EXPIRY_SECONDS, pullbackExpirySeconds } from './pullbackExpiry';
 
 export interface IntradayPullbackEntry extends ScalpPullbackEntry {
   /** Original zone/confirmation identity, shared only by its two planned legs. */
@@ -36,12 +37,12 @@ export function intradayPullbackSignalError(signal: Mt5SignalInput): string | un
   const sign = signal.direction === 'BUY' ? 1 : -1;
   const share = leg.leg === 10 ? 0.6 : leg.leg === 25 ? 0.4 : 0;
   const raw = leg.nextOpen - sign * leg.confirmationBody * leg.leg / 100;
-  const expected = leg.version === 2 ? raw : sign === 1 ? Math.min(raw, leg.referenceEntry) : Math.max(raw, leg.referenceEntry);
+  const expected = leg.version >= 2 ? raw : sign === 1 ? Math.min(raw, leg.referenceEntry) : Math.max(raw, leg.referenceEntry);
   const risk = sign * (signal.entry - signal.stopLoss), reward = sign * (signal.takeProfit - signal.entry);
   const referenceRisk = sign * (leg.referenceEntry - signal.stopLoss);
   const referenceReward = sign * (signal.takeProfit - leg.referenceEntry);
   if (!rule || signal.tradeStyle !== 'INTRADAY' || signal.symbol !== 'XAUUSD' || signal.scalpEntry
-    || ![1, 2].includes(leg.version) || !share || leg.riskShare !== share
+    || ![1, 2, 3].includes(leg.version) || !share || leg.riskShare !== share
     || typeof leg.setupKey !== 'string' || !leg.setupKey || leg.setupKey.length > 400
     || ![signal.entry, signal.stopLoss, signal.takeProfit, signal.rewardRisk, signal.riskPips,
       signal.signalAt, signal.calculatedAt, signal.expiresAt, leg.referenceEntry, leg.nextOpen,
@@ -53,7 +54,7 @@ export function intradayPullbackSignalError(signal: Mt5SignalInput): string | un
     || Math.abs(signal.rewardRisk - reward / risk) > 1e-6
     || Math.abs(signal.riskPips - risk * 10) > 1e-5
     || signal.calculatedAt !== signal.signalAt + seconds
-    || signal.expiresAt !== signal.calculatedAt + seconds) {
+    || signal.expiresAt !== signal.calculatedAt + pullbackExpirySeconds(leg.version, seconds)) {
     return 'Invalid Intraday pullback entry, risk split or original fixed SL/TP.';
   }
   return undefined;
@@ -79,8 +80,8 @@ export function buildIntradayPullbackSignals(base: Mt5SignalInput, candles: read
     const signal: Mt5SignalInput = { ...base, id: `${base.id}:INTRA:P${leg}`,
       setupId: `${parent}:P${leg}`, orderType: 'LIMIT', entry, riskPips: risk * 10,
       rewardRisk: reward / risk, normalRewardRisk: reward / risk,
-      calculatedAt: confirmedAt, expiresAt: confirmedAt + seconds,
-      intradayEntry: { version: 2, leg, riskShare: leg === 10 ? 0.6 : 0.4,
+      calculatedAt: confirmedAt, expiresAt: confirmedAt + PULLBACK_EXPIRY_SECONDS,
+      intradayEntry: { version: 3, leg, riskShare: leg === 10 ? 0.6 : 0.4,
         referenceEntry: base.entry, nextOpen: next.open, confirmationBody: body, setupKey },
       journalContext: base.journalContext && { ...base.journalContext,
         autoReason: `${base.journalContext.autoReason} ${leg}% body pullback; ${leg === 10 ? 60 : 40}% of setup risk. Original SL/TP fixed.` },
@@ -120,7 +121,7 @@ export function intradayPullbackChartRecords(reference: JournalTradeRecord,
     expectedTime += executionSeconds;
     const next: Scenario[] = [];
     for (const previous of active) {
-      const allowFills = bar.time < confirmedAt + seconds;
+      const allowFills = bar.time < signals[0].expiresAt;
       if (!allowFills && !previous.mask) { closed.push(previous); continue; }
       if (!allowFills) {
         const buy = base.direction === 'BUY';
@@ -133,7 +134,8 @@ export function intradayPullbackChartRecords(reference: JournalTradeRecord,
         else for (const exit of exits) closed.push({ ...previous, exit, resolvedAt: bar.time });
         continue;
       }
-      for (const state of scalpPullbackBarStates(bar, signals, previous.mask, allowFills)) {
+      const fillModes = allowFills && bar.time + executionSeconds > signals[0].expiresAt ? [true, false] : [allowFills];
+      for (const state of fillModes.flatMap(allow => scalpPullbackBarStates(bar, signals, previous.mask, allow))) {
         const filledAt = [...previous.filledAt];
         signals.forEach((_, i) => { if ((state.mask & (1 << i)) && !(previous.mask & (1 << i))) filledAt[i] = bar.time; });
         const result = { ...state, filledAt, resolvedAt: state.exit ? bar.time : undefined };

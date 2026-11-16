@@ -52,6 +52,74 @@ class PartialCloseVolumeTests(BridgeTestCase):
                 bridge.calculate_volume(signal, {"riskPercent": 0.25}, symbol)
 
 
+class PendingExpiryTests(BridgeTestCase):
+    def test_gtc_only_broker_uses_bridge_deadline_without_invalid_expiration(self):
+        signal = ScalpOneToOneTests().pullback()
+        signal['scalpEntry']['version'] = 3
+        signal['expiresAt'] = 6300
+        bridge.validate_scalp_pullback(signal)
+        info = SimpleNamespace(name='XAUUSD', trade_tick_size=0.01, expiration_mode=1)
+        with patch.object(bridge, 'ALLOW_LIVE_EXECUTION', True), \
+             patch.object(bridge, 'check_safety', return_value=(info, SimpleNamespace(ask=100, bid=99.9))), \
+             patch.object(bridge, 'calculate_volume', return_value=.03), \
+             patch.object(bridge, 'checked_live_entry_price', return_value=99), \
+             patch.object(bridge, 'send_with_filling_fallback', return_value=SimpleNamespace(price=99, order=123)) as send, \
+             patch.object(bridge, 'update_status'):
+            bridge.place_signal(signal, {'dryRun': False})
+        request = send.call_args.args[0]
+        self.assertEqual(request['type_time'], bridge.mt5.ORDER_TIME_GTC)
+        self.assertNotIn('expiration', request)
+        self.assertEqual(signal['expiresAt'], 6300)
+
+    def test_invalid_expiration_check_falls_back_before_sending_any_order(self):
+        request = {'symbol': 'XAUUSD', 'type_time': bridge.mt5.ORDER_TIME_SPECIFIED, 'expiration': 6300}
+        with patch.object(bridge.mt5, 'order_check', side_effect=[SimpleNamespace(retcode=10022), SimpleNamespace(retcode=0)]), \
+             patch.object(bridge.mt5, 'order_send', return_value=SimpleNamespace(retcode=bridge.mt5.TRADE_RETCODE_DONE)) as send:
+            bridge.send_with_filling_fallback(request, allow_gtc_expiry_fallback=True)
+        send.assert_called_once()
+        self.assertEqual(send.call_args.args[0]['type_time'], bridge.mt5.ORDER_TIME_GTC)
+        self.assertNotIn('expiration', send.call_args.args[0])
+
+    def test_explicit_expiration_rejection_rechecks_gtc_without_duplicate_accepted_orders(self):
+        request = {'symbol': 'XAUUSD', 'type_time': bridge.mt5.ORDER_TIME_SPECIFIED, 'expiration': 6300}
+        with patch.object(bridge.mt5, 'order_check', return_value=SimpleNamespace(retcode=0)) as check, \
+             patch.object(bridge.mt5, 'order_send', side_effect=[SimpleNamespace(retcode=10022),
+                 SimpleNamespace(retcode=bridge.mt5.TRADE_RETCODE_DONE)]) as send:
+            bridge.send_with_filling_fallback(request, allow_gtc_expiry_fallback=True)
+        self.assertEqual(send.call_count, 2)
+        self.assertEqual(check.call_count, 2)
+        self.assertEqual(send.call_args.args[0]['type_time'], bridge.mt5.ORDER_TIME_GTC)
+
+    def test_pending_order_survives_first_candle_then_cancels_at_75_minutes(self):
+        pending = {**ScalpOneToOneTests().pullback(), 'status': 'PLACED', 'brokerTicket': 123, 'expiresAt': 6300}
+        pending['scalpEntry']['version'] = 3
+        for now, cancelled in [(2701, False), (6299, False), (6300, True)]:
+            state = {pending['id']: pending.copy()}
+            with patch.object(bridge.time, 'time', return_value=now), \
+                 patch.object(bridge.mt5, 'orders_get', return_value=[SimpleNamespace(ticket=123)]), \
+                 patch.object(bridge.mt5, 'symbol_info_tick', return_value=SimpleNamespace(bid=101, ask=101.1)), \
+                 patch.object(bridge, 'intraday_boundary_reached', return_value=False), \
+                 patch.object(bridge.mt5, 'order_send', return_value=SimpleNamespace(retcode=bridge.mt5.TRADE_RETCODE_DONE)) as remove, \
+                 patch.object(bridge, 'update_status'):
+                bridge.manage_open_signals(state, [], {'scalpOneToOneEnabled': True})
+            self.assertEqual(not bool(state), cancelled)
+            self.assertEqual(remove.call_count, int(cancelled))
+
+    def test_scalp_target_touch_between_polls_cancels_before_75_minutes(self):
+        pending = {**ScalpOneToOneTests().pullback(), 'status': 'PLACED', 'brokerTicket': 123, 'expiresAt': 6300}
+        pending['scalpEntry']['version'] = 3
+        state = {pending['id']: pending.copy()}
+        with patch.object(bridge.time, 'time', return_value=6200), patch.object(bridge, 'BROKER_TIME_OFFSET', 0), \
+             patch.object(bridge.mt5, 'orders_get', return_value=[SimpleNamespace(ticket=123)]), \
+             patch.object(bridge.mt5, 'symbol_info_tick', return_value=SimpleNamespace(bid=101, ask=101.1)), \
+             patch.object(bridge.mt5, 'copy_rates_from_pos', return_value=[{'time': 1800, 'high': 111, 'low': 100}]) as rates, \
+             patch.object(bridge.mt5, 'order_send', return_value=SimpleNamespace(retcode=bridge.mt5.TRADE_RETCODE_DONE)), \
+             patch.object(bridge, 'update_status'):
+            bridge.manage_open_signals(state, [], {'scalpOneToOneEnabled': True})
+        self.assertEqual(state, {})
+        self.assertEqual(rates.call_args.args[-1], 77)
+
+
 class ScalpOneToOneTests(BridgeTestCase):
     def pullback(self, leg=10):
         entry = 99 if leg == 10 else 97.5
@@ -143,21 +211,23 @@ class ScalpOneToOneTests(BridgeTestCase):
             with self.assertRaisesRegex(RuntimeError, 'below broker minimum'):
                 bridge.calculate_volume(self.pullback(25), tiny, info)
 
-    def test_new_limits_request_broker_enforced_next_bar_expiration(self):
+    def test_new_limits_request_supported_broker_expiration_in_server_time(self):
         signal = self.pullback()
-        info = SimpleNamespace(name='XAUUSD', trade_tick_size=0.01)
+        signal['scalpEntry']['version'] = 3
+        signal['expiresAt'] = 6300
+        info = SimpleNamespace(name='XAUUSD', trade_tick_size=0.01, expiration_mode=5)
         with patch.object(bridge, 'ALLOW_LIVE_EXECUTION', True), \
              patch.object(bridge, 'check_safety', return_value=(info, SimpleNamespace(ask=100, bid=99.9))), \
              patch.object(bridge, 'calculate_volume', return_value=0.03), \
              patch.object(bridge, 'checked_live_entry_price', return_value=99), \
              patch.object(bridge, 'send_with_filling_fallback', return_value=SimpleNamespace(price=99, order=123)) as send, \
-             patch.object(bridge, 'update_status'):
+             patch.object(bridge, 'update_status'), patch.object(bridge, 'BROKER_TIME_OFFSET', 7200):
             details = bridge.place_signal(signal, {'dryRun': False})
             request = send.call_args.args[0]
             self.assertEqual(request['sl'], 90)
             self.assertEqual(request['tp'], 110)
             self.assertEqual(request['type_time'], bridge.mt5.ORDER_TIME_SPECIFIED)
-            self.assertEqual(request['expiration'], 2700)
+            self.assertEqual(request['expiration'], 6300 + 7200)
             self.assertEqual(details['status'], 'PLACED')
 
     def test_fractional_pullback_prices_round_toward_better_entry_without_moving_exits(self):
@@ -305,6 +375,11 @@ class IntradayPullbackTests(BridgeTestCase):
             for changed in [{'takeProfit': signal['takeProfit'] + 1}, {'expiresAt': 99999}, {'orderType': 'MARKET'}]:
                 with self.assertRaisesRegex(RuntimeError, 'original fixed SL/TP'):
                     bridge.validate_intraday_pullback({**signal, **changed})
+            signal['intradayEntry']['version'] = 3
+            signal['expiresAt'] = signal['calculatedAt'] + 4500
+            bridge.validate_intraday_pullback(signal)
+            with self.assertRaisesRegex(RuntimeError, 'original fixed SL/TP'):
+                bridge.validate_intraday_pullback({**signal, 'expiresAt': signal['calculatedAt'] + seconds})
         sell = {**self.signal(), 'direction': 'SELL', 'entry': 3011, 'stopLoss': 3030, 'takeProfit': 2970}
         bridge.validate_intraday_pullback(sell)
 
@@ -340,7 +415,7 @@ class IntradayPullbackTests(BridgeTestCase):
              patch.object(bridge.mt5, 'copy_rates_from_pos', return_value=[{**rates[0], 'time': 1740}]):
             self.assertFalse(bridge.intraday_boundary_reached(signal, 'XAUUSD.x', tick))
         with patch.object(bridge.mt5, 'copy_rates_from_pos', return_value=None):
-            with self.assertRaisesRegex(RuntimeError, 'TP history'):
+            with self.assertRaisesRegex(RuntimeError, 'TP/SL history'):
                 bridge.intraday_boundary_reached(signal, 'XAUUSD.x', tick, strict=True)
 
     def test_tp_touch_cancels_broker_pending_orders_without_closing_filled_positions(self):
@@ -366,7 +441,7 @@ class IntradayPullbackTests(BridgeTestCase):
 
     def test_intraday_limit_uses_broker_expiry_and_keeps_original_exit_prices(self):
         signal = self.signal()
-        info = SimpleNamespace(name='XAUUSD.x', trade_tick_size=0.01)
+        info = SimpleNamespace(name='XAUUSD.x', trade_tick_size=0.01, expiration_mode=5)
         with patch.object(bridge, 'ALLOW_LIVE_EXECUTION', True), \
              patch.object(bridge, 'check_safety', return_value=(info, SimpleNamespace(ask=3010, bid=3009.9))), \
              patch.object(bridge, 'calculate_volume', return_value=0.01), \

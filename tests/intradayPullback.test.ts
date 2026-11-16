@@ -26,6 +26,16 @@ const reference: JournalTradeRecord = { id: 'DIRECT:zone-one:900:3010', zoneId: 
   direction: 'bullish', entry: 3010, stopLoss: 2990, takeProfit: 3050, riskPips: 200, rewardRisk: 2,
   openedAt: 1800, completedAt: 2700, result: 'tp' };
 
+test('Intraday admits a later in-window fill and cancels untouched entries at the 75-minute deadline', () => {
+  const quiet = [1800, 2700, 3600, 4500, 5400].map(time => ({ time, open: 3010, high: 3012, low: 3009.5, close: 3010, complete: true }));
+  const within = [candles[0], ...quiet.map(c => c.time === 5400 ? { ...c, low: 3007 } : c),
+    { time: 6300, open: 3010, high: 3051, low: 3009.5, close: 3050, complete: true }];
+  const rows = intradayPullbackChartRecords(reference, within, within, 7200);
+  assert.equal(rows.length, 2); assert.ok(rows.every(r => r.openedAt === 5400 && r.result === 'tp'));
+  const late = [candles[0], ...quiet, { time: 6300, open: 3010, high: 3012, low: 3007, close: 3010, complete: true }];
+  assert.deepEqual(intradayPullbackChartRecords(reference, late, late, 7200), []);
+});
+
 test('Intraday limits preserve original 1:2 exits and split the existing risk 60/40', () => {
   const snapshot = JSON.stringify(base), entries = buildIntradayPullbackSignals(base, candles);
   assert.deepEqual(entries.map(s => s.entry), [3009, 3007.5]);
@@ -36,7 +46,7 @@ test('Intraday limits preserve original 1:2 exits and split the existing risk 60
   for (const signal of entries) {
     assert.equal(signal.orderType, 'LIMIT');
     assert.equal(signal.stopLoss, 2990); assert.equal(signal.takeProfit, 3050);
-    assert.equal(signal.expiresAt, 2700);
+    assert.equal(signal.expiresAt, 6300);
     assert.equal(signal.zoneId, base.zoneId, 'the original zone remains consumed across routes');
     assert.equal(intradayPullbackSignalError(signal), undefined);
     assert.deepEqual(applySignalOppositePositionTarget(signal, [{ direction: 'SELL' }]), signal);
@@ -44,7 +54,7 @@ test('Intraday limits preserve original 1:2 exits and split the existing risk 60
   assert.equal(JSON.stringify(base), snapshot);
 });
 
-test('all Intraday routes retain their reference ratios and timeframe-specific expiry', () => {
+test('all Intraday routes retain reference ratios and use the same 75-minute expiry', () => {
   const routes = [ ['ENGULFING', 'M15', 'M15', 2, 20, 900], ['ENGULFING', 'M15', 'M30', 1, 30, 1800],
     ['ENGULFING', 'H1', 'M15', 2, 20, 900], ['ENGULFING', 'H1', 'M30', 2, 30, 1800],
     ['MTF', 'H1', 'M5', 3, 8, 300], ['MTF', 'H4', 'M15', 5, 20, 900] ] as const;
@@ -59,7 +69,7 @@ test('all Intraday routes retain their reference ratios and timeframe-specific e
     assert.equal(intradayReferenceRule(original)?.rewardRisk, rr);
     for (const s of entries) {
       assert.equal(s.takeProfit, original.takeProfit);
-      assert.equal(s.expiresAt, 3600 + seconds * 2);
+      assert.equal(s.expiresAt, 3600 + seconds + 4500);
       assert.equal(intradayPullbackSignalError(s), undefined);
     }
   }
@@ -75,7 +85,7 @@ test('SELL entries mirror BUY and pullbacks never clamp to the original referenc
   const capped = { ...base, entry: 3005, stopLoss: 2990, takeProfit: 3035 };
   const capEntries = buildIntradayPullbackSignals(capped, candles);
   assert.deepEqual(capEntries.map(s => s.entry), [3009, 3007.5]);
-  assert.ok(capEntries.every(s => s.intradayEntry?.version === 2));
+  assert.ok(capEntries.every(s => s.intradayEntry?.version === 3));
   assert.equal(new Set(capEntries.map(s => s.id)).size, 2);
 });
 
@@ -132,7 +142,7 @@ test('original TP before any fill prevents later pullback entries; ambiguous fil
   assert.deepEqual(intradayPullbackChartRecords(reference, candles, missing, 3600), []);
 });
 
-test('M30 window permits the second M15 bar but expires remaining orders at M30 close', () => {
+test('M30 replay tracks each M15 fill and excludes a sibling with ambiguous fill-before-TP ordering', () => {
   const original = { ...reference, signalAt: 1800, signalTimeframe: 'M30' as const,
     takeProfit: 3030, rewardRisk: 1, openedAt: 3600, completedAt: 5400 };
   const source = [{ ...candles[0], time: 1800 }, { ...candles[1], time: 3600 }];

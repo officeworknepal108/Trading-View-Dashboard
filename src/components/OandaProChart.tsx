@@ -9924,7 +9924,7 @@ export const OandaProChart: React.FC<{
                   </select>
                   <span className="mt-1 block text-[8px] font-semibold text-slate-500">
                     Lot size = cash risk ÷ (SL pips × 10)
-                    {' '}Intraday: total setup risk is split 60% at the 10% body pullback and 40% at the 25% pullback. Original SL/TP fixed; unfilled limits cancel at original TP or next entry-candle close.
+                    {' '}Intraday: total setup risk is split 60% at the 10% body pullback and 40% at the 25% pullback. Original SL/TP fixed; unfilled limits cancel at original TP/SL or 75 minutes after confirmation, whichever comes first.
                   </span>
                 </label>
                 <label className="mb-2 block font-bold text-cyan-800">
@@ -9938,7 +9938,7 @@ export const OandaProChart: React.FC<{
                   <span className="mt-1 block text-[8px] font-semibold text-slate-500">
                     Total setup risk, independent of the risk above. Uses MT5 equity: {mt5Status.bridge.currency || '$'}{' '}
                     {(Math.max(0, mt5Status.bridge.equity ?? 0) * (mt5Status.config.scalpOneToOneRiskPercent ?? 0.25) / 100).toFixed(2)} at SL.
-                    {' '}10% body pullback: 60% of risk; 25% body pullback: 40% of risk. Original SL/TP fixed; existing stop-distance cap; unfilled entries expire after the next M15 candle. M15 / H4 bias, EMA20/50, H1 continuation/Far and ≥250-unit volume decrease remain required.
+                    {' '}10% body pullback: 60% of risk; 25% body pullback: 40% of risk. Original SL/TP fixed; existing stop-distance cap; unfilled entries cancel at original TP/SL or 75 minutes after confirmation, whichever comes first. M15 / H4 bias, EMA20/50, H1 continuation/Far and ≥250-unit volume decrease remain required.
                   </span>
                 </label>
                 <label className="mb-2 block font-bold text-slate-700">

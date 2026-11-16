@@ -442,10 +442,10 @@ def validate_scalp_pullback(signal: dict[str, Any]) -> None:
         entry, stop, target = map(float, (signal["entry"], signal["stopLoss"], signal["takeProfit"]))
         sign = 1 if signal["direction"] == "BUY" else -1
         requested = opening - sign * body * index / 100
-        expected = requested if leg['version'] == 2 else min(requested, reference) if sign == 1 else max(requested, reference)
-        maximum_risk = 30 if leg['version'] == 2 else 20
+        expected = requested if leg['version'] >= 2 else min(requested, reference) if sign == 1 else max(requested, reference)
+        maximum_risk = 30 if leg['version'] >= 2 else 20
         risk, reward = sign * (entry - stop), sign * (target - entry)
-        valid = (leg["version"] in (1, 2) and share is not None and leg["riskShare"] == share
+        valid = (leg["version"] in (1, 2, 3) and share is not None and leg["riskShare"] == share
                  and all(math.isfinite(v) and v > 0 for v in (reference, opening, body))
                  and signal["orderType"] == "LIMIT" and abs(expected - entry) <= 0.000001
                  and abs((stop + target) / 2 - reference) <= 0.000001
@@ -453,7 +453,7 @@ def validate_scalp_pullback(signal: dict[str, Any]) -> None:
                  and 0 < risk <= maximum_risk + 0.000001 and reward > 0
                  and abs(float(signal["rewardRisk"]) - reward / risk) <= 0.000001
                  and signal["calculatedAt"] == signal["signalAt"] + 900
-                 and signal["expiresAt"] == signal["calculatedAt"] + 900)
+                 and signal["expiresAt"] == signal["calculatedAt"] + (4500 if leg['version'] >= 3 else 900))
     except (KeyError, TypeError, ValueError, ZeroDivisionError):
         valid = False
     if not valid:
@@ -477,11 +477,11 @@ def validate_intraday_pullback(signal: dict[str, Any]) -> None:
         entry, stop, target = map(float, (signal['entry'], signal['stopLoss'], signal['takeProfit']))
         sign = 1 if signal['direction'] == 'BUY' else -1
         raw = opening - sign * body * index / 100
-        expected = raw if leg['version'] == 2 else min(raw, reference) if sign == 1 else max(raw, reference)
+        expected = raw if leg['version'] >= 2 else min(raw, reference) if sign == 1 else max(raw, reference)
         risk, reward, original_risk = sign * (entry - stop), sign * (target - entry), sign * (reference - stop)
         valid = (rule is not None and seconds is not None and share is not None
                  and signal.get('tradeStyle') == 'INTRADAY' and not signal.get('scalpEntry')
-                 and leg['version'] in (1, 2) and leg['riskShare'] == share
+                 and leg['version'] in (1, 2, 3) and leg['riskShare'] == share
                  and isinstance(leg['setupKey'], str) and 0 < len(leg['setupKey']) <= 400
                  and all(math.isfinite(v) and v > 0 for v in (reference, opening, body, entry, stop, target))
                  and signal['orderType'] == 'LIMIT' and abs(expected - entry) <= 0.000001
@@ -491,7 +491,7 @@ def validate_intraday_pullback(signal: dict[str, Any]) -> None:
                  and abs(float(signal['riskPips']) - risk * 10) <= 0.00001
                  and abs(float(signal['rewardRisk']) - reward / risk) <= 0.000001
                  and signal['calculatedAt'] == signal['signalAt'] + seconds
-                 and signal['expiresAt'] == signal['calculatedAt'] + seconds)
+                 and signal['expiresAt'] == signal['calculatedAt'] + (4500 if leg['version'] >= 3 else seconds))
     except (KeyError, TypeError, ValueError, ZeroDivisionError):
         valid = False
     if not valid:
@@ -506,10 +506,10 @@ def intraday_boundary_reached(signal: dict[str, Any], symbol: str, tick: Any, st
     if (current <= stop or current >= target) if buy else (current >= stop or current <= target):
         return True
     duration = max(60, int(signal['expiresAt']) - int(signal['calculatedAt']))
-    rates = mt5.copy_rates_from_pos(symbol, mt5.TIMEFRAME_M1, 0, min(61, duration // 60 + 2))
+    rates = mt5.copy_rates_from_pos(symbol, mt5.TIMEFRAME_M1, 0, min(1442, duration // 60 + 2))
     if rates is None or len(rates) == 0:
         if strict:
-            raise RuntimeError('Unable to verify Intraday TP history before placing a limit.')
+            raise RuntimeError('Unable to verify original TP/SL history before placing a limit.')
         return False
     for bar in rates:
         at = int(bar['time']) - BROKER_TIME_OFFSET
@@ -849,7 +849,7 @@ def check_safety(signal: dict[str, Any], config: dict[str, Any]) -> tuple[Any, A
         if not account or getattr(account, 'margin_mode', None) != hedging:
             raise RuntimeError("Two pullback entries require an MT5 hedging account for independent tickets.")
         if float(signal['expiresAt']) <= time.time():
-            raise RuntimeError("Pullback next-candle entry window has expired.")
+            raise RuntimeError("Pullback entry deadline has expired.")
     symbol = str(config["brokerSymbol"])
     if not mt5.symbol_select(symbol, True):
         raise RuntimeError(f"Broker symbol {symbol} is unavailable: {mt5.last_error()}")
@@ -879,19 +879,25 @@ def check_safety(signal: dict[str, Any], config: dict[str, Any]) -> tuple[Any, A
         if (signal['direction'] == 'BUY' and (current <= sl or current >= tp)
                 or signal['direction'] == 'SELL' and (current >= sl or current <= tp)):
             raise RuntimeError("Original Scalp 1:1 SL/TP reached before entry.")
-        if signal.get('intradayEntry') and intraday_boundary_reached(signal, symbol, tick, strict=True):
-            raise RuntimeError('Original Intraday SL/TP already reached; unfilled limits are cancelled.')
+        if intraday_boundary_reached(signal, symbol, tick, strict=True):
+            raise RuntimeError('Original setup SL/TP already reached; unfilled limits are cancelled.')
     return info, tick
 
 
 def send_with_filling_fallback(request: dict[str, Any], risk_config: dict[str, Any] | None = None,
-                               entry_signal: dict[str, Any] | None = None) -> Any:
+                               entry_signal: dict[str, Any] | None = None, allow_gtc_expiry_fallback: bool = False) -> Any:
     result = None
     successful_send_codes = (mt5.TRADE_RETCODE_DONE, mt5.TRADE_RETCODE_DONE_PARTIAL)
     for filling in (mt5.ORDER_FILLING_IOC, mt5.ORDER_FILLING_FOK, mt5.ORDER_FILLING_RETURN):
         assert_execution_account()
         candidate = {**request, "type_filling": filling}
         checked = mt5.order_check(candidate)
+        invalid_expiry = getattr(mt5, 'TRADE_RETCODE_INVALID_EXPIRATION', 10022)
+        if (allow_gtc_expiry_fallback and checked is not None and checked.retcode == invalid_expiry
+                and candidate.get('type_time') == mt5.ORDER_TIME_SPECIFIED):
+            candidate = {key: value for key, value in candidate.items() if key != 'expiration'}
+            candidate['type_time'] = mt5.ORDER_TIME_GTC
+            checked = mt5.order_check(candidate)
         if checked is None or checked.retcode not in (0, mt5.TRADE_RETCODE_DONE):
             continue
         assert_execution_account()
@@ -902,6 +908,13 @@ def send_with_filling_fallback(request: dict[str, Any], risk_config: dict[str, A
             if conflict:
                 raise RuntimeError(conflict)
         result = mt5.order_send(candidate)
+        if (allow_gtc_expiry_fallback and result is not None and result.retcode == invalid_expiry
+                and candidate.get('type_time') == mt5.ORDER_TIME_SPECIFIED):
+            # This is an explicit rejection, so no order was accepted. Recheck
+            # GTC with the same fixed exits, sizing and bridge-managed deadline.
+            fallback = {key: value for key, value in request.items() if key != 'expiration'}
+            fallback['type_time'] = mt5.ORDER_TIME_GTC
+            return send_with_filling_fallback(fallback, risk_config, entry_signal)
         if result and result.retcode in successful_send_codes:
             return result
     detail = getattr(result, "comment", None) or str(mt5.last_error())
@@ -960,11 +973,15 @@ def place_signal(signal: dict[str, Any], config: dict[str, Any]) -> dict[str, An
         "comment": f"KB-{tag}",
         "type_time": mt5.ORDER_TIME_GTC,
     }
+    expiry_modes = int(getattr(info, 'expiration_mode', 1))
     if pullback_entry(signal) and is_limit:
-        # Broker-enforced expiry also works if the bridge loses connectivity.
-        request['type_time'] = mt5.ORDER_TIME_SPECIFIED
-        request['expiration'] = int(signal['expiresAt'])
-    result = send_with_filling_fallback(request, risk_config=config, entry_signal=signal)
+        if expiry_modes & 4:  # SYMBOL_EXPIRATION_SPECIFIED
+            request['type_time'] = mt5.ORDER_TIME_SPECIFIED
+            request['expiration'] = int(signal['expiresAt']) + BROKER_TIME_OFFSET
+        elif not expiry_modes & 1:  # SYMBOL_EXPIRATION_GTC
+            raise RuntimeError('Broker supports neither exact pending expiry nor bridge-managed GTC orders.')
+    result = send_with_filling_fallback(request, risk_config=config, entry_signal=signal,
+        allow_gtc_expiry_fallback=bool(pullback_entry(signal) and is_limit and expiry_modes & 1))
     status = "PLACED" if is_limit else "ACTIVE"
     execution_price = float(result.price or price)
     initial_stop_loss = float(signal["stopLoss"])
@@ -1487,12 +1504,12 @@ def manage_open_signals(
                 and item.get('status') in {'TP', 'SL', 'RF'} for item in recent)
             if record.get('intradayEntry'):
                 sibling_done = any(same_intraday_setup(record, item) and item.get('status') in {'TP', 'SL', 'RF'} for item in recent)
-                stop_hit = stop_hit or (tick is not None and intraday_boundary_reached(record, broker_symbol, tick))
+            stop_hit = stop_hit or (tick is not None and intraday_boundary_reached(record, broker_symbol, tick))
             if expired or stop_hit or sibling_done:
                 ticket = int(record.get('brokerTicket') or 0)
                 if ticket and (mt5.orders_get(ticket=ticket) or []):
                     status = 'CANCELLED'
-                    pullback_cancel = 'Pullback order cancelled: next-candle expiry or original setup SL/TP reached.'
+                    pullback_cancel = 'Pullback order cancelled: entry deadline or original setup SL/TP reached.'
         if status == "PLACED" and config.get("tradingTimeEnabled", False) and not is_nepal_trading_time():
             ticket = int(record.get("brokerTicket") or 0)
             if ticket and (mt5.orders_get(ticket=ticket) or []):

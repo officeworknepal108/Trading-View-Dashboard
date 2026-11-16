@@ -3,6 +3,7 @@ import type { Mt5SignalInput, Mt5StoredSignal } from './mt5Automation';
 import type { StructureCandle } from './marketStructure';
 import type { TradeLevels, TradeTimeframe } from './tradeLevels';
 import { entryTimeframeSeconds } from './intradayPullback';
+import { pullbackExpirySeconds } from './pullbackExpiry';
 import { chartPullbackState, confirmedPullbackFill, currentPullbackDisplay, groupPullbackTableSignals, type PullbackTableSignal } from './pullbackEntryDisplay';
 
 export interface PullbackChartLeg {
@@ -30,7 +31,7 @@ export function chartSignalFromRecord(record: JournalTradeRecord): PullbackTable
     direction: record.direction === 'bullish' ? 'BUY' : 'SELL', orderType: 'LIMIT',
     engulfingType: record.engulfingType, entry: record.entry, stopLoss: record.stopLoss,
     takeProfit: record.takeProfit, riskFree: record.takeProfit, rewardRisk: record.rewardRisk,
-    riskPips: record.riskPips, expiresAt: record.signalAt + seconds * 2,
+    riskPips: record.riskPips, expiresAt: record.signalAt + seconds + pullbackExpirySeconds((record.scalpEntry ?? record.intradayEntry)!.version, seconds),
     scalpEntry: record.scalpEntry, intradayEntry: record.intradayEntry,
     status: closed ? record.result === 'tp' ? 'TP' : 'SL' : 'ACTIVE',
     openedAt: record.openedAt, closedAt: closed ? record.completedAt : undefined,
@@ -62,7 +63,7 @@ export function buildPullbackChartSetups(options: {
     const states = ([10, 25] as const).map(leg => {
       const saved = entries.find(s => (s.scalpEntry ?? s.intradayEntry)!.leg === leg);
       const raw = meta.nextOpen - sign * meta.confirmationBody * leg / 100;
-      const entry = saved?.entry ?? (meta.version === 2 ? raw : buy ? Math.min(raw, meta.referenceEntry) : Math.max(raw, meta.referenceEntry));
+      const entry = saved?.entry ?? (meta.version >= 2 ? raw : buy ? Math.min(raw, meta.referenceEntry) : Math.max(raw, meta.referenceEntry));
       const signal: Mt5SignalInput = saved ?? { ...base, entry, riskPips: Math.abs(entry - base.stopLoss) * 10,
         rewardRisk: Math.abs(base.takeProfit - entry) / Math.abs(entry - base.stopLoss),
         ...(base.scalpEntry ? { scalpEntry: { ...meta, leg, riskShare: leg === 10 ? .6 : .4 } }
