@@ -386,6 +386,8 @@ interface ConfirmationBar {
   high: number;
   low: number;
   close: number;
+  hasFormingSource: boolean;
+  m15HourCloseVerified: boolean;
 }
 
 export function resolveTjl1Confirmation(candles: StructureCandle[], options: Tjl1ConfirmationOptions) {
@@ -435,15 +437,21 @@ function resolveTjl1ConfirmationWithCache(
         high: Math.max(...list.map((candle) => candle.high)),
         low: Math.min(...list.map((candle) => candle.low)),
         close: list[list.length - 1].close,
+        hasFormingSource: list.some(candle => candle.complete === false),
+        m15HourCloseVerified: confirmationSeconds === 3600 && options.sourceBarSeconds === 900
+          && [0, 900, 1800, 2700].every(offset => list.some(candle => candle.time === time + offset && candle.complete === true)),
       }));
     cache?.set(confirmationSeconds, bars);
   }
 
-  // Ignore the still-forming aggregate candle. A BUY TJL1 confirms only on a
-  // completed higher-timeframe close through the structure-confirmation side.
-  const confirmationBars = bars
-    .slice(0, -1)
-    .filter((bar) => bar.closeTime > options.formationTime);
+  // M15 formation and its containing H1 close can occur at the same instant.
+  // Accept that completed hour, including when the next hour has not arrived
+  // yet, but never count a forming M15 component as a completed H1 close.
+  const m15ToH1 = options.sourceBarSeconds === 900 && confirmationSeconds === 3600;
+  const confirmationBars = bars.filter((bar, index) => m15ToH1
+    ? !bar.hasFormingSource && (index < bars.length - 1 || bar.m15HourCloseVerified)
+      && bar.closeTime >= options.formationTime
+    : index < bars.length - 1 && bar.closeTime > options.formationTime);
   const firstCompletedBar = confirmationBars[0];
   for (const [index, bar] of confirmationBars.entries()) {
     const bodyLow = Math.min(bar.open, bar.close);

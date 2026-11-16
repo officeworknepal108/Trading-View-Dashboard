@@ -1380,8 +1380,10 @@ test('partial-body breaks after pending CHoCH start fresh normal structures', ()
     [114, 117, 120, 113], [117, 112, 118, 110], [112, 108, 113, 106],
     [108, 98, 110, 97],
   ];
+  // Offset the fixture by one M15 slot so formation precedes the H1 close.
+  // A simultaneous H1 close now resolves immediately rather than staying pending.
   const candles = prices.map(([open, close, high, low], index) => ({
-    time: index * 900, open, close, high, low,
+    time: (index + 1) * 900, open, close, high, low,
   }));
   const result = analyzeMarketStructure(candles, {
     sourceBarSeconds: 900,
@@ -1393,22 +1395,22 @@ test('partial-body breaks after pending CHoCH start fresh normal structures', ()
   });
   assert.ok(result.lines.some((line) => line.label === 'CHoCH' && line.direction === 'bullish'));
   const priorDb = beforeNewBos.zones.find((item) => item.name === 'DB'
-    && item.startTime === 11 * 900 && item.chochClass === 'pending');
+    && item.startTime === (11 + 1) * 900 && item.chochClass === 'pending');
   assert.ok(priorDb);
   assert.ok(result.lines.some((line) => line.label === 'BOS' && line.direction === 'bearish'
-    && line.toTime === 18 * 900), 'the close through PL is a new bearish BOS');
+    && line.toTime === (18 + 1) * 900), 'the close through PL is a new bearish BOS');
   assert.equal(result.lines.some((line) => line.label === 'DOUBLE CHoCH'
-    && line.toTime === 18 * 900), false);
+    && line.toTime === (18 + 1) * 900), false);
   const newSellTjl1 = result.zones.find((item) => item.name === 'TJL1' && !item.isBuy
-    && item.tjlPairTime === 19 * 900);
+    && item.tjlPairTime === (19 + 1) * 900);
   assert.ok(newSellTjl1);
   assert.equal(newSellTjl1.startTime, priorDb.startTime);
   assert.equal(newSellTjl1.bottom, priorDb.bottom);
   assert.equal(newSellTjl1.top, priorDb.top);
   assert.ok(result.zones.some((item) => item.name === 'TJL2' && !item.isBuy
-    && item.tjlPairTime === 19 * 900));
+    && item.tjlPairTime === (19 + 1) * 900));
   assert.equal(result.zones.some((item) => item.name === 'DB'
-    && item.startTime === 11 * 900), false, 'the PL zone becomes TJL1, not a remaining DB');
+    && item.startTime === (11 + 1) * 900), false, 'the PL zone becomes TJL1, not a remaining DB');
 
   const forming = analyzeMarketStructure([
     ...candles.slice(0, -1), { ...candles.at(-1)!, complete: false },
@@ -1417,37 +1419,37 @@ test('partial-body breaks after pending CHoCH start fresh normal structures', ()
     confirmationBarSeconds: 3600,
   });
   assert.equal(forming.lines.some((line) => line.label === 'BOS'
-    && line.toTime === 18 * 900), false, 'a forming candle cannot start the new structure');
+    && line.toTime === (18 + 1) * 900), false, 'a forming candle cannot start the new structure');
 
   const doubleChoch = analyzeMarketStructure([
     ...candles.slice(0, -1),
-    { time: 18 * 900, open: 98, high: 99, low: 95, close: 96 },
+    { time: (18 + 1) * 900, open: 98, high: 99, low: 95, close: 96 },
   ], {
     sourceBarSeconds: 900,
     confirmationBarSeconds: 3600,
   });
   assert.ok(doubleChoch.lines.some((line) => line.label === 'DOUBLE CHoCH'
-    && line.toTime === 18 * 900), 'the existing full-body Double CHoCH still takes precedence');
+    && line.toTime === (18 + 1) * 900), 'the existing full-body Double CHoCH still takes precedence');
   assert.equal(doubleChoch.lines.some((line) => line.label === 'BOS'
-    && line.toTime === 18 * 900), false);
+    && line.toTime === (18 + 1) * 900), false);
 
   const mirrored = analyzeMarketStructure([
     ...candles.slice(0, 11),
-    { time: 11 * 900, open: 111, high: 116, low: 110, close: 115 },
+    { time: (11 + 1) * 900, open: 111, high: 116, low: 110, close: 115 },
   ], {
     sourceBarSeconds: 900,
     confirmationBarSeconds: 3600,
   });
   assert.ok(mirrored.lines.some((line) => line.label === 'BOS' && line.direction === 'bullish'
-    && line.toTime === 11 * 900), 'the close through PH is a new bullish BOS');
+    && line.toTime === (11 + 1) * 900), 'the close through PH is a new bullish BOS');
   assert.equal(mirrored.lines.some((line) => line.label === 'DOUBLE CHoCH'
-    && line.toTime === 11 * 900), false);
+    && line.toTime === (11 + 1) * 900), false);
   assert.ok(mirrored.zones.some((item) => item.name === 'TJL1' && item.isBuy
-    && item.tjlPairTime === 12 * 900));
+    && item.tjlPairTime === (12 + 1) * 900));
   assert.ok(mirrored.zones.some((item) => item.name === 'TJL2' && item.isBuy
-    && item.tjlPairTime === 12 * 900));
+    && item.tjlPairTime === (12 + 1) * 900));
   assert.equal(mirrored.zones.some((item) => item.name === 'DT'
-    && item.startTime === 4 * 900), false, 'the PH zone becomes TJL1, not a remaining DT');
+    && item.startTime === (4 + 1) * 900), false, 'the PH zone becomes TJL1, not a remaining DT');
 });
 
 test('Double CHoCH retains its original boundary through intermediate TJL structures in both directions', () => {
@@ -1608,6 +1610,46 @@ test('VIP support ignores an opposite-direction zone even when its tap is freshe
 
   assert.equal(bearishTap?.zone.id, 'sell-support');
   assert.equal(bearishTap?.tapTime, 200);
+});
+
+test('M15 accepts the same H1 closing instant for BUY and SELL without waiting another hour', () => {
+  const start = Date.UTC(2026, 10, 16, 6) / 1000; // 11:45 AM Nepal; closes 12:45 PM.
+  for (const direction of ['up', 'down'] as const) {
+    const hour = [0, 900, 1800, 2700].map((offset, index) => ({
+      time: start + offset, open: 105, high: 113, low: 97,
+      close: index === 3 ? direction === 'up' ? 111 : 99 : 105, complete: true,
+    }));
+    const options = { confirmationDirection: direction, bottom: 100, top: 110,
+      formationTime: start + 3600, sourceBarSeconds: 900, confirmationBarSeconds: 3600 };
+    for (const candles of [hour, [...hour, { ...hour[0], time: start + 3600, complete: false }]]) {
+      const result = resolveTjl1Confirmation(candles, options);
+      assert.equal(result.status, 'valid');
+      assert.equal(result.confirmationTime, start + 3600);
+      assert.equal(result.tjl1ConfirmationAttempts, 1);
+    }
+    assert.equal(resolveTjl1Confirmation(hour, { ...options, formationTime: start + 4500 }).status, 'pending',
+      'an hour closing before formation cannot confirm a later setup');
+    assert.equal(resolveTjl1Confirmation(hour.map((c, i) => i === 3 ? { ...c, complete: false } : c), options).status, 'pending',
+      'a favorable temporary close on a forming candle is not confirmation');
+    assert.equal(resolveTjl1Confirmation(hour.slice(1), options).status, 'pending',
+      'missing source candles cannot establish the final aggregate close without a later bar');
+  }
+});
+
+test('the same H1 candle still needs the correct candle color and a close beyond the boundary', () => {
+  const options = { confirmationDirection: 'up' as const, bottom: 100, top: 110,
+    formationTime: 3600, sourceBarSeconds: 900, confirmationBarSeconds: 3600 };
+  for (const close of [109, 110]) {
+    const hour = [0, 900, 1800, 2700].map((time, i) => ({ time, open: 112, high: 115, low: 101,
+      close: i === 3 ? close : 112, complete: true }));
+    assert.equal(resolveTjl1Confirmation(hour, options).status, 'pending');
+  }
+  const wrongColor = [0, 900, 1800, 2700].map((time, i) => ({ time, open: 113, high: 115, low: 110,
+    close: i === 3 ? 111 : 113, complete: true }));
+  assert.equal(resolveTjl1Confirmation(wrongColor, options).status, 'pending', 'red H1 above the level cannot confirm BUY');
+  const otherRoute = [0, 3600].map(time => ({ time, open: 105, high: 113, low: 101, close: 111, complete: true }));
+  assert.equal(resolveTjl1Confirmation(otherRoute, { ...options, sourceBarSeconds: 300 }).status, 'pending',
+    'other mapped confirmation routes retain their existing timing rule');
 });
 
 test('TJL1 confirms on the first completed mapped higher-timeframe close', () => {
