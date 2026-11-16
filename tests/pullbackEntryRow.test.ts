@@ -136,3 +136,23 @@ test('completed grouped setup retains five columns and hides entry details until
   assert.match(text(html), /TP HIT/); assert.doesNotMatch(text(html), /1st ENTRY|2nd ENTRY|PIPS/);
   assert.equal(renderToStaticMarkup(React.createElement(PullbackSetupRows, { ...props, asOf: 8100 })), '');
 });
+
+test('the saved rejected setup visibly shows the updated 10/25 plan, correct pips and no fill ticks', () => {
+  const base = tradeToMt5Signal({ source: 'ENGULFING', setupId: 'SCALP_1_1:900', zoneName: 'Scalp 1:1',
+    zoneTimeframe: 'M15', trade, now: 1800, pendingExpiryMinutes: 15 });
+  const signals = ([10, 25] as const).map(leg => ({ ...base, id: `${base.id}:P${leg}`, setupId: `${base.setupId}:P${leg}`,
+    tradeStyle: 'SCALP_1_1' as const, orderType: 'LIMIT' as const, direction: 'SELL' as const, entry: 3847.790, stopLoss: 3867.790, takeProfit: 3827.790,
+    status: 'REJECTED' as const, createdAt: 1800, updatedAt: 1800, expiresAt: 2700,
+    scalpEntry: { version: 1 as const, leg, riskShare: leg === 10 ? 0.6 : 0.4,
+      referenceEntry: 3847.790, nextOpen: 3842.020, confirmationBody: 9.175 } }));
+  const html = renderToStaticMarkup(React.createElement(PullbackSetupRows, {
+    signals, style: 'SCALP_1_1', asOf: 3600, entryCandles: {}, timeZone: 'Asia/Kathmandu',
+  }));
+  const visible = text(html);
+  assert.match(visible, /1st ENTRY 3,842\.938/); assert.match(visible, /2nd ENTRY 3,844\.314/);
+  assert.match(visible, /SL 248\.53 PIPS/); assert.match(visible, /SL 234\.76 PIPS/);
+  assert.match(visible, /SL 3,867\.790/); assert.match(visible, /TP 3,827\.790/);
+  assert.doesNotMatch(visible, /3,847\.790/);
+  assert.match(visible, /UPDATED PLAN.*ENTRY WINDOW EXPIRED.*NO FILL/);
+  assert.doesNotMatch(html, /aria-label="Entry filled"/);
+});

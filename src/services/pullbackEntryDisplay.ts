@@ -1,8 +1,36 @@
 import type { JournalTradeRecord } from '../components/TradeJournal';
-import type { Mt5AutomationStatus, Mt5SignalInput, Mt5StoredSignal } from './mt5Automation';
+import { scalpPullbackSignalError, type Mt5AutomationStatus, type Mt5SignalInput, type Mt5StoredSignal } from './mt5Automation';
+import { intradayPullbackSignalError } from './intradayPullback';
 
 type Positions = readonly Mt5AutomationStatus['positions'][number][];
-export type PullbackTableSignal = Mt5StoredSignal & { preview?: boolean; simulatedFill?: boolean };
+export type PullbackTableSignal = Mt5StoredSignal & { preview?: boolean; simulatedFill?: boolean;
+  displayPlan?: { previousEntry: number; expired: boolean; error?: string } };
+
+/** Display projection only. Never enqueue it or overwrite a broker execution record. */
+export function currentPullbackDisplay(signal: PullbackTableSignal, asOf: number, positions: Positions = []): PullbackTableSignal {
+  const leg = signal.scalpEntry ?? signal.intradayEntry;
+  if (!leg || leg.version !== 1 || signal.simulatedFill || signal.openedAt !== undefined
+    || signal.executionPrice !== undefined || signal.closedAt !== undefined
+    || !['REJECTED', 'EXPIRED', 'CANCELLED', 'SIMULATED'].includes(signal.status)
+    || confirmedPullbackFill(signal, asOf, positions)) return signal;
+  if (![leg.nextOpen, leg.confirmationBody].every(value => Number.isFinite(value) && value > 0)) return signal;
+  const sign = signal.direction === 'BUY' ? 1 : -1;
+  const entry = leg.nextOpen - sign * leg.confirmationBody * leg.leg / 100;
+  if (Math.abs(entry - signal.entry) < 1e-6) return signal;
+  const risk = sign * (entry - signal.stopLoss), reward = sign * (signal.takeProfit - entry);
+  const updated = { ...leg, version: 2 as const };
+  const plan: PullbackTableSignal = { ...signal, entry, riskPips: risk * 10,
+    rewardRisk: risk > 0 ? reward / risk : 0, normalRewardRisk: risk > 0 ? reward / risk : 0,
+    ...(signal.scalpEntry ? { scalpEntry: updated } : { intradayEntry: { ...signal.intradayEntry!, version: 2 } }),
+    displayPlan: { previousEntry: signal.entry, expired: signal.expiresAt <= asOf } };
+  plan.displayPlan!.error = signal.scalpEntry ? scalpPullbackSignalError(plan) : intradayPullbackSignalError(plan);
+  return plan;
+}
+
+export function pullbackPlanStatus(signal: PullbackTableSignal): string | undefined {
+  return !signal.displayPlan ? undefined : signal.displayPlan.error ? 'UPDATED PLAN OUTSIDE LIMITS · NO ORDER'
+    : signal.displayPlan.expired ? 'UPDATED PLAN · ENTRY WINDOW EXPIRED · NO FILL' : 'UPDATED PLAN · NOT PLACED';
+}
 
 /** Group by setup identity, not entry price: capped legs can have identical prices. */
 export function groupPullbackTableSignals(signals: readonly PullbackTableSignal[],

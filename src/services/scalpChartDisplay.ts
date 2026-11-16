@@ -1,6 +1,7 @@
 import type { Mt5AutomationStatus, Mt5SignalInput, Mt5StoredSignal } from './mt5Automation';
 import type { TradeLevels, TradeTimeframe } from './tradeLevels';
 import type { StructureCandle } from './marketStructure';
+import { currentPullbackDisplay, pullbackPlanStatus, type PullbackTableSignal } from './pullbackEntryDisplay';
 
 export interface ScalpDisplayOutcome {
   level: 'tp' | 'sl' | 'both';
@@ -93,7 +94,8 @@ export function buildScalpChartDisplays(options: {
   previews?: readonly Mt5SignalInput[];
   candles?: readonly StructureCandle[];
 }): ScalpChartDisplay[] {
-  const { marketSymbol, timeframe, asOf, connection, positions, signals } = options;
+  const { marketSymbol, timeframe, asOf, connection, positions } = options;
+  const signals = options.signals.map(signal => currentPullbackDisplay(signal, asOf, positions));
   if (marketSymbol !== 'XAUUSD' || options.replay || !connection.account || !connection.server || !connection.brokerSymbol) return [];
   const result: ScalpChartDisplay[] = [];
   const representedIds = new Set<string>(), representedSetups = new Set<string>();
@@ -140,7 +142,7 @@ export function buildScalpChartDisplays(options: {
     ...(options.previews ?? []).filter(s => s.tradeStyle === 'SCALP_1_1'
       && s.signalTimeframe === timeframe && s.expiresAt > asOf && s.calculatedAt <= asOf).map(s => s.signalAt));
   const pending = current.filter(s => s.signalAt === newest);
-  const candidates: Array<Mt5SignalInput & { displayState: string }> = [
+  const candidates: Array<Mt5SignalInput & { displayState: string; displayPlan?: PullbackTableSignal['displayPlan'] }> = [
     ...pending.map(s => ({ ...s, displayState: s.status })),
     ...(options.previews ?? []).filter(s => s.tradeStyle === 'SCALP_1_1' && s.signalAt === newest
       && s.signalTimeframe === timeframe && s.calculatedAt <= asOf && s.expiresAt > asOf
@@ -150,6 +152,7 @@ export function buildScalpChartDisplays(options: {
   ];
   const seen = new Set<string>();
   for (const signal of candidates) {
+    if (signal.displayPlan?.error) continue;
     if (representedIds.has(signal.id) || signal.setupId && representedSetups.has(signal.setupId) || seen.has(signal.id)) continue;
     if (scalpDisplayOutcome({ ...signal, status: signal.displayState === 'PREVIEW' ? 'SIMULATED'
       : signal.displayState as Mt5StoredSignal['status'], createdAt: signal.calculatedAt,
@@ -158,14 +161,16 @@ export function buildScalpChartDisplays(options: {
     seen.add(signal.id);
     const rejected = signal.displayState === 'REJECTED';
     const preview = signal.displayState === 'PREVIEW' || signal.displayState === 'SIMULATED';
-    const statusText = rejected ? 'ORDER REJECTED · NO FILL' : preview ? 'CHART SETUP ONLY · NO BROKER FILL' : 'MT5 PENDING LIMIT · NOT FILLED';
+    const statusText = (signal.displayPlan ? pullbackPlanStatus({ ...signal, status: 'REJECTED', createdAt: signal.calculatedAt,
+      updatedAt: signal.calculatedAt }) : undefined)
+      ?? (rejected ? 'ORDER REJECTED · NO FILL' : preview ? 'CHART SETUP ONLY · NO BROKER FILL' : 'MT5 PENDING LIMIT · NOT FILLED');
     const leg = signal.scalpEntry?.leg;
     result.push({ id: `SCALP_SETUP:${signal.id}`, symbol: 'XAUUSD', setupId: signal.setupId,
       chartTimeframe: timeframe, zoneTimeframe: signal.zoneTimeframe, referenceOnly: true,
       kind: rejected ? 'rejected' : preview ? 'preview' : 'pending', style: 'SCALP_1_1',
       alwaysVisible: true, displayOffset: 0, statusText,
       label: `SCALP 1:1 · ${statusText}${leg ? ` · ${leg}% PULLBACK` : ''}`,
-      markerTime: signal.signalAt, markerText: `SCALP ${signal.direction} SETUP${leg ? ` P${leg}` : ''}${rejected ? ' · REJECTED' : ''}`,
+      markerTime: signal.signalAt, markerText: `SCALP ${signal.direction} ${signal.displayPlan ? 'PLAN' : 'SETUP'}${leg ? ` P${leg}` : ''}${rejected && !signal.displayPlan ? ' · REJECTED' : ''}`,
       trade: { entry: signal.entry, stopLoss: signal.stopLoss, takeProfit: signal.takeProfit,
         riskFree: signal.takeProfit, riskFreeEnabled: false, rewardRisk: signal.rewardRisk,
         riskPips: signal.riskPips, status: 'pending', pendingAtCreation: true, calculatedAt: signal.calculatedAt,

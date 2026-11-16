@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { confirmedPullbackFill, filledPullbackLegs, groupPullbackTableSignals, scalpReplayTableSignals } from '../src/services/pullbackEntryDisplay';
+import { confirmedPullbackFill, currentPullbackDisplay, filledPullbackLegs, groupPullbackTableSignals, pullbackPlanStatus, scalpReplayTableSignals } from '../src/services/pullbackEntryDisplay';
 import { scalpOutcomeExpired } from '../src/services/scalpChartDisplay';
 import type { Mt5StoredSignal, Mt5AutomationStatus } from '../src/services/mt5Automation';
 import type { JournalTradeRecord } from '../src/components/TradeJournal';
@@ -97,4 +97,33 @@ test('real broker leg wins over preview duplicates while a preview sibling joins
     intradayEntry: { ...signal.intradayEntry!, leg: 25 as const, riskShare: 0.4 } };
   const [group] = groupPullbackTableSignals([preview, second, actual], { account: 'account-one', server: 'server-one', brokerSymbol: 'GOLD' });
   assert.equal(group.entries.length, 2); assert.equal(group.entries[0], actual);
+});
+
+test('legacy unfilled setup displays the current exact plan without rewriting its saved rejection', () => {
+  const saved = { ...signal, tradeStyle: 'SCALP_1_1' as const, status: 'REJECTED' as const, direction: 'SELL' as const,
+    entry: 3847.790, stopLoss: 3867.790, takeProfit: 3827.790, intradayEntry: undefined,
+    scalpEntry: { ...signal.intradayEntry!, referenceEntry: 3847.790, nextOpen: 3842.020, confirmationBody: 9.175 } };
+  const snapshot = JSON.stringify(saved);
+  const projected = currentPullbackDisplay(saved, 3600);
+  assert.ok(Math.abs(projected.entry - 3842.9375) < 1e-7);
+  assert.ok(Math.abs(projected.riskPips - 248.525) < 1e-7);
+  assert.equal(projected.stopLoss, saved.stopLoss); assert.equal(projected.takeProfit, saved.takeProfit);
+  assert.equal(projected.scalpEntry?.version, 2); assert.equal(projected.status, 'REJECTED');
+  assert.equal(projected.displayPlan?.previousEntry, saved.entry);
+  assert.equal(projected.displayPlan?.error, undefined);
+  assert.match(pullbackPlanStatus(projected)!, /ENTRY WINDOW EXPIRED/);
+  assert.equal(confirmedPullbackFill(projected, 3600), false);
+  assert.equal(JSON.stringify(saved), snapshot);
+  for (const status of ['PLACED', 'QUEUED', 'CLAIMED', 'ACTIVE', 'RISK_FREE', 'TP', 'SL', 'RF'] as const)
+    assert.equal(currentPullbackDisplay({ ...saved, status }, 3600).entry, saved.entry, status);
+  assert.equal(currentPullbackDisplay({ ...saved, openedAt: 1900 }, 3600).entry, saved.entry);
+  assert.equal(currentPullbackDisplay(saved, 3600, [position]).entry, saved.entry, 'broker position must retain actual prices');
+});
+
+test('over-limit corrected plan cannot be displayed as an eligible entry', () => {
+  const saved = { ...signal, status: 'REJECTED' as const,
+    intradayEntry: { ...signal.intradayEntry!, nextOpen: 3020 } };
+  const projected = currentPullbackDisplay(saved, 2000);
+  assert.ok(projected.displayPlan?.error);
+  assert.match(pullbackPlanStatus(projected)!, /OUTSIDE LIMITS.*NO ORDER/);
 });

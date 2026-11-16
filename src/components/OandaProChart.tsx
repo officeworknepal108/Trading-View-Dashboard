@@ -2,7 +2,7 @@ import { detectAutoTrendlines, type AutoTrendline } from '../services/autoTrendl
 import { buildIntradayPullbackSignals, intradayPullbackChartRecords } from '../services/intradayPullback';
 import { tradeToMt5Signal } from '../services/mt5Automation';
 import { buildScalpChartDisplays, scalpDisplayOutcome, scalpOutcomeExpired, scalpPositionSignal, type ScalpChartDisplay, type ScalpDisplayOutcome } from '../services/scalpChartDisplay';
-import { confirmedPullbackFill, filledPullbackLegs, groupPullbackTableSignals, scalpReplayTableSignals, type PullbackFillEvidence, type PullbackTableSignal } from '../services/pullbackEntryDisplay';
+import { confirmedPullbackFill, currentPullbackDisplay, filledPullbackLegs, groupPullbackTableSignals, pullbackPlanStatus, scalpReplayTableSignals, type PullbackFillEvidence, type PullbackTableSignal } from '../services/pullbackEntryDisplay';
 export { detectAutoTrendlines } from '../services/autoTrendlines';
 import { TrendlineStudy } from './TrendlineStudy';
 import { VolumeEngulfingStudy } from './VolumeEngulfingStudy';
@@ -910,7 +910,8 @@ export const PullbackSetupRows: React.FC<{
   timeZone: ChartTimeZone;
   limit?: number;
 }> = ({ signals, style, asOf, entryCandles, positions = [], connection = {}, timeZone, limit = 8 }) => {
-  const groups = groupPullbackTableSignals(signals.filter(signal => signal.signalAt <= asOf), connection);
+  const groups = groupPullbackTableSignals(signals.filter(signal => signal.signalAt <= asOf)
+    .map(signal => currentPullbackDisplay(signal, asOf, positions)), connection);
   return <>{groups.flatMap(group => {
     const signal = group.entries[0], candles = entryCandles[signal.signalTimeframe] ?? [];
     const states = group.entries.map(entry => {
@@ -924,14 +925,16 @@ export const PullbackSetupRows: React.FC<{
     if (completed && states.every(state => scalpOutcomeExpired(state.outcome!, candles, signal.signalTimeframe, asOf))) return [];
     const entryName = (entry: PullbackTableSignal) => (entry.intradayEntry ?? entry.scalpEntry)?.leg === 25 ? '2nd' : '1st';
     const status = (state: typeof states[number]) => state.outcome?.label
+      ?? pullbackPlanStatus(state.signal)
       ?? (state.signal.simulatedFill ? 'CHART ONLY · ENTRY FILLED' : state.signal.preview ? 'CHART ONLY · LIMIT PREVIEW' : mt5SignalStatusLabel(state.signal));
     const labels = states.map(status);
     const summary = labels.every(label => label === labels[0]) ? labels[0]
-      : states.every(state => !state.outcome && state.signal.status === 'REJECTED') ? 'ORDER REJECTED · BOTH ENTRIES'
+      : states.every(state => !state.outcome && !state.signal.displayPlan && state.signal.status === 'REJECTED') ? 'ORDER REJECTED · BOTH ENTRIES'
         : states.map(state => `${entryName(state.signal)}: ${status(state)}`).join(' · ');
     const leg = signal.intradayEntry ?? signal.scalpEntry;
     const stop = signal.initialStopLoss ?? signal.stopLoss;
     const slots = leg ? [10, 25] as const : [0] as const;
+    const planPrices = states.filter(state => state.signal.displayPlan && !state.signal.displayPlan.error).map(state => state.signal.entry);
     return [<React.Fragment key={group.key}>
       <tr className={`border-t ${style === 'SCALP_1_1' ? 'border-cyan-200 bg-cyan-50/80' : 'border-indigo-200 bg-indigo-50/80'}`}>
         <td className={`px-2 py-1 font-black ${style === 'SCALP_1_1' ? 'text-cyan-800' : 'text-indigo-800'}`}>
@@ -939,9 +942,11 @@ export const PullbackSetupRows: React.FC<{
           <div className="text-[8px] font-semibold text-slate-500">{formatAccuracyTradeTime(signal.calculatedAt, timeZone)}</div>
         </td>
         <td className={`px-2 py-1 font-bold ${signal.direction === 'BUY' ? 'text-emerald-700' : 'text-rose-700'}`}>{signal.direction}</td>
-        <td className="px-2 py-1 font-bold text-blue-700">{formatPrice(leg?.referenceEntry ?? signal.executionPrice ?? signal.entry)}</td>
+        <td className="px-2 py-1 font-bold text-blue-700">{planPrices.length > 0
+          ? `${formatPrice(Math.min(...planPrices))} – ${formatPrice(Math.max(...planPrices))}`
+          : signal.displayPlan ? '—' : formatPrice(leg?.referenceEntry ?? signal.executionPrice ?? signal.entry)}</td>
         <td className="px-2 py-1 text-center font-black">{signal.engulfingType}</td>
-        <td title={states.map(state => `${entryName(state.signal)}: ${status(state)}`).join('\n')}
+        <td title={states.map(state => `${entryName(state.signal)}: ${status(state)}${state.signal.displayPlan ? `\nOriginal entry: ${formatPrice(state.signal.displayPlan.previousEntry)}\nOriginal order: ${mt5SignalStatusLabel(state.signal)}` : ''}`).join('\n')}
           className={`max-w-[380px] truncate px-2 py-1 text-right font-black ${completed && states.every(state => state.outcome?.level === 'tp')
             ? 'text-emerald-700' : states.some(state => state.signal.status === 'REJECTED' || state.outcome?.level === 'sl')
               ? 'text-rose-700' : mt5SignalStatusClassName(signal)}`}>{summary}</td>
@@ -956,9 +961,9 @@ export const PullbackSetupRows: React.FC<{
               {index > 0 && <span aria-hidden="true">|</span>}
               <span className="text-blue-700">{slot === 10 ? '1st ENTRY' : slot === 25 ? '2nd ENTRY' : 'ENTRY'}
                 <EntryFillTick filled={state?.filled === true && !state.outcome} />{' '}
-                <span className="tabular-nums font-normal text-slate-700">{state?.outcome ? state.outcome.label : price !== undefined ? formatPrice(price) : '—'}</span>
+                <span className="tabular-nums font-normal text-slate-700">{state?.outcome ? state.outcome.label : state?.signal.displayPlan?.error ? 'OUTSIDE LIMITS' : price !== undefined ? formatPrice(price) : '—'}</span>
               </span>
-              {state && !state.outcome && price !== undefined && <span className="tabular-nums">SL {(Math.abs(price - stop) * 10).toFixed(2)} PIPS</span>}
+              {state && !state.outcome && !state.signal.displayPlan?.error && price !== undefined && <span className="tabular-nums">SL {(Math.round(Math.abs(price - stop) * 1000 + 1e-7) / 100).toFixed(2)} PIPS</span>}
             </React.Fragment>;
           })}
           <span aria-hidden="true">|</span><span className="text-rose-700">SL <span className="font-normal tabular-nums text-slate-700">{formatPrice(stop)}</span></span>
