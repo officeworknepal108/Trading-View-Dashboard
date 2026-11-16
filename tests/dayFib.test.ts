@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { buildDayFibs } from '../src/services/dayFib';
+import { buildDayFibs, selectDayFibForTime, nepalDayStartUtc } from '../src/services/dayFib';
 import type { StructureCandle } from '../src/services/marketStructure';
 
 const nepalTimestamp = (day: number, hour: number, minute: number) => (
@@ -48,4 +48,24 @@ test('Day Fib is not created when the exact 9:15 starting candle is missing', ()
   assert.deepEqual(buildDayFibs([
     candle(2, 9, 30, 100, 110, 99, 108),
   ]), []);
+});
+
+test('November 17 never selects November 16 or 15, including before 9:15 and when the feed is stale', () => {
+  const at = (day: number, hour: number, minute = 0) => Date.UTC(2026, 10, day, hour - 5, minute - 45) / 1000;
+  const bars = [15, 16].flatMap(day => [
+    { time: at(day, 9, 15), open: 100, high: 110, low: 90, close: 105, complete: true },
+    { time: at(day, 16), open: 105, high: 120, low: 100, close: 115, complete: true },
+  ]);
+  const old = buildDayFibs(bars);
+  assert.equal(selectDayFibForTime(old, at(16, 23, 59))?.sessionDate, '2026-11-16');
+  for (const time of [at(17, 0), at(17, 9, 14), at(17, 9, 15), at(17, 12)])
+    assert.equal(selectDayFibForTime(old, time), undefined);
+  assert.equal(nepalDayStartUtc(at(16, 23, 59)) + 86400, nepalDayStartUtc(at(17, 0)));
+  const today = buildDayFibs([...bars,
+    { time: at(17, 8), open: 100, high: 105, low: 95, close: 102, complete: true },
+    { time: at(17, 9, 15), open: 102, high: 108, low: 101, close: 106, complete: false },
+  ]);
+  assert.equal(selectDayFibForTime(today, at(17, 9, 14)), undefined, 'future activation cannot leak into replay');
+  assert.equal(selectDayFibForTime(today, at(17, 9, 15))?.sessionDate, '2026-11-17', 'today starts when its 9:15 candle arrives');
+  assert.equal(selectDayFibForTime(today, at(16, 16))?.sessionDate, '2026-11-16', 'historical study uses its own day');
 });

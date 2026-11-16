@@ -96,3 +96,26 @@ test('invalidated zones cannot retain Day FIB or engulfing status', () => {
   assert.equal(result.zones[0].dayFibStatus, undefined);
   assert.equal(result.zones[0].dayEngulfingType, undefined);
 });
+
+test('a stale prior-day move clears all Day Fib qualification without clearing independent Swing Fib', () => {
+  const at = (day: number, hour: number, minute = 0) => Date.UTC(2026, 10, day, hour - 5, minute - 45) / 1000;
+  const old: DayFibMove = { ...buyMove, sessionDate: '2026-11-16', activationTime: at(16, 9, 15),
+    sourceTime: at(16, 8), zeroTime: at(16, 12) };
+  const previous = zone({ startTime: at(16, 8), activeFromTime: at(16, 8),
+    dayFibStatus: 'a-plus', dayFibBand: '0.5-0.618', dayEngulfingType: 'T1', dayEngulfingTime: at(16, 14),
+    swingFibStatus: 'a-plus', swingFibBand: '0.71-0.79' });
+  const staleFeed = [{ time: at(16, 23, 45), open: 115, high: 116, low: 114, close: 115, complete: true }];
+  for (const asOf of [at(17, 0), at(17, 9, 14), at(17, 10)]) {
+    const result = applyDayFibConfluence(staleFeed, [previous], old, 10, asOf);
+    assert.equal(result.zones[0].dayFibStatus, undefined);
+    assert.equal(result.zones[0].dayFibBand, undefined);
+    assert.equal(result.zones[0].dayEngulfingType, undefined);
+    assert.equal(result.zones[0].dayEngulfingTime, undefined);
+    assert.equal(result.engulfingMarkers.length, 0);
+    assert.equal(result.zones[0].swingFibStatus, 'a-plus');
+  }
+  assert.equal(previous.dayFibStatus, 'a-plus', 'the saved historical zone is not overwritten');
+  const morning = [{ time: at(17, 8), open: 115, high: 116, low: 114, close: 115, complete: true }];
+  assert.equal(applyDayFibConfluence(morning, [previous], old).zones[0].dayFibStatus, undefined,
+    'the common confluence helper rejects a prior day even if a caller forgets the explicit cutoff');
+});

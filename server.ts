@@ -79,7 +79,7 @@ import {
   type StructureZone,
 } from './src/services/marketStructure';
 import { buildAlternatingSwingFibs, buildOneHourSwingFibs } from './src/services/swingFib';
-import { buildDayFibs } from './src/services/dayFib';
+import { buildDayFibs, selectDayFibForTime, nepalDayStartUtc } from './src/services/dayFib';
 import { applyPostChochH1SwingFibConfluence, applySwingFibConfluence } from './src/services/swingFibConfluence';
 import { applyDayFibConfluence } from './src/services/dayFibConfluence';
 import { applyOneMinuteGenesisQml, executionZoneName } from './src/services/oneMinuteGenesis';
@@ -960,6 +960,7 @@ function opposingFibProfitSnapshot(): OpposingFibProfitSnapshot {
   const snapshot = mt5Context().fibProfitSnapshot;
   if (!snapshot?.available) return snapshot ?? { available: false, error: 'Waiting for opposing Fib zones.' };
   if (!mt5ExecutionFeedIsFresh() || !mt5ConnectionMatches(snapshot, mt5Context().mt5BridgeHeartbeat ?? {})
+    || nepalDayStartUtc(snapshot.asOf) !== nepalDayStartUtc(Date.now() / 1000)
     || Date.now() / 1000 - snapshot.asOf > 90) return { available: false, error: 'Opposing Fib zone data is stale or belongs to another account.' };
   return snapshot;
 }
@@ -971,7 +972,8 @@ async function refreshOpposingFibProfitSnapshot(): Promise<void> {
   const now = Date.now();
   if (context.fibProfitRefreshRunning || now - context.fibProfitRefreshAt < 5_000) return;
   if (context.fibProfitVersion === context.mt5MarketDataVersion
-    && context.fibProfitSnapshot?.available && now / 1000 - context.fibProfitSnapshot.asOf < 60) return;
+    && context.fibProfitSnapshot?.available && now / 1000 - context.fibProfitSnapshot.asOf < 60
+    && nepalDayStartUtc(context.fibProfitSnapshot.asOf) === nepalDayStartUtc(now / 1000)) return;
   context.fibProfitRefreshAt = now;
   context.fibProfitRefreshRunning = true;
   const version = context.mt5MarketDataVersion;
@@ -995,7 +997,7 @@ async function refreshOpposingFibProfitSnapshot(): Promise<void> {
     }
     // Both accounts use the same chart feed. Analyze it once per completed-bar snapshot.
     const config = await readMt5Config();
-    const inputKey = JSON.stringify([config.mtfLtfFibRequired, timeframes.map(timeframe => [timeframe, candles[timeframe]!.length,
+    const inputKey = JSON.stringify([nepalDayStartUtc(asOf), config.mtfLtfFibRequired, timeframes.map(timeframe => [timeframe, candles[timeframe]!.length,
       candles[timeframe]!.slice(-2).map(candle => [candle.time, candle.open, candle.high, candle.low, candle.close])])]);
     let zones = sharedFibProfitAnalysis?.key === inputKey && Date.now() - sharedFibProfitAnalysis.at < 90_000
       ? sharedFibProfitAnalysis.zones : undefined;
@@ -1018,7 +1020,7 @@ async function refreshOpposingFibProfitSnapshot(): Promise<void> {
           isDaySwingFibEntryTimeframe(timeframe) ? swing : undefined).zones;
         if (timeframe === 'M15' || timeframe === 'M30') {
           const day = buildDayFibs(source);
-          aligned = applyDayFibConfluence(source, aligned, day.at(-1)).zones;
+          aligned = applyDayFibConfluence(source, aligned, selectDayFibForTime(day, asOf), 10, asOf).zones;
         }
         if (timeframe === 'M15') aligned = applyPostChochH1SwingFibConfluence(source, aligned, raw.M15!.lines, h1Swing);
         return opposingFibProfitZones(aligned, timeframe, asOf, candles,
@@ -1121,7 +1123,7 @@ async function scanMt5AutomationSignals(): Promise<number> {
       zones = applyDayFibConfluence(
         sourceCandles,
         zones,
-        dayFibMoves[dayFibMoves.length - 1],
+        selectDayFibForTime(dayFibMoves, now), 10, now,
       ).zones;
     }
     if (zoneTimeframe === 'M15') {

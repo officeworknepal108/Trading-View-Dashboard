@@ -6,7 +6,7 @@ import { calculateTradeLevels, getDirectTradeRule, isDeepDiscountTradeSignal,
   type TradeRule, type TradeTimeframe } from './tradeLevels';
 import { isGoldIntradayCandleRoute } from './goldScalping';
 import { buildAlternatingSwingFibs, buildOneHourSwingFibs } from './swingFib';
-import { buildDayFibs } from './dayFib';
+import { buildDayFibs, selectDayFibForTime } from './dayFib';
 import { applySwingFibConfluence, applyPostChochH1SwingFibConfluence } from './swingFibConfluence';
 import { applyDayFibConfluence } from './dayFibConfluence';
 import { applyOneMinuteGenesisQml } from './oneMinuteGenesis';
@@ -657,7 +657,7 @@ export function runTrendlineStudy(input: TrendlineStudyInput,
     let zones = applySwingFibConfluence(candles, base.zones,
       ['M15', 'M30', 'H1'].includes(zoneTimeframe) ? moves : undefined).zones;
     const dayMoves = ['M15', 'M30'].includes(zoneTimeframe) ? buildDayFibs(candles) : [];
-    zones = applyDayFibConfluence(candles, zones, dayMoves.at(-1)).zones;
+    zones = applyDayFibConfluence(candles, zones, selectDayFibForTime(dayMoves, at), 10, at).zones;
     if (gold && zoneTimeframe === 'M15') zones = applyPostChochH1SwingFibConfluence(candles,
       zones, base.lines, buildOneHourSwingFibs(prefixes('H1', at), analyze('H1', at).markers));
     if (zoneTimeframe === 'M1') zones = applyOneMinuteGenesisQml(zones, candles, prefixes('D', at));

@@ -7,7 +7,7 @@ import {
   type StructureCandle,
   type StructureZone,
 } from './marketStructure';
-import type { DayFibMove } from './dayFib';
+import { selectDayFibForTime, nepalDayStartUtc, type DayFibMove } from './dayFib';
 
 export type DayFibBand = Extract<FibBand, '0.5-0.618' | '0.71-0.79'>;
 
@@ -38,9 +38,10 @@ export function applyDayFibConfluence(
   zones: StructureZone[],
   move: DayFibMove | undefined,
   type4MaxCandles = 10,
+  asOf = candles.at(-1)?.time ?? move?.activationTime ?? 0,
 ): DayFibConfluenceResult {
   const nextZones = zones.map(clearDayConfluence);
-  if (!move || move.sourcePrice === move.zeroPrice) {
+  if (!move || !selectDayFibForTime([move], asOf) || move.sourcePrice === move.zeroPrice) {
     return { zones: nextZones, engulfingMarkers: [] };
   }
 
@@ -66,7 +67,8 @@ export function applyDayFibConfluence(
 
     for (let endIndex = 1; endIndex < candles.length; endIndex += 1) {
       const finalCandle = candles[endIndex];
-      if (finalCandle.complete === false || finalCandle.time < validFrom) continue;
+      if (finalCandle.complete === false || finalCandle.time < validFrom || finalCandle.time > asOf
+        || nepalDayStartUtc(finalCandle.time) !== nepalDayStartUtc(asOf)) continue;
       const pattern = detectEngulfingPatternAt(candles, endIndex, type4MaxCandles);
       if (!pattern || pattern.direction !== requiredDirection) continue;
       const touchesZone = candles

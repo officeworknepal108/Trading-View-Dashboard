@@ -14,9 +14,17 @@ export interface DayFibMove {
   zeroPrice: number;
 }
 
-function nepalDayStartUtc(timestamp: number): number {
+export function nepalDayStartUtc(timestamp: number): number {
   return Math.floor((timestamp + NEPAL_UTC_OFFSET_SECONDS) / DAY_SECONDS) * DAY_SECONDS
     - NEPAL_UTC_OFFSET_SECONDS;
+}
+
+/** A missing/currently unactivated day never falls back to an older day's Fib. */
+export function selectDayFibForTime(moves: readonly DayFibMove[], asOf: number): DayFibMove | undefined {
+  if (!Number.isFinite(asOf)) return undefined;
+  const day = nepalDayStartUtc(asOf);
+  return moves.filter(move => move.activationTime <= asOf && nepalDayStartUtc(move.activationTime) === day)
+    .sort((a, b) => b.activationTime - a.activationTime)[0];
 }
 
 function nepalDateLabel(dayStart: number): string {

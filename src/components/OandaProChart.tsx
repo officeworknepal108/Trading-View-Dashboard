@@ -53,7 +53,7 @@ import { buildAlternatingSwingFibs, buildOneHourSwingFibs, SwingFibMove } from '
 import { ChartTimeZone, formatChartTick, formatChartTime } from '../services/chartTime';
 import { matchingChartCandles, structureSnapshotsMatch, type ChartCandleSnapshot,
   type PreparedStructureAnalysis, type StructureAnalysisTask } from '../services/structureAnalysis';
-import { buildDayFibs, DayFibMove } from '../services/dayFib';
+import { buildDayFibs, selectDayFibForTime, nepalDayStartUtc, DayFibMove } from '../services/dayFib';
 import { applyPostChochH1SwingFibConfluence, applySwingFibConfluence } from '../services/swingFibConfluence';
 import { applyDayFibConfluence } from '../services/dayFibConfluence';
 import { INDICATOR_FIB_LEVELS, indicatorFibPrice } from '../services/indicatorFib';
@@ -3454,6 +3454,16 @@ export const OandaProChart: React.FC<{
     h1SwingSource.candles, h1SwingSource.markers,
   ), [h1SwingSource]);
 
+  const [dayFibCalendarDay, setDayFibCalendarDay] = useState(() => nepalDayStartUtc(Date.now() / 1000));
+  useEffect(() => {
+    const update = () => setDayFibCalendarDay(nepalDayStartUtc(Date.now() / 1000));
+    const timer = window.setInterval(update, 1000);
+    document.addEventListener('visibilitychange', update);
+    return () => { window.clearInterval(timer); document.removeEventListener('visibilitychange', update); };
+  }, []);
+  const dayFibAsOf = useMemo(() => replayIndex === null ? Date.now() / 1000
+    : (displayCandles.at(-1)?.time ?? 0) + (displayCandles.at(-1)?.complete ? TIMEFRAME_SECONDS[granularity] : 0),
+  [dayFibCalendarDay, displayCandles, granularity, replayIndex]);
   const dayFibMoves = useMemo(() => (
     ['M1', 'M5', 'M15', 'M30'].includes(granularity)
       ? buildDayFibs(displayCandles)
@@ -3473,9 +3483,10 @@ export const OandaProChart: React.FC<{
     swingFibConfluence.zones,
     isDaySwingFibEntryTimeframe(granularity)
       && ['M15', 'M30'].includes(granularity)
-      ? dayFibMoves[dayFibMoves.length - 1]
+      ? selectDayFibForTime(dayFibMoves, dayFibAsOf)
       : undefined,
-  ), [dayFibMoves, displayCandles, granularity, swingFibConfluence.zones]);
+    10, dayFibAsOf,
+  ), [dayFibAsOf, dayFibMoves, displayCandles, granularity, swingFibConfluence.zones]);
   const h1PostChochZones = useMemo(() => (
     marketSymbol === 'XAUUSD' && granularity === 'M15'
       ? applyPostChochH1SwingFibConfluence(
@@ -4113,7 +4124,7 @@ export const OandaProChart: React.FC<{
       if (zoneTimeframe === 'M15') {
         const dayMoves = buildDayFibs(zoneData.candles);
         zones = applyDayFibConfluence(
-          zoneData.candles, zones, dayMoves[dayMoves.length - 1],
+          zoneData.candles, zones, selectDayFibForTime(dayMoves, dayFibAsOf), 10, dayFibAsOf,
         ).zones;
       }
       for (const zone of zones) {
@@ -4153,7 +4164,7 @@ export const OandaProChart: React.FC<{
       }
     }
     return rows;
-  }, [blockedGoldChartEntry, extremeAPlusMtfBlockedZoneIds, marketConfig.pipSize, marketSymbol, opposingGoldZones, swingFibMoves, tableTimeframeData, zoneEntryRecords]);
+  }, [dayFibAsOf, blockedGoldChartEntry, extremeAPlusMtfBlockedZoneIds, marketConfig.pipSize, marketSymbol, opposingGoldZones, swingFibMoves, tableTimeframeData, zoneEntryRecords]);
   const goldScalpingAccuracyTrades = useMemo(() => goldScalpingCandidates.filter(
     (candidate) => !candidate.countertrendBlocked && !candidate.opposingZoneBlock,
   ), [goldScalpingCandidates]);
@@ -4369,7 +4380,7 @@ export const OandaProChart: React.FC<{
       if (zoneTimeframe !== granularity) {
         if (zoneTimeframe === 'M15') {
           const moves = buildDayFibs(zoneData.candles);
-          sourceZones = applyDayFibConfluence(zoneData.candles, sourceZones, moves[moves.length - 1]).zones;
+          sourceZones = applyDayFibConfluence(zoneData.candles, sourceZones, selectDayFibForTime(moves, dayFibAsOf), 10, dayFibAsOf).zones;
         }
         for (const fallback of DIRECT_ENGULFING_FALLBACKS[zoneTimeframe] ?? []) {
           sourceZones = applyTradeableZoneEngulfingFallback(
@@ -4560,6 +4571,7 @@ export const OandaProChart: React.FC<{
   }, [
     blockedGoldChartEntry,
     currentDirectTradeSetups,
+    dayFibAsOf,
     displayCandles,
     displayZones,
     directZoneEntryDecisions,
@@ -7100,7 +7112,7 @@ export const OandaProChart: React.FC<{
         }
 
         if (fibVisibilityRef.current.day) {
-          const dayZones = dayFibMovesRef.current.map<StructureZone>((move) => ({
+          const dayZones = dayFibMovesRef.current.filter(move => selectDayFibForTime([move], dayFibAsOf) !== undefined).map<StructureZone>((move) => ({
             id: `day-fib-${move.sessionDate}`,
             name: move.direction === 'up' ? 'DEMAND' : 'SUPPLY',
             category: 'supplyDemand',
@@ -7556,7 +7568,7 @@ export const OandaProChart: React.FC<{
     // Swap the complete overlay in one operation so the browser does not
     // perform layout work for every individual zone, line, and label.
     layer.replaceChildren(fragment);
-  }, [autoTrendlines, hasTradeDrawingExpired, zoneLengthModes, hiddenCompletedTradeDrawings, hiddenHtfTrendlineIds, nearbyHtfTrendlines, shortenedTrendlineIds, comparisonTimeframe, directZoneTrades, displayCandles, extremeAPlusTjl2Selection, granularity, latestCandle?.time, ltfChochContext, marketConfig.pipSize, marketSymbol, mtfRows, mtfDrawingZones, oneMinuteScalpingZones, overlayCandlesByTime, preEntryTrendlineMarkMap, repeatedLtfChochLabels, replayIndex, scalpingEnabled, tableTimeframeData, visibleComparisonZones, zoneDrawingEndIndices, zoneTableRows]);
+  }, [dayFibAsOf, autoTrendlines, hasTradeDrawingExpired, zoneLengthModes, hiddenCompletedTradeDrawings, hiddenHtfTrendlineIds, nearbyHtfTrendlines, shortenedTrendlineIds, comparisonTimeframe, directZoneTrades, displayCandles, extremeAPlusTjl2Selection, granularity, latestCandle?.time, ltfChochContext, marketConfig.pipSize, marketSymbol, mtfRows, mtfDrawingZones, oneMinuteScalpingZones, overlayCandlesByTime, preEntryTrendlineMarkMap, repeatedLtfChochLabels, replayIndex, scalpingEnabled, tableTimeframeData, visibleComparisonZones, zoneDrawingEndIndices, zoneTableRows]);
 
   redrawZonesRef.current = redrawZones;
 
