@@ -1,7 +1,8 @@
 import { detectAutoTrendlines, type AutoTrendline } from '../services/autoTrendlines';
 import { buildIntradayPullbackSignals, intradayPullbackChartRecords } from '../services/intradayPullback';
 import { tradeToMt5Signal } from '../services/mt5Automation';
-import { buildScalpChartDisplays, scalpDisplayOutcome, scalpOutcomeExpired, scalpPositionSignal, type ScalpChartDisplay, type ScalpDisplayOutcome } from '../services/scalpChartDisplay';
+import { buildScalpChartDisplays, scalpDisplayOutcome, scalpHistoryFillDisplays, scalpOutcomeExpired, scalpPositionSignal, type ScalpChartDisplay, type ScalpDisplayOutcome } from '../services/scalpChartDisplay';
+import type { ScalpOneToOneChartFill } from '../services/scalpOneToOne';
 import { chartExecutionStatus, chartPullbackState, confirmedPullbackFill, currentPullbackDisplay, filledPullbackLegs, groupPullbackTableSignals, scalpReplayTableSignals, type PullbackFillEvidence, type PullbackTableSignal } from '../services/pullbackEntryDisplay';
 export { detectAutoTrendlines } from '../services/autoTrendlines';
 import { TrendlineStudy } from './TrendlineStudy';
@@ -4578,6 +4579,7 @@ export const OandaProChart: React.FC<{
 
   const [scalpOneToOnePreview, setScalpOneToOnePreview] = useState<Mt5SignalInput[]>([]);
   const [scalpOneToOneChartRecords, setScalpOneToOneChartRecords] = useState<JournalTradeRecord[]>([]);
+  const [scalpOneToOneChartFills, setScalpOneToOneChartFills] = useState<ScalpOneToOneChartFill[]>([]);
   const [scalpOneToOneHistoryStatus, setScalpOneToOneHistoryStatus] = useState('');
   const scalpOneToOneHistoryRequested = marketSymbol === 'XAUUSD'
     && (showScalpOneToOneArrows || showAccuracyTable || showJournal || scalpOneToOneEnabled);
@@ -4595,17 +4597,19 @@ export const OandaProChart: React.FC<{
     [scalpOneToOneHistoryRequested, tableTimeframeData, scalpOneToOneScanTime, mt5Status?.config.pendingExpiryMinutes]);
   useEffect(() => {
     if (!scalpOneToOneHistoryRequested) {
-      setScalpOneToOnePreview([]); setScalpOneToOneChartRecords([]);
+      setScalpOneToOnePreview([]); setScalpOneToOneChartRecords([]); setScalpOneToOneChartFills([]);
       setScalpOneToOneHistoryStatus(''); return;
     }
     setScalpOneToOneHistoryStatus('Loading Scalp 1:1 chart results...');
     const task = new Worker(new URL('../services/scalpOneToOne.worker.ts', import.meta.url), { type: 'module' });
-    task.onmessage = (event: MessageEvent<{ signals?: Mt5SignalInput[]; records?: JournalTradeRecord[]; error?: string; progress?: number }>) => {
+    task.onmessage = (event: MessageEvent<{ signals?: Mt5SignalInput[]; records?: JournalTradeRecord[];
+      fills?: ScalpOneToOneChartFill[]; error?: string; progress?: number }>) => {
       if (event.data.signals) setScalpOneToOnePreview(event.data.signals);
       if (event.data.records) setScalpOneToOneChartRecords(event.data.records);
+      if (event.data.fills) setScalpOneToOneChartFills(event.data.fills);
       setScalpOneToOneHistoryStatus(event.data.error ?? (event.data.progress !== undefined
         ? `Loading Scalp 1:1 chart results... ${event.data.progress}%`
-        : 'Scalp 1:1 results count filled entries; 10% / 25% pullbacks share setup risk 60% / 40%. MT5 executions are recorded separately.'));
+        : `Scalp 1:1: ${event.data.fills?.length ?? 0} confirmed historical entry fills. Results and MT5 executions are tracked separately.`));
     };
     task.onerror = () => setScalpOneToOneHistoryStatus('Scalp 1:1 history unavailable.');
     task.postMessage(JSON.parse(scalpOneToOneHistoryInput));
@@ -5598,7 +5602,21 @@ export const OandaProChart: React.FC<{
         && record.scalpEntry?.leg === item.entryLeg)) continue;
       add(item.id, item.trade, item.statusText, 'Scalp setup', 'Not recorded', item.style, false, item.markerTime, item);
     }
+    const historyDisplays = marketSymbol === 'XAUUSD' && granularity === 'M15'
+      ? scalpHistoryFillDisplays(scalpOneToOneChartFills, tradeDisplayAsOf) : [];
+    for (const item of historyDisplays) {
+      if (scalpChartDisplays.some(current => current.chartFilled && entries.has(current.id)
+        && current.trade.signal.time === item.trade.signal.time && current.trade.signal.direction === item.trade.signal.direction
+        && (current.entryLeg === undefined || current.entryLeg === item.entryLeg))) continue;
+      if (chartEntryRecords.some(record => record.tradeStyle === 'SCALP_1_1' && (record.mt5Managed || record.brokerTicket !== undefined)
+        && record.signalAt === item.trade.signal.time && record.direction === item.trade.signal.direction
+        && (record.scalpEntry === undefined || record.scalpEntry.leg === item.entryLeg))) continue;
+      add(item.id, item.trade, item.statusText, 'Scalp 1:1 chart fill', 'Not recorded', item.style, false, item.markerTime, item);
+    }
     for (const record of chartEntryRecords) {
+      if (record.tradeStyle === 'SCALP_1_1' && historyDisplays.some(item => entries.has(item.id)
+        && item.trade.signal.time === record.signalAt && item.trade.signal.direction === record.direction
+        && item.entryLeg === record.scalpEntry?.leg)) continue;
       if (record.tradeStyle === 'SCALP_1_1' && scalpChartDisplays.some(item => entries.has(item.id) && item.chartFilled
         && item.trade.signal.time === record.signalAt && item.trade.signal.timeframe === record.signalTimeframe
         && item.trade.signal.direction === record.direction
@@ -5672,7 +5690,7 @@ export const OandaProChart: React.FC<{
       }
     }
     return Array.from(entries.values());
-  }, [scalpChartDisplays, blockedGoldHistoricalTrade, chartEntryRecords, displayCandles, granularity, marketSymbol, replayIndex,
+  }, [scalpOneToOneChartFills, tradeDisplayAsOf, scalpChartDisplays, blockedGoldHistoricalTrade, chartEntryRecords, displayCandles, granularity, marketSymbol, replayIndex,
     directTradeStyleEnabled, directZoneEntryDecisions, displayZones, retainedDirectChartTradesForTimeframe, tradingTimeEnabled, visibleAccuracyRecordIds]);
   const visibleEntryHovers = useMemo(() => entryHovers.filter(entry => (
     entry.display?.alwaysVisible || (entry.style === 'SCALP_1_1' ? showScalpOneToOneArrows : showOtherEntryArrows)

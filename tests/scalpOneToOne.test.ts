@@ -7,7 +7,8 @@ import { SCALP_ONE_TO_ONE_RISK_OPTIONS, normalizeScalpOneToOneRisk, isTradeStyle
   mt5SignalDisabledReason, applySignalOppositePositionTarget,
   goldAutomationOpposingZoneBlocked, goldAutomationRepeatAreaBlocked, scalpOneToOneVolumePasses } from '../src/services/mt5Automation';
 import type { VolumeStudyRecord } from '../src/services/volumeEngulfingStudy';
-import { scalpOneToOnePullbackSignals, scalpOneToOneChartRecords, scalpPullbackBarStates } from '../src/services/scalpOneToOne';
+import { scalpOneToOnePullbackSignals, scalpOneToOneChartHistory, scalpOneToOneChartRecords, scalpPullbackBarStates } from '../src/services/scalpOneToOne';
+import { scalpHistoryFillDisplays } from '../src/services/scalpChartDisplay';
 import { scalpPullbackSignalError } from '../src/services/mt5Automation';
 import { calculateJournalPerformance } from '../src/components/TradeJournal';
 import { deduplicateTradeRecords } from '../src/services/tradeRecordDeduplication';
@@ -137,6 +138,51 @@ test('layered history uses individual RR and weighted setup R without merging ca
   assert.ok(reconciled.some(r => r.scalpEntry?.leg === 25 && !r.mt5Managed));
   const stopped = rows.map(r => ({ ...r, result: 'sl' as const }));
   assert.equal(calculateJournalPerformance(stopped).totalR, -1);
+});
+
+test('CSV-style below-threshold volume rows are skipped without aborting all historical entries', () => {
+  const below: VolumeStudyRecord = { ...record, signal: { ...record.signal, type: 'T2', candleCount: 3 },
+    group: 'V3 < V2 and V1', v1: 5417, v2: 5396, v3: 5286 };
+  assert.deepEqual(scalpOneToOnePullbackSignals(below, layeredCandles, 1800, 15), []);
+  assert.throws(() => scalpOneToOneSignal(below, layeredCandles, 1800, 15), /250-unit/,
+    'direct execution validation remains strict');
+  const history = [below, record].map(row => scalpOneToOneChartHistory(row, layeredCandles, 3600));
+  assert.equal(history[0].fills.length, 0); assert.equal(history[0].records.length, 0);
+  assert.equal(history[1].fills.length, 2); assert.equal(history[1].records.length, 2);
+});
+
+test('proven entry fills survive an uncertain final result without becoming journal wins or losses', () => {
+  const uncertain: StudyCandles = { M15: [layeredCandles.M15![0], layeredCandles.M15![1],
+    { time: 2700, open: 100, high: 111, low: 89, close: 100, complete: true }] };
+  const history = scalpOneToOneChartHistory(record, uncertain, 3600);
+  assert.deepEqual(history.records, []);
+  assert.equal(calculateJournalPerformance(history.records).totalR, 0);
+  assert.equal(history.fills.length, 2);
+  assert.ok(history.fills.every(fill => fill.outcome === 'uncertain' && fill.trade.filledAt === 1800
+    && fill.trade.result === undefined && fill.trade.resolvedAt === 2700));
+  const displays = scalpHistoryFillDisplays(history.fills, 3600);
+  assert.equal(displays.length, 2);
+  assert.ok(displays.every(display => display.markerOnly && display.chartFilled && display.markerTime === 1800));
+  assert.ok(displays.every(display => display.markerText.includes('Outcome uncertain')));
+});
+
+test('uncertain entry-before-TP ordering cannot create historical fill arrows', () => {
+  const source: StudyCandles = { M15: [layeredCandles.M15![0],
+    { time: 1800, open: 100, high: 111, low: 97, close: 100, complete: true }] };
+  assert.deepEqual(scalpOneToOneChartHistory(record, source, 2700).fills, []);
+  assert.deepEqual(scalpOneToOneChartHistory(record, layeredCandles, 2699).fills, []);
+});
+
+test('fill-history markers retain fill times and hide future outcomes in replay', () => {
+  const history = scalpOneToOneChartHistory(record, layeredCandles, 3600);
+  assert.equal(history.fills.length, 2);
+  assert.deepEqual(scalpHistoryFillDisplays(history.fills, 1799), []);
+  assert.deepEqual(scalpHistoryFillDisplays(history.fills, 2000), [], 'completed OHLC cannot prove an earlier intrabar fill');
+  const beforeExit = scalpHistoryFillDisplays(history.fills, 2700);
+  assert.ok(beforeExit.every(display => display.trade.result === undefined && display.trade.resolvedAt === undefined
+    && display.markerText.includes('Open')));
+  const afterExit = scalpHistoryFillDisplays(history.fills, 100000);
+  assert.ok(afterExit.every(display => display.markerOnly && display.trade.result === 'tp' && display.markerTime === 1800));
 });
 
 test('Scalp 1:1 uses its own switch and approved risk choices', () => {

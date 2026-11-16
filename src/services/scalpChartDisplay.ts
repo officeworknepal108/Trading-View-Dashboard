@@ -1,6 +1,7 @@
 import type { Mt5AutomationStatus, Mt5SignalInput, Mt5StoredSignal } from './mt5Automation';
 import type { TradeLevels, TradeTimeframe } from './tradeLevels';
 import type { StructureCandle } from './marketStructure';
+import type { ScalpOneToOneChartFill } from './scalpOneToOne';
 import { chartExecutionStatus, chartPullbackState, currentPullbackDisplay, type PullbackTableSignal } from './pullbackEntryDisplay';
 
 export interface ScalpDisplayOutcome {
@@ -62,6 +63,24 @@ export interface ScalpChartDisplay {
   brokerTicket?: number;
   alwaysVisible: boolean;
   displayOffset: number;
+}
+
+/** Entry-marker facts never become result/journal records or trade-level drawings. */
+export function scalpHistoryFillDisplays(fills: readonly ScalpOneToOneChartFill[], asOf: number): ScalpChartDisplay[] {
+  // These facts come from completed M15 OHLC, so intrabar replay must wait
+  // until that candle closes. Live observed fills use the separate live path.
+  return fills.filter(fill => fill.trade.filledAt !== undefined && fill.trade.filledAt + 900 <= asOf).map(fill => {
+    const futureExit = fill.trade.resolvedAt !== undefined && fill.trade.resolvedAt + 900 > asOf;
+    const outcome = futureExit ? 'active' : fill.outcome;
+    const trade = futureExit ? { ...fill.trade, result: undefined, resolvedAt: undefined, status: 'active' as const } : fill.trade;
+    const result = outcome === 'uncertain' ? 'Outcome uncertain' : outcome === 'active' ? 'Open' : outcome.toUpperCase();
+    return { id: fill.id, setupId: fill.setupId, symbol: 'XAUUSD' as const, trade,
+      style: 'SCALP_1_1' as const, kind: 'preview' as const, chartTimeframe: 'M15' as const,
+      zoneTimeframe: 'M15' as const, entryLeg: fill.leg, markerOnly: true, chartFilled: true,
+      referenceOnly: true, alwaysVisible: false, displayOffset: 0,
+      markerTime: trade.filledAt!, markerText: `SCALP ${trade.signal.direction === 'bullish' ? 'BUY' : 'SELL'} ${fill.leg === 10 ? '1st' : '2nd'} ENTRY · ${result}`,
+      statusText: `CHART: Filled · ${result} · MT5: Not linked`, label: 'SCALP 1:1 · CHART FILL HISTORY' };
+  });
 }
 
 type Position = Mt5AutomationStatus['positions'][number];
