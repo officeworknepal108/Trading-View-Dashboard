@@ -1,5 +1,6 @@
 import 'dotenv/config';
 import { buildScalpOneToOneSignals } from './src/services/scalpOneToOne';
+import { buildIntradayPullbackSignals, intradayPullbackSignalError, sameIntradayPullbackSetup } from './src/services/intradayPullback';
 import { normalizeScalpOneToOneRisk } from './src/services/mt5Automation';
 import { DashboardAuth } from './src/server/authentication';
 import { denyPrivateFiles, privateFilePatterns } from './src/server/privateFiles';
@@ -576,6 +577,10 @@ function validateMt5Signal(candidate: any): string | undefined {
     const error = scalpPullbackSignalError(candidate);
     if (error) return error;
   }
+  if (candidate.intradayEntry) {
+    const error = intradayPullbackSignalError(candidate);
+    if (error) return error;
+  }
   return undefined;
 }
 
@@ -632,6 +637,9 @@ async function enqueueMt5Signal(
   if (candidate.tradeStyle === 'SCALP_1_1' && !scannerQualified) {
     throw new Error('Scalp 1:1 signals must be qualified by the server strategy scanner.');
   }
+  if (candidate.intradayEntry && !scannerQualified) {
+    throw new Error('Intraday pullback signals must be qualified by the server strategy scanner.');
+  }
   const disabledReason = mt5SignalDisabledReason(config, candidate);
   if (disabledReason) throw new Error(disabledReason);
   const now = Math.floor(Date.now() / 1000);
@@ -664,6 +672,7 @@ async function enqueueMt5Signal(
       && signal.signalAt === candidate.signalAt
       && (signal.tradeStyle === 'SCALP_1_1') === (candidate.tradeStyle === 'SCALP_1_1')
       && (!candidate.scalpEntry || !signal.scalpEntry || signal.scalpEntry.leg === candidate.scalpEntry.leg)
+      && !(sameIntradayPullbackSetup(candidate, signal) && candidate.intradayEntry!.leg !== signal.intradayEntry!.leg)
     ));
     const sibling = candidate.scalpEntry ? signals.find(signal => signal.tradeStyle === 'SCALP_1_1'
       && signal.scalpEntry && signal.signalAt === candidate.signalAt && signal.direction === candidate.direction
@@ -683,6 +692,23 @@ async function enqueueMt5Signal(
       ?? Number(mt5Context().mt5BridgeHeartbeat?.equity) * (config.scalpOneToOneRiskPercent ?? 0.25) / 100 : undefined;
     if (candidate.scalpEntry && !(Number.isFinite(scalpSetupRiskBudget) && scalpSetupRiskBudget! > 0)) {
       throw new Error('Unable to freeze the Scalp 1:1 setup risk budget.');
+    }
+    const intradaySibling = candidate.intradayEntry ? signals.find(signal => sameIntradayPullbackSetup(candidate, signal)
+      && mt5ConnectionMatches(executionConnection, signal)) : undefined;
+    if (intradaySibling && candidate.intradayEntry && (Math.abs(intradaySibling.stopLoss - candidate.stopLoss) > 1e-6
+      || Math.abs(intradaySibling.takeProfit - candidate.takeProfit) > 1e-6
+      || Math.abs(intradaySibling.intradayEntry!.nextOpen - candidate.intradayEntry.nextOpen) > 1e-6
+      || Math.abs(intradaySibling.intradayEntry!.confirmationBody - candidate.intradayEntry.confirmationBody) > 1e-6)) {
+      throw new Error('Intraday setup prices changed after its first order; the second entry is paused.');
+    }
+    if (candidate.intradayEntry && signals.some(signal => sameIntradayPullbackSetup(candidate, signal)
+      && ['TP', 'SL', 'RF'].includes(signal.status) && mt5ConnectionMatches(executionConnection, signal))) {
+      throw new Error('Intraday setup already closed; remaining entries are cancelled.');
+    }
+    const intradaySetupRiskBudget = candidate.intradayEntry ? intradaySibling?.intradaySetupRiskBudget
+      ?? Number(mt5Context().mt5BridgeHeartbeat?.equity) * config.riskPercent / 100 : undefined;
+    if (candidate.intradayEntry && !(Number.isFinite(intradaySetupRiskBudget) && intradaySetupRiskBudget! > 0)) {
+      throw new Error('Unable to freeze the Intraday setup risk budget.');
     }
     const priorSetupAttempts = candidate.setupId === undefined ? [] : signals.filter((signal) => (
       signal.setupId === candidate.setupId && consumedSetupStatuses.has(signal.status)
@@ -711,6 +737,7 @@ async function enqueueMt5Signal(
     const signal: Mt5StoredSignal = {
       ...candidate,
       scalpSetupRiskBudget,
+      intradaySetupRiskBudget,
       id: candidate.id.trim(),
       setupId: candidate.setupId?.trim().slice(0, 300) || undefined,
       zoneName: String(candidate.zoneName || 'Unknown').slice(0, 100),
@@ -1233,7 +1260,8 @@ async function scanMt5AutomationSignals(): Promise<number> {
           candles[signal.timeframe], signal.time, signalClose,
         ),
       };
-      candidates.push(applySignalOppositePositionTarget(baseSignal, mt5Context().mt5BridgeHeartbeat?.positions));
+      candidates.push(...buildIntradayPullbackSignals(
+        applySignalOppositePositionTarget(baseSignal, mt5Context().mt5BridgeHeartbeat?.positions), candles[signal.timeframe]));
     }
   }
 
@@ -1317,7 +1345,8 @@ async function scanMt5AutomationSignals(): Promise<number> {
         candles[row.lowerTimeframe], signal.time, signalClose,
       ),
     };
-    candidates.push(applySignalOppositePositionTarget(baseSignal, mt5Context().mt5BridgeHeartbeat?.positions));
+    candidates.push(...buildIntradayPullbackSignals(
+      applySignalOppositePositionTarget(baseSignal, mt5Context().mt5BridgeHeartbeat?.positions), candles[row.lowerTimeframe]));
   }
 
   const grouped = new Map<string, Mt5SignalInput>();
@@ -1450,7 +1479,7 @@ async function updateMt5JournalRecord(
     }
     if (status !== 'ACTIVE' && status !== 'RISK_FREE'
       && !['TP', 'SL', 'RF'].includes(status) && !existing) return;
-    const confirmedFastPullbackClose = signal.scalpEntry && ['TP', 'SL', 'RF'].includes(status)
+    const confirmedFastPullbackClose = (signal.scalpEntry || signal.intradayEntry) && ['TP', 'SL', 'RF'].includes(status)
       && (signal.brokerTicket ?? 0) > 0 && (signal.closedAt ?? 0) > 0
       && (signal.closePrice ?? 0) > 0;
     if (!existing && status !== 'ACTIVE' && !confirmedFastPullbackClose) return;
@@ -1508,6 +1537,7 @@ async function updateMt5JournalRecord(
       source: signal.source,
       tradeStyle: signal.tradeStyle,
       scalpEntry: signal.scalpEntry,
+      intradayEntry: signal.intradayEntry,
       direction: signal.direction === 'BUY' ? 'bullish' : 'bearish',
       signalTimeframe: signal.signalTimeframe,
       engulfingType: signal.engulfingType,
@@ -1515,7 +1545,7 @@ async function updateMt5JournalRecord(
       entry: executionPrice,
       stopLoss,
       takeProfit: signal.takeProfit,
-      rewardRisk: signal.scalpEntry ? Math.abs(signal.takeProfit - executionPrice) / Math.abs(executionPrice - stopLoss)
+      rewardRisk: signal.scalpEntry || signal.intradayEntry ? Math.abs(signal.takeProfit - executionPrice) / Math.abs(executionPrice - stopLoss)
         : signal.rewardRisk,
       riskPips,
       brokerTicket: signal.brokerPosition || signal.brokerTicket,
@@ -2145,6 +2175,12 @@ async function startServer() {
         if (!mt5ConnectionMatches(mt5Context().mt5BridgeHeartbeat, req.body) || !mt5ExecutionFeedIsFresh()
           || !mt5DailyRiskAllowsEntry(mt5Context().mt5BridgeHeartbeat?.dailyRisk)) return null;
         for (const item of signals) {
+          if (item.intradayEntry && ['QUEUED', 'CLAIMED', 'PLACED'].includes(item.status)
+            && signals.some(sibling => sibling.id !== item.id && sameIntradayPullbackSetup(item, sibling)
+              && ['TP', 'SL', 'RF'].includes(sibling.status) && mt5ConnectionMatches(item, sibling))) {
+            item.status = 'CANCELLED'; item.updatedAt = now;
+            item.message = 'Original Intraday setup closed; unfilled pullback order cancelled.';
+          }
           if (item.scalpEntry && ['QUEUED', 'CLAIMED', 'PLACED'].includes(item.status)
             && signals.some(sibling => sibling.id !== item.id && sibling.tradeStyle === 'SCALP_1_1'
               && sibling.signalAt === item.signalAt && sibling.direction === item.direction
@@ -2258,8 +2294,9 @@ async function startServer() {
           && (await readMt5Config()).telegramMessagesEnabled) {
           const telegramAlert: TelegramTradeAlert = {
             tradeKey: (updated.tradeStyle === 'SCALP_1_1' ? 'SCALP_1_1:' : '') + [updated.symbol, updated.direction === 'BUY' ? 'bullish' : 'bearish',
-              updated.signalTimeframe, updated.signalAt, updated.entry.toFixed(5)].join(':'),
-            id: updated.tradeStyle === 'SCALP_1_1' || status === 'PLACED' || cancelledBeyondOneAndHalfR || confirmedRf ? updated.id : [
+              updated.signalTimeframe, updated.signalAt, updated.entry.toFixed(5)].join(':')
+                + (updated.intradayEntry ? `:P${updated.intradayEntry.leg}` : ''),
+            id: updated.intradayEntry || updated.tradeStyle === 'SCALP_1_1' || status === 'PLACED' || cancelledBeyondOneAndHalfR || confirmedRf ? updated.id : [
               updated.symbol,
               updated.direction === 'BUY' ? 'bullish' : 'bearish',
               updated.signalTimeframe,

@@ -129,6 +129,7 @@ export function isGoldTradeRecordRoute(record: {
   signalTimeframe: TradeTimeframe;
   rewardRisk: number;
   scalpEntry?: { leg: number; riskShare: number; version: number };
+  intradayEntry?: { leg: number; riskShare: number; version: number };
   fibSource?: string;
 }, requireLtfFib = false): boolean {
   if (record.tradeStyle === 'SCALP_1_1') {
@@ -153,7 +154,11 @@ export function isGoldTradeRecordRoute(record: {
   const rule = record.source === 'ENGULFING'
     ? getDirectTradeRule(record.zoneTimeframe, record.signalTimeframe)
     : goldIntradayMtfTradeRule(record.zoneTimeframe, record.signalTimeframe);
-  return rule !== undefined && record.rewardRisk === rule.rewardRisk
+  const layered = record.intradayEntry;
+  const validReward = layered ? layered.version === 1
+    && (layered.leg === 10 && layered.riskShare === 0.6 || layered.leg === 25 && layered.riskShare === 0.4)
+    && Number.isFinite(record.rewardRisk) && record.rewardRisk > 0 : record.rewardRisk === rule?.rewardRisk;
+  return rule !== undefined && validReward
     && (record.source !== 'ENGULFING'
       || isGoldIntradayCandleRoute(record.zoneTimeframe, record.signalTimeframe));
 }

@@ -45,6 +45,7 @@ export interface JournalTradeRecord {
   source: 'ENGULFING' | 'MTF';
   tradeStyle?: 'SCALPING' | 'INTRADAY' | 'SCALP_1_1';
   scalpEntry?: import('../services/mt5Automation').ScalpPullbackEntry;
+  intradayEntry?: import('../services/intradayPullback').IntradayPullbackEntry;
   direction: 'bullish' | 'bearish';
   signalTimeframe: TradeTimeframe;
   engulfingType: string;
@@ -227,12 +228,12 @@ export function calculateJournalCashSummary(trades: JournalTradeRecord[]): Journ
 
 function tradeResultR(trade: JournalTradeRecord): number | undefined {
   if (!['tp', 'sl', 'rf'].includes(trade.result)) return undefined;
+  const share = trade.tradeStyle === 'SCALP_1_1' ? trade.scalpEntry?.riskShare ?? 1 : trade.intradayEntry?.riskShare ?? 1;
   if ((trade.tradeStyle === 'INTRADAY' || trade.tradeStyle === 'SCALP_1_1') && !trade.partialClosedAt) {
-    const share = trade.tradeStyle === 'SCALP_1_1' ? trade.scalpEntry?.riskShare ?? 1 : 1;
     if (trade.result === 'tp') return trade.rewardRisk * share;
     if (trade.result === 'sl') return -share;
   }
-  return calculateHalfAtOneRResult(trade.result as TradeResult, trade.rewardRisk);
+  return calculateHalfAtOneRResult(trade.result as TradeResult, trade.rewardRisk) * share;
 }
 
 export function calculateJournalPerformance(trades: JournalTradeRecord[]): JournalPerformance {
@@ -1171,6 +1172,9 @@ export const TradeJournal: React.FC<TradeJournalProps> = ({ records, timeframe, 
                   <td className="whitespace-nowrap px-2 py-1.5 font-bold">{trade.session || inferTradingSession(trade.completedAt)}</td>
                   <td className="px-2 py-1.5 font-bold">{displayTimeframe(trade.zoneTimeframe)}</td>
                   <td className="whitespace-nowrap px-2 py-1.5 text-left font-bold">{trade.zoneName}
+                    {trade.intradayEntry && <div className="text-[8px] text-slate-500">
+                      {trade.intradayEntry.leg}% pullback / {Math.round(trade.intradayEntry.riskShare * 100)}% setup risk
+                    </div>}
                     {trade.tradeStyle === 'SCALP_1_1' && <div className="text-[8px] text-slate-500">
                       {trade.mt5Managed || trade.brokerTicket !== undefined ? 'MT5' : 'CHART ONLY'}
                       {trade.scalpEntry && ` · ${trade.scalpEntry.leg}% pullback / ${Math.round(trade.scalpEntry.riskShare * 100)}% risk`}

@@ -68,7 +68,8 @@ export function scalpOneToOnePullbackSignals(r: VolumeStudyRecord, candles: Stud
 }
 
 /** Every next-bar event order consistent with OHLC, including partial fills before TP. */
-export function scalpPullbackBarStates(bar: StructureCandle, signals: Mt5SignalInput[]): Array<{ mask: number; exit: number }> {
+export function scalpPullbackBarStates(bar: StructureCandle, signals: Mt5SignalInput[], initialMask = 0,
+  allowFills = true): Array<{ mask: number; exit: number }> {
   if (!signals.length) return [];
   const sign = signals[0].direction === 'BUY' ? 1 : -1, stop = signals[0].stopLoss;
   const x = (price: number) => sign * (price - stop);
@@ -84,13 +85,13 @@ export function scalpPullbackBarStates(bar: StructureCandle, signals: Mt5SignalI
     if (price === high) seen |= 1;
     if (price === low) seen |= 2;
     if (!exit) {
-      entries.forEach((entry, i) => { if (price <= entry + 1e-8) mask |= 1 << i; });
+      if (allowFills) entries.forEach((entry, i) => { if (price <= entry + 1e-8) mask |= 1 << i; });
       if (price <= 0) exit = -1;
       else if (price >= target) exit = 1;
     }
     return { position, mask, exit, seen };
   };
-  const start = arrive(prices.indexOf(open), { position: 0, mask: 0, exit: 0, seen: 0 });
+  const start = arrive(prices.indexOf(open), { position: 0, mask: initialMask, exit: 0, seen: 0 });
   const key = (s: State) => `${s.position}:${s.mask}:${s.exit}:${s.seen}`;
   const visited = new Set([key(start)]), queue = [start], result = new Map<string, State>();
   for (let head = 0; head < queue.length; head++) {

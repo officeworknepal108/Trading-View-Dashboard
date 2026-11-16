@@ -57,6 +57,8 @@ export interface OpenPositionDirection {
 }
 
 export interface TradeLevels {
+  /** Display-only reference; Intraday executes its two derived limits. */
+  intradayReference?: boolean;
   entry: number;
   stopLoss: number;
   takeProfit: number;

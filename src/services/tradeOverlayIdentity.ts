@@ -56,7 +56,7 @@ export function retainedDirectTradeHasSource(
     || !signalCandles?.some((candle) => candle.time === overlay.signalTime)
     || sourceZoneSets.length === 0 || sourceZoneSets.some((zones) => zones === undefined)) return true;
   const setupKey = resolveTradeOverlaySetupKey(overlay.id, overlay.setupId);
-  const zoneId = setupKey.startsWith('DIRECT:') ? setupKey.slice('DIRECT:'.length) : '';
+  const zoneId = setupKey.startsWith('DIRECT:') ? setupKey.slice('DIRECT:'.length).replace(/:P(?:10|25)$/, '') : '';
   const zoneLabel = tradeOverlayZoneLabel(overlay.label);
   return sourceZoneSets.some((zones) => zones?.some((zone) => (
     zone.id === zoneId

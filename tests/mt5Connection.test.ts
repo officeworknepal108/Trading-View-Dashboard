@@ -7,6 +7,8 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createServer } from 'node:net';
 import { seedDashboardSession } from './helpers/dashboardSession';
+import { buildIntradayPullbackSignals } from '../src/services/intradayPullback';
+import type { Mt5SignalInput } from '../src/services/mt5Automation';
 
 test('MT5 account handshake resets old candles and queues while preserving automation settings', async () => {
   const workspace = await mkdtemp(path.join(tmpdir(), 'mt5-connection-test-'));
@@ -296,6 +298,46 @@ test('MT5 account handshake resets old candles and queues while preserving autom
     assert.equal((await (await request('/api/mt5/signals/claim', second)).json()).signal, null);
     assert.equal(JSON.parse(await readFile(path.join(dataPath, 'mt5-signals.json'), 'utf8')).signals[0].status, 'REJECTED',
       'a queued leg cannot claim 100% of setup risk');
+
+    const intradayBase: Mt5SignalInput = { ...queuedSignal, id: 'intraday-test', symbol: 'XAUUSD',
+      setupId: 'DIRECT:M15:intraday-zone', zoneId: 'intraday-zone', zoneName: 'TJL1', zoneTimeframe: 'M15',
+      signalTimeframe: 'M15', tradeStyle: 'INTRADAY', source: 'ENGULFING', direction: 'BUY', orderType: 'MARKET',
+      engulfingType: 'T1', signalAt: now - 900, calculatedAt: now,
+      entry: 4000, stopLoss: 3980, takeProfit: 4040, riskFree: 4020, rewardRisk: 2, riskPips: 200 };
+    const intradayOrders = buildIntradayPullbackSignals(intradayBase, [
+      { time: now - 900, open: 3990, close: 4000, high: 4001, low: 3982, complete: true },
+      { time: now, open: 4000, close: 4000, high: 4001, low: 3997, complete: false },
+    ]).map(signal => ({ ...signal, ...second, status: 'QUEUED', intradaySetupRiskBudget: 50,
+      createdAt: now, updatedAt: now }));
+    assert.equal(intradayOrders.length, 2);
+    await writeFile(path.join(dataPath, 'mt5-signals.json'), JSON.stringify({ signals: intradayOrders }));
+    const intraFirst = await (await request('/api/mt5/signals/claim', second)).json();
+    const intraSecond = await (await request('/api/mt5/signals/claim', second)).json();
+    assert.equal(intraFirst.signal?.intradayEntry.leg, 10);
+    assert.equal(intraSecond.signal?.intradayEntry.leg, 25, JSON.stringify(intraSecond));
+    assert.equal(intraFirst.signal.intradaySetupRiskBudget, intraSecond.signal.intradaySetupRiskBudget);
+    const forgedIntraday = await request('/api/mt5/signals', intradayOrders[0]);
+    assert.equal(forgedIntraday.ok, false, 'browser submissions cannot bypass scanner qualification for split risk');
+    assert.match((await forgedIntraday.json()).error, /server strategy scanner/);
+    for (const [index, order] of intradayOrders.entries()) {
+      assert.equal((await request(`/api/mt5/signals/${encodeURIComponent(order.id)}/status`, {
+        ...second, status: 'PLACED', brokerTicket: 20010 + index, executionPrice: order.entry,
+        openedAt: now, volume: 0.01,
+      })).status, 200);
+    }
+    await request(`/api/mt5/signals/${encodeURIComponent(intradayOrders[0].id)}/status`, {
+      ...second, status: 'TP', closedAt: now, closePrice: 4040, realizedProfit: 41,
+    });
+    assert.equal((await (await request('/api/mt5/signals/claim', second)).json()).signal, null);
+    const intradayStored = JSON.parse(await readFile(path.join(dataPath, 'mt5-signals.json'), 'utf8')).signals;
+    assert.equal(intradayStored.find((s: any) => s.intradayEntry.leg === 25).status, 'CANCELLED');
+    const intraJournal = JSON.parse(await readFile(path.join(dataPath, 'trade-journal.json'), 'utf8')).trades;
+    assert.equal(intraJournal.find((r: any) => r.mt5SignalId === intradayOrders[0].id).intradayEntry.riskShare, 0.6);
+    await writeFile(path.join(dataPath, 'mt5-signals.json'), JSON.stringify({ signals: [
+      { ...intradayOrders[0], intradayEntry: { ...intradayOrders[0].intradayEntry!, riskShare: 1 } },
+    ] }));
+    assert.equal((await (await request('/api/mt5/signals/claim', second)).json()).signal, null);
+    assert.equal(JSON.parse(await readFile(path.join(dataPath, 'mt5-signals.json'), 'utf8')).signals[0].status, 'REJECTED');
     await writeFile(configFile, JSON.stringify(beforeLayers));
 
     // A qualified, unfilled order becomes a durable missed opportunity, not a reusable zone.

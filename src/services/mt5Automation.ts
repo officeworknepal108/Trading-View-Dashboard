@@ -8,6 +8,7 @@ import {
 import { detectEngulfingPatternAt, isZoneEligibleForEngulfingEntry,
   type MarketStructureResult, type StructureCandle, type StructureLine, type StructureZone } from './marketStructure';
 import { buildGoldIntradayMtfHistoryRows } from './mtf';
+import { intradayPullbackSignalError, sameIntradayPullbackSetup } from './intradayPullback';
 
 export interface GoldOpposingZone extends StructureZone {
   opposingEngulfingConfirmedAt?: number;
@@ -226,6 +227,10 @@ export function mt5SignalDisabledReason(
     return `${signal.zoneTimeframe} setup / ${signal.signalTimeframe} entry automatic trading is disabled.`;
   }
   if (isTradeStyleEnabled(config, signal)) {
+    if ('intradayEntry' in signal && signal.intradayEntry) {
+      const error = intradayPullbackSignalError(signal as Mt5SignalInput);
+      if (error) return error;
+    }
     if (signal.tradeStyle === 'SCALP_1_1' && 'scalpEntry' in signal && signal.scalpEntry) {
       const error = scalpPullbackSignalError(signal as Mt5SignalInput);
       if (error) return error;
@@ -374,6 +379,8 @@ export interface Mt5SignalInput {
   scalpEntry?: ScalpPullbackEntry;
   /** Frozen full-setup cash allowance, shared by both broker entries. */
   scalpSetupRiskBudget?: number;
+  intradayEntry?: import('./intradayPullback').IntradayPullbackEntry;
+  intradaySetupRiskBudget?: number;
   zoneName: string;
   zoneTimeframe: TradeTimeframe;
   signalTimeframe: TradeTimeframe;
@@ -649,8 +656,8 @@ export function goldMt5ZoneExecutionKey(signal: Pick<Mt5SignalInput,
 }
 
 export function priorGoldMt5ZoneExecution<T extends Pick<Mt5SignalInput,
-  'symbol' | 'zoneTimeframe' | 'zoneId' | 'setupId'> & { status: Mt5SignalStatus }>(
-  candidate: Pick<Mt5SignalInput, 'symbol' | 'zoneTimeframe' | 'zoneId' | 'setupId'>,
+  'symbol' | 'zoneTimeframe' | 'zoneId' | 'setupId'> & Partial<Mt5SignalInput> & { status: Mt5SignalStatus }>(
+  candidate: Pick<Mt5SignalInput, 'symbol' | 'zoneTimeframe' | 'zoneId' | 'setupId'> & Partial<Mt5SignalInput>,
   signals: readonly T[],
   consumedStatuses: ReadonlySet<Mt5SignalStatus>,
 ): T | undefined {
@@ -658,6 +665,9 @@ export function priorGoldMt5ZoneExecution<T extends Pick<Mt5SignalInput,
   return zoneKey === undefined ? undefined : signals.find((signal) => (
     consumedStatuses.has(signal.status)
     && goldMt5ZoneExecutionKey(signal) === zoneKey
+    && !(sameIntradayPullbackSetup(candidate as Mt5SignalInput, signal as Mt5SignalInput)
+      && candidate.intradayEntry!.leg !== signal.intradayEntry!.leg
+      && ['QUEUED', 'CLAIMED', 'PLACED', 'ACTIVE', 'RISK_FREE'].includes(signal.status))
   ));
 }
 
@@ -920,7 +930,7 @@ export function applySignalOppositePositionTarget(
   signal: Mt5SignalInput,
   positions: readonly { direction: 'BUY' | 'SELL' }[] | undefined,
 ): Mt5SignalInput {
-  if (signal.tradeStyle === 'SCALP_1_1') return signal;
+  if (signal.tradeStyle === 'SCALP_1_1' || signal.intradayEntry) return signal;
   const requestedNormalRewardRisk = signal.normalRewardRisk ?? signal.rewardRisk;
   const normalRewardRisk = Number.isFinite(requestedNormalRewardRisk)
     && requestedNormalRewardRisk > 0

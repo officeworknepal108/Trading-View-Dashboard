@@ -242,6 +242,113 @@ class ScalpOneToOneTests(BridgeTestCase):
         self.assertIsNone(bridge.position_fib_exit_timeframe(position, {}, {"trade": record}))
 
 
+class IntradayPullbackTests(BridgeTestCase):
+    def signal(self, leg=10):
+        entry = 3009 if leg == 10 else 3007.5
+        return {'id': f'INTRA:900:P{leg}', 'tradeStyle': 'INTRADAY', 'source': 'ENGULFING',
+                'symbol': 'XAUUSD', 'brokerSymbol': 'XAUUSD.x', 'direction': 'BUY', 'orderType': 'LIMIT',
+                'zoneTimeframe': 'M15', 'signalTimeframe': 'M15', 'zoneName': 'TJL1',
+                'entry': entry, 'stopLoss': 2990, 'takeProfit': 3050, 'riskPips': (entry - 2990) * 10,
+                'rewardRisk': (3050 - entry) / (entry - 2990), 'signalAt': 900, 'calculatedAt': 1800,
+                'expiresAt': 2700, 'intradaySetupRiskBudget': 50,
+                'intradayEntry': {'version': 1, 'leg': leg, 'riskShare': 0.6 if leg == 10 else 0.4,
+                    'referenceEntry': 3010, 'nextOpen': 3010, 'confirmationBody': 10, 'setupKey': 'DIRECT:zone:900'}}
+
+    def test_allocations_use_general_intraday_risk_and_one_frozen_budget(self):
+        config = {'riskPercent': 1, 'scalpOneToOneRiskPercent': 2}
+        self.assertEqual(bridge.signal_risk_money(self.signal(10), config, 5000), 30)
+        self.assertEqual(bridge.signal_risk_money(self.signal(25), config, 5000), 20)
+        self.assertEqual(bridge.signal_risk_money(self.signal(25), config, 10000), 20)
+        self.assertEqual(bridge.signal_risk_percent(self.signal(10), config), 0.6)
+        bad = self.signal()
+        bad['intradayEntry']['riskShare'] = 1
+        with self.assertRaisesRegex(RuntimeError, 'risk allocation'):
+            bridge.signal_risk_money(bad, config, 5000)
+        missing = self.signal()
+        del missing['intradaySetupRiskBudget']
+        with self.assertRaisesRegex(RuntimeError, 'budget is missing'):
+            bridge.signal_risk_money(missing, config, 5000)
+
+    def test_all_six_routes_keep_their_original_target_ratio_and_expiry(self):
+        routes = [('ENGULFING', 'M15', 'M15', 2, 20, 900), ('ENGULFING', 'M15', 'M30', 1, 30, 1800),
+                  ('ENGULFING', 'H1', 'M15', 2, 20, 900), ('ENGULFING', 'H1', 'M30', 2, 30, 1800),
+                  ('MTF', 'H1', 'M5', 3, 8, 300), ('MTF', 'H4', 'M15', 5, 20, 900)]
+        for source, zone, timeframe, rr, distance, seconds in routes:
+            signal = self.signal()
+            signal.update(source=source, zoneTimeframe=zone, signalTimeframe=timeframe,
+                          stopLoss=3010 - distance, takeProfit=3010 + rr * distance,
+                          calculatedAt=900 + seconds, expiresAt=900 + seconds * 2)
+            risk = signal['entry'] - signal['stopLoss']
+            signal.update(riskPips=risk * 10, rewardRisk=(signal['takeProfit'] - signal['entry']) / risk)
+            bridge.validate_intraday_pullback(signal)
+            for changed in [{'takeProfit': signal['takeProfit'] + 1}, {'expiresAt': 99999}, {'orderType': 'MARKET'}]:
+                with self.assertRaisesRegex(RuntimeError, 'original fixed SL/TP'):
+                    bridge.validate_intraday_pullback({**signal, **changed})
+        sell = {**self.signal(), 'direction': 'SELL', 'entry': 3011, 'stopLoss': 3030, 'takeProfit': 2970}
+        bridge.validate_intraday_pullback(sell)
+
+    def test_unfilled_intraday_waits_for_original_tp_not_the_old_one_and_half_r(self):
+        signal = self.signal()
+        self.assertFalse(bridge.pending_order_passed_one_and_half_r(signal, SimpleNamespace(bid=3040, ask=3040.1)))
+        self.assertTrue(bridge.pending_order_passed_one_and_half_r(signal, SimpleNamespace(bid=3050, ask=3050.1)))
+        sell = {**signal, 'direction': 'SELL', 'entry': 3011, 'stopLoss': 3030, 'takeProfit': 2970}
+        self.assertFalse(bridge.pending_order_passed_one_and_half_r(sell, SimpleNamespace(bid=2979.9, ask=2980)))
+        self.assertTrue(bridge.pending_order_passed_one_and_half_r(sell, SimpleNamespace(bid=2969.9, ask=2970)))
+
+    def test_tp_touch_between_polls_retires_the_limit_even_after_price_pulls_back(self):
+        signal = self.signal()
+        tick = SimpleNamespace(bid=3040, ask=3040.1)
+        rates = [{'time': 1800, 'high': 3051, 'low': 3010}]
+        with patch.object(bridge.time, 'time', return_value=1860), \
+             patch.object(bridge, 'BROKER_TIME_OFFSET', 0), \
+             patch.object(bridge.mt5, 'copy_rates_from_pos', return_value=rates) as copied:
+            self.assertTrue(bridge.intraday_boundary_reached(signal, 'XAUUSD.x', tick, strict=True))
+            self.assertEqual(copied.call_args.args[0], 'XAUUSD.x')
+        with patch.object(bridge.time, 'time', return_value=1860), \
+             patch.object(bridge.mt5, 'copy_rates_from_pos', return_value=[{**rates[0], 'time': 1740}]):
+            self.assertFalse(bridge.intraday_boundary_reached(signal, 'XAUUSD.x', tick))
+        with patch.object(bridge.mt5, 'copy_rates_from_pos', return_value=None):
+            with self.assertRaisesRegex(RuntimeError, 'TP history'):
+                bridge.intraday_boundary_reached(signal, 'XAUUSD.x', tick, strict=True)
+
+    def test_tp_touch_cancels_broker_pending_orders_without_closing_filled_positions(self):
+        record = {**self.signal(), 'status': 'PLACED', 'brokerTicket': 123}
+        state = {record['id']: record.copy()}
+        with patch.object(bridge.time, 'time', return_value=1860), \
+             patch.object(bridge.mt5, 'orders_get', return_value=[SimpleNamespace(ticket=123)]), \
+             patch.object(bridge.mt5, 'symbol_info_tick', return_value=SimpleNamespace(bid=3040, ask=3040.1)), \
+             patch.object(bridge.mt5, 'copy_rates_from_pos', return_value=[{'time': 1800, 'high': 3051, 'low': 3010}]), \
+             patch.object(bridge.mt5, 'order_send', return_value=SimpleNamespace(retcode=bridge.mt5.TRADE_RETCODE_DONE)) as send, \
+             patch.object(bridge, 'update_status') as update:
+            bridge.manage_open_signals(state, [], {'intradayEnabled': True})
+            self.assertEqual(state, {})
+            self.assertEqual(send.call_args.args[0]['action'], bridge.mt5.TRADE_ACTION_REMOVE)
+            self.assertEqual(update.call_args.args[1], 'CANCELLED')
+
+    def test_group_matching_does_not_mix_other_zones_or_accounts(self):
+        first, second = self.signal(10), self.signal(25)
+        self.assertTrue(bridge.same_intraday_setup(first, second))
+        self.assertFalse(bridge.same_intraday_setup(first, {**second, 'account': 'another-account'}))
+        self.assertFalse(bridge.same_intraday_setup(first, {**second,
+            'intradayEntry': {**second['intradayEntry'], 'setupKey': 'another-zone'}}))
+
+    def test_intraday_limit_uses_broker_expiry_and_keeps_original_exit_prices(self):
+        signal = self.signal()
+        info = SimpleNamespace(name='XAUUSD.x', trade_tick_size=0.01)
+        with patch.object(bridge, 'ALLOW_LIVE_EXECUTION', True), \
+             patch.object(bridge, 'check_safety', return_value=(info, SimpleNamespace(ask=3010, bid=3009.9))), \
+             patch.object(bridge, 'calculate_volume', return_value=0.01), \
+             patch.object(bridge, 'checked_live_entry_price', side_effect=lambda s, *_: s['entry']), \
+             patch.object(bridge, 'send_with_filling_fallback', return_value=SimpleNamespace(price=3009, order=123)) as send, \
+             patch.object(bridge, 'update_status'):
+            bridge.place_signal(signal, {'dryRun': False})
+            order = send.call_args.args[0]
+            self.assertEqual(order['sl'], 2990)
+            self.assertEqual(order['tp'], 3050)
+            self.assertEqual(order['expiration'], 2700)
+            self.assertEqual(order['type_time'], bridge.mt5.ORDER_TIME_SPECIFIED)
+
+
 class LiveEntryGuardTests(BridgeTestCase):
     def test_rejects_wide_spread_and_adverse_price_that_exceeds_cash_risk(self) -> None:
         signal = {"direction": "BUY", "orderType": "MARKET",

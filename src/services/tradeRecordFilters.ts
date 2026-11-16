@@ -16,6 +16,7 @@ export interface CanonicalTradeRecord extends FilterableTradeRecord {
   tradeStyle?: 'SCALPING' | 'INTRADAY' | 'SCALP_1_1'; fibSource?: string; fibBand?: string;
   brokerTicket?: number; mt5Managed?: boolean;
   scalpEntry?: import('./mt5Automation').ScalpPullbackEntry;
+  intradayEntry?: import('./intradayPullback').IntradayPullbackEntry;
 }
 
 export interface TradeRecordVerification {
@@ -466,6 +467,9 @@ export function buildCanonicalTradeRecords<T extends CanonicalTradeRecord>(
     if (brokerRecord(record)) return [record];
     // The dedicated volume study verifies this strategy's bias, EMA, H1 support
     // and fixed exits. Generic zone/Fib validation describes another strategy.
+    if (record.intradayEntry) {
+      return current.some(candidate => candidate.id === record.id && candidate.intradayEntry) ? [record] : [];
+    }
     if (record.tradeStyle === 'SCALP_1_1') {
       return current.some(candidate => candidate.id === record.id
         && candidate.tradeStyle === 'SCALP_1_1') ? [record] : [];
