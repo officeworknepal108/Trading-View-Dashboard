@@ -23,6 +23,40 @@ class BridgeTestCase(unittest.TestCase):
             self.addCleanup(mocked.stop)
 
 
+class StrategyRiskTests(BridgeTestCase):
+    def test_each_strategy_sizes_from_its_own_percentage_and_entry_risk(self):
+        config = {'riskPercent': 2, 'intradayRiskPercent': .5, 'scalpingRiskPercent': 1, 'scalpOneToOneRiskPercent': .25}
+        info = SimpleNamespace(name='XAUUSD', volume_step=.01, volume_min=.01, volume_max=100)
+        base = {'direction': 'BUY', 'entry': 100, 'stopLoss': 90, 'riskPips': 100}
+        with patch.object(bridge.mt5, 'account_info', return_value=SimpleNamespace(equity=5000)), \
+             patch.object(bridge.mt5, 'order_calc_profit', return_value=-1000):
+            for style, cash, volume in [('INTRADAY', 25, .02), ('SCALPING', 50, .05), ('SCALP_1_1', 12.5, .01)]:
+                signal = {**base, 'tradeStyle': style}
+                self.assertEqual(bridge.signal_risk_money(signal, config, 5000), cash)
+                self.assertEqual(bridge.calculate_volume(signal, config, info), volume)
+            changed = {**config, 'scalpingRiskPercent': 2}
+            self.assertEqual(bridge.calculate_volume({**base, 'tradeStyle': 'SCALPING'}, changed, info), .10)
+            self.assertEqual(bridge.calculate_volume({**base, 'tradeStyle': 'INTRADAY'}, changed, info), .02)
+            self.assertEqual(bridge.calculate_volume({**base, 'tradeStyle': 'SCALP_1_1'}, changed, info), .01)
+
+    def test_intraday_split_and_second_only_fallback_use_intraday_risk_and_frozen_cap(self):
+        signal = IntradayPullbackTests().signal(25)
+        signal['intradayEntry']['version'] = 3
+        signal['expiresAt'] = signal['calculatedAt'] + 4500
+        config = {'riskPercent': 2, 'intradayRiskPercent': .5, 'scalpingRiskPercent': 4, 'scalpOneToOneRiskPercent': 1.5}
+        self.assertEqual(bridge.signal_risk_money(signal, config, 5000), 10)
+        signal['pullbackFallback'] = 'SECOND_ONLY'
+        self.assertEqual(bridge.signal_risk_money(signal, config, 5000), 25)
+        signal['intradaySetupRiskBudget'] = 20
+        self.assertEqual(bridge.signal_risk_money(signal, config, 5000), 20)
+        self.assertEqual(bridge.signal_risk_money(signal, {**config, 'scalpingRiskPercent': 5}, 5000), 20)
+
+    def test_legacy_config_preserves_previous_risk_for_both_split_strategies(self):
+        legacy = {'riskPercent': 1.5, 'scalpOneToOneRiskPercent': .75}
+        for style, risk in [('INTRADAY', 1.5), ('SCALPING', 1.5), ('SCALP_1_1', .75)]:
+            self.assertEqual(bridge.signal_risk_percent({'tradeStyle': style}, legacy), risk)
+
+
 class PartialCloseVolumeTests(BridgeTestCase):
     def setUp(self) -> None:
         super().setUp()

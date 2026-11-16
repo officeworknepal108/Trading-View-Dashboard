@@ -84,6 +84,8 @@ test('MT5 account handshake resets old candles and queues while preserving autom
     assert.equal(status.config.enabled, false);
     assert.equal(status.config.dryRun, true);
     assert.equal(status.config.riskPercent, 0.5);
+    assert.equal(status.config.intradayRiskPercent, 0.5, 'legacy shared risk initializes Intraday');
+    assert.equal(status.config.scalpingRiskPercent, 0.5, 'legacy shared risk initializes Scalping');
     assert.equal(status.config.tradingTimeEnabled, false, 'missing session setting defaults OFF');
     assert.equal(status.counts.REJECTED, 1);
     assert.equal(status.counts.ACTIVE, 1, 'existing positions are not rewritten on connection changes');
@@ -446,6 +448,29 @@ test('MT5 account handshake resets old candles and queues while preserving autom
     assert.equal((await clientRequest('/api/journal/capital')).status, 403);
     assert.equal((await clientRequest('/api/journal/capital/allocate', allocation)).status, 403);
     assert.equal((await fetch(`${base}/api/journal/capital`, { headers: { Authorization: 'Bearer isolated-test-token' } })).status, 401);
+    // Risk edits affect only their own strategy and selected account; partial
+    // requests must not reset execution switches or unrelated saved settings.
+    const beforeRisk = (await (await request('/api/mt5/status')).json()).config;
+    const secondaryBeforeRisk = (await (await request(secondaryRoute('/api/mt5/status'))).json()).config;
+    for (const [field, value] of [['intradayRiskPercent', 1.5], ['scalpingRiskPercent', 2], ['scalpOneToOneRiskPercent', .75]] as const) {
+      const prior = (await (await request('/api/mt5/status')).json()).config;
+      assert.equal((await request('/api/mt5/config', { [field]: value }, 'PUT')).status, 200);
+      const next = (await (await request('/api/mt5/status')).json()).config;
+      assert.equal(next[field], value);
+      for (const untouched of ['intradayRiskPercent', 'scalpingRiskPercent', 'scalpOneToOneRiskPercent',
+        'enabled', 'dryRun', 'scalpingEnabled', 'intradayEnabled', 'maximumDailyLossPercent'] as const)
+        if (untouched !== field) assert.equal(next[untouched], prior[untouched], `${field} must not change ${untouched}`);
+    }
+    const own = (await (await request('/api/mt5/status')).json()).config;
+    assert.equal(own.riskPercent, beforeRisk.riskPercent);
+    const secondAfterRisk = (await (await request(secondaryRoute('/api/mt5/status'))).json()).config;
+    for (const field of ['intradayRiskPercent', 'scalpingRiskPercent', 'scalpOneToOneRiskPercent'] as const)
+      assert.equal(secondAfterRisk[field], secondaryBeforeRisk[field]);
+    assert.equal((await request(secondaryRoute('/api/mt5/config'), { intradayRiskPercent: 3 }, 'PUT')).status, 200);
+    assert.equal((await (await request('/api/mt5/status')).json()).config.intradayRiskPercent, 1.5);
+    const persisted = JSON.parse(await readFile(path.join(dataPath, 'mt5-automation.json'), 'utf8'));
+    assert.equal(persisted.intradayRiskPercent, 1.5); assert.equal(persisted.scalpingRiskPercent, 2);
+    assert.equal(persisted.scalpOneToOneRiskPercent, .75);
   } finally {
     const exited = new Promise<void>((resolve) => {
       if (child.exitCode !== null) resolve(); else child.once('exit', () => resolve());

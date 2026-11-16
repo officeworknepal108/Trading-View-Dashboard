@@ -4,6 +4,7 @@ import {
   MT5_DEFAULT_ENABLED_TIMEFRAMES,
   MT5_ENTRY_TIMEFRAME_OPTIONS,
   MT5_RISK_PERCENT_OPTIONS,
+  mt5StrategyRiskPercent,
   goldAutomationCountertrendBlocked,
   goldM1BuyCountertrendBlocked,
   goldM5ScalpingBuyCountertrendBlocked,
@@ -47,6 +48,19 @@ import {
   shouldRemoveOpenMt5JournalRecord,
   tradeToMt5Signal,
 } from '../src/services/mt5Automation';
+
+test('each strategy selects its own risk and legacy shared risk initializes both new controls', () => {
+  const legacy = { riskPercent: 1, scalpOneToOneRiskPercent: .75 };
+  assert.equal(mt5StrategyRiskPercent(legacy, 'INTRADAY'), 1);
+  assert.equal(mt5StrategyRiskPercent(legacy, 'SCALPING'), 1);
+  assert.equal(mt5StrategyRiskPercent(legacy, 'SCALP_1_1'), .75);
+  const separate = { ...legacy, intradayRiskPercent: .5, scalpingRiskPercent: 2 };
+  assert.equal(mt5StrategyRiskPercent(separate, 'INTRADAY'), .5);
+  assert.equal(mt5StrategyRiskPercent(separate, 'SCALPING'), 2);
+  assert.equal(mt5StrategyRiskPercent(separate, 'SCALP_1_1'), .75);
+  assert.equal(mt5StrategyRiskPercent({ ...separate, scalpingRiskPercent: 3 }, 'INTRADAY'), .5);
+  assert.equal(mt5StrategyRiskPercent(separate), 1, 'unclassified legacy entries keep their existing risk');
+});
 
 test('manual Fib exit timeframes bind the exact account, contract, ticket and opening identity', () => {
   const connection = { account: 'test-account', server: 'test-server', brokerSymbol: 'XAUUSD' };

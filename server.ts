@@ -3,7 +3,7 @@ import { buildScalpOneToOneSignals } from './src/services/scalpOneToOne';
 import { buildPullbackChartSetups } from './src/services/pullbackChartSetup';
 import { pullbackTelegramAlerts } from './src/services/pullbackTelegram';
 import { buildIntradayPullbackSignals, intradayPullbackSignalError, sameIntradayPullbackSetup } from './src/services/intradayPullback';
-import { normalizeScalpOneToOneRisk, selectSecondOnlyPullback } from './src/services/mt5Automation';
+import { normalizeScalpOneToOneRisk, selectSecondOnlyPullback, mt5StrategyRiskPercent } from './src/services/mt5Automation';
 import { DashboardAuth } from './src/server/authentication';
 import { denyPrivateFiles, privateFilePatterns } from './src/server/privateFiles';
 import { clientVisibleTrades } from './src/server/clientJournal';
@@ -134,6 +134,8 @@ const DEFAULT_MT5_CONFIG: Mt5AutomationConfig = {
   intradayEnabled: true,
   scalpOneToOneEnabled: false,
   scalpOneToOneRiskPercent: 0.25,
+  intradayRiskPercent: 0.25,
+  scalpingRiskPercent: 0.25,
   mtfLtfFibRequired: false,
   symbol: 'XAUUSD',
   brokerSymbol: 'XAUUSDm',
@@ -452,6 +454,8 @@ async function readMt5Config(): Promise<Mt5AutomationConfig> {
         DEFAULT_MT5_CONFIG.enabledTimeframes,
       ),
       riskPercent: normalizeMt5RiskPercent(parsed?.riskPercent, DEFAULT_MT5_CONFIG.riskPercent),
+      intradayRiskPercent: normalizeMt5RiskPercent(parsed?.intradayRiskPercent, normalizeMt5RiskPercent(parsed?.riskPercent, DEFAULT_MT5_CONFIG.riskPercent)),
+      scalpingRiskPercent: normalizeMt5RiskPercent(parsed?.scalpingRiskPercent, normalizeMt5RiskPercent(parsed?.riskPercent, DEFAULT_MT5_CONFIG.riskPercent)),
       maximumDailyLossPercent: normalizeMt5DailyLossPercent(parsed?.maximumDailyLossPercent, DEFAULT_MT5_CONFIG.maximumDailyLossPercent),
     };
   } catch (error) {
@@ -593,14 +597,14 @@ function sanitizeMt5Config(candidate: any, current: Mt5AutomationConfig): Mt5Aut
   };
   return {
     ...current,
-    enabled: candidate?.enabled === true,
+    enabled: candidate?.enabled === undefined ? current.enabled : candidate.enabled === true,
     tradingTimeEnabled: candidate?.tradingTimeEnabled === undefined
       ? current.tradingTimeEnabled : candidate.tradingTimeEnabled === true,
     telegramMessagesEnabled: candidate?.telegramMessagesEnabled === undefined
       ? current.telegramMessagesEnabled : candidate.telegramMessagesEnabled !== false,
-    dryRun: candidate?.dryRun !== false,
-    scalpingEnabled: candidate?.scalpingEnabled !== false,
-    intradayEnabled: candidate?.intradayEnabled !== false,
+    dryRun: candidate?.dryRun === undefined ? current.dryRun : candidate.dryRun !== false,
+    scalpingEnabled: candidate?.scalpingEnabled === undefined ? current.scalpingEnabled : candidate.scalpingEnabled !== false,
+    intradayEnabled: candidate?.intradayEnabled === undefined ? current.intradayEnabled : candidate.intradayEnabled !== false,
     scalpOneToOneEnabled: candidate?.scalpOneToOneEnabled === undefined
       ? current.scalpOneToOneEnabled === true : candidate.scalpOneToOneEnabled === true,
     scalpOneToOneRiskPercent: normalizeScalpOneToOneRisk(candidate?.scalpOneToOneRiskPercent,
@@ -615,6 +619,8 @@ function sanitizeMt5Config(candidate: any, current: Mt5AutomationConfig): Mt5Aut
       current.enabledTimeframes,
     ),
     riskPercent: normalizeMt5RiskPercent(candidate?.riskPercent, current.riskPercent),
+    intradayRiskPercent: normalizeMt5RiskPercent(candidate?.intradayRiskPercent, current.intradayRiskPercent ?? current.riskPercent),
+    scalpingRiskPercent: normalizeMt5RiskPercent(candidate?.scalpingRiskPercent, current.scalpingRiskPercent ?? current.riskPercent),
     maximumOpenTrades: Math.round(clamp(candidate?.maximumOpenTrades, current.maximumOpenTrades, 1, 10)),
     maximumDailyLossPercent: normalizeMt5DailyLossPercent(candidate?.maximumDailyLossPercent, current.maximumDailyLossPercent),
     maximumSpreadPoints: Math.round(clamp(candidate?.maximumSpreadPoints, current.maximumSpreadPoints, 1, 1000)),
@@ -708,7 +714,7 @@ async function enqueueMt5Signal(
       throw new Error('Intraday setup already closed; remaining entries are cancelled.');
     }
     const intradaySetupRiskBudget = candidate.intradayEntry ? intradaySibling?.intradaySetupRiskBudget
-      ?? Number(mt5Context().mt5BridgeHeartbeat?.equity) * config.riskPercent / 100 : undefined;
+      ?? Number(mt5Context().mt5BridgeHeartbeat?.equity) * mt5StrategyRiskPercent(config, 'INTRADAY') / 100 : undefined;
     if (candidate.intradayEntry && !(Number.isFinite(intradaySetupRiskBudget) && intradaySetupRiskBudget! > 0)) {
       throw new Error('Unable to freeze the Intraday setup risk budget.');
     }
@@ -1821,6 +1827,8 @@ async function startServer() {
         connected: !!heartbeat?.terminalConnected && Date.now() - heartbeat.lastHeartbeatAt < 15_000,
         account: heartbeat?.account, server: heartbeat?.server, equity: heartbeat?.equity,
         enabled: config.enabled, dryRun: config.dryRun, riskPercent: config.riskPercent,
+        intradayRiskPercent: config.intradayRiskPercent, scalpingRiskPercent: config.scalpingRiskPercent,
+        scalpOneToOneRiskPercent: config.scalpOneToOneRiskPercent,
         maximumDailyLossPercent: config.maximumDailyLossPercent };
     })));
     res.setHeader('Cache-Control', 'no-store');

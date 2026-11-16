@@ -172,6 +172,7 @@ import {
   MT5_DEFAULT_ENABLED_TIMEFRAMES,
   MT5_ENTRY_TIMEFRAME_OPTIONS,
   MT5_RISK_PERCENT_OPTIONS,
+  mt5StrategyRiskPercent,
   SCALP_ONE_TO_ONE_RISK_OPTIONS,
   goldM1BuyCountertrendBlocked,
   goldM5ScalpingBuyCountertrendBlocked,
@@ -2752,6 +2753,7 @@ export const OandaProChart: React.FC<{
     id: 'primary' | 'secondary'; label: string; connected: boolean; account?: string;
     server?: string; equity?: number; enabled: boolean; dryRun: boolean;
     riskPercent: number; maximumDailyLossPercent: number;
+    intradayRiskPercent?: number; scalpingRiskPercent?: number; scalpOneToOneRiskPercent?: number;
   }>>([]);
 
   const hostRef = useRef<HTMLDivElement | null>(null);
@@ -3229,16 +3231,17 @@ export const OandaProChart: React.FC<{
 
   const updateMt5Config = useCallback(async (changes: Record<string, unknown>) => {
     if (!canAdmin || !mt5Status) return;
+    const riskOnly = Object.keys(changes).every(key => ['intradayRiskPercent', 'scalpingRiskPercent', 'scalpOneToOneRiskPercent'].includes(key));
     const response = await terminalFetch('/api/mt5/config', {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ...mt5Status.config, ...changes }),
+      body: JSON.stringify(riskOnly ? changes : { ...mt5Status.config, ...changes }),
     });
     const payload = await response.json() as { ok?: boolean; config?: Mt5AutomationStatus['config'] };
     if (response.ok && payload.ok && payload.config) {
       setMt5Status((current) => current ? { ...current, config: payload.config! } : current);
     }
-  }, [mt5Status]);
+  }, [canAdmin, mt5Status, terminalFetch]);
 
   useEffect(() => {
     if (mt5Status?.config) {
@@ -9835,7 +9838,8 @@ export const OandaProChart: React.FC<{
                         <span className={account.connected ? 'text-emerald-700' : 'text-rose-700'}>{account.connected ? 'Connected' : 'Offline'}</span>
                       </div>
                       <div>{account.server} ? {account.enabled ? account.dryRun ? 'Dry Run' : 'Auto ON' : 'Auto OFF'}</div>
-                      <div>Risk {account.riskPercent}% ? Daily limit {account.maximumDailyLossPercent}%</div>
+                      <div>Intraday {mt5StrategyRiskPercent(account, 'INTRADAY')}% · Scalping {mt5StrategyRiskPercent(account, 'SCALPING')}% · Scalp 1:1 {mt5StrategyRiskPercent(account, 'SCALP_1_1')}%</div>
+                      <div>Daily limit {account.maximumDailyLossPercent}%</div>
                     </button>
                   ))}
                 </div>
@@ -9949,10 +9953,23 @@ export const OandaProChart: React.FC<{
                   </span>
                 </fieldset>
                 <label className="mb-2 block font-bold text-slate-700">
-                  Risk per trade
+                  Scalping risk per trade
+                  <select aria-label="Scalping risk per trade"
+                    value={mt5StrategyRiskPercent(mt5Status.config, 'SCALPING')}
+                    onChange={event => void updateMt5Config({ scalpingRiskPercent: Number(event.target.value) })}
+                    className="mt-1 w-full rounded border border-slate-200 bg-white px-2 py-1">
+                    {MT5_RISK_PERCENT_OPTIONS.map(risk => <option key={risk} value={risk}>{risk}%</option>)}
+                  </select>
+                  <span className="mt-1 block text-[8px] font-semibold text-slate-500">
+                    Cash risk for Scalping entries. Lot size uses this risk and the entry-to-SL distance.
+                  </span>
+                </label>
+                <label className="mb-2 block font-bold text-slate-700">
+                  Intraday risk per trade
                   <select
-                    value={mt5Status.config.riskPercent}
-                    onChange={(event) => void updateMt5Config({ riskPercent: Number(event.target.value) })}
+                    aria-label="Intraday risk per trade"
+                    value={mt5StrategyRiskPercent(mt5Status.config, 'INTRADAY')}
+                    onChange={(event) => void updateMt5Config({ intradayRiskPercent: Number(event.target.value) })}
                     className="mt-1 w-full rounded border border-slate-200 bg-white px-2 py-1"
                   >
                     {MT5_RISK_PERCENT_OPTIONS.map((riskPercent) => (
@@ -9962,6 +9979,7 @@ export const OandaProChart: React.FC<{
                   <span className="mt-1 block text-[8px] font-semibold text-slate-500">
                     Lot size = cash risk ÷ (SL pips × 10)
                     {' '}Intraday: total setup risk is split 60% at the 10% body pullback and 40% at the 25% pullback. Original SL/TP fixed; unfilled limits cancel at original TP/SL or 75 minutes after confirmation, whichever comes first.
+                    {' '}If either split is below the broker minimum lot, only the second entry uses the full setup risk allowance.
                   </span>
                 </label>
                 <label className="mb-2 block font-bold text-cyan-800">
@@ -9973,9 +9991,10 @@ export const OandaProChart: React.FC<{
                     {SCALP_ONE_TO_ONE_RISK_OPTIONS.map(risk => <option key={risk} value={risk}>{risk}%</option>)}
                   </select>
                   <span className="mt-1 block text-[8px] font-semibold text-slate-500">
-                    Total setup risk, independent of the risk above. Uses MT5 equity: {mt5Status.bridge.currency || '$'}{' '}
+                    Scalp 1:1 setup risk. Uses MT5 equity: {mt5Status.bridge.currency || '$'}{' '}
                     {(Math.max(0, mt5Status.bridge.equity ?? 0) * (mt5Status.config.scalpOneToOneRiskPercent ?? 0.25) / 100).toFixed(2)} at SL.
                     {' '}10% body pullback: 60% of risk; 25% body pullback: 40% of risk. Original SL/TP fixed; existing stop-distance cap; unfilled entries cancel at original TP/SL or 75 minutes after confirmation, whichever comes first. M15 / H4 bias, EMA20/50, H1 continuation/Far and ≥250-unit volume decrease remain required.
+                    {' '}If either split is below the broker minimum lot, only the second entry uses the full setup risk allowance.
                   </span>
                 </label>
                 <label className="mb-2 block font-bold text-slate-700">
@@ -10062,9 +10081,10 @@ export const OandaProChart: React.FC<{
                   Equity: <b>{mt5Status.bridge.equity === undefined
                     ? '—'
                     : `${mt5Status.bridge.currency || '$'} ${mt5Status.bridge.equity.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}</b><br />
-                  Selected cash risk: <b>{mt5Status.bridge.equity === undefined
-                    ? '—'
-                    : `${mt5Status.bridge.currency || '$'} ${(mt5Status.bridge.equity * mt5Status.config.riskPercent / 100).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}</b><br />
+                  {(['INTRADAY', 'SCALPING', 'SCALP_1_1'] as const).map(style => <div key={style}>
+                    {style === 'SCALP_1_1' ? 'Scalp 1:1' : style === 'INTRADAY' ? 'Intraday' : 'Scalping'} cash risk: <b>{mt5Status.bridge.equity === undefined
+                      ? '—' : `${mt5Status.bridge.currency || '$'} ${(mt5Status.bridge.equity * mt5StrategyRiskPercent(mt5Status.config, style) / 100).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}</b>
+                  </div>)}
                   Waiting to send: <b>{mt5Status.counts.QUEUED ?? 0}</b> · Open MT5 trades: <b>{mt5Status.positions.length}</b><br />
                   {mt5Status.positions.filter(position => position.magic === 0).map(position => (
                     <ManualTradeTimeframeControl key={`${mt5Status.bridge.account}:${position.ticket}:${position.openedAtMsc}`}

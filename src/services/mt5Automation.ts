@@ -314,6 +314,8 @@ export interface Mt5AutomationConfig {
   intradayEnabled: boolean;
   scalpOneToOneEnabled?: boolean;
   scalpOneToOneRiskPercent?: number;
+  intradayRiskPercent?: number;
+  scalpingRiskPercent?: number;
   mtfLtfFibRequired: boolean;
   symbol: string;
   brokerSymbol: string;
@@ -327,6 +329,16 @@ export interface Mt5AutomationConfig {
   signalMaxAgeSeconds: number;
   pendingExpiryMinutes: number;
   moveStopToBreakEvenAtR: number;
+}
+
+/** Legacy shared risk initializes each new strategy field independently. */
+export function mt5StrategyRiskPercent(config: Pick<Mt5AutomationConfig,
+  'riskPercent' | 'intradayRiskPercent' | 'scalpingRiskPercent' | 'scalpOneToOneRiskPercent'>,
+  style?: Mt5SignalInput['tradeStyle']): number {
+  if (style === 'SCALP_1_1') return normalizeScalpOneToOneRisk(config.scalpOneToOneRiskPercent);
+  const value = style === 'INTRADAY' ? config.intradayRiskPercent
+    : style === 'SCALPING' ? config.scalpingRiskPercent : config.riskPercent;
+  return normalizeMt5RiskPercent(value, normalizeMt5RiskPercent(config.riskPercent));
 }
 
 export interface ScalpPullbackEntry {

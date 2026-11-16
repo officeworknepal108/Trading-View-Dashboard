@@ -469,7 +469,7 @@ export class DashboardAuth {
         const target = req.path;
         const changes = target === '/mt5/config' ? Object.fromEntries([
           'enabled', 'dryRun', 'tradingTimeEnabled', 'telegramMessagesEnabled', 'scalpingEnabled',
-          'intradayEnabled', 'scalpOneToOneEnabled', 'scalpOneToOneRiskPercent', 'mtfLtfFibRequired', 'riskPercent', 'maximumOpenTrades',
+          'intradayEnabled', 'scalpOneToOneEnabled', 'scalpOneToOneRiskPercent', 'intradayRiskPercent', 'scalpingRiskPercent', 'mtfLtfFibRequired', 'riskPercent', 'maximumOpenTrades',
           'maximumDailyLossPercent', 'maximumSpreadPoints', 'signalMaxAgeSeconds',
           'pendingExpiryMinutes', 'moveStopToBreakEvenAtR',
         ].filter(key => ['boolean', 'number'].includes(typeof req.body?.[key]))
