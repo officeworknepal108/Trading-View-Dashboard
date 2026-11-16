@@ -93,6 +93,27 @@ class ScalpOneToOneTests(BridgeTestCase):
         self.assertFalse(bridge.pending_order_passed_one_and_half_r(signal, SimpleNamespace(bid=109, ask=109.1)))
         self.assertTrue(bridge.pending_order_passed_one_and_half_r(signal, SimpleNamespace(bid=110, ask=110.1)))
 
+    def test_exact_sell_pullbacks_allow_300_pips_and_keep_original_exits_and_cash_split(self):
+        for leg, expected in [(10, 3842.9375), (25, 3844.31375)]:
+            signal = self.pullback(leg)
+            signal.update(direction='SELL', entry=expected, stopLoss=3867.790, takeProfit=3827.790,
+                          riskPips=(3867.790 - expected) * 10,
+                          rewardRisk=(expected - 3827.790) / (3867.790 - expected))
+            signal['scalpEntry'].update(version=2, referenceEntry=3847.790, nextOpen=3842.020, confirmationBody=9.175)
+            bridge.validate_scalp_pullback(signal)
+            self.assertEqual(bridge.signal_risk_money(signal, {'scalpOneToOneRiskPercent': 1}, 5000),
+                             30 if leg == 10 else 20)
+
+    def test_exact_scalp_limit_includes_300_but_rejects_above_it(self):
+        signal = self.pullback()
+        signal.update(entry=110, stopLoss=80, takeProfit=120, riskPips=300, rewardRisk=10 / 30)
+        signal['scalpEntry'].update(version=2, referenceEntry=100, nextOpen=111)
+        bridge.validate_scalp_pullback(signal)
+        signal.update(entry=110.01, riskPips=300.1, rewardRisk=9.99 / 30.01)
+        signal['scalpEntry']['nextOpen'] = 111.01
+        with self.assertRaisesRegex(RuntimeError, 'original fixed SL/TP'):
+            bridge.validate_scalp_pullback(signal)
+
     def test_fast_closed_pullback_recovers_actual_fill_from_broker_deals(self):
         record = {**self.pullback(), 'brokerTicket': 123}
         entered = SimpleNamespace(entry=bridge.mt5.DEAL_ENTRY_IN, price=98.9, volume=0.02, time=1805)
@@ -286,6 +307,17 @@ class IntradayPullbackTests(BridgeTestCase):
                     bridge.validate_intraday_pullback({**signal, **changed})
         sell = {**self.signal(), 'direction': 'SELL', 'entry': 3011, 'stopLoss': 3030, 'takeProfit': 2970}
         bridge.validate_intraday_pullback(sell)
+
+    def test_exact_intraday_pullback_keeps_its_original_route_limit(self):
+        signal = self.signal()
+        signal.update(entry=3009, stopLoss=2990, takeProfit=3035, riskPips=190, rewardRisk=26 / 19)
+        signal['intradayEntry'].update(version=2, referenceEntry=3005)
+        bridge.validate_intraday_pullback(signal)
+        self.assertEqual(bridge.signal_risk_money(signal, {'riskPercent': 1}, 5000), 30)
+        signal.update(entry=3011, riskPips=210, rewardRisk=24 / 21)
+        signal['intradayEntry']['nextOpen'] = 3012
+        with self.assertRaisesRegex(RuntimeError, 'original fixed SL/TP'):
+            bridge.validate_intraday_pullback(signal)
 
     def test_unfilled_intraday_waits_for_original_tp_not_the_old_one_and_half_r(self):
         signal = self.signal()

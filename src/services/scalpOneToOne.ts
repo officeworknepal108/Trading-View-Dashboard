@@ -50,16 +50,15 @@ export function scalpOneToOnePullbackSignals(r: VolumeStudyRecord, candles: Stud
   const base = scalpOneToOneSignal(r, candles, now, pendingExpiryMinutes);
   const sign = r.signal.direction === 'bullish' ? 1 : -1;
   return ([10, 25] as const).flatMap(leg => {
-    const requested = next.open - sign * body * leg / 100;
-    const entry = sign === 1 ? Math.min(requested, base.entry) : Math.max(requested, base.entry);
+    const entry = next.open - sign * body * leg / 100;
     const risk = sign * (entry - base.stopLoss), reward = sign * (base.takeProfit - entry);
-    if (!(risk > 0 && risk <= 20.000001 && reward > 0)) return [];
+    if (!(risk > 0 && risk <= 30.000001 && reward > 0)) return [];
     const riskShare = leg === 10 ? 0.6 : 0.4;
     return [{ ...base, id: `${base.id}:P${leg}`, setupId: `${base.setupId}:P${leg}`,
       zoneId: `${base.zoneId}-P${leg}`, orderType: 'LIMIT' as const, entry,
       rewardRisk: reward / risk, normalRewardRisk: reward / risk,
       riskPips: risk * 10, calculatedAt: r.confirmedAt, expiresAt: r.confirmedAt + 900,
-      scalpEntry: { version: 1 as const, leg, riskShare, referenceEntry: base.entry,
+      scalpEntry: { version: 2 as const, leg, riskShare, referenceEntry: base.entry,
         nextOpen: next.open, confirmationBody: body },
       journalContext: { ...base.journalContext!, autoReason: `${base.journalContext!.autoReason} `
         + `${leg}% body pullback; ${Math.round(riskShare * 100)}% of total setup risk. Original SL/TP fixed; next-M15 expiry.` },

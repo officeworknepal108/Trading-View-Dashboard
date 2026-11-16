@@ -413,7 +413,7 @@ def signal_risk_percent(signal: dict[str, Any], config: dict[str, Any]) -> float
     leg = pullback_entry(signal)
     if leg:
         expected = {10: 0.6, 25: 0.4}.get(leg.get("leg"))
-        if leg.get("version") != 1 or expected is None or leg.get("riskShare") != expected:
+        if leg.get("version") not in (1, 2) or expected is None or leg.get("riskShare") != expected:
             raise RuntimeError("Invalid pullback risk allocation.")
         value *= expected
     return value
@@ -442,14 +442,15 @@ def validate_scalp_pullback(signal: dict[str, Any]) -> None:
         entry, stop, target = map(float, (signal["entry"], signal["stopLoss"], signal["takeProfit"]))
         sign = 1 if signal["direction"] == "BUY" else -1
         requested = opening - sign * body * index / 100
-        expected = min(requested, reference) if sign == 1 else max(requested, reference)
+        expected = requested if leg['version'] == 2 else min(requested, reference) if sign == 1 else max(requested, reference)
+        maximum_risk = 30 if leg['version'] == 2 else 20
         risk, reward = sign * (entry - stop), sign * (target - entry)
-        valid = (leg["version"] == 1 and share is not None and leg["riskShare"] == share
+        valid = (leg["version"] in (1, 2) and share is not None and leg["riskShare"] == share
                  and all(math.isfinite(v) and v > 0 for v in (reference, opening, body))
                  and signal["orderType"] == "LIMIT" and abs(expected - entry) <= 0.000001
                  and abs((stop + target) / 2 - reference) <= 0.000001
                  and 0 < sign * (reference - stop) <= 20.000001
-                 and 0 < risk <= 20.000001 and reward > 0
+                 and 0 < risk <= maximum_risk + 0.000001 and reward > 0
                  and abs(float(signal["rewardRisk"]) - reward / risk) <= 0.000001
                  and signal["calculatedAt"] == signal["signalAt"] + 900
                  and signal["expiresAt"] == signal["calculatedAt"] + 900)
@@ -476,11 +477,11 @@ def validate_intraday_pullback(signal: dict[str, Any]) -> None:
         entry, stop, target = map(float, (signal['entry'], signal['stopLoss'], signal['takeProfit']))
         sign = 1 if signal['direction'] == 'BUY' else -1
         raw = opening - sign * body * index / 100
-        expected = min(raw, reference) if sign == 1 else max(raw, reference)
+        expected = raw if leg['version'] == 2 else min(raw, reference) if sign == 1 else max(raw, reference)
         risk, reward, original_risk = sign * (entry - stop), sign * (target - entry), sign * (reference - stop)
         valid = (rule is not None and seconds is not None and share is not None
                  and signal.get('tradeStyle') == 'INTRADAY' and not signal.get('scalpEntry')
-                 and leg['version'] == 1 and leg['riskShare'] == share
+                 and leg['version'] in (1, 2) and leg['riskShare'] == share
                  and isinstance(leg['setupKey'], str) and 0 < len(leg['setupKey']) <= 400
                  and all(math.isfinite(v) and v > 0 for v in (reference, opening, body, entry, stop, target))
                  and signal['orderType'] == 'LIMIT' and abs(expected - entry) <= 0.000001

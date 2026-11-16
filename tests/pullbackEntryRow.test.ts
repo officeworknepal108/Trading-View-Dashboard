@@ -62,14 +62,14 @@ test('MTF reference row uses its higher timeframe route for entry details', () =
   assert.match(row, /TP 3,813\.460/);
 });
 
-test('buy display preserves the existing original-entry cap when next candle gaps up', () => {
+test('buy display skips an over-limit exact entry instead of moving it back to the original price', () => {
   const row = text(render({ trade: { ...trade, entry: 3010, stopLoss: 2990, takeProfit: 3050,
     riskFree: 3030, riskPips: 200, signal: { ...trade.signal, direction: 'bullish' } },
     entryCandles: [
       { ...candles[0], open: 3000, high: 3011, low: 2992, close: 3010 },
       { ...candles[1], open: 3012, high: 3014, low: 3008, close: 3013 },
     ] }));
-  assert.match(row, /1st ENTRY 3,010\.000SL 200\.00 PIPS/);
+  assert.match(row, /1st ENTRY —SL — PIPS/);
   assert.match(row, /2nd ENTRY 3,009\.500SL 195\.00 PIPS/);
 });
 

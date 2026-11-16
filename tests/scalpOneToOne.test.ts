@@ -48,7 +48,7 @@ test('two pullbacks freeze original exits, allocate 60/40 and expire at the next
   assert.deepEqual(scalpOneToOnePullbackSignals(record, {}, 1800, 240), []);
 });
 
-test('sell pullbacks mirror buys; the original distance cap can coalesce both entries', () => {
+test('sell pullbacks mirror buys and exact pullbacks remain distinct beyond the original entry', () => {
   const mirrored: StudyCandles = { M15: layeredCandles.M15!.map(c => ({ ...c,
     open: 200 - c.open, high: 200 - c.low, low: 200 - c.high, close: 200 - c.close })) };
   const sell: VolumeStudyRecord = { ...record, signal: { ...record.signal, direction: 'bearish' },
@@ -60,7 +60,8 @@ test('sell pullbacks mirror buys; the original distance cap can coalesce both en
     levels: { ...record.levels, entry: 95, stopLoss: 75, takeProfit: 115, riskFree: 115,
       riskPips: 200, pendingAtCreation: true, status: 'pending' } };
   const cappedSignals = scalpOneToOnePullbackSignals(capped, layeredCandles, 1800, 240);
-  assert.deepEqual(cappedSignals.map(s => s.entry), [95, 95]);
+  assert.deepEqual(cappedSignals.map(s => s.entry), [99, 97.5]);
+  assert.ok(cappedSignals.every(s => s.scalpEntry?.version === 2));
   assert.equal(new Set(cappedSignals.map(s => s.id)).size, 2);
   for (const signal of cappedSignals) assert.equal(scalpPullbackSignalError(signal), undefined);
 });
@@ -73,6 +74,43 @@ test('rejects tampered allocations, shifted exits, expired window geometry and m
     { ...signal, expiresAt: 2800 }, { ...signal, calculatedAt: 1801 },
     { ...signal, orderType: 'MARKET' as const },
   ]) assert.match(scalpPullbackSignalError(changed)!, /Invalid Scalp/);
+});
+
+test('the reported SELL setup uses exact 10/25 body levels with its original fixed exits under 300 pips', () => {
+  const sell: VolumeStudyRecord = { ...record, signal: { ...record.signal, direction: 'bearish' },
+    levels: { ...record.levels, entry: 3847.790, stopLoss: 3867.790, takeProfit: 3827.790, riskPips: 200 } };
+  const source: StudyCandles = { M15: [
+    { time: 900, open: 3851.195, close: 3842.020, high: 3855, low: 3840, complete: true },
+    { time: 1800, open: 3842.020, close: 3842.020, high: 3842.020, low: 3842.020, complete: false },
+  ] };
+  const signals = scalpOneToOnePullbackSignals(sell, source, 1800, 15);
+  assert.equal(signals.length, 2);
+  assert.ok(Math.abs(signals[0].entry - 3842.9375) < 1e-7);
+  assert.ok(Math.abs(signals[1].entry - 3844.31375) < 1e-7);
+  assert.ok(Math.abs(signals[0].riskPips - 248.525) < 1e-7);
+  assert.ok(Math.abs(signals[1].riskPips - 234.7625) < 1e-7);
+  for (const signal of signals) {
+    assert.equal(signal.stopLoss, 3867.790); assert.equal(signal.takeProfit, 3827.790);
+    assert.equal(scalpPullbackSignalError(signal), undefined);
+  }
+  assert.deepEqual(signals.map(s => s.scalpEntry?.riskShare), [0.6, 0.4]);
+});
+
+test('300-pip Scalp entry limit is inclusive and over-limit legs are skipped without repricing', () => {
+  const setup = { ...record, levels: { ...record.levels, entry: 100, stopLoss: 80, takeProfit: 120, riskPips: 200 } };
+  const source: StudyCandles = { M15: [layeredCandles.M15![0], { ...layeredCandles.M15![1], open: 111 }] };
+  const signals = scalpOneToOnePullbackSignals(setup, source, 1800, 15);
+  assert.deepEqual(signals.map(s => s.entry), [110, 108.5]);
+  assert.deepEqual(signals.map(s => s.riskPips), [300, 285]);
+  for (const signal of signals) assert.equal(scalpPullbackSignalError(signal), undefined);
+  const above = scalpOneToOnePullbackSignals(setup, { M15: [source.M15![0], { ...source.M15![1], open: 111.01 }] }, 1800, 15);
+  assert.deepEqual(above.map(s => s.scalpEntry?.leg), [25]);
+  const invalid = { ...signals[0], entry: 110.01, rewardRisk: 9.99 / 30.01,
+    scalpEntry: { ...signals[0].scalpEntry!, nextOpen: 111.01 } };
+  assert.match(scalpPullbackSignalError(invalid)!, /Invalid Scalp/);
+  const legacy = { ...signals[0], entry: 100, riskPips: 200, rewardRisk: 1,
+    scalpEntry: { ...signals[0].scalpEntry!, version: 1 as const } };
+  assert.equal(scalpPullbackSignalError(legacy), undefined, 'saved capped v1 orders retain their original policy');
 });
 
 test('bar replay includes partial fills before target; uncertainty never becomes a chart win', () => {

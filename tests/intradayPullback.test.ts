@@ -65,16 +65,17 @@ test('all Intraday routes retain their reference ratios and timeframe-specific e
   }
 });
 
-test('SELL entries mirror BUY; the distance cap preserves distinct orders at the same price', () => {
+test('SELL entries mirror BUY and pullbacks never clamp to the original reference entry', () => {
   const sell = { ...base, direction: 'SELL' as const, stopLoss: 3030, takeProfit: 2970 };
   const source = candles.map(c => ({ ...c, open: 6020 - c.open, high: 6020 - c.low,
     low: 6020 - c.high, close: 6020 - c.close }));
   const entries = buildIntradayPullbackSignals(sell, source);
   assert.deepEqual(entries.map(s => s.entry), [3011, 3012.5]);
   assert.ok(entries.every(s => !intradayPullbackSignalError(s)));
-  const capped = { ...base, entry: 3005, stopLoss: 2985, takeProfit: 3045 };
+  const capped = { ...base, entry: 3005, stopLoss: 2990, takeProfit: 3035 };
   const capEntries = buildIntradayPullbackSignals(capped, candles);
-  assert.deepEqual(capEntries.map(s => s.entry), [3005, 3005]);
+  assert.deepEqual(capEntries.map(s => s.entry), [3009, 3007.5]);
+  assert.ok(capEntries.every(s => s.intradayEntry?.version === 2));
   assert.equal(new Set(capEntries.map(s => s.id)).size, 2);
 });
 

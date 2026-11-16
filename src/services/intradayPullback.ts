@@ -36,12 +36,12 @@ export function intradayPullbackSignalError(signal: Mt5SignalInput): string | un
   const sign = signal.direction === 'BUY' ? 1 : -1;
   const share = leg.leg === 10 ? 0.6 : leg.leg === 25 ? 0.4 : 0;
   const raw = leg.nextOpen - sign * leg.confirmationBody * leg.leg / 100;
-  const expected = sign === 1 ? Math.min(raw, leg.referenceEntry) : Math.max(raw, leg.referenceEntry);
+  const expected = leg.version === 2 ? raw : sign === 1 ? Math.min(raw, leg.referenceEntry) : Math.max(raw, leg.referenceEntry);
   const risk = sign * (signal.entry - signal.stopLoss), reward = sign * (signal.takeProfit - signal.entry);
   const referenceRisk = sign * (leg.referenceEntry - signal.stopLoss);
   const referenceReward = sign * (signal.takeProfit - leg.referenceEntry);
   if (!rule || signal.tradeStyle !== 'INTRADAY' || signal.symbol !== 'XAUUSD' || signal.scalpEntry
-    || leg.version !== 1 || !share || leg.riskShare !== share
+    || ![1, 2].includes(leg.version) || !share || leg.riskShare !== share
     || typeof leg.setupKey !== 'string' || !leg.setupKey || leg.setupKey.length > 400
     || ![signal.entry, signal.stopLoss, signal.takeProfit, signal.rewardRisk, signal.riskPips,
       signal.signalAt, signal.calculatedAt, signal.expiresAt, leg.referenceEntry, leg.nextOpen,
@@ -73,15 +73,14 @@ export function buildIntradayPullbackSignals(base: Mt5SignalInput, candles: read
   const parent = base.setupId ?? `${base.source}:${base.zoneTimeframe}:${base.zoneId ?? base.id}`;
   const setupKey = `${parent}:${base.signalTimeframe}:${base.signalAt}:${base.direction}`;
   return ([10, 25] as const).flatMap(leg => {
-    const raw = next.open - sign * body * leg / 100;
-    const entry = sign === 1 ? Math.min(raw, base.entry) : Math.max(raw, base.entry);
+    const entry = next.open - sign * body * leg / 100;
     const risk = sign * (entry - base.stopLoss), reward = sign * (base.takeProfit - entry);
     if (!(risk > 0 && reward > 0)) return [];
     const signal: Mt5SignalInput = { ...base, id: `${base.id}:INTRA:P${leg}`,
       setupId: `${parent}:P${leg}`, orderType: 'LIMIT', entry, riskPips: risk * 10,
       rewardRisk: reward / risk, normalRewardRisk: reward / risk,
       calculatedAt: confirmedAt, expiresAt: confirmedAt + seconds,
-      intradayEntry: { version: 1, leg, riskShare: leg === 10 ? 0.6 : 0.4,
+      intradayEntry: { version: 2, leg, riskShare: leg === 10 ? 0.6 : 0.4,
         referenceEntry: base.entry, nextOpen: next.open, confirmationBody: body, setupKey },
       journalContext: base.journalContext && { ...base.journalContext,
         autoReason: `${base.journalContext.autoReason} ${leg}% body pullback; ${leg === 10 ? 60 : 40}% of setup risk. Original SL/TP fixed.` },

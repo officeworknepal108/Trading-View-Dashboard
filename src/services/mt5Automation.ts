@@ -329,7 +329,8 @@ export interface Mt5AutomationConfig {
 }
 
 export interface ScalpPullbackEntry {
-  version: 1;
+  /** v1 preserves saved capped orders; v2 uses the exact next-open body pullback. */
+  version: 1 | 2;
   leg: 10 | 25;
   riskShare: number;
   referenceEntry: number;
@@ -346,10 +347,11 @@ export function scalpPullbackSignalError(signal: Pick<Mt5SignalInput,
   const expectedShare = leg.leg === 10 ? 0.6 : leg.leg === 25 ? 0.4 : 0;
   const sign = signal.direction === 'BUY' ? 1 : -1;
   const raw = leg.nextOpen - sign * leg.confirmationBody * leg.leg / 100;
-  const entry = sign === 1 ? Math.min(raw, leg.referenceEntry) : Math.max(raw, leg.referenceEntry);
+  const entry = leg.version === 2 ? raw : sign === 1 ? Math.min(raw, leg.referenceEntry) : Math.max(raw, leg.referenceEntry);
+  const maximumRisk = leg.version === 2 ? 30 : 20;
   const risk = sign * (signal.entry - signal.stopLoss);
   const reward = sign * (signal.takeProfit - signal.entry);
-  if (leg.version !== 1 || !expectedShare || leg.riskShare !== expectedShare
+  if (![1, 2].includes(leg.version) || !expectedShare || leg.riskShare !== expectedShare
     || ![signal.entry, signal.stopLoss, signal.takeProfit, signal.rewardRisk,
       signal.signalAt, signal.calculatedAt, signal.expiresAt].every(v => Number.isFinite(v) && v > 0)
     || ![leg.referenceEntry, leg.nextOpen, leg.confirmationBody].every(v => Number.isFinite(v) && v > 0)
@@ -357,7 +359,7 @@ export function scalpPullbackSignalError(signal: Pick<Mt5SignalInput,
     || Math.abs((signal.stopLoss + signal.takeProfit) / 2 - leg.referenceEntry) > 1e-6
     || sign * (leg.referenceEntry - signal.stopLoss) <= 0
     || sign * (leg.referenceEntry - signal.stopLoss) > 20.000001
-    || risk <= 0 || risk > 20.000001 || reward <= 0
+    || risk <= 0 || risk > maximumRisk + 0.000001 || reward <= 0
     || Math.abs(signal.rewardRisk - reward / risk) > 1e-6
     || signal.calculatedAt !== signal.signalAt + 900
     || signal.expiresAt !== signal.calculatedAt + 900) {
