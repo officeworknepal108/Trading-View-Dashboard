@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import React from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
-import { TradeDetailsRow } from '../src/components/OandaProChart';
+import { TradeDetailsRow, ScalpOutcomeRow } from '../src/components/OandaProChart';
 import type { TradeLevels } from '../src/services/tradeLevels';
 
 const trade: TradeLevels = {
@@ -18,6 +18,16 @@ const candles = [
 const render = (props: Partial<React.ComponentProps<typeof TradeDetailsRow>> = {}) => renderToStaticMarkup(
   React.createElement(TradeDetailsRow, { trade, colSpan: 5, zoneTimeframe: 'M15', entryCandles: candles, ...props }));
 const text = (html: string) => html.replace(/<[^>]*>/g, '');
+
+test('completed Scalp row shows only its outcome without entry prices, exits, RR or pips', () => {
+  for (const label of ['TP HIT', 'SL HIT', 'TP REACHED · NO FILL', 'SL REACHED · NO FILL']) {
+    const row = renderToStaticMarkup(React.createElement(ScalpOutcomeRow, {
+      outcome: { level: label.startsWith('TP') ? 'tp' : 'sl', at: 1800, label, noFill: label.includes('NO FILL') },
+    }));
+    assert.ok(text(row).includes(label));
+    assert.doesNotMatch(row, /ENTRY|R:R|pips|3,888|3,903|3,858/);
+  }
+});
 
 test('reference row displays both derived sell prices, per-entry SL pips and original fixed exits', () => {
   const original = JSON.stringify({ trade, candles });

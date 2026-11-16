@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { buildScalpChartDisplays } from '../src/services/scalpChartDisplay';
+import { buildScalpChartDisplays, scalpDisplayOutcome } from '../src/services/scalpChartDisplay';
 import type { Mt5AutomationStatus, Mt5StoredSignal } from '../src/services/mt5Automation';
 
 const connection = { account: 'test-account', server: 'test-server', brokerSymbol: 'GOLD', connected: true };
@@ -93,4 +93,44 @@ test('ordinary Scalp projects actual lower timeframe execution to its source cha
     positions: [{ ...position, signalTimeframe: 'M1' }] });
   assert.equal(item.style, 'SCALPING'); assert.equal(item.trade.signal.timeframe, 'M1');
   assert.equal(item.markerTime, position.openedAt);
+});
+
+const hitBar = { time: 1800, open: 3010, high: 3031, low: 3000, close: 3015, complete: true };
+
+test('rejected setup retires its drawing and setup marker after TP even when price retraces', () => {
+  const rejected = { ...signal, status: 'REJECTED' as const };
+  const candles = [hitBar, { ...hitBar, time: 2700, high: 3015, close: 3010 }];
+  const outcome = scalpDisplayOutcome(rejected, candles, 3600);
+  assert.deepEqual(outcome, { level: 'tp', at: 1800, label: 'TP REACHED · NO FILL', noFill: true });
+  assert.deepEqual(buildScalpChartDisplays({ ...options, signals: [rejected], positions: [], candles, asOf: 3600 }), []);
+});
+
+test('sell setup detects the correct SL and TP sides without inventing a fill', () => {
+  const sell = { ...signal, direction: 'SELL' as const, stopLoss: 3030, takeProfit: 2990, status: 'REJECTED' as const };
+  assert.equal(scalpDisplayOutcome(sell, [hitBar], 2700)?.label, 'SL REACHED · NO FILL');
+  assert.equal(scalpDisplayOutcome(sell, [{ ...hitBar, high: 3020, low: 2989 }], 2700)?.label, 'TP REACHED · NO FILL');
+});
+
+test('broker-confirmed exits show HIT while active positions are never closed by chart OHLC', () => {
+  assert.deepEqual(scalpDisplayOutcome({ ...signal, status: 'TP', closedAt: 2100 }, [], 2700),
+    { level: 'tp', at: 2100, label: 'TP HIT', noFill: false });
+  assert.equal(scalpDisplayOutcome({ ...signal, status: 'SL', closedAt: 2100 }, [], 2700)?.label, 'SL HIT');
+  assert.equal(scalpDisplayOutcome({ ...signal, status: 'TP', closedAt: 3000 }, [], 2700), undefined);
+  assert.equal(scalpDisplayOutcome({ ...signal, status: 'ACTIVE' }, [hitBar], 2700), undefined);
+  assert.equal(scalpDisplayOutcome({ ...signal, status: 'RISK_FREE' }, [hitBar], 2700), undefined);
+  assert.equal(scalpDisplayOutcome(signal, [hitBar], 2700, true), undefined);
+  const displays = buildScalpChartDisplays({ ...options, asOf: 2700, candles: [hitBar] });
+  assert.equal(displays.length, 1); assert.equal(displays[0].kind, 'live');
+});
+
+test('reference exit checks ignore confirmation wicks and future candle data', () => {
+  const rejected = { ...signal, status: 'REJECTED' as const };
+  assert.equal(scalpDisplayOutcome(rejected, [{ ...hitBar, time: 900 }], 2700), undefined);
+  assert.equal(scalpDisplayOutcome(rejected, [hitBar], 2000), undefined);
+  assert.equal(scalpDisplayOutcome(rejected, [{ ...hitBar, time: 2700 }], 2000), undefined);
+  assert.equal(scalpDisplayOutcome(rejected, [{ ...hitBar, complete: false }], 2000)?.level, 'tp');
+});
+
+test('same-bar ambiguous reference exits do not invent which level was reached first', () => {
+  assert.equal(scalpDisplayOutcome(signal, [{ ...hitBar, low: 2980 }], 2700)?.label, 'SL / TP REACHED · NO FILL');
 });

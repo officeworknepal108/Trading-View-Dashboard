@@ -1,5 +1,38 @@
 import type { Mt5AutomationStatus, Mt5SignalInput, Mt5StoredSignal } from './mt5Automation';
 import type { TradeLevels, TradeTimeframe } from './tradeLevels';
+import type { StructureCandle } from './marketStructure';
+
+export interface ScalpDisplayOutcome {
+  level: 'tp' | 'sl' | 'both';
+  at: number;
+  label: string;
+  noFill: boolean;
+}
+
+/** Chart touches retire unfilled references; only the broker proves a position closed. */
+export function scalpDisplayOutcome(signal: Mt5StoredSignal, candles: readonly StructureCandle[],
+  asOf: number, hasOpenPosition = false): ScalpDisplayOutcome | undefined {
+  if (hasOpenPosition || signal.calculatedAt > asOf) return undefined;
+  if (signal.status === 'TP' || signal.status === 'SL') {
+    const at = signal.closedAt ?? signal.updatedAt;
+    if (at > asOf) return undefined;
+    return { level: signal.status === 'TP' ? 'tp' : 'sl', at, label: `${signal.status} HIT`, noFill: false };
+  }
+  if (['ACTIVE', 'RISK_FREE', 'RF'].includes(signal.status) || signal.openedAt !== undefined) return undefined;
+  if (![signal.stopLoss, signal.takeProfit].every(value => Number.isFinite(value) && value > 0)) return undefined;
+  const seconds = signal.signalTimeframe === 'D' ? 86400
+    : Number(signal.signalTimeframe.slice(1)) * (signal.signalTimeframe.startsWith('H') ? 3600 : 60);
+  for (const candle of [...candles].sort((a, b) => a.time - b.time)) {
+    if (candle.time < signal.calculatedAt || candle.time > asOf
+      || candle.complete !== false && candle.time + seconds > asOf) continue;
+    const buy = signal.direction === 'BUY';
+    const tp = buy ? candle.high >= signal.takeProfit : candle.low <= signal.takeProfit;
+    const sl = buy ? candle.low <= signal.stopLoss : candle.high >= signal.stopLoss;
+    if (tp || sl) return { level: tp && sl ? 'both' : tp ? 'tp' : 'sl', at: candle.time,
+      label: `${tp && sl ? 'SL / TP' : tp ? 'TP' : 'SL'} REACHED · NO FILL`, noFill: true };
+  }
+  return undefined;
+}
 
 export interface ScalpChartDisplay {
   id: string;
@@ -51,6 +84,7 @@ export function buildScalpChartDisplays(options: {
   positions: readonly Position[];
   signals: readonly Mt5StoredSignal[];
   previews?: readonly Mt5SignalInput[];
+  candles?: readonly StructureCandle[];
 }): ScalpChartDisplay[] {
   const { marketSymbol, timeframe, asOf, connection, positions, signals } = options;
   if (marketSymbol !== 'XAUUSD' || options.replay || !connection.account || !connection.server || !connection.brokerSymbol) return [];
@@ -110,6 +144,9 @@ export function buildScalpChartDisplays(options: {
   const seen = new Set<string>();
   for (const signal of candidates) {
     if (representedIds.has(signal.id) || signal.setupId && representedSetups.has(signal.setupId) || seen.has(signal.id)) continue;
+    if (scalpDisplayOutcome({ ...signal, status: signal.displayState === 'PREVIEW' ? 'SIMULATED'
+      : signal.displayState as Mt5StoredSignal['status'], createdAt: signal.calculatedAt,
+      updatedAt: signal.calculatedAt }, options.candles ?? [], asOf)) continue;
     if (![signal.entry, signal.stopLoss, signal.takeProfit].every(v => Number.isFinite(v) && v > 0)) continue;
     seen.add(signal.id);
     const rejected = signal.displayState === 'REJECTED';

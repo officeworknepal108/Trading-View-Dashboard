@@ -1,7 +1,7 @@
 import { detectAutoTrendlines, type AutoTrendline } from '../services/autoTrendlines';
 import { buildIntradayPullbackSignals, intradayPullbackChartRecords } from '../services/intradayPullback';
 import { tradeToMt5Signal } from '../services/mt5Automation';
-import { buildScalpChartDisplays, type ScalpChartDisplay } from '../services/scalpChartDisplay';
+import { buildScalpChartDisplays, scalpDisplayOutcome, scalpPositionSignal, type ScalpChartDisplay, type ScalpDisplayOutcome } from '../services/scalpChartDisplay';
 export { detectAutoTrendlines } from '../services/autoTrendlines';
 import { TrendlineStudy } from './TrendlineStudy';
 import { VolumeEngulfingStudy } from './VolumeEngulfingStudy';
@@ -878,6 +878,15 @@ export const TradeDetailsRow: React.FC<{
   </tr>
   );
 };
+
+export const ScalpOutcomeRow: React.FC<{ outcome: ScalpDisplayOutcome }> = ({ outcome }) => (
+  <tr className="border-t border-cyan-200 bg-cyan-50/80">
+    <td colSpan={4} className="px-2 py-1 font-black text-cyan-800">SCALP 1:1 · M15</td>
+    <td className={`px-2 py-1 text-right font-black ${outcome.level === 'tp' ? 'text-emerald-700' : 'text-rose-700'}`}>
+      {outcome.label}
+    </td>
+  </tr>
+);
 
 function displayZoneName(
   name: string,
@@ -4942,7 +4951,8 @@ export const OandaProChart: React.FC<{
     marketSymbol, timeframe: granularity, asOf: tradeDisplayAsOf, replay: replayIndex !== null,
     connection: mt5Status?.bridge ?? {}, positions: mt5Status?.positions ?? [],
     signals: mt5Status?.recentSignals ?? [], previews: scalpOneToOnePreview,
-  }), [marketSymbol, granularity, tradeDisplayAsOf, replayIndex, mt5Status, scalpOneToOnePreview]);
+    candles: tableTimeframeData[granularity]?.candles ?? [],
+  }), [marketSymbol, granularity, tradeDisplayAsOf, replayIndex, mt5Status, scalpOneToOnePreview, tableTimeframeData]);
 
   const liveMt5TradeOverlays = useMemo<TradeOverlay[]>(() => (
     (mt5Status?.positions ?? []).flatMap((position) => {
@@ -5107,6 +5117,9 @@ export const OandaProChart: React.FC<{
     const chartSetupKeys = new Set<string>();
     const entryEventKeys = new Set<string>();
     const addOverlay = (overlay: TradeOverlay) => {
+      if (isSlTpTradeDisplayFinished(overlay.trade)
+        && (overlay.id.startsWith('SCALP_1_1:') || overlay.setupId?.startsWith('SCALP_1_1:')
+          || overlay.label?.toUpperCase().includes('SCALP 1:1'))) return;
       if (hasTradeDrawingExpired(overlay.trade)) return;
       if (!overlay.alwaysVisible && !overlayStyleEnabled(overlay)) return;
       if ((overlay.symbol ?? 'XAUUSD') !== marketSymbol) return;
@@ -5490,6 +5503,7 @@ export const OandaProChart: React.FC<{
       add(item.id, item.trade, item.statusText, 'Scalp setup', 'Not recorded', item.style, false, item.markerTime, item);
     }
     for (const record of chartEntryRecords) {
+      if (record.tradeStyle === 'SCALP_1_1' && ['tp', 'sl'].includes(record.result)) continue;
       if (scalpChartDisplays.some(item => item.kind === 'live' && record.brokerTicket === item.brokerTicket)) continue;
       if (blockedGoldHistoricalTrade(record)) continue;
       const active = record.result === 'open' || record.result === 'risk-free';
@@ -8971,6 +8985,11 @@ export const OandaProChart: React.FC<{
         .filter(signal => signal.signalAt <= tradeDisplayAsOf
           && !tradeDisplayExpired(signal, displayCandles, tradeDisplayAsOf))
         .sort((a, b) => b.signalAt - a.signalAt).slice(0, 8).map(signal => {
+          const hasOpenPosition = (mt5Status?.positions ?? []).some(position =>
+            scalpPositionSignal(position, [signal], mt5Status?.bridge ?? {}) !== undefined);
+          const outcome = scalpDisplayOutcome(signal, tableTimeframeData[signal.signalTimeframe]?.candles ?? [],
+            tradeDisplayAsOf, hasOpenPosition);
+          if (outcome) return <ScalpOutcomeRow key={`scalp-1-1-${signal.id}`} outcome={outcome} />;
           const trade: TradeLevels = {
             entry: signal.executionPrice ?? signal.entry, stopLoss: signal.stopLoss,
             takeProfit: signal.takeProfit, riskFree: signal.takeProfit, riskFreeEnabled: false,
