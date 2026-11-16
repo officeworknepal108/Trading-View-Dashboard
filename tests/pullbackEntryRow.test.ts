@@ -78,7 +78,7 @@ test('each Intraday entry gets an independent green fill tick; pending sibling r
     now: 1800, pendingExpiryMinutes: 15 });
   const signals = buildIntradayPullbackSignals({ ...base, tradeStyle: 'INTRADAY' }, candles)
     .map(signal => ({ ...signal, status: 'PLACED' as const, createdAt: 1800, updatedAt: 1800 }));
-  const one = render({ fillEvidence: { asOf: 2000, replay: false,
+  const one = render({ entryCandles: [candles[0], { ...candles[1], high: 3889 }], fillEvidence: { asOf: 2000, replay: false,
     signals: [{ ...signals[0], status: 'ACTIVE', openedAt: 1900 }, signals[1]] } });
   assert.equal((one.match(/aria-label="Entry filled"/g) ?? []).length, 1);
   assert.match(one, /text-emerald-600/);
@@ -93,9 +93,9 @@ test('Scalp live entry label identifies the leg and ticks only confirmed fills',
   const signal = { ...base, tradeStyle: 'SCALP_1_1' as const, status: 'PLACED' as const,
     createdAt: 1800, updatedAt: 1800, scalpEntry: { version: 1 as const, leg: 25 as const,
       riskShare: 0.4, referenceEntry: trade.entry, nextOpen: trade.entry, confirmationBody: 4 } };
-  const pending = render({ mt5Signal: signal, fillEvidence: { asOf: 2000, replay: false } });
+  const pending = render({ entryCandles: [], mt5Signal: signal, fillEvidence: { asOf: 2000, replay: false } });
   assert.match(pending, /2nd ENTRY/); assert.doesNotMatch(pending, /aria-label="Entry filled"/);
-  const active = render({ mt5Signal: { ...signal, status: 'ACTIVE', openedAt: 1900 },
+  const active = render({ entryCandles: candles, mt5Signal: { ...signal, status: 'ACTIVE', openedAt: 1900 },
     fillEvidence: { asOf: 2000, replay: false } });
   assert.equal((active.match(/aria-label="Entry filled"/g) ?? []).length, 1);
 });
@@ -111,7 +111,7 @@ test('Scalp and Intraday each render one setup header and one line for both entr
       status: i === 0 ? 'ACTIVE' as const : 'REJECTED' as const,
       openedAt: i === 0 ? 1900 : undefined, createdAt: 1800, updatedAt: 1900 }));
     const html = renderToStaticMarkup(React.createElement(PullbackSetupRows, {
-      signals: [...signals].reverse(), style, asOf: 2000, entryCandles: { M15: candles }, timeZone: 'Asia/Kathmandu',
+      signals: [...signals].reverse(), style, asOf: 2000, entryCandles: { M15: [candles[0], { ...candles[1], high: 3889 }] }, timeZone: 'Asia/Kathmandu',
     }));
     assert.equal((html.match(/<tr /g) ?? []).length, 2);
     assert.equal((html.match(/aria-label="Entry filled"/g) ?? []).length, 1);
@@ -153,6 +153,24 @@ test('the saved rejected setup visibly shows the updated 10/25 plan, correct pip
   assert.match(visible, /SL 248\.53 PIPS/); assert.match(visible, /SL 234\.76 PIPS/);
   assert.match(visible, /SL 3,867\.790/); assert.match(visible, /TP 3,827\.790/);
   assert.doesNotMatch(visible, /3,847\.790/);
-  assert.match(visible, /UPDATED PLAN.*ENTRY WINDOW EXPIRED.*NO FILL/);
+  assert.match(visible, /CHART: Waiting for candle data.*MT5: Not executed/);
   assert.doesNotMatch(html, /aria-label="Entry filled"/);
+});
+
+test('chart-filled Scalp entries tick despite MT5 rejection and status uses 6px regular text', () => {
+  const base = tradeToMt5Signal({ source: 'ENGULFING', setupId: 'SCALP_1_1:900', zoneName: 'Scalp 1:1',
+    zoneTimeframe: 'M15', trade, now: 1800, pendingExpiryMinutes: 15 });
+  const signals = ([10, 25] as const).map(leg => ({ ...base, id: `${base.id}:P${leg}`, setupId: `${base.setupId}:P${leg}`,
+    tradeStyle: 'SCALP_1_1' as const, orderType: 'LIMIT' as const, direction: 'SELL' as const,
+    entry: 3847.790, stopLoss: 3867.790, takeProfit: 3827.790, status: 'REJECTED' as const,
+    createdAt: 1800, updatedAt: 1800, expiresAt: 2700,
+    scalpEntry: { version: 1 as const, leg, riskShare: leg === 10 ? 0.6 : 0.4,
+      referenceEntry: 3847.790, nextOpen: 3842.020, confirmationBody: 9.175 } }));
+  const html = renderToStaticMarkup(React.createElement(PullbackSetupRows, {
+    signals, style: 'SCALP_1_1', asOf: 2700, timeZone: 'Asia/Kathmandu',
+    entryCandles: { M15: [{ time: 1800, open: 3842.020, high: 3850, low: 3830, close: 3840, volume: 1000, complete: true }] },
+  }));
+  assert.equal((html.match(/aria-label="Entry filled"/g) ?? []).length, 2);
+  assert.match(text(html), /CHART: Filled · MT5: Not executed/);
+  assert.match(html, /text-\[6px\] font-normal/);
 });

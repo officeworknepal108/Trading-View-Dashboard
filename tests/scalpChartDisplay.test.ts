@@ -56,7 +56,7 @@ test('pending leg remains a reference while filled sibling draws its own actual 
   const items = buildScalpChartDisplays({ ...options, signals: [signal, second] });
   assert.deepEqual(items.map(i => i.kind), ['live', 'pending']);
   assert.equal(items[1].trade.filledAt, undefined);
-  assert.match(items[1].statusText, /NOT FILLED/);
+  assert.match(items[1].statusText, /MT5: Not executed/);
 });
 
 test('cancelled, closed and expired signals cannot be revived as preview setups', () => {
@@ -99,7 +99,7 @@ const hitBar = { time: 1800, open: 3010, high: 3031, low: 3000, close: 3015, com
 
 test('rejected setup retires its drawing and setup marker after TP even when price retraces', () => {
   const rejected = { ...signal, status: 'REJECTED' as const };
-  const candles = [hitBar, { ...hitBar, time: 2700, high: 3015, close: 3010 }];
+  const candles = [{ ...hitBar, open: 3031, low: 3010 }, { ...hitBar, time: 2700, high: 3015, close: 3010 }];
   const outcome = scalpDisplayOutcome(rejected, candles, 3600);
   assert.deepEqual(outcome, { level: 'tp', at: 1800, label: 'TP REACHED · NO FILL', noFill: true });
   assert.deepEqual(buildScalpChartDisplays({ ...options, signals: [rejected], positions: [], candles, asOf: 3600 }), []);
@@ -145,5 +145,18 @@ test('legacy rejected drawings use the same corrected prices as the table withou
   assert.ok(Math.abs(displays[0].trade.entry - 3842.9375) < 1e-7);
   assert.ok(Math.abs(displays[1].trade.entry - 3844.31375) < 1e-7);
   assert.ok(displays.every(display => display.referenceOnly && display.trade.filledAt === undefined));
-  assert.ok(displays.every(display => display.statusText.includes('UPDATED PLAN') && display.statusText.includes('NO FILL')));
+  assert.ok(displays.every(display => display.statusText.includes('CHART: Waiting for candle data') && display.statusText.includes('MT5: Not executed')));
+});
+
+test('chart-filled rejected Scalp legs supply fill-time arrows independently of broker execution', () => {
+  const signals = ([10, 25] as const).map(leg => ({ ...signal, id: `legacy:P${leg}`, setupId: `SCALP_1_1:900:P${leg}`,
+    direction: 'SELL' as const, status: 'REJECTED' as const, entry: 3847.790, stopLoss: 3867.790, takeProfit: 3827.790,
+    scalpEntry: { version: 1 as const, leg, riskShare: leg === 10 ? 0.6 : 0.4,
+      referenceEntry: 3847.790, nextOpen: 3842.020, confirmationBody: 9.175 } }));
+  const displays = buildScalpChartDisplays({ ...options, positions: [], signals, asOf: 2700,
+    candles: [{ time: 1800, open: 3842.020, high: 3850, low: 3830, close: 3840, complete: true }] });
+  assert.equal(displays.length, 2);
+  assert.ok(displays.every(display => display.chartFilled && display.trade.filledAt === 1800 && display.markerTime === 1800));
+  assert.ok(displays.every(display => display.statusText === 'CHART: Filled · MT5: Not executed'));
+  assert.ok(displays.every(display => display.brokerTicket === undefined));
 });

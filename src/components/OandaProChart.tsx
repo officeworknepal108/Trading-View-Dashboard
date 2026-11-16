@@ -2,7 +2,7 @@ import { detectAutoTrendlines, type AutoTrendline } from '../services/autoTrendl
 import { buildIntradayPullbackSignals, intradayPullbackChartRecords } from '../services/intradayPullback';
 import { tradeToMt5Signal } from '../services/mt5Automation';
 import { buildScalpChartDisplays, scalpDisplayOutcome, scalpOutcomeExpired, scalpPositionSignal, type ScalpChartDisplay, type ScalpDisplayOutcome } from '../services/scalpChartDisplay';
-import { confirmedPullbackFill, currentPullbackDisplay, filledPullbackLegs, groupPullbackTableSignals, pullbackPlanStatus, scalpReplayTableSignals, type PullbackFillEvidence, type PullbackTableSignal } from '../services/pullbackEntryDisplay';
+import { chartExecutionStatus, chartPullbackState, confirmedPullbackFill, currentPullbackDisplay, filledPullbackLegs, groupPullbackTableSignals, scalpReplayTableSignals, type PullbackFillEvidence, type PullbackTableSignal } from '../services/pullbackEntryDisplay';
 export { detectAutoTrendlines } from '../services/autoTrendlines';
 import { TrendlineStudy } from './TrendlineStudy';
 import { VolumeEngulfingStudy } from './VolumeEngulfingStudy';
@@ -406,6 +406,7 @@ interface DirectZoneEntryDecision {
 }
 
 interface TradeOverlay {
+  chartFilled?: boolean;
   alwaysVisible?: boolean;
   displayOffset?: number;
   id: string;
@@ -837,15 +838,16 @@ export const TradeDetailsRow: React.FC<{
       zoneName: 'Entry details', zoneTimeframe: zoneTimeframe ?? trade.signal.timeframe,
       trade, now: trade.calculatedAt, pendingExpiryMinutes: 15 });
     const entries = buildIntradayPullbackSignals({ ...base, tradeStyle: 'INTRADAY' }, entryCandles);
-    const filled = filledPullbackLegs({ ...base, tradeStyle: 'INTRADAY' }, fillEvidence);
+    const filled = fillEvidence?.replay ? filledPullbackLegs({ ...base, tradeStyle: 'INTRADAY' }, fillEvidence) : new Set<number>();
     return (
       <tr className="border-t border-indigo-100 bg-indigo-50/70"><td colSpan={colSpan} className="px-2 py-1">
         <div className="flex flex-nowrap items-baseline gap-x-3 whitespace-nowrap text-[9px] font-black text-slate-700">
           {([10, 25] as const).map((leg, index) => {
             const entry = entries.find(candidate => candidate.intradayEntry?.leg === leg);
+            const chartFilled = !!entry && !!fillEvidence && chartPullbackState(entry, entryCandles, fillEvidence.asOf).status === 'filled';
             return <React.Fragment key={leg}>
               {index > 0 && <span aria-hidden="true">|</span>}
-              <span className="text-blue-700">{index === 0 ? '1st' : '2nd'} ENTRY<EntryFillTick filled={filled.has(leg)} /> <span className="tabular-nums font-bold text-slate-700">{entry ? formatPrice(entry.entry) : '—'}</span></span>
+              <span className="text-blue-700">{index === 0 ? '1st' : '2nd'} ENTRY<EntryFillTick filled={!referenceOnly && (chartFilled || filled.has(leg))} /> <span className="tabular-nums font-bold text-slate-700">{entry ? formatPrice(entry.entry) : '—'}</span></span>
               <span className="tabular-nums">SL {entry ? entry.riskPips.toFixed(2) : '—'} PIPS</span>
             </React.Fragment>;
           })}
@@ -866,8 +868,8 @@ export const TradeDetailsRow: React.FC<{
         )}
         <span className="text-blue-700">{mt5Signal?.intradayEntry || mt5Signal?.scalpEntry
           ? (mt5Signal.intradayEntry ?? mt5Signal.scalpEntry)!.leg === 10 ? '1st ENTRY' : '2nd ENTRY' : 'ENTRY'}
-          <EntryFillTick filled={!!mt5Signal && !!(mt5Signal.intradayEntry || mt5Signal.scalpEntry)
-            && confirmedPullbackFill(mt5Signal, fillEvidence?.asOf ?? Date.now() / 1000, fillEvidence?.positions)} /> <span className="tabular-nums font-bold text-slate-700">{formatPrice(trade.entry)}</span></span>
+          <EntryFillTick filled={!referenceOnly && !!mt5Signal && !!(mt5Signal.intradayEntry || mt5Signal.scalpEntry)
+            && chartPullbackState(mt5Signal, entryCandles, fillEvidence?.asOf ?? Date.now() / 1000).status === 'filled'} /> <span className="tabular-nums font-bold text-slate-700">{formatPrice(trade.entry)}</span></span>
         <span className="text-rose-700">SL <span className="tabular-nums font-bold text-slate-700">{formatPrice(trade.stopLoss)}</span></span>
         <span className="text-emerald-700">TP <span className="tabular-nums font-bold text-slate-700">{formatPrice(trade.takeProfit)}</span></span>
         <span>R:R 1:{trade.rewardRisk}</span>
@@ -916,21 +918,22 @@ export const PullbackSetupRows: React.FC<{
     const signal = group.entries[0], candles = entryCandles[signal.signalTimeframe] ?? [];
     const states = group.entries.map(entry => {
       const open = !entry.preview && positions.some(position => scalpPositionSignal(position, [entry], connection) !== undefined);
-      const outcome = scalpDisplayOutcome(entry, candles, asOf, open);
-      const filled = entry.simulatedFill === true && (entry.openedAt ?? Infinity) <= asOf
-        || confirmedPullbackFill(entry, asOf, positions);
-      return { signal: entry, outcome, filled };
+      const chart = chartPullbackState(entry, candles, asOf);
+      const chartExit = chart.outcome ?? chart.beforeEntryExit;
+      const outcome = chartExit ? { ...chartExit, label: `${chartExit.level === 'both' ? 'SL/TP' : chartExit.level.toUpperCase()} ${chart.outcome ? 'HIT' : 'REACHED BEFORE ENTRY'}`,
+        noFill: chart.outcome === undefined } : ['TP', 'SL'].includes(entry.status) ? scalpDisplayOutcome(entry, candles, asOf, open) : undefined;
+      const executed = confirmedPullbackFill(entry, asOf, positions);
+      const filled = chart.status === 'filled' || entry.simulatedFill === true && (entry.openedAt ?? Infinity) <= asOf;
+      return { signal: entry, outcome, filled, chart, executed };
     });
     const completed = states.every(state => state.outcome !== undefined);
     if (completed && states.every(state => scalpOutcomeExpired(state.outcome!, candles, signal.signalTimeframe, asOf))) return [];
     const entryName = (entry: PullbackTableSignal) => (entry.intradayEntry ?? entry.scalpEntry)?.leg === 25 ? '2nd' : '1st';
-    const status = (state: typeof states[number]) => state.outcome?.label
-      ?? pullbackPlanStatus(state.signal)
-      ?? (state.signal.simulatedFill ? 'CHART ONLY · ENTRY FILLED' : state.signal.preview ? 'CHART ONLY · LIMIT PREVIEW' : mt5SignalStatusLabel(state.signal));
+    const status = (state: typeof states[number]) => state.signal.displayPlan?.error
+      ? 'CHART: Entry outside limits · MT5: Not executed' : chartExecutionStatus(state.chart, state.executed, state.signal.status);
     const labels = states.map(status);
     const summary = labels.every(label => label === labels[0]) ? labels[0]
-      : states.every(state => !state.outcome && !state.signal.displayPlan && state.signal.status === 'REJECTED') ? 'ORDER REJECTED · BOTH ENTRIES'
-        : states.map(state => `${entryName(state.signal)}: ${status(state)}`).join(' · ');
+      : states.map(state => `${entryName(state.signal)}: ${status(state)}`).join(' · ');
     const leg = signal.intradayEntry ?? signal.scalpEntry;
     const stop = signal.initialStopLoss ?? signal.stopLoss;
     const slots = leg ? [10, 25] as const : [0] as const;
@@ -947,7 +950,7 @@ export const PullbackSetupRows: React.FC<{
           : signal.displayPlan ? '—' : formatPrice(leg?.referenceEntry ?? signal.executionPrice ?? signal.entry)}</td>
         <td className="px-2 py-1 text-center font-black">{signal.engulfingType}</td>
         <td title={states.map(state => `${entryName(state.signal)}: ${status(state)}${state.signal.displayPlan ? `\nOriginal entry: ${formatPrice(state.signal.displayPlan.previousEntry)}\nOriginal order: ${mt5SignalStatusLabel(state.signal)}` : ''}`).join('\n')}
-          className={`max-w-[380px] truncate px-2 py-1 text-right font-black ${completed && states.every(state => state.outcome?.level === 'tp')
+          className={`max-w-[380px] truncate px-2 py-1 text-right text-[6px] font-normal ${completed && states.every(state => state.outcome?.level === 'tp')
             ? 'text-emerald-700' : states.some(state => state.signal.status === 'REJECTED' || state.outcome?.level === 'sl')
               ? 'text-rose-700' : mt5SignalStatusClassName(signal)}`}>{summary}</td>
       </tr>
@@ -2163,7 +2166,8 @@ export const MultiTimeframeEntryTable: React.FC<{
                       {formatChartTime(position.openedAt, timeZone)}
                     </td>
                   </tr>
-                  <TradeDetailsRow trade={trade} colSpan={7} mtf mt5Signal={signal} fillEvidence={fillEvidence} />
+                  <TradeDetailsRow trade={trade} colSpan={7} mtf mt5Signal={signal} fillEvidence={fillEvidence}
+                    entryCandles={entryCandles[trade.signal.timeframe]} />
                 </React.Fragment>
               );
             })}
@@ -5883,8 +5887,8 @@ export const OandaProChart: React.FC<{
     return {
       time: candleTime as UTCTimestamp,
       position: bullish ? 'belowBar' as const : 'aboveBar' as const,
-      color: display?.referenceOnly ? '#b45309' : bullish ? '#059669' : '#e11d48',
-      shape: display?.referenceOnly ? 'circle' as const : bullish ? 'arrowUp' as const : 'arrowDown' as const,
+      color: display?.referenceOnly && !display.chartFilled ? '#b45309' : bullish ? '#059669' : '#e11d48',
+      shape: display?.referenceOnly && !display.chartFilled ? 'circle' as const : bullish ? 'arrowUp' as const : 'arrowDown' as const,
       text: display?.markerText ?? (style === 'SCALP_1_1' ? trade.result?.toUpperCase()
         : secondSetupLabel ? [trade.result?.toUpperCase(), secondSetupLabel].filter(Boolean).join(' · ')
         : trade.result?.toUpperCase() ?? (granularity === 'H1' && ['M15', 'M30'].includes(trade.signal.timeframe)
@@ -7402,7 +7406,7 @@ export const OandaProChart: React.FC<{
           fragment.appendChild(line);
         };
 
-        makeLevelLine(entryY, '#1e40af', `${overlay.referenceOnly ? 'SETUP ENTRY' : overlay.id.startsWith('GOLD_SCALP:') || overlay.label?.includes('SCALP') ? 'SCALP ENTRY' : 'ENTRY'} ${formatPrice(trade.entry)}`);
+        makeLevelLine(entryY, '#1e40af', `${overlay.chartFilled ? 'CHART ENTRY' : overlay.referenceOnly ? 'SETUP ENTRY' : overlay.id.startsWith('GOLD_SCALP:') || overlay.label?.includes('SCALP') ? 'SCALP ENTRY' : 'ENTRY'} ${formatPrice(trade.entry)}`);
         makeLevelLine(stopY, '#be123c', `${overlay.referenceOnly ? 'SL' : 'SL EXIT'} ${formatPrice(trade.stopLoss)}`);
         makeLevelLine(targetY, '#047857', `${overlay.referenceOnly ? 'TP' : 'TP EXIT'} ${formatPrice(trade.takeProfit)}`);
         const riskFreeY = trade.riskFreeEnabled === false

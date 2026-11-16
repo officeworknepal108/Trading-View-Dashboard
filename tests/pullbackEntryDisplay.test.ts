@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { confirmedPullbackFill, currentPullbackDisplay, filledPullbackLegs, groupPullbackTableSignals, pullbackPlanStatus, scalpReplayTableSignals } from '../src/services/pullbackEntryDisplay';
+import { chartExecutionStatus, chartPullbackState, confirmedPullbackFill, currentPullbackDisplay, filledPullbackLegs, groupPullbackTableSignals, pullbackPlanStatus, scalpReplayTableSignals } from '../src/services/pullbackEntryDisplay';
 import { scalpOutcomeExpired } from '../src/services/scalpChartDisplay';
 import type { Mt5StoredSignal, Mt5AutomationStatus } from '../src/services/mt5Automation';
 import type { JournalTradeRecord } from '../src/components/TradeJournal';
@@ -126,4 +126,53 @@ test('over-limit corrected plan cannot be displayed as an eligible entry', () =>
   const projected = currentPullbackDisplay(saved, 2000);
   assert.ok(projected.displayPlan?.error);
   assert.match(pullbackPlanStatus(projected)!, /OUTSIDE LIMITS.*NO ORDER/);
+});
+
+const chartBar = { time: 1800, open: 3010, high: 3015, low: 3008, close: 3012, complete: true };
+
+test('chart touch fills independently of broker rejection and each leg gets its own state', () => {
+  const rejected = { ...signal, status: 'REJECTED' as const };
+  const first = chartPullbackState(rejected, [chartBar], 2700);
+  assert.equal(first.status, 'filled'); assert.equal(first.filledAt, 1800);
+  assert.equal(chartExecutionStatus(first, false), 'CHART: Filled · MT5: Not executed');
+  assert.equal(confirmedPullbackFill(rejected, 2700), false);
+  const second = chartPullbackState({ ...rejected, entry: 3007.5 }, [chartBar], 2700);
+  assert.equal(second.status, 'expired'); assert.equal(second.filledAt, undefined);
+});
+
+test('both chart levels fill if touched during the window despite neither order executing', () => {
+  for (const entry of [3009, 3007.5]) {
+    const chart = chartPullbackState({ ...signal, entry, status: 'REJECTED' } as Mt5StoredSignal,
+      [{ ...chartBar, low: 3007 }], 2700);
+    assert.equal(chart.status, 'filled'); assert.equal(chart.outcome, undefined);
+  }
+});
+
+test('a late touch after expiry cannot become a chart fill', () => {
+  const chart = chartPullbackState(signal, [{ ...chartBar, low: 3009.5 },
+    { ...chartBar, time: 2700, low: 3000 }], 3600);
+  assert.equal(chart.status, 'expired'); assert.equal(chart.filledAt, undefined);
+});
+
+test('chart fills survive expiry until an actual chart exit is reached', () => {
+  const chart = chartPullbackState(signal, [chartBar, { ...chartBar, time: 2700, high: 3051, low: 3010 }], 3600);
+  assert.equal(chart.status, 'filled'); assert.deepEqual(chart.outcome, { level: 'tp', at: 2700 });
+});
+
+test('exit before entry and ambiguous same-bar ordering never generate false fill ticks', () => {
+  const before = chartPullbackState(signal, [{ ...chartBar, open: 3050, high: 3051, low: 3010, close: 3015 }], 2700);
+  assert.equal(before.status, 'expired'); assert.equal(before.beforeEntryExit?.level, 'tp');
+  const ambiguous = chartPullbackState(signal, [{ ...chartBar, high: 3051, low: 3008 }], 2700);
+  assert.equal(ambiguous.status, 'ambiguous'); assert.equal(ambiguous.filledAt, undefined);
+});
+
+test('future candle OHLC and missing window data cannot prove chart fills', () => {
+  assert.equal(chartPullbackState(signal, [chartBar], 2000).status, 'unavailable');
+  assert.equal(chartPullbackState(signal, [{ ...chartBar, complete: false }], 2000).status, 'filled');
+  assert.equal(chartPullbackState(signal, [{ ...chartBar, time: 2700 }], 3600).status, 'unavailable');
+});
+
+test('a data gap preserves a proven fill without inventing a later winning outcome', () => {
+  const chart = chartPullbackState(signal, [chartBar, { ...chartBar, time: 3600, high: 3051 }], 4500);
+  assert.equal(chart.status, 'filled'); assert.equal(chart.filledAt, 1800); assert.equal(chart.outcome, undefined);
 });

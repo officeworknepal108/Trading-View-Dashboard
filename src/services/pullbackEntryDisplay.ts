@@ -1,6 +1,70 @@
 import type { JournalTradeRecord } from '../components/TradeJournal';
 import { scalpPullbackSignalError, type Mt5AutomationStatus, type Mt5SignalInput, type Mt5StoredSignal } from './mt5Automation';
 import { intradayPullbackSignalError } from './intradayPullback';
+import { scalpPullbackBarStates } from './scalpOneToOne';
+import type { StructureCandle } from './marketStructure';
+
+export interface ChartPullbackState {
+  status: 'filled' | 'waiting' | 'expired' | 'ambiguous' | 'unavailable';
+  filledAt?: number;
+  outcome?: { level: 'tp' | 'sl' | 'both'; at: number };
+  beforeEntryExit?: { level: 'tp' | 'sl' | 'both'; at: number };
+}
+
+/** Chart simulation only; independent of rejection, lot size and broker execution. */
+export function chartPullbackState(signal: Mt5SignalInput, candles: readonly StructureCandle[], asOf: number): ChartPullbackState {
+  const seconds = signal.signalTimeframe === 'D' ? 86400
+    : Number(signal.signalTimeframe.slice(1)) * (signal.signalTimeframe.startsWith('H') ? 3600 : 60);
+  if (signal.calculatedAt > asOf) return { status: 'waiting' };
+  if (!(signal.scalpEntry || signal.intradayEntry) || !(signal.expiresAt > signal.calculatedAt)
+    || ![signal.entry, signal.stopLoss, signal.takeProfit].every(value => Number.isFinite(value) && value > 0)) return { status: 'unavailable' };
+  const sign = signal.direction === 'BUY' ? 1 : -1;
+  if (sign * (signal.entry - signal.stopLoss) <= 0 || sign * (signal.takeProfit - signal.entry) <= 0) return { status: 'unavailable' };
+  const bars = [...new Map(candles.filter(c => c.time >= signal.calculatedAt && c.time <= asOf
+    && (c.complete === false || c.time + seconds <= asOf)).map(c => [c.time, c])).values()].sort((a, b) => a.time - b.time);
+  if (!bars.length || bars[0].time !== signal.calculatedAt) return { status: 'unavailable' };
+  if (sign * (bars[0].open - signal.stopLoss) <= 0 || sign * (signal.takeProfit - bars[0].open) <= 0)
+    return { status: 'expired', beforeEntryExit: {
+      level: sign * (bars[0].open - signal.stopLoss) <= 0 ? 'sl' : 'tp', at: bars[0].time } };
+  type Path = { mask: number; exit: number; filledAt?: number; exitAt?: number };
+  let paths: Path[] = [{ mask: 0, exit: 0 }];
+  let previousTime: number | undefined;
+  for (const bar of bars) {
+    // A data gap cannot prove a new fill or establish which exit happened first.
+    if (previousTime !== undefined && bar.time > previousTime + seconds && paths.some(path => !path.exit)) {
+      if (paths.every(path => path.mask)) return { status: 'filled', filledAt: Math.max(...paths.map(path => path.filledAt!)) };
+      if (paths.some(path => path.mask)) return { status: 'ambiguous' };
+      return { status: previousTime + seconds >= signal.expiresAt ? 'expired' : 'unavailable' };
+    }
+    previousTime = bar.time;
+    const next = paths.flatMap(path => path.exit ? [path] : scalpPullbackBarStates(bar, [signal], path.mask,
+      bar.time < signal.expiresAt).map(state => ({ ...state,
+      filledAt: path.filledAt ?? (state.mask ? bar.time : undefined), exitAt: state.exit ? bar.time : undefined })));
+    paths = [...new Map(next.map(path => [`${path.mask}:${path.exit}:${path.filledAt}:${path.exitAt}`, path])).values()];
+    if (!paths.length) return { status: 'unavailable' };
+    if (paths.every(path => path.exit)) break;
+  }
+  const allFilled = paths.every(path => path.mask !== 0), anyFilled = paths.some(path => path.mask !== 0);
+  const exit = paths.every(path => path.exit !== 0) ? {
+    level: new Set(paths.map(path => path.exit)).size > 1 ? 'both' as const : paths[0].exit === 1 ? 'tp' as const : 'sl' as const,
+    at: Math.max(...paths.map(path => path.exitAt!)),
+  } : undefined;
+  if (allFilled) return { status: 'filled', filledAt: Math.max(...paths.map(path => path.filledAt!)), outcome: exit };
+  if (anyFilled) return { status: 'ambiguous' };
+  if (!exit && asOf >= signal.expiresAt && (previousTime! + seconds < signal.expiresAt
+    || bars.some(bar => bar.time < signal.expiresAt && bar.complete === false))) return { status: 'unavailable' };
+  return { status: asOf >= signal.expiresAt || exit ? 'expired' : 'waiting', beforeEntryExit: exit };
+}
+
+export function chartExecutionStatus(chart: ChartPullbackState, executed: boolean, brokerStatus?: Mt5StoredSignal['status']): string {
+  const level = chart.outcome?.level ?? chart.beforeEntryExit?.level;
+  const name = level === 'tp' ? 'TP' : level === 'sl' ? 'SL' : 'SL/TP';
+  const state = chart.outcome ? `${name} HIT` : chart.beforeEntryExit ? `${name} reached before entry`
+    : chart.status === 'filled' ? 'Filled' : chart.status === 'waiting' ? 'Waiting'
+      : chart.status === 'expired' ? 'Entry expired' : chart.status === 'ambiguous' ? 'Fill uncertain' : 'Waiting for candle data';
+  const broker = executed ? brokerStatus === 'TP' || brokerStatus === 'SL' ? `${brokerStatus} HIT` : 'Executed' : 'Not executed';
+  return `CHART: ${state} · MT5: ${broker}`;
+}
 
 type Positions = readonly Mt5AutomationStatus['positions'][number][];
 export type PullbackTableSignal = Mt5StoredSignal & { preview?: boolean; simulatedFill?: boolean;
