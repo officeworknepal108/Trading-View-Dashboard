@@ -950,7 +950,7 @@ export const PullbackSetupRows: React.FC<{
           : signal.displayPlan ? '—' : formatPrice(leg?.referenceEntry ?? signal.executionPrice ?? signal.entry)}</td>
         <td className="px-2 py-1 text-center font-black">{signal.engulfingType}</td>
         <td title={states.map(state => `${entryName(state.signal)}: ${status(state)}${state.signal.displayPlan ? `\nOriginal entry: ${formatPrice(state.signal.displayPlan.previousEntry)}\nOriginal order: ${mt5SignalStatusLabel(state.signal)}` : ''}`).join('\n')}
-          className={`max-w-[380px] truncate px-2 py-1 text-right text-[6px] font-normal ${completed && states.every(state => state.outcome?.level === 'tp')
+          className={`max-w-[380px] truncate px-2 py-1 text-right text-[8px] font-normal ${completed && states.every(state => state.outcome?.level === 'tp')
             ? 'text-emerald-700' : states.some(state => state.signal.status === 'REJECTED' || state.outcome?.level === 'sl')
               ? 'text-rose-700' : mt5SignalStatusClassName(signal)}`}>{summary}</td>
       </tr>
@@ -2883,7 +2883,7 @@ export const OandaProChart: React.FC<{
   const [telegramMessagesEnabled, setTelegramMessagesEnabled] = useState(true);
   const [showInvalidZones, setShowInvalidZones] = useState(false);
   const [showTradeLevels, setShowTradeLevels] = useState(true);
-  const [showScalpOneToOneArrows, setShowScalpOneToOneArrows] = useState(false);
+  const [showScalpOneToOneArrows, setShowScalpOneToOneArrows] = useState(true);
   const [showOtherEntryArrows, setShowOtherEntryArrows] = useState(false);
   const showEntryArrows = showScalpOneToOneArrows || showOtherEntryArrows;
   const enableEntryArrows = () => {
@@ -5258,7 +5258,7 @@ export const OandaProChart: React.FC<{
     };
     // An open broker position owns its drawing, including after partial RF.
     if (replayIndex === null) liveMt5TradeOverlays.forEach(addOverlay);
-    scalpChartDisplays.filter(item => item.referenceOnly).forEach(addOverlay);
+    scalpChartDisplays.filter(item => item.referenceOnly && !item.markerOnly).forEach(addOverlay);
     // A final exit starts the drawing's five-completed-candle retention window.
     for (const record of deduplicateTradeRecords<JournalTradeRecord>(visibleSavedJournalTrades)) {
       if (!['sl', 'tp', 'rf', 'risk-free'].includes(record.result)
@@ -5592,14 +5592,21 @@ export const OandaProChart: React.FC<{
     const visibleIds = visibleAccuracyRecordIds === null
       ? null : new Set<string>(visibleAccuracyRecordIds);
     for (const item of scalpChartDisplays) {
+      if (item.markerOnly && chartEntryRecords.some(record => record.tradeStyle === 'SCALP_1_1'
+        && (record.mt5Managed || record.brokerTicket !== undefined) && record.signalAt === item.trade.signal.time
+        && record.signalTimeframe === item.trade.signal.timeframe && record.direction === item.trade.signal.direction
+        && record.scalpEntry?.leg === item.entryLeg)) continue;
       add(item.id, item.trade, item.statusText, 'Scalp setup', 'Not recorded', item.style, false, item.markerTime, item);
     }
     for (const record of chartEntryRecords) {
-      if (record.tradeStyle === 'SCALP_1_1' && ['tp', 'sl'].includes(record.result)) continue;
+      if (record.tradeStyle === 'SCALP_1_1' && scalpChartDisplays.some(item => entries.has(item.id) && item.chartFilled
+        && item.trade.signal.time === record.signalAt && item.trade.signal.timeframe === record.signalTimeframe
+        && item.trade.signal.direction === record.direction
+        && (item.entryLeg === undefined || item.entryLeg === record.scalpEntry?.leg))) continue;
       if (scalpChartDisplays.some(item => item.kind === 'live' && record.brokerTicket === item.brokerTicket)) continue;
       if (blockedGoldHistoricalTrade(record)) continue;
       const active = record.result === 'open' || record.result === 'risk-free';
-      if (!active && visibleIds !== null && !visibleIds.has(record.id)) continue;
+      if (!active && record.tradeStyle !== 'SCALP_1_1' && visibleIds !== null && !visibleIds.has(record.id)) continue;
       const signalAt = record.signalAt!;
       const projected = record.signalTimeframe !== granularity;
       const risk = Math.abs(record.entry - record.stopLoss);
@@ -5635,7 +5642,8 @@ export const OandaProChart: React.FC<{
         [record.fibSource, record.fibBand].filter(Boolean).join(' · ') || 'Not recorded',
         record.tradeStyle ?? 'INTRADAY',
         tradingTimeEnabled && accuracyRecordOutsideTradingTime(record),
-        projected ? record.openedAt ?? signalAt + TIMEFRAME_SECONDS[record.signalTimeframe]
+        record.tradeStyle === 'SCALP_1_1' ? record.openedAt ?? signalAt
+          : projected ? record.openedAt ?? signalAt + TIMEFRAME_SECONDS[record.signalTimeframe]
           : signalAt);
     }
     if (replayIndex === null && marketSymbol !== 'XAUUSD') {

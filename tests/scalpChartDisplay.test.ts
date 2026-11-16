@@ -160,3 +160,34 @@ test('chart-filled rejected Scalp legs supply fill-time arrows independently of 
   assert.ok(displays.every(display => display.statusText === 'CHART: Filled · MT5: Not executed'));
   assert.ok(displays.every(display => display.brokerTicket === undefined));
 });
+
+test('completed chart entries retain historical arrows beyond five candles and one day without drawings', () => {
+  for (const level of ['tp', 'sl'] as const) {
+    const candles = [
+      { time: 1800, open: 3010, high: 3015, low: 3008, close: 3012, complete: true },
+      { time: 2700, open: 3012, high: level === 'tp' ? 3031 : 3015,
+        low: level === 'tp' ? 3010 : 2989, close: level === 'tp' ? 3030 : 2990, complete: true },
+    ];
+    const [display] = buildScalpChartDisplays({ ...options, positions: [], asOf: 100000, candles,
+      signals: [{ ...signal, status: 'REJECTED' }] });
+    assert.ok(display);
+    assert.equal(display.markerOnly, true);
+    assert.equal(display.chartFilled, true);
+    assert.equal(display.markerTime, 1800);
+    assert.equal(display.trade.result, level);
+    assert.equal(display.trade.resolvedAt, 2700);
+    assert.match(display.markerText, new RegExp(level.toUpperCase()));
+    assert.equal(display.alwaysVisible, false, 'historical arrows follow the history visibility switch');
+  }
+});
+
+test('completed legacy single-entry setups retain their filled-entry arrow', () => {
+  const [display] = buildScalpChartDisplays({ ...options, positions: [], asOf: 100000,
+    signals: [{ ...signal, orderType: 'MARKET', scalpEntry: undefined, status: 'REJECTED' }],
+    candles: [
+      { time: 1800, open: 3009, high: 3015, low: 3008, close: 3012, complete: true },
+      { time: 2700, open: 3012, high: 3031, low: 3010, close: 3030, complete: true },
+    ] });
+  assert.equal(display.markerOnly, true); assert.equal(display.trade.result, 'tp');
+  assert.equal(display.markerTime, 1800); assert.equal(display.entryLeg, undefined);
+});

@@ -157,7 +157,7 @@ test('the saved rejected setup visibly shows the updated 10/25 plan, correct pip
   assert.doesNotMatch(html, /aria-label="Entry filled"/);
 });
 
-test('chart-filled Scalp entries tick despite MT5 rejection and status uses 6px regular text', () => {
+test('chart-filled Scalp entries tick despite MT5 rejection and status uses 8px regular text', () => {
   const base = tradeToMt5Signal({ source: 'ENGULFING', setupId: 'SCALP_1_1:900', zoneName: 'Scalp 1:1',
     zoneTimeframe: 'M15', trade, now: 1800, pendingExpiryMinutes: 15 });
   const signals = ([10, 25] as const).map(leg => ({ ...base, id: `${base.id}:P${leg}`, setupId: `${base.setupId}:P${leg}`,
@@ -172,7 +172,7 @@ test('chart-filled Scalp entries tick despite MT5 rejection and status uses 6px 
   }));
   assert.equal((html.match(/aria-label="Entry filled"/g) ?? []).length, 2);
   assert.match(text(html), /CHART: Filled · MT5: Not executed/);
-  assert.match(html, /text-\[6px\] font-normal/);
+  assert.match(html, /text-\[8px\] font-normal/);
 });
 
 test('old single-entry Scalp shows its chart result, then disappears after five completed candles', () => {

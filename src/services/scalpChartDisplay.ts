@@ -43,6 +43,8 @@ export function scalpDisplayOutcome(signal: Mt5StoredSignal, candles: readonly S
 }
 
 export interface ScalpChartDisplay {
+  markerOnly?: boolean;
+  entryLeg?: 10 | 25;
   chartFilled?: boolean;
   id: string;
   symbol: 'XAUUSD';
@@ -58,7 +60,7 @@ export interface ScalpChartDisplay {
   markerText: string;
   statusText: string;
   brokerTicket?: number;
-  alwaysVisible: true;
+  alwaysVisible: boolean;
   displayOffset: number;
 }
 
@@ -122,6 +124,7 @@ export function buildScalpChartDisplays(options: {
     result.push({ id: `MT5:${position.ticket}`, symbol: 'XAUUSD', setupId: position.setupId ?? signal?.setupId,
       chartTimeframe: timeframe, zoneTimeframe, referenceOnly: false, kind: 'live', style,
       alwaysVisible: true, displayOffset: 0, brokerTicket: position.ticket,
+      entryLeg: leg,
       label: `${name} · ${statusText} · #${position.ticket}${leg ? ` · ${leg}% PULLBACK` : ''}`,
       markerTime: openedAt, markerText: `${name} ${position.direction} #${position.ticket}${leg ? ` P${leg}` : ''}`,
       statusText,
@@ -140,7 +143,8 @@ export function buildScalpChartDisplays(options: {
     && (['QUEUED', 'CLAIMED', 'PLACED'].includes(s.status)
       && (s.expiresAt > asOf || chartPullbackState(s, options.candles ?? [], asOf).status === 'filled')
       || ['EXPIRED', 'CANCELLED'].includes(s.status) && chartPullbackState(s, options.candles ?? [], asOf).status === 'filled'
-      || ['REJECTED', 'SIMULATED'].includes(s.status) && asOf - s.calculatedAt <= 86400));
+      || ['REJECTED', 'SIMULATED'].includes(s.status) && (asOf - s.calculatedAt <= 86400
+        || chartPullbackState(s, options.candles ?? [], asOf).status === 'filled')));
   const newest = Math.max(-Infinity, ...current.map(s => s.signalAt),
     ...(options.previews ?? []).filter(s => s.tradeStyle === 'SCALP_1_1'
       && s.signalTimeframe === timeframe && s.expiresAt > asOf && s.calculatedAt <= asOf).map(s => s.signalAt));
@@ -158,29 +162,32 @@ export function buildScalpChartDisplays(options: {
     if (signal.displayPlan?.error) continue;
     if (representedIds.has(signal.id) || signal.setupId && representedSetups.has(signal.setupId) || seen.has(signal.id)) continue;
     const chart = chartPullbackState(signal, options.candles ?? [], asOf);
-    if (chart.outcome || chart.beforeEntryExit) continue;
-    if (!signal.scalpEntry && scalpDisplayOutcome({ ...signal, status: signal.displayState === 'PREVIEW' ? 'SIMULATED'
+    const chartFilled = chart.status === 'filled';
+    const markerOnly = chartFilled && chart.outcome !== undefined;
+    if (chart.beforeEntryExit || chart.outcome && !chartFilled) continue;
+    if (!chartFilled && !signal.scalpEntry && scalpDisplayOutcome({ ...signal, status: signal.displayState === 'PREVIEW' ? 'SIMULATED'
       : signal.displayState as Mt5StoredSignal['status'], createdAt: signal.calculatedAt,
       updatedAt: signal.calculatedAt }, options.candles ?? [], asOf)) continue;
     if (![signal.entry, signal.stopLoss, signal.takeProfit].every(v => Number.isFinite(v) && v > 0)) continue;
     seen.add(signal.id);
     const rejected = signal.displayState === 'REJECTED';
     const preview = signal.displayState === 'PREVIEW' || signal.displayState === 'SIMULATED';
-    const chartFilled = chart.status === 'filled';
     const statusText = signal.scalpEntry || chart.status !== 'unavailable' ? chartExecutionStatus(chart, false)
       : rejected ? 'ORDER REJECTED · NO FILL' : preview ? 'CHART SETUP ONLY · NO BROKER FILL' : 'MT5 PENDING LIMIT · NOT FILLED';
     const leg = signal.scalpEntry?.leg;
     result.push({ id: `SCALP_SETUP:${signal.id}`, symbol: 'XAUUSD', setupId: signal.setupId,
-      chartTimeframe: timeframe, zoneTimeframe: signal.zoneTimeframe, referenceOnly: true, chartFilled,
+      chartTimeframe: timeframe, zoneTimeframe: signal.zoneTimeframe, referenceOnly: true, chartFilled, markerOnly, entryLeg: leg,
       kind: rejected ? 'rejected' : preview ? 'preview' : 'pending', style: 'SCALP_1_1',
-      alwaysVisible: true, displayOffset: 0, statusText,
+      alwaysVisible: !markerOnly, displayOffset: 0, statusText,
       label: `SCALP 1:1 · ${statusText}${leg ? ` · ${leg}% PULLBACK` : ''}`,
       markerTime: chartFilled ? chart.filledAt! : signal.signalAt,
-      markerText: chartFilled ? `SCALP ${signal.direction} ${leg === 25 ? '2nd' : '1st'} ENTRY · CHART FILLED · MT5: Not executed`
+      markerText: chartFilled ? `SCALP ${signal.direction} ${leg === 25 ? '2nd' : leg === 10 ? '1st' : ''} ENTRY · ${chart.outcome ? chart.outcome.level.toUpperCase() : 'CHART FILLED'} · MT5: Not executed`
         : `SCALP ${signal.direction} ${signal.displayPlan ? 'PLAN' : 'SETUP'}${leg ? ` P${leg}` : ''}${rejected && !signal.displayPlan ? ' · REJECTED' : ''}`,
       trade: { entry: signal.entry, stopLoss: signal.stopLoss, takeProfit: signal.takeProfit,
         riskFree: signal.takeProfit, riskFreeEnabled: false, rewardRisk: signal.rewardRisk,
-        riskPips: signal.riskPips, status: chartFilled ? 'active' : 'pending', pendingAtCreation: true,
+        riskPips: signal.riskPips, status: chart.outcome?.level === 'tp' ? 'tp-hit' : chart.outcome?.level === 'sl' ? 'sl-hit' : chartFilled ? 'active' : 'pending',
+        result: chart.outcome?.level === 'tp' || chart.outcome?.level === 'sl' ? chart.outcome.level : undefined,
+        resolvedAt: chart.outcome?.at, pendingAtCreation: true,
         calculatedAt: chart.filledAt ?? signal.calculatedAt, filledAt: chart.filledAt,
         signal: { type: signal.engulfingType as TradeLevels['signal']['type'], time: signal.signalAt,
           timeframe: signal.signalTimeframe, direction: signal.direction === 'BUY' ? 'bullish' : 'bearish',
