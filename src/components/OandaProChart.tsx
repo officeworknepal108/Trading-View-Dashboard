@@ -2,7 +2,7 @@ import { detectAutoTrendlines, type AutoTrendline } from '../services/autoTrendl
 import { buildIntradayPullbackSignals, intradayPullbackChartRecords } from '../services/intradayPullback';
 import { tradeToMt5Signal } from '../services/mt5Automation';
 import { buildScalpChartDisplays, scalpDisplayOutcome, scalpOutcomeExpired, scalpPositionSignal, type ScalpChartDisplay, type ScalpDisplayOutcome } from '../services/scalpChartDisplay';
-import { confirmedPullbackFill, filledPullbackLegs, scalpReplayTableSignals, type PullbackFillEvidence } from '../services/pullbackEntryDisplay';
+import { confirmedPullbackFill, filledPullbackLegs, groupPullbackTableSignals, scalpReplayTableSignals, type PullbackFillEvidence, type PullbackTableSignal } from '../services/pullbackEntryDisplay';
 export { detectAutoTrendlines } from '../services/autoTrendlines';
 import { TrendlineStudy } from './TrendlineStudy';
 import { VolumeEngulfingStudy } from './VolumeEngulfingStudy';
@@ -899,6 +899,75 @@ export const ScalpOutcomeRow: React.FC<{ outcome: ScalpDisplayOutcome; signal: M
     </td>
   </tr>
 );
+
+export const PullbackSetupRows: React.FC<{
+  signals: readonly PullbackTableSignal[];
+  style: 'SCALP_1_1' | 'INTRADAY';
+  asOf: number;
+  entryCandles: Partial<Record<TradeTimeframe, readonly OandaCandle[]>>;
+  positions?: Mt5AutomationStatus['positions'];
+  connection?: Pick<Mt5StoredSignal, 'account' | 'server' | 'brokerSymbol'>;
+  timeZone: ChartTimeZone;
+  limit?: number;
+}> = ({ signals, style, asOf, entryCandles, positions = [], connection = {}, timeZone, limit = 8 }) => {
+  const groups = groupPullbackTableSignals(signals.filter(signal => signal.signalAt <= asOf), connection);
+  return <>{groups.flatMap(group => {
+    const signal = group.entries[0], candles = entryCandles[signal.signalTimeframe] ?? [];
+    const states = group.entries.map(entry => {
+      const open = !entry.preview && positions.some(position => scalpPositionSignal(position, [entry], connection) !== undefined);
+      const outcome = scalpDisplayOutcome(entry, candles, asOf, open);
+      const filled = entry.simulatedFill === true && (entry.openedAt ?? Infinity) <= asOf
+        || confirmedPullbackFill(entry, asOf, positions);
+      return { signal: entry, outcome, filled };
+    });
+    const completed = states.every(state => state.outcome !== undefined);
+    if (completed && states.every(state => scalpOutcomeExpired(state.outcome!, candles, signal.signalTimeframe, asOf))) return [];
+    const entryName = (entry: PullbackTableSignal) => (entry.intradayEntry ?? entry.scalpEntry)?.leg === 25 ? '2nd' : '1st';
+    const status = (state: typeof states[number]) => state.outcome?.label
+      ?? (state.signal.simulatedFill ? 'CHART ONLY · ENTRY FILLED' : state.signal.preview ? 'CHART ONLY · LIMIT PREVIEW' : mt5SignalStatusLabel(state.signal));
+    const labels = states.map(status);
+    const summary = labels.every(label => label === labels[0]) ? labels[0]
+      : states.every(state => !state.outcome && state.signal.status === 'REJECTED') ? 'ORDER REJECTED · BOTH ENTRIES'
+        : states.map(state => `${entryName(state.signal)}: ${status(state)}`).join(' · ');
+    const leg = signal.intradayEntry ?? signal.scalpEntry;
+    const stop = signal.initialStopLoss ?? signal.stopLoss;
+    const slots = leg ? [10, 25] as const : [0] as const;
+    return [<React.Fragment key={group.key}>
+      <tr className={`border-t ${style === 'SCALP_1_1' ? 'border-cyan-200 bg-cyan-50/80' : 'border-indigo-200 bg-indigo-50/80'}`}>
+        <td className={`px-2 py-1 font-black ${style === 'SCALP_1_1' ? 'text-cyan-800' : 'text-indigo-800'}`}>
+          <div>{style === 'SCALP_1_1' ? 'SCALP 1:1' : 'INTRADAY'} · {signal.signalTimeframe}</div>
+          <div className="text-[8px] font-semibold text-slate-500">{formatAccuracyTradeTime(signal.calculatedAt, timeZone)}</div>
+        </td>
+        <td className={`px-2 py-1 font-bold ${signal.direction === 'BUY' ? 'text-emerald-700' : 'text-rose-700'}`}>{signal.direction}</td>
+        <td className="px-2 py-1 font-bold text-blue-700">{formatPrice(leg?.referenceEntry ?? signal.executionPrice ?? signal.entry)}</td>
+        <td className="px-2 py-1 text-center font-black">{signal.engulfingType}</td>
+        <td title={states.map(state => `${entryName(state.signal)}: ${status(state)}`).join('\n')}
+          className={`max-w-[380px] truncate px-2 py-1 text-right font-black ${completed && states.every(state => state.outcome?.level === 'tp')
+            ? 'text-emerald-700' : states.some(state => state.signal.status === 'REJECTED' || state.outcome?.level === 'sl')
+              ? 'text-rose-700' : mt5SignalStatusClassName(signal)}`}>{summary}</td>
+      </tr>
+      {!completed && <tr className="border-t border-indigo-100 bg-indigo-50/70"><td colSpan={5} className="px-2 py-1">
+        <div className="flex flex-nowrap items-baseline gap-x-3 whitespace-nowrap text-[9px] font-black text-slate-700">
+          {slots.map((slot, index) => {
+            const state = states.find(candidate => (candidate.signal.intradayEntry ?? candidate.signal.scalpEntry)?.leg === slot
+              || slot === 0 && !(candidate.signal.intradayEntry ?? candidate.signal.scalpEntry));
+            const price = state ? state.signal.executionPrice ?? state.signal.entry : undefined;
+            return <React.Fragment key={slot}>
+              {index > 0 && <span aria-hidden="true">|</span>}
+              <span className="text-blue-700">{slot === 10 ? '1st ENTRY' : slot === 25 ? '2nd ENTRY' : 'ENTRY'}
+                <EntryFillTick filled={state?.filled === true && !state.outcome} />{' '}
+                <span className="tabular-nums font-normal text-slate-700">{state?.outcome ? state.outcome.label : price !== undefined ? formatPrice(price) : '—'}</span>
+              </span>
+              {state && !state.outcome && price !== undefined && <span className="tabular-nums">SL {(Math.abs(price - stop) * 10).toFixed(2)} PIPS</span>}
+            </React.Fragment>;
+          })}
+          <span aria-hidden="true">|</span><span className="text-rose-700">SL <span className="font-normal tabular-nums text-slate-700">{formatPrice(stop)}</span></span>
+          <span aria-hidden="true">|</span><span className="text-emerald-700">TP <span className="font-normal tabular-nums text-slate-700">{formatPrice(signal.takeProfit)}</span></span>
+        </div>
+      </td></tr>}
+    </React.Fragment>];
+  }).slice(0, limit)}</>;
+};
 
 function displayZoneName(
   name: string,
@@ -8981,72 +9050,18 @@ export const OandaProChart: React.FC<{
       && signal.server === mt5Status?.bridge.server && signal.brokerSymbol === mt5Status?.bridge.brokerSymbol),
     positions: mt5Status?.positions ?? [],
   };
+  const pullbackTableCandles = Object.fromEntries(AUTOMATION_GRANULARITIES
+    .map(timeframe => [timeframe, tableTimeframeData[timeframe]?.candles])) as Partial<Record<TradeTimeframe, readonly OandaCandle[]>>;
   const zoneTableContent = (
     <>
-    {replayIndex === null && marketSymbol === 'XAUUSD' && intradayEnabled && intradayTableSignals
-      .filter(signal => signal.signalAt <= tradeDisplayAsOf && (signal.signalTimeframe === granularity || signal.zoneTimeframe === granularity)
-        && !tradeDisplayExpired(signal, displayCandles, tradeDisplayAsOf))
-      .sort((a, b) => b.signalAt - a.signalAt).slice(0, 12).map(signal => (
-        <React.Fragment key={`intraday-pullback-${signal.id}`}>
-          <tr className="border-t border-indigo-200 bg-indigo-50/80">
-            <td className="px-2 py-1 font-black text-indigo-800">INTRADAY · {signal.intradayEntry!.leg}% PULLBACK
-              <div className="text-[8px]">{Math.round(signal.intradayEntry!.riskShare * 100)}% of total setup risk</div></td>
-            <td className={`px-2 py-1 font-bold ${signal.direction === 'BUY' ? 'text-emerald-700' : 'text-rose-700'}`}>{signal.direction}</td>
-            <td className="px-2 py-1 font-bold text-blue-700">{formatPrice(signal.executionPrice ?? signal.entry)}</td>
-            <td className="px-2 py-1 text-center font-black">{signal.signalTimeframe} {signal.engulfingType}</td>
-            <td className={`px-2 py-1 text-right font-black ${mt5SignalStatusClassName(signal)}`}>{signal.preview ? 'CHART ONLY · LIMIT PREVIEW' : mt5SignalStatusLabel(signal)}</td>
-          </tr>
-          <TradeDetailsRow colSpan={5} mt5Signal={signal.preview ? undefined : signal} fillEvidence={pullbackFillEvidence}
-            trade={{ entry: signal.executionPrice ?? signal.entry, stopLoss: signal.stopLoss, takeProfit: signal.takeProfit,
-              riskFree: signal.riskFree, riskFreeEnabled: false, riskPips: signal.riskPips, rewardRisk: signal.rewardRisk,
-              status: signal.status === 'TP' ? 'tp-hit' : signal.status === 'SL' ? 'sl-hit' : 'pending',
-              pendingAtCreation: true, calculatedAt: signal.calculatedAt,
-              signal: { type: signal.engulfingType as EngulfingTradeSignal['type'], direction: signal.direction === 'BUY' ? 'bullish' : 'bearish',
-                time: signal.signalAt, timeframe: signal.signalTimeframe, candleCount: signal.engulfingType === 'T1' ? 2 : 3 } }} />
-        </React.Fragment>
-      ))}
-    {marketSymbol === 'XAUUSD' && scalpOneToOneEnabled
-      && granularity === 'M15' && scalpOneToOneTableSignals
-        .filter(signal => signal.signalAt <= tradeDisplayAsOf
-          && !tradeDisplayExpired(signal, displayCandles, tradeDisplayAsOf))
-        .sort((a, b) => b.signalAt - a.signalAt).slice(0, 8).map(signal => {
-          const hasOpenPosition = replayIndex === null && (mt5Status?.positions ?? []).some(position =>
-            scalpPositionSignal(position, [signal], mt5Status?.bridge ?? {}) !== undefined);
-          const outcome = scalpDisplayOutcome(signal, tableTimeframeData[signal.signalTimeframe]?.candles ?? [],
-            tradeDisplayAsOf, hasOpenPosition);
-          if (outcome) return scalpOutcomeExpired(outcome, tableTimeframeData[signal.signalTimeframe]?.candles ?? [],
-            signal.signalTimeframe, tradeDisplayAsOf) ? null
-            : <ScalpOutcomeRow key={`scalp-1-1-${signal.id}`} outcome={outcome} signal={signal} />;
-          const trade: TradeLevels = {
-            entry: signal.executionPrice ?? signal.entry, stopLoss: signal.stopLoss,
-            takeProfit: signal.takeProfit, riskFree: signal.takeProfit, riskFreeEnabled: false,
-            riskPips: signal.riskPips, rewardRisk: signal.rewardRisk,
-            status: signal.status === 'TP' ? 'tp-hit' : signal.status === 'SL' ? 'sl-hit'
-              : ['ACTIVE', 'RISK_FREE'].includes(signal.status) ? 'active' : 'pending',
-            pendingAtCreation: signal.orderType === 'LIMIT', calculatedAt: signal.calculatedAt,
-            filledAt: signal.openedAt, resolvedAt: signal.closedAt,
-            signal: { type: signal.engulfingType as EngulfingTradeSignal['type'],
-              direction: signal.direction === 'BUY' ? 'bullish' : 'bearish',
-              timeframe: 'M15', time: signal.signalAt, candleCount: signal.engulfingType === 'T1' ? 2 : 3 },
-          };
-          return <React.Fragment key={`scalp-1-1-${signal.id}`}>
-            <tr className="border-t border-cyan-200 bg-cyan-50/80">
-              <td className="px-2 py-1 font-black text-cyan-800"><div>SCALP 1:1 · M15</div>
-                {signal.scalpEntry && <div className="text-[8px]">{signal.scalpEntry.leg}% pullback · {Math.round(signal.scalpEntry.riskShare * 100)}% of setup risk</div>}
-                <div className="text-[8px] font-semibold text-slate-500">{formatAccuracyTradeTime(signal.calculatedAt, chartTimeZone)}</div></td>
-              <td className={`px-2 py-1 font-bold ${signal.direction === 'BUY' ? 'text-emerald-700' : 'text-rose-700'}`}>{signal.direction}</td>
-              <td className="px-2 py-1 font-bold text-blue-700">{formatPrice(trade.entry)}</td>
-              <td className="px-2 py-1 text-center font-black">{signal.engulfingType}</td>
-              <td className={`px-2 py-1 text-right font-black ${mt5SignalStatusClassName(signal)}`}>{signal.simulatedFill ? 'CHART ONLY · ENTRY FILLED' : signal.preview ? 'SETUP CONFIRMED · CHART ONLY' : mt5SignalStatusLabel(signal)}</td>
-            </tr>
-            {signal.preview ? <tr className="border-t border-indigo-100 bg-indigo-50/70"><td colSpan={5} className="px-2 py-1 text-[9px] font-black text-slate-700">
-              <span className="text-blue-700">{signal.scalpEntry?.leg === 10 ? '1st ENTRY' : signal.scalpEntry?.leg === 25 ? '2nd ENTRY' : 'ENTRY'}<EntryFillTick filled={signal.simulatedFill === true} /> <span className="font-normal text-slate-700">{formatPrice(trade.entry)}</span></span>
-              {' · '}<span className="text-rose-700">SL <span className="font-normal text-slate-700">{formatPrice(trade.stopLoss)}</span></span>
-              {' · '}<span className="text-emerald-700">TP <span className="font-normal text-slate-700">{formatPrice(trade.takeProfit)}</span></span>
-              {' · '}R:R 1:{trade.rewardRisk.toFixed(2)} · SL {trade.riskPips.toFixed(2)} PIPS · CHART ONLY
-            </td></tr> : <TradeDetailsRow trade={trade} colSpan={5} mt5Signal={signal} fillEvidence={pullbackFillEvidence} />}
-          </React.Fragment>;
-        })}
+    {replayIndex === null && marketSymbol === 'XAUUSD' && intradayEnabled && <PullbackSetupRows
+      signals={intradayTableSignals.filter(signal => signal.signalTimeframe === granularity || signal.zoneTimeframe === granularity)}
+      style="INTRADAY" asOf={tradeDisplayAsOf} entryCandles={pullbackTableCandles}
+      positions={mt5Status?.positions ?? []} connection={mt5Status?.bridge} timeZone={chartTimeZone} limit={12} />}
+    {marketSymbol === 'XAUUSD' && scalpOneToOneEnabled && granularity === 'M15' && <PullbackSetupRows
+      signals={scalpOneToOneTableSignals} style="SCALP_1_1" asOf={tradeDisplayAsOf} entryCandles={pullbackTableCandles}
+      positions={replayIndex === null ? mt5Status?.positions ?? [] : []}
+      connection={mt5Status?.bridge} timeZone={chartTimeZone} />}
     {replayIndex === null && marketSymbol === 'XAUUSD' && mt5Status?.bridge.connected
       && mt5Status.bridge.fibProfitEvents?.map(event => (
         <tr key={`fib-exit-${event.ticket}`} className="border-t border-cyan-200 bg-cyan-50/80">

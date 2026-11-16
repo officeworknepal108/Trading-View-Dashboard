@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { confirmedPullbackFill, filledPullbackLegs, scalpReplayTableSignals } from '../src/services/pullbackEntryDisplay';
+import { confirmedPullbackFill, filledPullbackLegs, groupPullbackTableSignals, scalpReplayTableSignals } from '../src/services/pullbackEntryDisplay';
 import { scalpOutcomeExpired } from '../src/services/scalpChartDisplay';
 import type { Mt5StoredSignal, Mt5AutomationStatus } from '../src/services/mt5Automation';
 import type { JournalTradeRecord } from '../src/components/TradeJournal';
@@ -70,4 +70,31 @@ test('NO FILL outcomes expire at the fifth completed M15 candle, ignoring unfini
   assert.equal(scalpOutcomeExpired(outcome, candles, 'M15', 7200), true);
   assert.equal(scalpOutcomeExpired(outcome, candles.map(c => c.time === 6300 ? { ...c, complete: false } : c), 'M15', 7200), false);
   assert.equal(scalpOutcomeExpired(outcome, [candles[1], candles[1], candles[1], candles[1], candles[1]], 'M15', 7200), false);
+});
+
+test('grouping keeps equal-price legs together and sorts the first entry before the second', () => {
+  const second = { ...signal, id: 'entry25', setupId: 'setup:P25',
+    intradayEntry: { ...signal.intradayEntry!, leg: 25 as const, riskShare: 0.4 } };
+  const groups = groupPullbackTableSignals([second, signal]);
+  assert.equal(groups.length, 1);
+  assert.deepEqual(groups[0].entries.map(s => s.intradayEntry?.leg), [10, 25]);
+  assert.equal(groups[0].entries[0].entry, groups[0].entries[1].entry);
+});
+
+test('grouping isolates different setup identities, accounts, strategies and exit levels', () => {
+  for (const other of [
+    { ...signal, account: 'other' },
+    { ...signal, intradayEntry: { ...signal.intradayEntry!, setupKey: 'other-setup' } },
+    { ...signal, stopLoss: 2980 }, { ...signal, takeProfit: 3060 },
+    { ...signal, tradeStyle: 'SCALP_1_1' as const, intradayEntry: undefined, scalpEntry: signal.intradayEntry },
+  ]) assert.equal(groupPullbackTableSignals([signal, other]).length, 2);
+});
+
+test('real broker leg wins over preview duplicates while a preview sibling joins its selected account', () => {
+  const actual = { ...signal, account: 'account-one', server: 'server-one' };
+  const preview = { ...signal, preview: true, updatedAt: 3000 };
+  const second = { ...preview, id: 'entry25', setupId: 'setup:P25',
+    intradayEntry: { ...signal.intradayEntry!, leg: 25 as const, riskShare: 0.4 } };
+  const [group] = groupPullbackTableSignals([preview, second, actual], { account: 'account-one', server: 'server-one', brokerSymbol: 'GOLD' });
+  assert.equal(group.entries.length, 2); assert.equal(group.entries[0], actual);
 });

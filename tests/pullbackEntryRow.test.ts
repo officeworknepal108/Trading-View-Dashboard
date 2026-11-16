@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import React from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
-import { TradeDetailsRow, ScalpOutcomeRow } from '../src/components/OandaProChart';
+import { TradeDetailsRow, ScalpOutcomeRow, PullbackSetupRows } from '../src/components/OandaProChart';
 import { tradeToMt5Signal } from '../src/services/mt5Automation';
 import { buildIntradayPullbackSignals } from '../src/services/intradayPullback';
 import type { TradeLevels } from '../src/services/tradeLevels';
@@ -98,4 +98,41 @@ test('Scalp live entry label identifies the leg and ticks only confirmed fills',
   const active = render({ mt5Signal: { ...signal, status: 'ACTIVE', openedAt: 1900 },
     fillEvidence: { asOf: 2000, replay: false } });
   assert.equal((active.match(/aria-label="Entry filled"/g) ?? []).length, 1);
+});
+
+test('Scalp and Intraday each render one setup header and one line for both entry legs', () => {
+  const base = tradeToMt5Signal({ source: 'ENGULFING', setupId: 'zone-one', zoneName: 'TJL1',
+    zoneTimeframe: 'M15', trade, now: 1800, pendingExpiryMinutes: 15 });
+  const entries = buildIntradayPullbackSignals({ ...base, tradeStyle: 'INTRADAY' }, candles);
+  for (const style of ['INTRADAY', 'SCALP_1_1'] as const) {
+    const signals = entries.map((entry, i) => ({ ...entry, tradeStyle: style,
+      intradayEntry: style === 'INTRADAY' ? entry.intradayEntry : undefined,
+      scalpEntry: style === 'SCALP_1_1' ? entry.intradayEntry : undefined,
+      status: i === 0 ? 'ACTIVE' as const : 'REJECTED' as const,
+      openedAt: i === 0 ? 1900 : undefined, createdAt: 1800, updatedAt: 1900 }));
+    const html = renderToStaticMarkup(React.createElement(PullbackSetupRows, {
+      signals: [...signals].reverse(), style, asOf: 2000, entryCandles: { M15: candles }, timeZone: 'Asia/Kathmandu',
+    }));
+    assert.equal((html.match(/<tr /g) ?? []).length, 2);
+    assert.equal((html.match(/aria-label="Entry filled"/g) ?? []).length, 1);
+    assert.equal((text(html).match(/1st ENTRY/g) ?? []).length, 1);
+    assert.equal((text(html).match(/2nd ENTRY/g) ?? []).length, 1);
+    assert.match(html, /3,888\.785/); assert.match(html, /3,889\.385/);
+    assert.match(html, /SL 145\.85 PIPS/); assert.match(html, /SL 139\.85 PIPS/);
+  }
+});
+
+test('completed grouped setup retains five columns and hides entry details until it expires', () => {
+  const base = tradeToMt5Signal({ source: 'ENGULFING', setupId: 'zone-one', zoneName: 'TJL1',
+    zoneTimeframe: 'M15', trade, now: 1800, pendingExpiryMinutes: 15 });
+  const signals = buildIntradayPullbackSignals({ ...base, tradeStyle: 'INTRADAY' }, candles)
+    .map(entry => ({ ...entry, status: 'TP' as const, openedAt: 1900, closedAt: 2700, createdAt: 1800, updatedAt: 2700 }));
+  const bars = [3600, 4500, 5400, 6300, 7200].map(time => ({ ...candles[0], time }));
+  const props = { signals, style: 'INTRADAY' as const, asOf: 8099, entryCandles: { M15: bars }, timeZone: 'Asia/Kathmandu' as const };
+  const html = renderToStaticMarkup(React.createElement(PullbackSetupRows, props));
+  assert.equal((html.match(/<tr /g) ?? []).length, 1);
+  assert.equal((html.match(/<td /g) ?? []).length, 5);
+  assert.match(text(html), /SELL/); assert.match(text(html), /3,888\.385/); assert.match(text(html), /T1/);
+  assert.match(text(html), /TP HIT/); assert.doesNotMatch(text(html), /1st ENTRY|2nd ENTRY|PIPS/);
+  assert.equal(renderToStaticMarkup(React.createElement(PullbackSetupRows, { ...props, asOf: 8100 })), '');
 });

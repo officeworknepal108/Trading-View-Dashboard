@@ -2,6 +2,28 @@ import type { JournalTradeRecord } from '../components/TradeJournal';
 import type { Mt5AutomationStatus, Mt5SignalInput, Mt5StoredSignal } from './mt5Automation';
 
 type Positions = readonly Mt5AutomationStatus['positions'][number][];
+export type PullbackTableSignal = Mt5StoredSignal & { preview?: boolean; simulatedFill?: boolean };
+
+/** Group by setup identity, not entry price: capped legs can have identical prices. */
+export function groupPullbackTableSignals(signals: readonly PullbackTableSignal[],
+  context: Pick<Mt5StoredSignal, 'account' | 'server' | 'brokerSymbol'> = {}): Array<{ key: string; entries: PullbackTableSignal[] }> {
+  const groups = new Map<string, Map<number, PullbackTableSignal>>();
+  for (const signal of signals) {
+    const leg = signal.intradayEntry ?? signal.scalpEntry;
+    const parent = signal.intradayEntry?.setupKey ?? signal.setupId?.replace(/:P(?:10|25)$/, '') ?? signal.id.replace(/:P(?:10|25)$/, '');
+    const key = JSON.stringify([signal.account ?? context.account, signal.server ?? context.server,
+      signal.brokerSymbol ?? context.brokerSymbol, signal.symbol, signal.tradeStyle, signal.source,
+      signal.zoneTimeframe, signal.signalTimeframe, signal.signalAt, signal.direction,
+      leg ? parent : signal.id, leg?.referenceEntry, signal.initialStopLoss ?? signal.stopLoss, signal.takeProfit]);
+    let entries = groups.get(key);
+    if (!entries) { entries = new Map(); groups.set(key, entries); }
+    const slot = leg?.leg ?? 0, prior = entries.get(slot);
+    if (!prior || prior.preview && !signal.preview || prior.preview === signal.preview && signal.updatedAt > prior.updatedAt) entries.set(slot, signal);
+  }
+  return [...groups].map(([key, entries]) => ({ key, entries: [...entries.values()]
+    .sort((a, b) => (a.intradayEntry?.leg ?? a.scalpEntry?.leg ?? 0) - (b.intradayEntry?.leg ?? b.scalpEntry?.leg ?? 0)) }))
+    .sort((a, b) => b.entries[0].signalAt - a.entries[0].signalAt);
+}
 export interface PullbackFillEvidence {
   asOf: number;
   replay: boolean;
