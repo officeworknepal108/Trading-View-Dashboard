@@ -1462,7 +1462,8 @@ test('Double CHoCH retains its original boundary through intermediate TJL struct
     [114, 117, 120, 113], [117, 112, 118, 110], [112, 108, 113, 106],
     [108, 98, 110, 97],
   ];
-  const options = { sourceBarSeconds: 900, confirmationBarSeconds: 3600 };
+  // No qualifying HTF close: retain the full-body structure rule.
+  const options = { sourceBarSeconds: 900, confirmationBarSeconds: DISABLED_HIGHER_TIMEFRAME_CONFIRMATION };
   for (const isBuy of [false, true]) {
     const sequence = isBuy
       ? [...prices.slice(0, 11), [111, 115, 116, 110]]
@@ -1612,6 +1613,63 @@ test('VIP support ignores an opposite-direction zone even when its tap is freshe
   assert.equal(bearishTap?.tapTime, 200);
 });
 
+test('a crossing Double CHoCH confirms with its simultaneous H1 close, without another M15 candle', () => {
+  const prices = [
+    [100, 101, 102, 90], [107, 110, 112, 106], [110, 108, 111, 107],
+    [108, 106, 109, 105], [106, 113, 114, 106], [113, 110, 114, 109],
+    [110, 107, 111, 106], [107, 104, 108, 103], [104, 102, 105, 101],
+    [102, 108, 109, 101], [108, 111, 112, 107], [111, 100, 112, 99],
+    [100, 106, 107, 99], [106, 109, 110, 105], [109, 114, 116, 108],
+    [114, 117, 120, 113], [117, 112, 118, 110], [112, 108, 113, 106],
+    [108, 98, 110, 97],
+  ];
+
+  const candles = prices.map(([open, close, high, low], index) => ({
+    time: (index + 1) * 900, open, close, high, low, complete: true,
+  }));
+  const options = { sourceBarSeconds: 900, confirmationBarSeconds: 3600 };
+  const result = analyzeMarketStructure(candles, options);
+  const breakTime = 19 * 900;
+  const qml = result.zones.find(zone => zone.name === 'QML A+' && zone.doubleChochTime === breakTime);
+  assert.ok(qml, 'the crossing candle itself creates Double CHoCH');
+  assert.equal(qml.doubleChochStatus, 'valid');
+  assert.equal(qml.doubleChochConfirmationTime, breakTime + 900);
+  assert.equal(qml.tradeable, true);
+  const forming = analyzeMarketStructure(candles.map((c, i) => i === candles.length - 1
+    ? { ...c, complete: false } : c), options);
+  assert.equal(forming.zones.some(zone => zone.doubleChochTime === breakTime), false);
+  const unavailable = analyzeMarketStructure(candles, { ...options,
+    confirmationBarSeconds: DISABLED_HIGHER_TIMEFRAME_CONFIRMATION });
+  assert.equal(unavailable.zones.some(zone => zone.doubleChochTime === breakTime), false,
+    'a crossing body without a qualifying HTF close still waits');
+});
+
+test('all mapped HTF routes accept their completed closing candle at formation and reject unfinished or older closes', () => {
+  const timestamp = Date.UTC(2026, 10, 16, 12) / 1000;
+  for (const [sourceBarSeconds, confirmationBarSeconds] of [
+    [60, 300], [300, 900], [900, 3600], [3600, 14400], [14400, 86400], [86400, 604800],
+  ]) {
+    const start = getConfirmationBucketStart(timestamp, confirmationBarSeconds);
+    for (const confirmationDirection of ['up', 'down'] as const) {
+      const candles = Array.from({ length: confirmationBarSeconds / sourceBarSeconds }, (_, i) => ({
+        time: start + i * sourceBarSeconds, open: 105, high: 113, low: 97,
+        close: confirmationDirection === 'up' ? 111 : 99, complete: true,
+      }));
+      const formationTime = start + confirmationBarSeconds;
+      const options = { confirmationDirection, bottom: 100, top: 110, formationTime,
+        sourceBarSeconds, confirmationBarSeconds };
+      const result = resolveTjl1Confirmation(candles, options);
+      assert.equal(result.status, 'valid', `${sourceBarSeconds} -> ${confirmationBarSeconds} ${confirmationDirection}`);
+      assert.equal(result.confirmationTime, formationTime);
+      assert.equal(resolveTjl1Confirmation(candles, { ...options, formationTime: formationTime + sourceBarSeconds }).status,
+        'pending', 'an older unrelated close cannot confirm a new setup');
+      assert.equal(resolveTjl1Confirmation(candles.slice(0, -1), options).status, 'pending');
+      assert.equal(resolveTjl1Confirmation(candles.map((c, i) => i === candles.length - 1
+        ? { ...c, complete: false } : c), options).status, 'pending');
+    }
+  }
+});
+
 test('M15 accepts the same H1 closing instant for BUY and SELL without waiting another hour', () => {
   const start = Date.UTC(2026, 10, 16, 6) / 1000; // 11:45 AM Nepal; closes 12:45 PM.
   for (const direction of ['up', 'down'] as const) {
@@ -1648,8 +1706,8 @@ test('the same H1 candle still needs the correct candle color and a close beyond
     close: i === 3 ? 111 : 113, complete: true }));
   assert.equal(resolveTjl1Confirmation(wrongColor, options).status, 'pending', 'red H1 above the level cannot confirm BUY');
   const otherRoute = [0, 3600].map(time => ({ time, open: 105, high: 113, low: 101, close: 111, complete: true }));
-  assert.equal(resolveTjl1Confirmation(otherRoute, { ...options, sourceBarSeconds: 300 }).status, 'pending',
-    'other mapped confirmation routes retain their existing timing rule');
+  assert.equal(resolveTjl1Confirmation(otherRoute, { ...options, sourceBarSeconds: 300 }).status, 'valid',
+    'other mapped confirmation routes also accept a simultaneous completed close');
 });
 
 test('TJL1 confirms on the first completed mapped higher-timeframe close', () => {

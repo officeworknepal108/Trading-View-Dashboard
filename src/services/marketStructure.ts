@@ -387,7 +387,7 @@ interface ConfirmationBar {
   low: number;
   close: number;
   hasFormingSource: boolean;
-  m15HourCloseVerified: boolean;
+  sourceCloseVerified: boolean;
 }
 
 export function resolveTjl1Confirmation(candles: StructureCandle[], options: Tjl1ConfirmationOptions) {
@@ -438,20 +438,18 @@ function resolveTjl1ConfirmationWithCache(
         low: Math.min(...list.map((candle) => candle.low)),
         close: list[list.length - 1].close,
         hasFormingSource: list.some(candle => candle.complete === false),
-        m15HourCloseVerified: confirmationSeconds === 3600 && options.sourceBarSeconds === 900
-          && [0, 900, 1800, 2700].every(offset => list.some(candle => candle.time === time + offset && candle.complete === true)),
+        sourceCloseVerified: list.length === (getConfirmationBucketEnd(time, confirmationSeconds) - time) / options.sourceBarSeconds
+          && list.every((candle, index) => candle.time === time + index * options.sourceBarSeconds && candle.complete === true),
       }));
     cache?.set(confirmationSeconds, bars);
   }
 
-  // M15 formation and its containing H1 close can occur at the same instant.
-  // Accept that completed hour, including when the next hour has not arrived
-  // yet, but never count a forming M15 component as a completed H1 close.
-  const m15ToH1 = options.sourceBarSeconds === 900 && confirmationSeconds === 3600;
-  const confirmationBars = bars.filter((bar, index) => m15ToH1
-    ? !bar.hasFormingSource && (index < bars.length - 1 || bar.m15HourCloseVerified)
-      && bar.closeTime >= options.formationTime
-    : index < bars.length - 1 && bar.closeTime > options.formationTime);
+  // Every mapped route accepts a qualifying close at formation itself.
+  // The final aggregate needs explicit complete source coverage; a later
+  // bucket can establish closure for historical feeds without complete flags.
+  const confirmationBars = bars.filter((bar, index) => !bar.hasFormingSource
+    && (index < bars.length - 1 || bar.sourceCloseVerified)
+    && bar.closeTime >= options.formationTime);
   const firstCompletedBar = confirmationBars[0];
   for (const [index, bar] of confirmationBars.entries()) {
     const bodyLow = Math.min(bar.open, bar.close);
@@ -483,6 +481,29 @@ function resolveTjl1ConfirmationWithCache(
     status: 'pending',
     tjl1ConfirmationAttempts: confirmationBars.length,
     confirmationWindowCloseTime: firstCompletedBar?.closeTime,
+  };
+}
+
+// A close through the structure level can establish the break immediately
+// when its own completed mapped HTF candle confirms it. Otherwise retain the
+// existing full-body rule. Never borrow confirmation from a later candle.
+function createStructureBreakResolver(
+  resolveConfirmation: ReturnType<typeof createTjl1ConfirmationResolver>,
+  sourceBarSeconds: number,
+  confirmationBarSeconds?: number,
+) {
+  return (candle: StructureCandle, level: number, direction: 'up' | 'down'): boolean => {
+    if (hasFullBodyClosedBeyond(candle, level, direction)) return true;
+    if (candle.complete === false || !confirmationBarSeconds
+      || confirmationBarSeconds <= sourceBarSeconds
+      || !(direction === 'up' ? candle.close > level : candle.close < level)) return false;
+    const formationTime = candle.time + sourceBarSeconds;
+    const confirmation = resolveConfirmation({
+      confirmationDirection: direction, bottom: level, top: level,
+      formationTime, sourceBarSeconds, confirmationBarSeconds,
+    });
+    return confirmation.status === 'valid'
+      && confirmation.confirmationTime === formationTime;
   };
 }
 
@@ -1724,6 +1745,7 @@ export function analyzeMarketStructure(candles: StructureCandle[], options: {
   const sourceBarSeconds = options.sourceBarSeconds || 60;
   const zoneVisualBars = options.zoneVisualBars || 30;
   const resolveConfirmation = createTjl1ConfirmationResolver(candles);
+  const hasStructureBreak = createStructureBreakResolver(resolveConfirmation, sourceBarSeconds, options.confirmationBarSeconds);
   const vipSupportContexts = !options.vipSupport
     ? [] : Array.isArray(options.vipSupport) ? options.vipSupport : [options.vipSupport];
   const resolveVipSupportTap = createVipSupportTapResolver(candles, vipSupportContexts);
@@ -2031,7 +2053,7 @@ export function analyzeMarketStructure(candles: StructureCandle[], options: {
 
     if (pendingDouble?.direction === 'bullish'
       && candle.time > pendingDouble.startedAt
-      && hasFullBodyClosedBeyond(candle, pendingDouble.extreme.bottom, 'down')) {
+      && hasStructureBreak(candle, pendingDouble.extreme.bottom, 'down')) {
       const originContext = pendingDouble.context;
       const doubleContext = buildDoubleChochContext(
         originContext,
@@ -2068,7 +2090,7 @@ export function analyzeMarketStructure(candles: StructureCandle[], options: {
     }
     if (pendingDouble?.direction === 'bearish'
       && candle.time > pendingDouble.startedAt
-      && hasFullBodyClosedBeyond(candle, pendingDouble.extreme.top, 'up')) {
+      && hasStructureBreak(candle, pendingDouble.extreme.top, 'up')) {
       const originContext = pendingDouble.context;
       const doubleContext = buildDoubleChochContext(
         originContext,
@@ -2476,6 +2498,7 @@ export function findIssFiveWaves(
   // ISS uses only the current chart timeframe. Point 0 is an external SL/SH,
   // and the five internal points must remain inside its PH/PL boundary.
   const resolveConfirmation = createTjl1ConfirmationResolver(candles);
+  const hasStructureBreak = createStructureBreakResolver(resolveConfirmation, sourceBarSeconds, confirmationBarSeconds);
   const markers: IssMarker[] = [];
   const internalMarkers: SeriesMarker<UTCTimestamp>[] = [];
   const lines: StructureLine[] = [];
@@ -2924,7 +2947,7 @@ export function findIssFiveWaves(
         const isBuy = pending.direction === 'bearish';
         const direction = isBuy ? 'bullish' : 'bearish';
         const boundary = isBuy ? pending.extreme.top : pending.extreme.bottom;
-        if (hasFullBodyClosedBeyond(candle, boundary, isBuy ? 'up' : 'down')) {
+        if (hasStructureBreak(candle, boundary, isBuy ? 'up' : 'down')) {
           const confirmation = resolveConfirmation({
             confirmationDirection: isBuy ? 'up' : 'down', bottom: pending.extreme.bottom,
             top: pending.extreme.top, formationTime: candle.time + sourceBarSeconds,
