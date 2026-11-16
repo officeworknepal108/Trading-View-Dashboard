@@ -823,14 +823,32 @@ export const TradeDetailsRow: React.FC<{
   referenceOnly?: boolean;
   hideReferenceStatus?: boolean;
   intradayReference?: boolean;
-}> = ({ trade, colSpan, mtf = false, oppositePositionOpen = false, mt5Signal, referenceOnly = false, hideReferenceStatus = false, intradayReference = false }) => {
+  entryCandles?: readonly OandaCandle[];
+  zoneTimeframe?: TradeTimeframe;
+}> = ({ trade, colSpan, mtf = false, oppositePositionOpen = false, mt5Signal, referenceOnly = false, hideReferenceStatus = false, intradayReference = false, entryCandles = [], zoneTimeframe }) => {
   if (isSlTpTradeDisplayFinished(mt5Signal) || isSlTpTradeDisplayFinished(trade)) return null;
-  if (!mt5Signal && (intradayReference || trade.intradayReference)) return (
-    <tr className="border-t border-indigo-100 bg-indigo-50/70"><td colSpan={colSpan} className="px-2 py-1 text-[9px] font-bold text-slate-700">
-      ORIGINAL REFERENCE {formatPrice(trade.entry)} · FIXED SL {formatPrice(trade.stopLoss)} · FIXED TP {formatPrice(trade.takeProfit)}
-      {' · '}Execution: 10% / 25% body pullbacks, 60% / 40% setup risk. Unfilled limits cancel at original TP.
-    </td></tr>
-  );
+  if (!mt5Signal && (intradayReference || trade.intradayReference)) {
+    const base = tradeToMt5Signal({ source: mtf ? 'MTF' : 'ENGULFING', setupId: 'ENTRY_ROW_PREVIEW',
+      zoneName: 'Entry details', zoneTimeframe: zoneTimeframe ?? trade.signal.timeframe,
+      trade, now: trade.calculatedAt, pendingExpiryMinutes: 15 });
+    const entries = buildIntradayPullbackSignals({ ...base, tradeStyle: 'INTRADAY' }, entryCandles);
+    return (
+      <tr className="border-t border-indigo-100 bg-indigo-50/70"><td colSpan={colSpan} className="px-2 py-1">
+        <div className="flex flex-nowrap items-baseline gap-x-1 whitespace-nowrap text-[8px] font-normal text-slate-700">
+          {([10, 25] as const).map((leg, index) => {
+            const entry = entries.find(candidate => candidate.intradayEntry?.leg === leg);
+            return <React.Fragment key={leg}>
+              {index > 0 && <span aria-hidden="true">|</span>}
+              <span className="tabular-nums">{index === 0 ? '1st' : '2nd'} ENTRY {entry ? formatPrice(entry.entry) : '—'}</span>
+              <span className="text-[6px] font-normal tabular-nums">SL {entry ? entry.riskPips.toFixed(2) : '—'} pips</span>
+            </React.Fragment>;
+          })}
+          <span aria-hidden="true">|</span><span className="tabular-nums">SL {formatPrice(trade.stopLoss)}</span>
+          <span aria-hidden="true">|</span><span className="tabular-nums">TP {formatPrice(trade.takeProfit)}</span>
+        </div>
+      </td></tr>
+    );
+  }
   return (
   <tr className="border-t border-indigo-100 bg-indigo-50/70">
     <td colSpan={colSpan} className="px-2 py-1">
@@ -2099,6 +2117,7 @@ export const MultiTimeframeEntryTable: React.FC<{
                 </tr>
                 {(row.trade ?? row.previewTrade)
                   && <TradeDetailsRow trade={(row.trade ?? row.previewTrade)!} colSpan={7} mtf
+                    zoneTimeframe={row.higherTimeframe} entryCandles={entryCandles[row.lowerTimeframe]}
                     referenceOnly={row.tradingTimeBlocked} intradayReference={intradayPullbacks && !row.goldScalping} />}
                 </React.Fragment>
               );
@@ -9112,7 +9131,8 @@ export const OandaProChart: React.FC<{
               {bestTrendlineBadge(trade)}
             </td>
           </tr>
-          <TradeDetailsRow trade={trade} colSpan={5} />
+          <TradeDetailsRow trade={trade} colSpan={5} zoneTimeframe={granularity}
+            entryCandles={tableTimeframeData[trade.signal.timeframe]?.candles} />
         </React.Fragment>
       );
     })}
@@ -9238,6 +9258,7 @@ export const OandaProChart: React.FC<{
         {displayedTrade
           && (completedStatus || marketSymbol !== 'XAUUSD' || (displayedTapCount(zone) ?? 0) <= 1)
           && <TradeDetailsRow trade={displayedTrade} colSpan={5}
+            zoneTimeframe={granularity} entryCandles={tableTimeframeData[displayedTrade.signal.timeframe]?.candles}
             mt5Signal={mt5Signal} referenceOnly={outsideTimePreview !== undefined}
             hideReferenceStatus={outsideTimePreview !== undefined} />}
         </React.Fragment>
@@ -9441,6 +9462,8 @@ export const OandaProChart: React.FC<{
         && (!repeatedTap || completedStatus || usedZoneTrade)
         && <TradeDetailsRow
           trade={engulfingTrade}
+          zoneTimeframe={granularity}
+          entryCandles={tableTimeframeData[engulfingTrade.signal.timeframe]?.candles}
           colSpan={5}
           oppositePositionOpen={entryDecision?.oppositePositionOpen}
           mt5Signal={mt5Signal}
@@ -9449,6 +9472,7 @@ export const OandaProChart: React.FC<{
         />}
       {historicalTrade && (!repeatedTap || completedStatus) && (
         <TradeDetailsRow trade={historicalTrade} colSpan={5}
+          zoneTimeframe={granularity} entryCandles={tableTimeframeData[historicalTrade.signal.timeframe]?.candles}
           referenceOnly={historicalEntry?.tradingTimeBlocked}
           hideReferenceStatus={historicalEntry?.tradingTimeBlocked} />
       )}
@@ -9494,7 +9518,8 @@ export const OandaProChart: React.FC<{
               {bestTrendlineBadge(trade)}
             </td>
           </tr>
-          <TradeDetailsRow trade={trade} colSpan={5} mt5Signal={mt5Signal} />
+          <TradeDetailsRow trade={trade} colSpan={5} mt5Signal={mt5Signal} zoneTimeframe={granularity}
+            entryCandles={tableTimeframeData[trade.signal.timeframe]?.candles} />
         </React.Fragment>
       );
     })}
