@@ -109,6 +109,7 @@ export function scalpPullbackBarStates(bar: StructureCandle, signals: Mt5SignalI
 }
 
 export interface ScalpOneToOneChartFill {
+  signal?: Mt5SignalInput;
   id: string;
   setupId?: string;
   leg: 10 | 25;
@@ -149,7 +150,7 @@ export function scalpOneToOneChartHistory(r: VolumeStudyRecord, candles: StudyCa
       : states.every(state => state.exit !== 0 || futureExit !== 0) ? futureTime ?? next.time : undefined;
     const outcome = exit === 1 ? 'tp' : exit === -1 ? 'sl' : established ? 'active' : 'uncertain';
     fills.push({ id: `SCALP_1_1:FILL:${r.signal.time}:P${signal.scalpEntry!.leg}`,
-      setupId: signal.setupId, leg: signal.scalpEntry!.leg, outcome,
+      setupId: signal.setupId, signal, leg: signal.scalpEntry!.leg, outcome,
       trade: { entry: signal.entry, stopLoss: signal.stopLoss, takeProfit: signal.takeProfit,
         riskFree: signal.takeProfit, riskFreeEnabled: false, riskPips: signal.riskPips, rewardRisk: signal.rewardRisk,
         status: outcome === 'tp' ? 'tp-hit' : outcome === 'sl' ? 'sl-hit' : 'active',
