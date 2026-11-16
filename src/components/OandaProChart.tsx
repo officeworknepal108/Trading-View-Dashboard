@@ -908,6 +908,59 @@ export const ScalpOutcomeRow: React.FC<{ outcome: ScalpDisplayOutcome; signal: M
   </tr>
 );
 
+/** Match source identity before combining display rows from different stores. */
+export function findZoneTablePullbackSetup(setups: readonly PullbackChartSetup[], options: {
+  zoneIds: readonly string[]; symbol: string; zoneTimeframe: string;
+  direction: TradeLevels['signal']['direction']; trade?: TradeLevels;
+}): PullbackChartSetup | undefined {
+  return setups.find(setup => {
+    const key = resolveTradeOverlaySetupKey(setup.id, setup.setupId);
+    const zoneId = key.startsWith('DIRECT:') ? key.slice(7).replace(/:P(?:10|25)$/, '') : undefined;
+    return setup.style === 'INTRADAY' && setup.symbol === options.symbol
+      && setup.zoneTimeframe === options.zoneTimeframe && setup.trade.signal.direction === options.direction
+      && zoneId !== undefined && options.zoneIds.some(id => tradeOverlayZoneOriginKey(id) === tradeOverlayZoneOriginKey(zoneId))
+      && (!options.trade || belongsToPullbackSetup(setup, options.trade, 'INTRADAY'));
+  });
+}
+
+function pullbackSetupTooltip(setup: PullbackChartSetup): string {
+  return [
+    `CHART: ${setup.legs.some(leg => leg.chartConfirmed) ? 'Filled' : 'Waiting / unconfirmed'} · MT5: ${setup.legs.some(leg => leg.executed) ? 'Executed' : 'Not executed'}`,
+    ...setup.legs.flatMap(leg => [
+      `${leg.leg === 10 ? '1st' : '2nd'} Entry: ${formatPrice(leg.entry)} — ${setup.secondOnly && leg.leg === 10 ? 'Skipped — split lot below minimum'
+        : leg.chartOutcome ? `${leg.chartOutcome.toUpperCase()} HIT` : leg.chartConfirmed ? '✓ Filled' : leg.uncertain ? 'Fill uncertain' : 'Waiting'}`,
+      `SL: ${leg.riskPips.toFixed(2)} pips · MT5: ${leg.executed ? 'Executed' : 'Not executed'}`,
+    ]),
+    `Fixed SL: ${formatPrice(setup.trade.stopLoss)}`,
+    `Fixed TP: ${formatPrice(setup.trade.takeProfit)}`,
+  ].join('\n');
+}
+
+export const ZonePullbackTradeStatus: React.FC<{ setup: PullbackChartSetup }> = ({ setup }) => (
+  <span title={pullbackSetupTooltip(setup)} className="cursor-help text-[10px] font-bold">
+    {zoneTableCompletedStatus(setup.trade) ?? (setup.chartFilled ? 'ACTIVE TRADE'
+      : setup.drawing ? 'WAITING ENTRY' : 'ENTRY EXPIRED')}
+  </span>
+);
+
+export const ZonePullbackDetailsRow: React.FC<{ setup: PullbackChartSetup }> = ({ setup }) => {
+  if (isSlTpTradeDisplayFinished(setup.trade)) return null;
+  return <tr className="border-t border-indigo-100 bg-indigo-50/70"><td colSpan={5} className="px-2 py-1">
+    <div className="flex flex-nowrap items-baseline gap-x-3 whitespace-nowrap text-[9px] font-black text-slate-700">
+      {setup.legs.map((leg, index) => <React.Fragment key={leg.leg}>
+        {index > 0 && <span aria-hidden="true">|</span>}
+        <span className="text-blue-700">{leg.leg === 10 ? '1st' : '2nd'} ENTRY
+          <EntryFillTick filled={leg.chartConfirmed === true && !(setup.secondOnly && leg.leg === 10)} />{' '}
+          <span className="tabular-nums font-bold text-slate-700">{setup.secondOnly && leg.leg === 10 ? 'SKIPPED' : formatPrice(leg.entry)}</span>
+        </span>
+        {!(setup.secondOnly && leg.leg === 10) && <span className="tabular-nums">SL {leg.riskPips.toFixed(2)} PIPS</span>}
+      </React.Fragment>)}
+      <span aria-hidden="true">|</span><span className="text-rose-700">SL <span className="tabular-nums font-bold text-slate-700">{formatPrice(setup.trade.stopLoss)}</span></span>
+      <span aria-hidden="true">|</span><span className="text-emerald-700">TP <span className="tabular-nums font-bold text-slate-700">{formatPrice(setup.trade.takeProfit)}</span></span>
+    </div>
+  </td></tr>;
+};
+
 export const PullbackSetupRows: React.FC<{
   signals: readonly PullbackTableSignal[];
   style: 'SCALP_1_1' | 'INTRADAY';
@@ -917,10 +970,14 @@ export const PullbackSetupRows: React.FC<{
   connection?: Pick<Mt5StoredSignal, 'account' | 'server' | 'brokerSymbol'>;
   timeZone: ChartTimeZone;
   limit?: number;
-}> = ({ signals, style, asOf, entryCandles, positions = [], connection = {}, timeZone, limit = 8 }) => {
+  representedSetups?: readonly PullbackChartSetup[];
+}> = ({ signals, style, asOf, entryCandles, positions = [], connection = {}, timeZone, limit = 8, representedSetups = [] }) => {
   const groups = groupPullbackTableSignals(signals.filter(signal => signal.signalAt <= asOf)
     .map(signal => currentPullbackDisplay(signal, asOf, positions)), connection);
   return <>{groups.flatMap(group => {
+    if (style === 'INTRADAY' && representedSetups.some(setup => group.entries.some(entry =>
+      setup.trade.signal.time === entry.signalAt && (setup.memberIds.includes(entry.id)
+        || entry.setupId !== undefined && setup.memberIds.includes(entry.setupId))))) return [];
     const signal = group.entries[0], candles = entryCandles[signal.signalTimeframe] ?? [];
     const secondOnly = group.entries.some(entry => entry.pullbackFallback === 'SECOND_ONLY');
     const states = group.entries.map(entry => {
@@ -9174,10 +9231,32 @@ export const OandaProChart: React.FC<{
   };
   const pullbackTableCandles = Object.fromEntries(AUTOMATION_GRANULARITIES
     .map(timeframe => [timeframe, tableTimeframeData[timeframe]?.candles])) as Partial<Record<TradeTimeframe, readonly OandaCandle[]>>;
+  const tablePullbackSetups = marketSymbol === 'XAUUSD' ? buildPullbackChartSetups({
+    signals: [...visibleCanonicalTradeRecords.flatMap(record => {
+      const signal = chartSignalFromRecord(record); return signal ? [signal] : [];
+    }), ...intradayTableSignals],
+    asOf: tradeDisplayAsOf, candles: pullbackTableCandles,
+    positions: replayIndex === null ? mt5Status?.positions ?? [] : [], context: mt5Status?.bridge ?? {},
+  }).filter(setup => setup.style === 'INTRADAY') : [];
+  const retainedRowForZone = (zone: DisplayStructureZone) => retainedDirectZoneTableRows.find(row =>
+    row.sourceZoneId !== undefined && (row.sourceTimeframe ?? granularity) === granularity
+    && row.trade.signal.direction === (zone.isBuy ? 'bullish' : 'bearish')
+    && displayZoneMembers(zone).some(member => tradeOverlayZoneOriginKey(member.id) === tradeOverlayZoneOriginKey(row.sourceZoneId!)));
+  const zonePullback = (zone: DisplayStructureZone, trade?: TradeLevels) => findZoneTablePullbackSetup(tablePullbackSetups, {
+    zoneIds: displayZoneMembers(zone).map(member => member.id), symbol: marketSymbol,
+    zoneTimeframe: granularity, direction: zone.isBuy ? 'bullish' : 'bearish', trade,
+  });
+  const representedPullbackSetups = tablePullbackSetups.filter(setup => setup.style === 'INTRADAY' && (
+    retainedDirectZoneTableRows.some(row => row.sourceZoneId && findZoneTablePullbackSetup([setup], {
+      zoneIds: [row.sourceZoneId], symbol: marketSymbol, zoneTimeframe: row.sourceTimeframe ?? granularity,
+      direction: row.trade.signal.direction, trade: row.trade,
+    })) || [...zoneTableRows, ...doubleChochRows].some(zone => zonePullback(zone)?.id === setup.id)
+  ));
   const zoneTableContent = (
     <>
     {replayIndex === null && marketSymbol === 'XAUUSD' && intradayEnabled && <PullbackSetupRows
       signals={intradayTableSignals.filter(signal => signal.signalTimeframe === granularity || signal.zoneTimeframe === granularity)}
+      representedSetups={representedPullbackSetups}
       style="INTRADAY" asOf={tradeDisplayAsOf} entryCandles={pullbackTableCandles}
       positions={mt5Status?.positions ?? []} connection={mt5Status?.bridge} timeZone={chartTimeZone} limit={12} />}
     {marketSymbol === 'XAUUSD' && scalpOneToOneEnabled && granularity === 'M15' && <PullbackSetupRows
@@ -9274,7 +9353,11 @@ export const OandaProChart: React.FC<{
           </td>
         </tr>
       ))}
-    {retainedDirectZoneTableRows.map(({ overlay, sourceZone, sourceTimeframe, trade, tapCount, additionalConfirmations }) => {
+    {retainedDirectZoneTableRows.map(({ overlay, sourceZoneId, sourceZone, sourceTimeframe, trade, tapCount, additionalConfirmations }) => {
+      const pullback = findZoneTablePullbackSetup(tablePullbackSetups, {
+        zoneIds: sourceZoneId ? [sourceZoneId] : [], symbol: marketSymbol,
+        zoneTimeframe: sourceTimeframe ?? granularity, direction: trade.signal.direction, trade,
+      });
       const bullish = trade.signal.direction === 'bullish';
       const zoneLabel = tradeOverlayZoneLabel(overlay.label);
       const currentFibLabels = sourceZone ? tradeZoneFibLabels(sourceZone) : [];
@@ -9285,11 +9368,16 @@ export const OandaProChart: React.FC<{
             <td className="px-2 py-1 font-black text-slate-800">
               <span>{zoneLabel ?? 'OPEN CHART TRADE'}</span>
               <ZoneSourceTimeframeLabel timeframe={sourceTimeframe} />
-              {(tapCount ?? 0) > 1 && (
+              {tapCount !== undefined && (
                 <span className="ml-1 rounded bg-sky-100 px-1 py-0.5 text-[8px] font-black text-sky-800">
                   TAP {tapCount}
                 </span>
               )}
+              {sourceZone?.doubleChochStatus && <>
+                <span className="ml-1 rounded bg-violet-100 px-1 py-0.5 text-[8px] font-black text-violet-800">DOUBLE CHoCH</span>
+                <span className="ml-1 rounded bg-emerald-100 px-1 py-0.5 text-[8px] font-black text-emerald-800">HTF {sourceZone.doubleChochStatus === 'valid' ? 'VALID' : 'WAIT'}</span>
+                {sourceZone.doubleChochOriginClass && <span className="ml-1 rounded bg-slate-100 px-1 py-0.5 text-[8px] font-black text-slate-600">FROM {sourceZone.doubleChochOriginClass.toUpperCase()}</span>}
+              </>}
               {(sourceZone ? isDeepDiscountZoneDisplay(sourceZone, trade.signal)
                 : isDefaultDeepDiscountZoneName(zoneLabel)) && (
                 <span className="ml-1 rounded bg-fuchsia-100 px-1 py-0.5 text-[8px] font-black text-fuchsia-800">
@@ -9306,19 +9394,23 @@ export const OandaProChart: React.FC<{
               {bullish ? 'BUY' : 'SELL'}
             </td>
             <td className="whitespace-nowrap px-2 py-1">
-              <ZoneTableEntryPrice trade={trade} zone={sourceZone} pipSize={marketConfig.pipSize} />
+              {sourceZone ? <>
+                <div>{formatPrice(sourceZone.bottom)} – {formatPrice(sourceZone.top)}</div>
+                <div className="text-[8px] font-black text-slate-600">{formatZonePips((sourceZone.top - sourceZone.bottom) / marketConfig.pipSize)} PIPS</div>
+              </>
+                : <ZoneTableEntryPrice trade={trade} zone={sourceZone} pipSize={marketConfig.pipSize} />}
             </td>
             <td className={`whitespace-nowrap px-2 py-1 text-center font-black ${bullish ? 'text-emerald-700' : 'text-rose-700'}`}>
-              {trade.signal.type}
+              {trade.signal.type} {bullish ? 'BULL' : 'BEAR'}
               <ZoneTableEngulfingConfirmations confirmations={additionalConfirmations} />
             </td>
             <td className={`whitespace-nowrap px-2 py-1 text-right font-black ${trade.status === 'sl-hit' ? 'text-rose-700' : 'text-emerald-700'}`}>
-              {zoneTableCompletedStatus(trade) ?? <TradeStatusText trade={trade} />}
+              {pullback ? <ZonePullbackTradeStatus setup={pullback} /> : zoneTableCompletedStatus(trade) ?? <TradeStatusText trade={trade} />}
               {bestTrendlineBadge(trade)}
             </td>
           </tr>
-          <TradeDetailsRow trade={trade} colSpan={5} zoneTimeframe={granularity} fillEvidence={pullbackFillEvidence}
-            entryCandles={tableTimeframeData[trade.signal.timeframe]?.candles} />
+          {pullback ? <ZonePullbackDetailsRow setup={pullback} /> : <TradeDetailsRow trade={trade} colSpan={5} zoneTimeframe={granularity} fillEvidence={pullbackFillEvidence}
+            entryCandles={tableTimeframeData[trade.signal.timeframe]?.candles} />}
         </React.Fragment>
       );
     })}
@@ -9339,6 +9431,8 @@ export const OandaProChart: React.FC<{
       </tr>
     ))}
     {doubleChochRows.map((zone) => {
+      if (retainedRowForZone(zone)) return null;
+      const pullback = zonePullback(zone);
       const pending = zone.doubleChochStatus === 'pending';
       const confirmationLabel = TJL1_CONFIRMATION_LABELS[granularity].toUpperCase();
       const confirmationSide = zone.doubleChochConfirmationDirection === 'up' ? 'ABOVE' : 'BELOW';
@@ -9433,15 +9527,15 @@ export const OandaProChart: React.FC<{
               : outsideTimePreview ? 'text-rose-700'
                 : pending ? 'text-amber-700' : 'text-emerald-700'
           }`}>
-            <ZoneEntryReadinessText readiness={readiness} compactLabel={completedStatus ?? (isCompletedTrade(outsideTimePreview)
+            {pullback ? <ZonePullbackTradeStatus setup={pullback} /> : <ZoneEntryReadinessText readiness={readiness} compactLabel={completedStatus ?? (isCompletedTrade(outsideTimePreview)
               ? <TradeStatusText trade={outsideTimePreview!} />
               : mt5Signal ? mt5SignalStatusLabel(mt5Signal)
               : replayIndex !== null && trade?.filledAt !== undefined ? <TradeStatusText trade={trade} />
               : pending ? `WAIT ${confirmationLabel} ${confirmationSide}`
-              : compactZoneTableStatus(readiness, firstZoneTapBarsAgo(zone, displayCandles), confluenceIsTradeable(zone)))} />
+              : compactZoneTableStatus(readiness, firstZoneTapBarsAgo(zone, displayCandles), confluenceIsTradeable(zone)))} />}
           </td>
         </tr>
-        {displayedTrade
+        {pullback ? <ZonePullbackDetailsRow setup={pullback} /> : displayedTrade
           && (completedStatus || marketSymbol !== 'XAUUSD' || (displayedTapCount(zone) ?? 0) <= 1)
           && <TradeDetailsRow trade={displayedTrade} colSpan={5}
             fillEvidence={pullbackFillEvidence}
@@ -9452,6 +9546,7 @@ export const OandaProChart: React.FC<{
       );
     })}
     {zoneTableRows.map((zone) => {
+      const pullback = zonePullback(zone);
       const scalpTrade = marketSymbol === 'XAUUSD' && scalpingEnabled
         ? goldScalpingDirectTrades.find((candidate) => (
           candidate.zoneTimeframe === granularity
@@ -9630,7 +9725,7 @@ export const OandaProChart: React.FC<{
         <td className={`px-2 py-1 text-right font-bold whitespace-nowrap ${
           trade?.status === 'sl-hit' ? 'text-rose-700' : ''
         }`}>
-          <ZoneEntryReadinessText readiness={readiness} compactLabel={
+          {pullback ? <ZonePullbackTradeStatus setup={pullback} /> : <ZoneEntryReadinessText readiness={readiness} compactLabel={
             completedStatus ? completedStatus
               : outsideTimePreview && isCompletedTrade(outsideTimePreview) ? <TradeStatusText trade={outsideTimePreview} />
               : historicalTrade ? <TradeStatusText trade={historicalTrade} />
@@ -9639,13 +9734,14 @@ export const OandaProChart: React.FC<{
               : replayIndex !== null && trade?.filledAt !== undefined ? <TradeStatusText trade={trade} />
               : mtfStatus?.confirmed && !outsideTimePreview && !extremeAPlusBlocked && !repeatedTap ? mtfStatus.label
               : compactZoneTableStatus(readiness, tapBarsAgo, confluenceIsTradeable(zone))
-          } />
+          } />}
           {!outsideTimePreview && !historicalEntry?.tradingTimeBlocked
             && (!repeatedTap || completedStatus) && !extremeAPlusBlocked
             && bestTrendlineBadge(engulfingTrade)}
         </td>
       </tr>
-      {engulfingTrade && !historicalTrade
+      {pullback && <ZonePullbackDetailsRow setup={pullback} />}
+      {!pullback && engulfingTrade && !historicalTrade
         && (!repeatedTap || completedStatus || usedZoneTrade)
         && <TradeDetailsRow
           trade={engulfingTrade}
@@ -9658,7 +9754,7 @@ export const OandaProChart: React.FC<{
           referenceOnly={outsideTimePreview !== undefined || usedZoneTrade !== undefined}
           hideReferenceStatus={usedZoneTrade !== undefined && !trade && !outsideTimePreview && !historicalTrade}
         />}
-      {historicalTrade && (!repeatedTap || completedStatus) && (
+      {!pullback && historicalTrade && (!repeatedTap || completedStatus) && (
         <TradeDetailsRow trade={historicalTrade} colSpan={5}
           fillEvidence={pullbackFillEvidence}
           zoneTimeframe={granularity} entryCandles={tableTimeframeData[historicalTrade.signal.timeframe]?.candles}

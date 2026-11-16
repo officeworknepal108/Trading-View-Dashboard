@@ -2,7 +2,9 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import React from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
-import { TradeDetailsRow, ScalpOutcomeRow, PullbackSetupRows } from '../src/components/OandaProChart';
+import { TradeDetailsRow, ScalpOutcomeRow, PullbackSetupRows, findZoneTablePullbackSetup,
+  ZonePullbackTradeStatus, ZonePullbackDetailsRow } from '../src/components/OandaProChart';
+import { buildPullbackChartSetups } from '../src/services/pullbackChartSetup';
 import { tradeToMt5Signal } from '../src/services/mt5Automation';
 import { buildIntradayPullbackSignals } from '../src/services/intradayPullback';
 import type { TradeLevels } from '../src/services/tradeLevels';
@@ -20,6 +22,75 @@ const candles = [
 const render = (props: Partial<React.ComponentProps<typeof TradeDetailsRow>> = {}) => renderToStaticMarkup(
   React.createElement(TradeDetailsRow, { trade, colSpan: 5, zoneTimeframe: 'M15', entryCandles: candles, ...props }));
 const text = (html: string) => html.replace(/<[^>]*>/g, '');
+
+function mergedZoneFixture() {
+  const zoneId = 'TJL1-1794492000-3890.29265';
+  const base = tradeToMt5Signal({ source: 'ENGULFING', setupId: `DIRECT:M15:${zoneId}`,
+    zoneName: 'QML A+', zoneTimeframe: 'M15', trade, now: 1800, pendingExpiryMinutes: 15 });
+  const signals = buildIntradayPullbackSignals({ ...base, tradeStyle: 'INTRADAY' }, candles)
+    .map(entry => ({ ...entry, status: 'REJECTED' as const, createdAt: 1800, updatedAt: 1800 }));
+  const bars = [candles[0], { ...candles[1], high: 3889 }];
+  const [setup] = buildPullbackChartSetups({ signals, asOf: 2000, candles: { M15: bars } });
+  assert.ok(setup);
+  return { zoneId, setup, signals, bars };
+}
+
+test('merged zone shows ACTIVE TRADE and puts execution and both entry details in its tooltip', () => {
+  const { setup } = mergedZoneFixture();
+  const status = renderToStaticMarkup(React.createElement(ZonePullbackTradeStatus, { setup }));
+  assert.equal(text(status), 'ACTIVE TRADE');
+  assert.match(status, /title="CHART: Filled · MT5: Not executed/);
+  assert.match(status, /1st Entry: 3,888\.785 — ✓ Filled/);
+  assert.match(status, /2nd Entry: 3,889\.385 — Waiting/);
+  assert.match(status, /SL: 145\.85 pips/);
+  assert.match(status, /SL: 139\.85 pips/);
+  assert.match(status, /Fixed SL: 3,903\.370/);
+  assert.match(status, /Fixed TP: 3,858\.415/);
+  const details = renderToStaticMarkup(React.createElement(ZonePullbackDetailsRow, { setup }));
+  assert.equal((details.match(/<tr /g) ?? []).length, 1);
+  assert.equal((details.match(/aria-label="Entry filled"/g) ?? []).length, 1);
+  assert.match(text(details), /1st ENTRY✓ 3,888\.785/);
+  assert.match(text(details), /2nd ENTRY 3,889\.385/);
+  assert.doesNotMatch(text(details), /CHART:|MT5:/);
+});
+
+test('merge matches the source origin, market, direction, timeframe and original entry event', () => {
+  const { zoneId, setup } = mergedZoneFixture();
+  const options = { zoneIds: [zoneId], symbol: 'XAUUSD', zoneTimeframe: 'M15', direction: 'bearish' as const, trade };
+  assert.equal(findZoneTablePullbackSetup([setup], options), setup);
+  assert.equal(findZoneTablePullbackSetup([setup], { ...options, zoneIds: ['merged', 'TJL1-1794492000-3890.3'] }), setup);
+  for (const change of [{ symbol: 'EURUSD' }, { zoneTimeframe: 'M30' }, { direction: 'bullish' as const },
+    { zoneIds: ['TJL1-1794492900-3890.29265'] }, { trade: { ...trade, signal: { ...trade.signal, time: 2700 } } }]) {
+    assert.equal(findZoneTablePullbackSetup([setup], { ...options, ...change }), undefined);
+  }
+});
+
+test('a represented Intraday setup omits its standalone row while other setups and Scalp remain visible', () => {
+  const { setup, signals, bars } = mergedZoneFixture();
+  const props = { signals, style: 'INTRADAY' as const, asOf: 2000,
+    entryCandles: { M15: bars }, timeZone: 'Asia/Kathmandu' as const };
+  assert.match(renderToStaticMarkup(React.createElement(PullbackSetupRows, props)), /INTRADAY/);
+  assert.equal(renderToStaticMarkup(React.createElement(PullbackSetupRows, { ...props, representedSetups: [setup] })), '');
+  assert.match(renderToStaticMarkup(React.createElement(PullbackSetupRows, { ...props,
+    representedSetups: [{ ...setup, memberIds: ['unrelated'], setupId: 'unrelated' }] })), /INTRADAY/);
+  assert.match(renderToStaticMarkup(React.createElement(PullbackSetupRows, { ...props,
+    style: 'SCALP_1_1', representedSetups: [setup] })), /SCALP 1:1/);
+});
+
+test('merged details retain second-only skips, chart-only ticks and completed result handling', () => {
+  const { setup } = mergedZoneFixture();
+  const skipped = { ...setup, secondOnly: true, legs: setup.legs.map(leg => ({ ...leg,
+    chartConfirmed: leg.leg === 25, executed: leg.leg === 25 })) };
+  const details = renderToStaticMarkup(React.createElement(ZonePullbackDetailsRow, { setup: skipped }));
+  assert.match(details, /SKIPPED/);
+  assert.equal((details.match(/aria-label="Entry filled"/g) ?? []).length, 1);
+  assert.match(renderToStaticMarkup(React.createElement(ZonePullbackTradeStatus, { setup: skipped })), /Skipped — split lot below minimum/);
+  for (const result of ['tp', 'sl'] as const) {
+    const completed = { ...setup, trade: { ...setup.trade, result, status: result === 'tp' ? 'tp-hit' as const : 'sl-hit' as const } };
+    assert.equal(renderToStaticMarkup(React.createElement(ZonePullbackDetailsRow, { setup: completed })), '');
+    assert.equal(text(renderToStaticMarkup(React.createElement(ZonePullbackTradeStatus, { setup: completed }))), `${result.toUpperCase()} HIT`);
+  }
+});
 
 test('completed Scalp retains type, price and engulfing while omitting the entry-details line', () => {
   for (const label of ['TP HIT', 'SL HIT', 'TP REACHED · NO FILL', 'SL REACHED · NO FILL']) {
