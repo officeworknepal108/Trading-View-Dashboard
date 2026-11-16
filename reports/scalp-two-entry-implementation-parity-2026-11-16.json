@@ -1,0 +1,16 @@
+{
+  "checkedSetups": 227,
+  "checkedLegs": 454,
+  "checkedChartRows": 351,
+  "fixedRiskUSD": 50,
+  "allocationUSD": [
+    30,
+    20
+  ],
+  "grossPnlRange": [
+    2257.1994948524734,
+    2403.200367512652
+  ],
+  "unambiguousChartRiskUnits": 45.143989897049444,
+  "message": "All production entry prices, fixed exits, RR, risk shares, expiry and chart outcomes match archived research. Broker operations were not invoked."
+}

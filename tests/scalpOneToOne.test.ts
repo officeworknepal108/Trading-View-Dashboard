@@ -7,6 +7,11 @@ import { SCALP_ONE_TO_ONE_RISK_OPTIONS, normalizeScalpOneToOneRisk, isTradeStyle
   mt5SignalDisabledReason, applySignalOppositePositionTarget,
   goldAutomationOpposingZoneBlocked, goldAutomationRepeatAreaBlocked, scalpOneToOneVolumePasses } from '../src/services/mt5Automation';
 import type { VolumeStudyRecord } from '../src/services/volumeEngulfingStudy';
+import { scalpOneToOnePullbackSignals, scalpOneToOneChartRecords, scalpPullbackBarStates } from '../src/services/scalpOneToOne';
+import { scalpPullbackSignalError } from '../src/services/mt5Automation';
+import { calculateJournalPerformance } from '../src/components/TradeJournal';
+import { deduplicateTradeRecords } from '../src/services/tradeRecordDeduplication';
+import type { StudyCandles } from '../src/services/trendlineStudyHistory';
 
 const record: VolumeStudyRecord = { id: 'VE:XAUUSD:M15:900',
   signal: { type: 'T1', direction: 'bullish', timeframe: 'M15', time: 900, candleCount: 2 },
@@ -16,6 +21,85 @@ const record: VolumeStudyRecord = { id: 'VE:XAUUSD:M15:900',
     calculatedAt: 1800, filledAt: 1800,
     signal: { type: 'T1', direction: 'bullish', timeframe: 'M15', time: 900, candleCount: 2 } },
   outcome: 'active', filledAt: 1800 };
+
+const layeredCandles: StudyCandles = { M15: [
+  { time: 900, open: 90, high: 101, low: 89, close: 100, volume: 750, complete: true },
+  { time: 1800, open: 100, high: 101, low: 97, close: 100, complete: true },
+  { time: 2700, open: 100, high: 111, low: 99, close: 110, complete: true },
+] };
+
+test('two pullbacks freeze original exits, allocate 60/40 and expire at the next M15 close', () => {
+  const snapshot = JSON.stringify(record);
+  const signals = scalpOneToOnePullbackSignals(record, layeredCandles, 1800, 240);
+  assert.equal(signals.length, 2);
+  assert.deepEqual(signals.map(s => s.entry), [99, 97.5]);
+  assert.deepEqual(signals.map(s => s.scalpEntry?.riskShare), [0.6, 0.4]);
+  assert.equal(new Set(signals.map(s => s.setupId)).size, 2);
+  assert.equal(new Set(signals.map(s => s.zoneId)).size, 2);
+  for (const signal of signals) {
+    assert.equal(signal.orderType, 'LIMIT');
+    assert.equal(signal.stopLoss, 90); assert.equal(signal.takeProfit, 110);
+    assert.equal(signal.expiresAt, 2700);
+    assert.equal(signal.riskFree, 110);
+    assert.equal(scalpPullbackSignalError(signal), undefined);
+    assert.deepEqual(applySignalOppositePositionTarget(signal, [{ direction: 'SELL' }]), signal);
+  }
+  assert.equal(JSON.stringify(record), snapshot);
+  assert.deepEqual(scalpOneToOnePullbackSignals(record, {}, 1800, 240), []);
+});
+
+test('sell pullbacks mirror buys; the original distance cap can coalesce both entries', () => {
+  const mirrored: StudyCandles = { M15: layeredCandles.M15!.map(c => ({ ...c,
+    open: 200 - c.open, high: 200 - c.low, low: 200 - c.high, close: 200 - c.close })) };
+  const sell: VolumeStudyRecord = { ...record, signal: { ...record.signal, direction: 'bearish' },
+    levels: { ...record.levels, stopLoss: 110, takeProfit: 90, riskFree: 90 } };
+  const signals = scalpOneToOnePullbackSignals(sell, mirrored, 1800, 240);
+  assert.deepEqual(signals.map(s => s.entry), [101, 102.5]);
+  for (const signal of signals) assert.equal(scalpPullbackSignalError(signal), undefined);
+  const capped: VolumeStudyRecord = { ...record,
+    levels: { ...record.levels, entry: 95, stopLoss: 75, takeProfit: 115, riskFree: 115,
+      riskPips: 200, pendingAtCreation: true, status: 'pending' } };
+  const cappedSignals = scalpOneToOnePullbackSignals(capped, layeredCandles, 1800, 240);
+  assert.deepEqual(cappedSignals.map(s => s.entry), [95, 95]);
+  assert.equal(new Set(cappedSignals.map(s => s.id)).size, 2);
+  for (const signal of cappedSignals) assert.equal(scalpPullbackSignalError(signal), undefined);
+});
+
+test('rejects tampered allocations, shifted exits, expired window geometry and market fallback', () => {
+  const signal = scalpOneToOnePullbackSignals(record, layeredCandles, 1800, 240)[0];
+  for (const changed of [
+    { ...signal, scalpEntry: { ...signal.scalpEntry!, riskShare: 1 } },
+    { ...signal, takeProfit: 108 }, { ...signal, entry: 100 },
+    { ...signal, expiresAt: 2800 }, { ...signal, calculatedAt: 1801 },
+    { ...signal, orderType: 'MARKET' as const },
+  ]) assert.match(scalpPullbackSignalError(changed)!, /Invalid Scalp/);
+});
+
+test('bar replay includes partial fills before target; uncertainty never becomes a chart win', () => {
+  const signals = scalpOneToOnePullbackSignals(record, layeredCandles, 1800, 240);
+  const states = scalpPullbackBarStates({ time: 1800, open: 100, high: 111, low: 97, close: 100 }, signals);
+  assert.deepEqual(states.map(s => s.mask).sort(), [0, 1, 3]);
+  const ambiguous: StudyCandles = { M15: [layeredCandles.M15![0],
+    { time: 1800, open: 100, high: 111, low: 97, close: 100, complete: true }] };
+  assert.deepEqual(scalpOneToOneChartRecords(record, ambiguous, 2700), []);
+  assert.deepEqual(scalpOneToOneChartRecords(record, layeredCandles, 2699), []);
+});
+
+test('layered history uses individual RR and weighted setup R without merging capped siblings', () => {
+  const rows = scalpOneToOneChartRecords(record, layeredCandles, 3600);
+  assert.equal(rows.length, 2);
+  assert.ok(rows.every(r => r.result === 'tp' && r.completedAt === 2700));
+  assert.ok(Math.abs(calculateJournalPerformance(rows).totalR - 1.4) < 1e-8);
+  assert.ok(rows.every(r => isGoldTradeRecordRoute(r, true)));
+  const samePrice = rows.map(r => ({ ...r, entry: 95 }));
+  assert.equal(deduplicateTradeRecords(samePrice).length, 2);
+  const broker = { ...samePrice[0], id: 'MT5:99', brokerTicket: 99, mt5Managed: true };
+  const reconciled = deduplicateTradeRecords([...samePrice, broker]);
+  assert.equal(reconciled.length, 2);
+  assert.ok(reconciled.some(r => r.scalpEntry?.leg === 25 && !r.mt5Managed));
+  const stopped = rows.map(r => ({ ...r, result: 'sl' as const }));
+  assert.equal(calculateJournalPerformance(stopped).totalR, -1);
+});
 
 test('Scalp 1:1 uses its own switch and approved risk choices', () => {
   assert.deepEqual(SCALP_ONE_TO_ONE_RISK_OPTIONS, [0.25, 0.5, 0.75, 1, 1.5, 2]);

@@ -15,6 +15,7 @@ export interface CanonicalTradeRecord extends FilterableTradeRecord {
   entry: number; stopLoss: number; takeProfit: number; rewardRisk: number; riskPips: number;
   tradeStyle?: 'SCALPING' | 'INTRADAY' | 'SCALP_1_1'; fibSource?: string; fibBand?: string;
   brokerTicket?: number; mt5Managed?: boolean;
+  scalpEntry?: import('./mt5Automation').ScalpPullbackEntry;
 }
 
 export interface TradeRecordVerification {

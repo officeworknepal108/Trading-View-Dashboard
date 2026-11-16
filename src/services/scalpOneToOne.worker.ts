@@ -1,4 +1,4 @@
-import { buildScalpOneToOneSignals, scalpOneToOneChartRecord } from './scalpOneToOne';
+import { buildScalpOneToOneSignals, scalpOneToOneChartRecords } from './scalpOneToOne';
 import { runVolumeStudy, VOLUME_STUDY_MAX_LOOKBACK } from './volumeEngulfingStudy';
 import type { StudyCandles } from './trendlineStudyHistory';
 
@@ -16,7 +16,7 @@ self.onmessage = (event: MessageEvent<{ candles: StudyCandles; now: number; pend
       lookback: Math.min(VOLUME_STUDY_MAX_LOOKBACK, candles.M15.length), candles },
       (done, total) => self.postMessage({ progress: Math.round(done / Math.max(1, total) * 100) }));
     self.postMessage({
-      records: study.records.map(scalpOneToOneChartRecord).filter(Boolean),
+      records: study.records.flatMap(record => scalpOneToOneChartRecords(record, candles, now)),
     });
   } catch (error) {
     self.postMessage({ signals: [], records: [], error: error instanceof Error ? error.message : 'Scalp 1:1 history unavailable.' });

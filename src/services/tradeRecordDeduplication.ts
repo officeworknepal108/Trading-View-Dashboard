@@ -14,6 +14,7 @@ export interface DeduplicableTradeRecord {
   zoneName?: string;
   tradeStyle?: string;
   riskPips?: number;
+  scalpEntry?: { leg: number };
 }
 
 function exactPriceKey(value: unknown): string | undefined {
@@ -39,6 +40,7 @@ export function tradeExecutionKey(record: DeduplicableTradeRecord): string {
     record.tradeStyle === 'SCALP_1_1' ? 'SCALP_1_1:EXECUTION' : 'EXECUTION',
     record.symbol ?? 'XAUUSD', Math.trunc(signalAt), record.signalTimeframe,
     record.direction, entry, stopLoss,
+    ...(record.tradeStyle === 'SCALP_1_1' && record.scalpEntry ? [`P${record.scalpEntry.leg}`] : []),
   ].join(':');
 }
 
@@ -81,7 +83,8 @@ export function deduplicateTradeRecords<T extends DeduplicableTradeRecord>(recor
         || record.signalAt !== broker.signalAt || record.signalTimeframe !== broker.signalTimeframe
         || record.direction !== broker.direction || record.source !== broker.source
         || record.zoneName !== broker.zoneName || record.zoneTimeframe !== broker.zoneTimeframe
-        || record.tradeStyle !== broker.tradeStyle) return false;
+        || record.tradeStyle !== broker.tradeStyle
+        || record.scalpEntry?.leg !== broker.scalpEntry?.leg) return false;
       // The broker owns this signal's execution. Feed differences and later
       // recalculation can change chart prices beyond any slippage tolerance.
       return true;

@@ -226,6 +226,10 @@ export function mt5SignalDisabledReason(
     return `${signal.zoneTimeframe} setup / ${signal.signalTimeframe} entry automatic trading is disabled.`;
   }
   if (isTradeStyleEnabled(config, signal)) {
+    if (signal.tradeStyle === 'SCALP_1_1' && 'scalpEntry' in signal && signal.scalpEntry) {
+      const error = scalpPullbackSignalError(signal as Mt5SignalInput);
+      if (error) return error;
+    }
     if (signal.tradeStyle === 'SCALP_1_1' && !scalpOneToOneVolumePasses(signal.engulfingType,
       signal.journalContext?.volume1, signal.journalContext?.volume2, signal.journalContext?.volume3)) {
       return 'Scalp 1:1 requires a minimum 250-unit candle-volume decrease.';
@@ -319,6 +323,44 @@ export interface Mt5AutomationConfig {
   moveStopToBreakEvenAtR: number;
 }
 
+export interface ScalpPullbackEntry {
+  version: 1;
+  leg: 10 | 25;
+  riskShare: number;
+  referenceEntry: number;
+  nextOpen: number;
+  confirmationBody: number;
+}
+
+/** Validate the two fixed-exit entries independently of the scanner/UI. */
+export function scalpPullbackSignalError(signal: Pick<Mt5SignalInput,
+  'scalpEntry' | 'entry' | 'stopLoss' | 'takeProfit' | 'direction' | 'orderType'
+  | 'signalAt' | 'calculatedAt' | 'expiresAt' | 'rewardRisk'>): string | undefined {
+  const leg = signal.scalpEntry;
+  if (!leg) return undefined; // Existing single-entry executions retain their exits.
+  const expectedShare = leg.leg === 10 ? 0.6 : leg.leg === 25 ? 0.4 : 0;
+  const sign = signal.direction === 'BUY' ? 1 : -1;
+  const raw = leg.nextOpen - sign * leg.confirmationBody * leg.leg / 100;
+  const entry = sign === 1 ? Math.min(raw, leg.referenceEntry) : Math.max(raw, leg.referenceEntry);
+  const risk = sign * (signal.entry - signal.stopLoss);
+  const reward = sign * (signal.takeProfit - signal.entry);
+  if (leg.version !== 1 || !expectedShare || leg.riskShare !== expectedShare
+    || ![signal.entry, signal.stopLoss, signal.takeProfit, signal.rewardRisk,
+      signal.signalAt, signal.calculatedAt, signal.expiresAt].every(v => Number.isFinite(v) && v > 0)
+    || ![leg.referenceEntry, leg.nextOpen, leg.confirmationBody].every(v => Number.isFinite(v) && v > 0)
+    || signal.orderType !== 'LIMIT' || Math.abs(entry - signal.entry) > 1e-6
+    || Math.abs((signal.stopLoss + signal.takeProfit) / 2 - leg.referenceEntry) > 1e-6
+    || sign * (leg.referenceEntry - signal.stopLoss) <= 0
+    || sign * (leg.referenceEntry - signal.stopLoss) > 20.000001
+    || risk <= 0 || risk > 20.000001 || reward <= 0
+    || Math.abs(signal.rewardRisk - reward / risk) > 1e-6
+    || signal.calculatedAt !== signal.signalAt + 900
+    || signal.expiresAt !== signal.calculatedAt + 900) {
+    return 'Invalid Scalp 1:1 pullback entry, risk allocation or original fixed exits.';
+  }
+  return undefined;
+}
+
 export interface Mt5SignalInput {
   id: string;
   setupId?: string;
@@ -329,6 +371,9 @@ export interface Mt5SignalInput {
   source: 'ENGULFING' | 'MTF';
   mtfLtfFibRequiredAtSignal?: boolean;
   tradeStyle?: 'SCALPING' | 'INTRADAY' | 'SCALP_1_1';
+  scalpEntry?: ScalpPullbackEntry;
+  /** Frozen full-setup cash allowance, shared by both broker entries. */
+  scalpSetupRiskBudget?: number;
   zoneName: string;
   zoneTimeframe: TradeTimeframe;
   signalTimeframe: TradeTimeframe;

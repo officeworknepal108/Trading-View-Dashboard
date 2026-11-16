@@ -53,6 +53,144 @@ class PartialCloseVolumeTests(BridgeTestCase):
 
 
 class ScalpOneToOneTests(BridgeTestCase):
+    def pullback(self, leg=10):
+        entry = 99 if leg == 10 else 97.5
+        return {"id": f"SCALP_1_1:900:P{leg}", "direction": "BUY", "orderType": "LIMIT",
+                "tradeStyle": "SCALP_1_1", "signalTimeframe": "M15", "zoneTimeframe": "M15",
+                "zoneName": "Scalp 1:1", "symbol": "XAUUSD", "entry": entry, "stopLoss": 90,
+                "takeProfit": 110, "riskPips": (entry - 90) * 10, "rewardRisk": (110 - entry) / (entry - 90),
+                "signalAt": 900, "calculatedAt": 1800, "expiresAt": 2700, "scalpSetupRiskBudget": 50,
+                "scalpEntry": {"version": 1, "leg": leg, "riskShare": 0.6 if leg == 10 else 0.4,
+                               "referenceEntry": 100, "nextOpen": 100, "confirmationBody": 10}}
+
+    def test_two_entries_share_one_frozen_cash_allowance(self):
+        config = {"riskPercent": 2, "scalpOneToOneRiskPercent": 1}
+        self.assertEqual(bridge.signal_risk_money(self.pullback(10), config, 5000), 30)
+        self.assertEqual(bridge.signal_risk_money(self.pullback(25), config, 5000), 20)
+        self.assertEqual(bridge.signal_risk_money(self.pullback(25), config, 6000), 20,
+                         'equity growth must not enlarge the second allocation')
+        self.assertLess(bridge.signal_risk_money(self.pullback(25), config, 4000), 20)
+        with self.assertRaisesRegex(RuntimeError, 'risk allocation'):
+            bridge.signal_risk_percent({**self.pullback(), 'scalpEntry': {
+                **self.pullback()['scalpEntry'], 'riskShare': 1}}, config)
+        missing = self.pullback()
+        del missing['scalpSetupRiskBudget']
+        with self.assertRaisesRegex(RuntimeError, 'budget is missing'):
+            bridge.signal_risk_money(missing, config, 5000)
+
+    def test_pullback_validation_preserves_reference_target_and_rejects_repricing(self):
+        for leg in [10, 25]:
+            bridge.validate_scalp_pullback(self.pullback(leg))
+        for change in [{'takeProfit': 108}, {'entry': 100}, {'expiresAt': 2800}, {'orderType': 'MARKET'}]:
+            with self.assertRaisesRegex(RuntimeError, 'original fixed SL/TP'):
+                bridge.validate_scalp_pullback({**self.pullback(), **change})
+        buy = self.pullback()
+        sell = {**buy, 'direction': 'SELL', 'entry': 101, 'stopLoss': 110, 'takeProfit': 90}
+        bridge.validate_scalp_pullback(sell)
+
+    def test_layered_limit_uses_frozen_target_not_one_r_from_new_entry(self):
+        signal = self.pullback()
+        self.assertFalse(bridge.pending_order_passed_one_and_half_r(signal, SimpleNamespace(bid=109, ask=109.1)))
+        self.assertTrue(bridge.pending_order_passed_one_and_half_r(signal, SimpleNamespace(bid=110, ask=110.1)))
+
+    def test_fast_closed_pullback_recovers_actual_fill_from_broker_deals(self):
+        record = {**self.pullback(), 'brokerTicket': 123}
+        entered = SimpleNamespace(entry=bridge.mt5.DEAL_ENTRY_IN, price=98.9, volume=0.02, time=1805)
+        exited = SimpleNamespace(entry=bridge.mt5.DEAL_ENTRY_OUT, reason=bridge.mt5.DEAL_REASON_TP,
+                                 price=110, profit=22.2, swap=0, commission=-0.2, time=1810)
+        with patch.object(bridge.mt5, 'history_deals_get', return_value=[entered, exited]):
+            details = bridge.closed_trade_details(record, False)
+        self.assertEqual(details['status'], 'TP')
+        self.assertEqual(details['executionPrice'], 98.9)
+        self.assertEqual(details['openedAt'], 1805)
+        self.assertEqual(details['closedAt'], 1810)
+        self.assertEqual(details['realizedProfit'], 22)
+
+    def test_broker_rounding_never_increases_a_leg_to_the_full_setup_risk(self):
+        info = SimpleNamespace(name='XAUUSD', volume_step=0.01, volume_min=0.01, volume_max=100)
+        config = {'riskPercent': 2, 'scalpOneToOneRiskPercent': 1}
+        def profit(side, symbol, volume, entry, stop):
+            return (stop - entry) * volume * 100
+        with patch.object(bridge.mt5, 'account_info', return_value=SimpleNamespace(equity=5000)), \
+             patch.object(bridge.mt5, 'order_calc_profit', side_effect=profit):
+            for leg, allocation in [(10, 30), (25, 20)]:
+                signal = self.pullback(leg)
+                volume = bridge.calculate_volume(signal, config, info)
+                self.assertLessEqual(abs(profit(0, '', volume, signal['entry'], 90)), allocation)
+                bridge.checked_live_entry_price(signal, config, info, SimpleNamespace(ask=100, bid=99.9), volume)
+            tiny = {**config, 'scalpOneToOneRiskPercent': 0.25}
+            with self.assertRaisesRegex(RuntimeError, 'below broker minimum'):
+                bridge.calculate_volume(self.pullback(25), tiny, info)
+
+    def test_new_limits_request_broker_enforced_next_bar_expiration(self):
+        signal = self.pullback()
+        info = SimpleNamespace(name='XAUUSD', trade_tick_size=0.01)
+        with patch.object(bridge, 'ALLOW_LIVE_EXECUTION', True), \
+             patch.object(bridge, 'check_safety', return_value=(info, SimpleNamespace(ask=100, bid=99.9))), \
+             patch.object(bridge, 'calculate_volume', return_value=0.03), \
+             patch.object(bridge, 'checked_live_entry_price', return_value=99), \
+             patch.object(bridge, 'send_with_filling_fallback', return_value=SimpleNamespace(price=99, order=123)) as send, \
+             patch.object(bridge, 'update_status'):
+            details = bridge.place_signal(signal, {'dryRun': False})
+            request = send.call_args.args[0]
+            self.assertEqual(request['sl'], 90)
+            self.assertEqual(request['tp'], 110)
+            self.assertEqual(request['type_time'], bridge.mt5.ORDER_TIME_SPECIFIED)
+            self.assertEqual(request['expiration'], 2700)
+            self.assertEqual(details['status'], 'PLACED')
+
+    def test_fractional_pullback_prices_round_toward_better_entry_without_moving_exits(self):
+        for side, entry, expected in [('BUY', 99.1234, 99.12), ('SELL', 100.8766, 100.88)]:
+            signal = {**self.pullback(), 'direction': side, 'entry': entry}
+            if side == 'SELL':
+                signal.update(stopLoss=110, takeProfit=90)
+            with patch.object(bridge, 'ALLOW_LIVE_EXECUTION', True), \
+                 patch.object(bridge, 'check_safety', return_value=(SimpleNamespace(name='XAUUSD', trade_tick_size=0.01),
+                     SimpleNamespace(ask=100.5, bid=100.4))), \
+                 patch.object(bridge, 'calculate_volume', return_value=0.03) as size, \
+                 patch.object(bridge, 'checked_live_entry_price', side_effect=lambda s, *_: s['entry']), \
+                 patch.object(bridge, 'send_with_filling_fallback', return_value=SimpleNamespace(price=expected, order=123)) as send, \
+                 patch.object(bridge, 'update_status'):
+                bridge.place_signal(signal, {'dryRun': False})
+                request = send.call_args.args[0]
+                self.assertEqual(request['price'], expected)
+                self.assertEqual(request['sl'], signal['stopLoss'])
+                self.assertEqual(request['tp'], signal['takeProfit'])
+                sized_signal = size.call_args.args[0]
+                self.assertEqual(sized_signal['entry'], expected)
+                self.assertEqual(sized_signal['riskPips'], abs(expected - signal['stopLoss']) * 10)
+                self.assertEqual(signal['entry'], entry, 'the source signal remains frozen')
+
+    def test_two_entry_safety_rejects_netting_accounts(self):
+        with patch.object(bridge.mt5, 'terminal_info', return_value=SimpleNamespace(connected=True, trade_allowed=True)), \
+             patch.object(bridge.mt5, 'account_info', return_value=SimpleNamespace(trade_allowed=True, margin_mode=0)):
+            with self.assertRaisesRegex(RuntimeError, 'hedging account'):
+                bridge.check_safety(self.pullback(), {'scalpOneToOneEnabled': True})
+
+    def test_expiry_removes_unfilled_order_but_fill_race_recovers_the_position(self):
+        pending = {**self.pullback(), 'status': 'PLACED', 'brokerTicket': 123}
+        config = {'scalpOneToOneEnabled': True}
+        state = {pending['id']: pending.copy()}
+        with patch.object(bridge.time, 'time', return_value=2701), \
+             patch.object(bridge.mt5, 'orders_get', return_value=[SimpleNamespace(ticket=123)]), \
+             patch.object(bridge.mt5, 'symbol_info_tick', return_value=SimpleNamespace(bid=101, ask=101.1)), \
+             patch.object(bridge.mt5, 'order_send', return_value=SimpleNamespace(retcode=bridge.mt5.TRADE_RETCODE_DONE)), \
+             patch.object(bridge, 'update_status') as update:
+            bridge.manage_open_signals(state, [], config)
+            self.assertEqual(state, {})
+            self.assertEqual(update.call_args.args[1], 'CANCELLED')
+        state = {pending['id']: pending.copy()}
+        position = SimpleNamespace(ticket=123, price_open=99, sl=90, type=bridge.mt5.POSITION_TYPE_BUY)
+        with patch.object(bridge.time, 'time', return_value=2701), \
+             patch.object(bridge.mt5, 'orders_get', return_value=[]), \
+             patch.object(bridge.mt5, 'symbol_info_tick', return_value=SimpleNamespace(bid=101, ask=101.1)), \
+             patch.object(bridge, 'find_position', return_value=position), \
+             patch.object(bridge, 'update_status') as update:
+            bridge.manage_open_signals(state, [{**pending, 'status': 'EXPIRED'}], config)
+            self.assertEqual(state[pending['id']]['status'], 'ACTIVE')
+            self.assertEqual(update.call_args.args[1], 'ACTIVE')
+            self.assertEqual(state[pending['id']]['takeProfit'], 110)
+
     def test_risk_is_independent_and_invalid_selection_is_rejected(self):
         config = {"riskPercent": 2, "scalpOneToOneRiskPercent": 0.75}
         self.assertEqual(bridge.signal_risk_percent({"tradeStyle": "SCALP_1_1"}, config), 0.75)

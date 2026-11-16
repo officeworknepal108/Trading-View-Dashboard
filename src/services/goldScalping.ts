@@ -128,11 +128,16 @@ export function isGoldTradeRecordRoute(record: {
   zoneTimeframe: TradeTimeframe;
   signalTimeframe: TradeTimeframe;
   rewardRisk: number;
+  scalpEntry?: { leg: number; riskShare: number; version: number };
   fibSource?: string;
 }, requireLtfFib = false): boolean {
   if (record.tradeStyle === 'SCALP_1_1') {
     return record.source === 'ENGULFING' && record.zoneTimeframe === 'M15'
-      && record.signalTimeframe === 'M15' && record.rewardRisk === 1;
+      && record.signalTimeframe === 'M15' && (record.scalpEntry
+        ? record.scalpEntry.version === 1 && (record.scalpEntry.leg === 10 && record.scalpEntry.riskShare === 0.6
+          || record.scalpEntry.leg === 25 && record.scalpEntry.riskShare === 0.4)
+          && Number.isFinite(record.rewardRisk) && record.rewardRisk > 0
+        : record.rewardRisk === 1);
   }
   if (record.tradeStyle === 'SCALPING') {
     return record.rewardRisk === 3 && (

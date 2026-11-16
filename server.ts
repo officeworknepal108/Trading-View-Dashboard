@@ -39,6 +39,7 @@ import {
   priorGoldMt5ZoneExecution,
   findMissedZoneEntry,
   mt5SignalDisabledReason,
+  scalpPullbackSignalError,
   mt5ConnectionMatches,
   manualTradeTimeframeKey,
   positionFibExitTimeframe,
@@ -570,6 +571,11 @@ function validateMt5Signal(candidate: any): string | undefined {
   }
   if (!Number.isFinite(candidate.signalAt) || !Number.isFinite(candidate.calculatedAt)
     || !Number.isFinite(candidate.expiresAt)) return 'Invalid signal timestamps.';
+  if (candidate.scalpEntry) {
+    if (candidate.tradeStyle !== 'SCALP_1_1') return 'Pullback allocation is only supported for Scalp 1:1.';
+    const error = scalpPullbackSignalError(candidate);
+    if (error) return error;
+  }
   return undefined;
 }
 
@@ -657,7 +663,27 @@ async function enqueueMt5Signal(
       && signal.direction === candidate.direction
       && signal.signalAt === candidate.signalAt
       && (signal.tradeStyle === 'SCALP_1_1') === (candidate.tradeStyle === 'SCALP_1_1')
+      && (!candidate.scalpEntry || !signal.scalpEntry || signal.scalpEntry.leg === candidate.scalpEntry.leg)
     ));
+    const sibling = candidate.scalpEntry ? signals.find(signal => signal.tradeStyle === 'SCALP_1_1'
+      && signal.scalpEntry && signal.signalAt === candidate.signalAt && signal.direction === candidate.direction
+      && mt5ConnectionMatches(executionConnection, signal)) : undefined;
+    if (sibling && candidate.scalpEntry && (Math.abs(sibling.stopLoss - candidate.stopLoss) > 1e-6
+      || Math.abs(sibling.takeProfit - candidate.takeProfit) > 1e-6
+      || Math.abs(sibling.scalpEntry!.nextOpen - candidate.scalpEntry.nextOpen) > 1e-6
+      || Math.abs(sibling.scalpEntry!.confirmationBody - candidate.scalpEntry.confirmationBody) > 1e-6)) {
+      throw new Error('Scalp 1:1 setup prices changed after the first order; the second entry is paused.');
+    }
+    if (candidate.scalpEntry && signals.some(signal => signal.tradeStyle === 'SCALP_1_1'
+      && signal.signalAt === candidate.signalAt && signal.direction === candidate.direction
+      && ['TP', 'SL', 'RF'].includes(signal.status) && mt5ConnectionMatches(executionConnection, signal))) {
+      throw new Error('Original Scalp 1:1 SL/TP has already been reached; remaining entries are cancelled.');
+    }
+    const scalpSetupRiskBudget = candidate.scalpEntry ? sibling?.scalpSetupRiskBudget
+      ?? Number(mt5Context().mt5BridgeHeartbeat?.equity) * (config.scalpOneToOneRiskPercent ?? 0.25) / 100 : undefined;
+    if (candidate.scalpEntry && !(Number.isFinite(scalpSetupRiskBudget) && scalpSetupRiskBudget! > 0)) {
+      throw new Error('Unable to freeze the Scalp 1:1 setup risk budget.');
+    }
     const priorSetupAttempts = candidate.setupId === undefined ? [] : signals.filter((signal) => (
       signal.setupId === candidate.setupId && consumedSetupStatuses.has(signal.status)
     ));
@@ -684,6 +710,7 @@ async function enqueueMt5Signal(
     }
     const signal: Mt5StoredSignal = {
       ...candidate,
+      scalpSetupRiskBudget,
       id: candidate.id.trim(),
       setupId: candidate.setupId?.trim().slice(0, 300) || undefined,
       zoneName: String(candidate.zoneName || 'Unknown').slice(0, 100),
@@ -1423,7 +1450,10 @@ async function updateMt5JournalRecord(
     }
     if (status !== 'ACTIVE' && status !== 'RISK_FREE'
       && !['TP', 'SL', 'RF'].includes(status) && !existing) return;
-    if (!existing && status !== 'ACTIVE') return;
+    const confirmedFastPullbackClose = signal.scalpEntry && ['TP', 'SL', 'RF'].includes(status)
+      && (signal.brokerTicket ?? 0) > 0 && (signal.closedAt ?? 0) > 0
+      && (signal.closePrice ?? 0) > 0;
+    if (!existing && status !== 'ACTIVE' && !confirmedFastPullbackClose) return;
 
     const context = signal.journalContext;
     const openedAt = Number(signal.openedAt) || updatedAt;
@@ -1477,6 +1507,7 @@ async function updateMt5JournalRecord(
       zoneTimeframe: signal.zoneTimeframe,
       source: signal.source,
       tradeStyle: signal.tradeStyle,
+      scalpEntry: signal.scalpEntry,
       direction: signal.direction === 'BUY' ? 'bullish' : 'bearish',
       signalTimeframe: signal.signalTimeframe,
       engulfingType: signal.engulfingType,
@@ -1484,7 +1515,8 @@ async function updateMt5JournalRecord(
       entry: executionPrice,
       stopLoss,
       takeProfit: signal.takeProfit,
-      rewardRisk: signal.rewardRisk,
+      rewardRisk: signal.scalpEntry ? Math.abs(signal.takeProfit - executionPrice) / Math.abs(executionPrice - stopLoss)
+        : signal.rewardRisk,
       riskPips,
       brokerTicket: signal.brokerPosition || signal.brokerTicket,
       volume: signal.initialVolume || signal.volume,
@@ -2113,6 +2145,14 @@ async function startServer() {
         if (!mt5ConnectionMatches(mt5Context().mt5BridgeHeartbeat, req.body) || !mt5ExecutionFeedIsFresh()
           || !mt5DailyRiskAllowsEntry(mt5Context().mt5BridgeHeartbeat?.dailyRisk)) return null;
         for (const item of signals) {
+          if (item.scalpEntry && ['QUEUED', 'CLAIMED', 'PLACED'].includes(item.status)
+            && signals.some(sibling => sibling.id !== item.id && sibling.tradeStyle === 'SCALP_1_1'
+              && sibling.signalAt === item.signalAt && sibling.direction === item.direction
+              && ['TP', 'SL', 'RF'].includes(sibling.status) && mt5ConnectionMatches(item, sibling))) {
+            item.status = 'CANCELLED';
+            item.updatedAt = now;
+            item.message = 'Original setup SL/TP reached; remaining pullback order cancelled.';
+          }
           if (item.status === 'CLAIMED' && item.claimedAt && item.claimedAt < now - 30) {
             item.status = 'QUEUED';
             item.bridgeId = undefined;

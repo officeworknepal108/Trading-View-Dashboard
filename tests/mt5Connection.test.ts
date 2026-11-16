@@ -247,6 +247,57 @@ test('MT5 account handshake resets old candles and queues while preserving autom
     assert.equal((await (await request('/api/mt5/signals/claim', second)).json()).signal, null,
       'a repeated poll cannot claim the same order twice');
 
+    // Layered orders have distinct identities and a common frozen budget. This
+    // fixture stays in the isolated server's temp directory; no broker is used.
+    const configFile = path.join(dataPath, 'mt5-automation.json');
+    const beforeLayers = JSON.parse(await readFile(configFile, 'utf8'));
+    await writeFile(configFile, JSON.stringify({ ...beforeLayers, scalpOneToOneEnabled: true,
+      scalpOneToOneRiskPercent: 1, telegramMessagesEnabled: false }));
+    const layers = ([10, 25] as const).map(leg => {
+      const entry = leg === 10 ? 3999 : 3997.5;
+      return { ...queuedSignal, ...second, id: `SCALP_1_1:test:P${leg}`,
+        setupId: `SCALP_1_1:test:P${leg}`, zoneId: `SCALP_1_1-test-P${leg}`,
+        zoneName: 'Scalp 1:1', zoneTimeframe: 'M15', tradeStyle: 'SCALP_1_1', engulfingType: 'T1',
+        signalAt: now - 900, calculatedAt: now, expiresAt: now + 900,
+        entry, stopLoss: 3990, takeProfit: 4010, riskFree: 4010,
+        riskPips: (entry - 3990) * 10, rewardRisk: (4010 - entry) / (entry - 3990),
+        scalpSetupRiskBudget: 50,
+        scalpEntry: { version: 1, leg, riskShare: leg === 10 ? 0.6 : 0.4,
+          referenceEntry: 4000, nextOpen: 4000, confirmationBody: 10 },
+        journalContext: { volume1: 1000, volume2: 750, volumeLogicStatus: 'valid',
+          biasAtEntry: { H4: 'bullish' }, entrySnapshotCandles: [], autoReason: 'Isolated pullback test.' },
+      };
+    });
+    await writeFile(path.join(dataPath, 'mt5-signals.json'), JSON.stringify({ signals: layers }));
+    const firstLayer = await (await request('/api/mt5/signals/claim', second)).json();
+    const secondLayer = await (await request('/api/mt5/signals/claim', second)).json();
+    assert.equal(firstLayer.signal?.scalpEntry.leg, 10);
+    assert.equal(secondLayer.signal?.scalpEntry.leg, 25, JSON.stringify(secondLayer));
+    assert.equal(firstLayer.signal.scalpSetupRiskBudget, secondLayer.signal.scalpSetupRiskBudget);
+    for (const [index, layer] of layers.entries()) {
+      assert.equal((await request(`/api/mt5/signals/${encodeURIComponent(layer.id)}/status`, {
+        ...second, status: 'PLACED', brokerTicket: 10010 + index, executionPrice: layer.entry,
+        openedAt: now, volume: 0.02,
+      })).status, 200);
+    }
+    // A fast limit fill can reach TP between polls, without an ACTIVE callback.
+    assert.equal((await request(`/api/mt5/signals/${encodeURIComponent(layers[0].id)}/status`, {
+      ...second, status: 'TP', closedAt: now, closePrice: 4010, realizedProfit: 36,
+    })).status, 200);
+    assert.equal((await (await request('/api/mt5/signals/claim', second)).json()).signal, null);
+    const afterLayers = JSON.parse(await readFile(path.join(dataPath, 'mt5-signals.json'), 'utf8')).signals;
+    assert.equal(afterLayers.find((s: any) => s.scalpEntry.leg === 25).status, 'CANCELLED',
+      'a sibling target cancels the still-unfilled second order');
+    const layerJournal = JSON.parse(await readFile(path.join(dataPath, 'trade-journal.json'), 'utf8')).trades;
+    assert.equal(layerJournal.find((r: any) => r.mt5SignalId === layers[0].id).scalpEntry.riskShare, 0.6);
+    await writeFile(path.join(dataPath, 'mt5-signals.json'), JSON.stringify({ signals: [
+      { ...layers[0], scalpEntry: { ...layers[0].scalpEntry, riskShare: 1 } },
+    ] }));
+    assert.equal((await (await request('/api/mt5/signals/claim', second)).json()).signal, null);
+    assert.equal(JSON.parse(await readFile(path.join(dataPath, 'mt5-signals.json'), 'utf8')).signals[0].status, 'REJECTED',
+      'a queued leg cannot claim 100% of setup risk');
+    await writeFile(configFile, JSON.stringify(beforeLayers));
+
     // A qualified, unfilled order becomes a durable missed opportunity, not a reusable zone.
     const missedZone = 'TJL1-1794492000-3890.29265';
     const qualified = { ...queuedSignal, ...second, id: 'qualified-expiry', zoneId: missedZone,

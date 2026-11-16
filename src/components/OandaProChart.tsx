@@ -2425,7 +2425,7 @@ const EngulfingAccuracyTable: React.FC<{
                 {header('Trade style')}
                 {resultRow('INTRADAY', accuracyCounts(summaryRecords.filter((record) => record.tradeStyle === 'INTRADAY')))}
                 {resultRow('SCALPING', accuracyCounts(summaryRecords.filter((record) => record.tradeStyle === 'SCALPING')))}
-                {resultRow('SCALP 1:1', accuracyCounts(summaryRecords.filter((record) => record.tradeStyle === 'SCALP_1_1')))}
+                {resultRow('SCALP 1:1 ENTRIES', accuracyCounts(summaryRecords.filter((record) => record.tradeStyle === 'SCALP_1_1')))}
               </>}
               {header('Trade source')}
               {resultRow('ENGULFING', accuracyCounts(
@@ -2542,6 +2542,7 @@ const EngulfingAccuracyTable: React.FC<{
                     {record.zoneName}
                     {record.tradeStyle === 'SCALP_1_1' && <div className="text-[8px] text-slate-500">
                       {record.mt5Managed || record.brokerTicket !== undefined ? 'MT5' : 'CHART ONLY'}
+                      {record.scalpEntry && ` · ${record.scalpEntry.leg}% pullback / ${Math.round(record.scalpEntry.riskShare * 100)}% risk`}
                     </div>}
                   </td>
                   <td className={`px-1.5 py-1 font-black ${
@@ -4459,7 +4460,7 @@ export const OandaProChart: React.FC<{
       if (event.data.records) setScalpOneToOneChartRecords(event.data.records);
       setScalpOneToOneHistoryStatus(event.data.error ?? (event.data.progress !== undefined
         ? `Loading Scalp 1:1 chart results... ${event.data.progress}%`
-        : 'Scalp 1:1 chart results use loaded history; MT5 executions are recorded separately.'));
+        : 'Scalp 1:1 results count filled entries; 10% / 25% pullbacks share setup risk 60% / 40%. MT5 executions are recorded separately.'));
     };
     task.onerror = () => setScalpOneToOneHistoryStatus('Scalp 1:1 history unavailable.');
     task.postMessage(JSON.parse(scalpOneToOneHistoryInput));
@@ -8811,7 +8812,8 @@ export const OandaProChart: React.FC<{
   const scalpOneToOneTableSignals: Array<Mt5StoredSignal & { preview?: boolean }> = [
     ...scalpOneToOneBrokerSignals,
     ...scalpOneToOnePreview.filter(signal => !scalpOneToOneBrokerSignals.some(stored =>
-      stored.tradeStyle === 'SCALP_1_1' && stored.signalAt === signal.signalAt)).map(signal => ({
+      stored.tradeStyle === 'SCALP_1_1' && stored.signalAt === signal.signalAt
+        && stored.scalpEntry?.leg === signal.scalpEntry?.leg)).map(signal => ({
       ...signal, status: 'QUEUED' as const, createdAt: signal.calculatedAt,
       updatedAt: signal.calculatedAt, preview: true,
     })),
@@ -8826,7 +8828,7 @@ export const OandaProChart: React.FC<{
           const trade: TradeLevels = {
             entry: signal.executionPrice ?? signal.entry, stopLoss: signal.stopLoss,
             takeProfit: signal.takeProfit, riskFree: signal.takeProfit, riskFreeEnabled: false,
-            riskPips: signal.riskPips, rewardRisk: 1,
+            riskPips: signal.riskPips, rewardRisk: signal.rewardRisk,
             status: signal.status === 'TP' ? 'tp-hit' : signal.status === 'SL' ? 'sl-hit'
               : ['ACTIVE', 'RISK_FREE'].includes(signal.status) ? 'active' : 'pending',
             pendingAtCreation: signal.orderType === 'LIMIT', calculatedAt: signal.calculatedAt,
@@ -8838,6 +8840,7 @@ export const OandaProChart: React.FC<{
           return <React.Fragment key={`scalp-1-1-${signal.id}`}>
             <tr className="border-t border-cyan-200 bg-cyan-50/80">
               <td className="px-2 py-1 font-black text-cyan-800"><div>SCALP 1:1 · M15</div>
+                {signal.scalpEntry && <div className="text-[8px]">{signal.scalpEntry.leg}% pullback · {Math.round(signal.scalpEntry.riskShare * 100)}% of setup risk</div>}
                 <div className="text-[8px] font-semibold text-slate-500">{formatAccuracyTradeTime(signal.calculatedAt, chartTimeZone)}</div></td>
               <td className={`px-2 py-1 font-bold ${signal.direction === 'BUY' ? 'text-emerald-700' : 'text-rose-700'}`}>{signal.direction}</td>
               <td className="px-2 py-1 font-bold text-blue-700">{formatPrice(trade.entry)}</td>
@@ -8845,7 +8848,7 @@ export const OandaProChart: React.FC<{
               <td className={`px-2 py-1 text-right font-black ${mt5SignalStatusClassName(signal)}`}>{signal.preview ? 'SETUP CONFIRMED · CHART ONLY' : mt5SignalStatusLabel(signal)}</td>
             </tr>
             {signal.preview ? <tr className="border-t border-indigo-100 bg-indigo-50/70"><td colSpan={5} className="px-2 py-1 text-[9px] font-black text-slate-700">
-              ENTRY {formatPrice(trade.entry)} · SL {formatPrice(trade.stopLoss)} · TP {formatPrice(trade.takeProfit)} · R:R 1:1 · CHART ONLY
+              ENTRY {formatPrice(trade.entry)} · SL {formatPrice(trade.stopLoss)} · TP {formatPrice(trade.takeProfit)} · R:R 1:{trade.rewardRisk.toFixed(2)} · ORIGINAL EXITS FIXED · CHART ONLY
             </td></tr> : <TradeDetailsRow trade={trade} colSpan={5} mt5Signal={signal} />}
           </React.Fragment>;
         })}
@@ -9631,9 +9634,9 @@ export const OandaProChart: React.FC<{
                     {SCALP_ONE_TO_ONE_RISK_OPTIONS.map(risk => <option key={risk} value={risk}>{risk}%</option>)}
                   </select>
                   <span className="mt-1 block text-[8px] font-semibold text-slate-500">
-                    Independent of the risk above. Uses MT5 equity: {mt5Status.bridge.currency || '$'}{' '}
+                    Total setup risk, independent of the risk above. Uses MT5 equity: {mt5Status.bridge.currency || '$'}{' '}
                     {(Math.max(0, mt5Status.bridge.equity ?? 0) * (mt5Status.config.scalpOneToOneRiskPercent ?? 0.25) / 100).toFixed(2)} at SL.
-                    {' '}M15 / H4 bias, H4 EMA20/50, H1 continuation/Far, minimum 250-unit volume decrease, 30-pip buffer, one entry, fixed 1:1 TP.
+                    {' '}10% body pullback: 60% of risk; 25% body pullback: 40% of risk. Original SL/TP fixed; existing stop-distance cap; unfilled entries expire after the next M15 candle. M15 / H4 bias, EMA20/50, H1 continuation/Far and ≥250-unit volume decrease remain required.
                   </span>
                 </label>
                 <label className="mb-2 block font-bold text-slate-700">
@@ -10792,7 +10795,7 @@ export const OandaProChart: React.FC<{
                 <div>Main zone: <b>{record ? `${timeframeName(record.zoneTimeframe)} ` : ''}{zoneName(mainZone)}</b></div>
                 {mtf && <div>Entry zone: <b>{timeframeName(trade.signal.timeframe)} {zoneName(entryZone)}</b></div>}
                 <div>Confirmation: <b>{timeframeName(trade.signal.timeframe)} {bullish ? 'bullish' : 'bearish'} engulfing {trade.signal.type}</b></div>
-                {scalpOneToOne ? <div>Entry method: <b>M15 volume decrease ≥ 250 units · H4 bias + EMA20/50 · H1 continuation/Far · fixed 1:1</b></div>
+                {scalpOneToOne ? <div>Entry method: <b>10% / 25% body pullbacks · 60% / 40% setup risk · original SL/TP fixed · M15 volume decrease ≥ 250 units · H4 bias + EMA20/50 · H1 continuation/Far</b></div>
                   : !mtf && <div>Entry method: <b>Candle confirmation at the main zone</b></div>}
                 {entry.fib !== 'Not recorded' && <div>Fibonacci: <b>{entry.fib}</b></div>}
               </div>
