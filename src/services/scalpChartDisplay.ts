@@ -9,6 +9,13 @@ export interface ScalpDisplayOutcome {
   noFill: boolean;
 }
 
+export function scalpOutcomeExpired(outcome: ScalpDisplayOutcome, candles: readonly StructureCandle[],
+  timeframe: TradeTimeframe, asOf: number): boolean {
+  const seconds = timeframe === 'D' ? 86400 : Number(timeframe.slice(1)) * (timeframe.startsWith('H') ? 3600 : 60);
+  return new Set(candles.filter(candle => candle.time > outcome.at && candle.complete !== false
+    && candle.time + seconds <= asOf).map(candle => candle.time)).size >= 5;
+}
+
 /** Chart touches retire unfilled references; only the broker proves a position closed. */
 export function scalpDisplayOutcome(signal: Mt5StoredSignal, candles: readonly StructureCandle[],
   asOf: number, hasOpenPosition = false): ScalpDisplayOutcome | undefined {
