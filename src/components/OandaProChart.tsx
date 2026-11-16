@@ -849,8 +849,8 @@ export const TradeDetailsRow: React.FC<{
               <span className="tabular-nums">SL {entry ? entry.riskPips.toFixed(2) : '—'} PIPS</span>
             </React.Fragment>;
           })}
-          <span aria-hidden="true">|</span><span className="text-rose-700">SL <span className="tabular-nums font-normal text-slate-700">{formatPrice(trade.stopLoss)}</span></span>
-          <span aria-hidden="true">|</span><span className="text-emerald-700">TP <span className="tabular-nums font-normal text-slate-700">{formatPrice(trade.takeProfit)}</span></span>
+          <span aria-hidden="true">|</span><span className="text-rose-700">SL <span className="tabular-nums font-bold text-slate-700">{formatPrice(trade.stopLoss)}</span></span>
+          <span aria-hidden="true">|</span><span className="text-emerald-700">TP <span className="tabular-nums font-bold text-slate-700">{formatPrice(trade.takeProfit)}</span></span>
         </div>
       </td></tr>
     );
@@ -868,8 +868,8 @@ export const TradeDetailsRow: React.FC<{
           ? (mt5Signal.intradayEntry ?? mt5Signal.scalpEntry)!.leg === 10 ? '1st ENTRY' : '2nd ENTRY' : 'ENTRY'}
           <EntryFillTick filled={!!mt5Signal && !!(mt5Signal.intradayEntry || mt5Signal.scalpEntry)
             && confirmedPullbackFill(mt5Signal, fillEvidence?.asOf ?? Date.now() / 1000, fillEvidence?.positions)} /> <span className="tabular-nums font-bold text-slate-700">{formatPrice(trade.entry)}</span></span>
-        <span className="text-rose-700">SL <span className="tabular-nums font-semibold text-slate-700">{formatPrice(trade.stopLoss)}</span></span>
-        <span className="text-emerald-700">TP <span className="tabular-nums font-semibold text-slate-700">{formatPrice(trade.takeProfit)}</span></span>
+        <span className="text-rose-700">SL <span className="tabular-nums font-bold text-slate-700">{formatPrice(trade.stopLoss)}</span></span>
+        <span className="text-emerald-700">TP <span className="tabular-nums font-bold text-slate-700">{formatPrice(trade.takeProfit)}</span></span>
         <span>R:R 1:{trade.rewardRisk}</span>
         <span>SL {trade.riskPips} PIPS</span>
         {!(referenceOnly && hideReferenceStatus) && <span className={referenceOnly ? 'text-rose-700' : mt5Signal
@@ -966,8 +966,8 @@ export const PullbackSetupRows: React.FC<{
               {state && !state.outcome && !state.signal.displayPlan?.error && price !== undefined && <span className="tabular-nums">SL {(Math.round(Math.abs(price - stop) * 1000 + 1e-7) / 100).toFixed(2)} PIPS</span>}
             </React.Fragment>;
           })}
-          <span aria-hidden="true">|</span><span className="text-rose-700">SL <span className="font-normal tabular-nums text-slate-700">{formatPrice(stop)}</span></span>
-          <span aria-hidden="true">|</span><span className="text-emerald-700">TP <span className="font-normal tabular-nums text-slate-700">{formatPrice(signal.takeProfit)}</span></span>
+          <span aria-hidden="true">|</span><span className="text-rose-700">SL <span className="tabular-nums font-bold text-slate-700">{formatPrice(stop)}</span></span>
+          <span aria-hidden="true">|</span><span className="text-emerald-700">TP <span className="tabular-nums font-bold text-slate-700">{formatPrice(signal.takeProfit)}</span></span>
         </div>
       </td></tr>}
     </React.Fragment>];

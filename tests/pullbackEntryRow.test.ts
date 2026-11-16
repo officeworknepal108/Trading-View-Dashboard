@@ -41,7 +41,7 @@ test('reference row displays both derived sell prices, per-entry SL pips and ori
   assert.match(row, /SL 3,903\.370.*TP 3,858\.415/);
   assert.match(html, /flex-nowrap.*whitespace-nowrap.*text-\[9px\].*font-black/);
   assert.match(html, /text-blue-700/); assert.match(html, /text-rose-700/); assert.match(html, /text-emerald-700/);
-  assert.match(html, /tabular-nums font-normal text-slate-700/);
+  assert.match(html, /tabular-nums font-bold text-slate-700/);
   assert.doesNotMatch(html, /ORIGINAL REFERENCE|Execution:/);
   assert.equal(JSON.stringify({ trade, candles }), original);
 });
