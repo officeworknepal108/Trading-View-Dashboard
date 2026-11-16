@@ -1,9 +1,12 @@
 import type { TradeTimeframe } from './tradeLevels';
 import type { TelegramTradeNumber } from './telegramTradeNumbers';
+import type { SentTelegramAlerts } from './telegramTradeNumbers';
 
 export interface TelegramTradeAlert {
   id: string; tradeKey?: string;
-  kind: 'pending' | 'cancelled' | 'entry' | 'rf' | 'tp' | 'sl';
+  kind: 'pending' | 'cancelled' | 'entry' | 'entry2' | 'rf' | 'tp' | 'sl';
+  chartSetup?: boolean;
+  pullback?: { firstEntry: number; firstRiskPips: number; secondEntry: number; secondRiskPips: number; secondOnly: boolean };
   outsideTradingTime?: boolean;
   symbol: string; direction: 'BUY' | 'SELL'; zoneName: string;
   zoneTimeframe: TradeTimeframe; signalTimeframe: TradeTimeframe; engulfingType: string;
@@ -29,10 +32,21 @@ const entryTime = (seconds: number) => new Intl.DateTimeFormat('en-GB', {
 }).format(seconds * 1000) + ' Nepal';
 
 export function formatTelegramTradeMessage(alert: TelegramTradeAlert, number: TelegramTradeNumber): string {
+  if (alert.kind === 'entry2' && alert.pullback) return `2nd Entry: ${price(alert.pullback.secondEntry)} ✓ Filled`;
   const style = alert.tradeStyle === 'SCALP_1_1' ? 'SCALP 1:1'
     : alert.tradeStyle ?? (['M1', 'M5'].includes(alert.zoneTimeframe) ? 'SCALPING' : 'INTRADAY');
   const identity = `${alert.symbol} ${alert.direction} · ${style}`;
   const heading = (event: string) => `Trade #${number.tradeNumber} — ${event}\n${identity}`;
+  if (alert.chartSetup && alert.kind === 'entry' && alert.pullback) {
+    const p = alert.pullback;
+    return [`TRADE #${number.tradeNumber} · ${style}`, `${alert.symbol} · ${alert.direction} · ${alert.signalTimeframe}`, '',
+      p.secondOnly ? '1st Entry: Skipped — split lot below broker minimum' : `1st Entry: ${price(p.firstEntry)} ✓ Filled`,
+      ...(!p.secondOnly ? [`SL: ${p.firstRiskPips.toFixed(2)} pips`, ''] : []),
+      `2nd Entry: ${price(p.secondEntry)} ${p.secondOnly ? '✓ Filled' : '⏳ Waiting'}`,
+      `SL: ${p.secondRiskPips.toFixed(2)} pips`,
+      ...(p.secondOnly ? ['Risk allocation: 100% of setup risk'] : []), '',
+      `🔴 SL: ${price(alert.stopLoss)}`, `🟢 TP: ${price(alert.takeProfit)}`].join('\n');
+  }
   if (alert.kind === 'tp' || alert.kind === 'sl') {
     return heading(alert.kind === 'tp' ? 'TAKE PROFIT HIT' : 'STOP LOSS HIT');
   }
@@ -62,7 +76,30 @@ export function formatTelegramTradeMessage(alert: TelegramTradeAlert, number: Te
     '', `🕒 ${entryTime(alert.openedAt)}`].join('\n');
 }
 
-export interface DailyTradeCounts { date: string; total: number; wins: number; losses: number; riskFree: number }
+export interface DailyTradeCounts { date: string; total: number; wins: number; losses: number; riskFree: number;
+  open?: number; strategies?: Record<string, { total: number; wins: number; losses: number; riskFree: number; open: number }> }
+
+export function countTelegramSetups(sent: SentTelegramAlerts, now: number): DailyTradeCounts {
+  const day = previousNepalDay(now);
+  const unique = new Map<string, typeof sent[string]>();
+  for (const state of Object.values(sent)) {
+    if (!state.entry || !state.tradeNumber || state.tradeDate !== day.date || !state.tradeStyle) continue;
+    unique.set(`${state.tradeDate}:${state.tradeNumber}`, state);
+  }
+  const summary: DailyTradeCounts = { date: day.date, total: unique.size, wins: 0, losses: 0, riskFree: 0, open: 0, strategies: {} };
+  for (const style of ['SCALP_1_1', 'INTRADAY', 'SCALPING']) summary.strategies![style] = { total: 0, wins: 0, losses: 0, riskFree: 0, open: 0 };
+  for (const state of unique.values()) {
+    const row = summary.strategies![state.tradeStyle!];
+    if (!row) continue;
+    row.total++;
+    // Classify the setup at the reporting day's end, even if it closed later.
+    const result = (state.closedAt ?? Infinity) < day.end ? state.result : undefined;
+    const category = result === 'tp' ? 'wins' : result === 'sl' ? 'losses' : 'open';
+    row[category]++; summary[category]!++;
+    if (state.rf && (state.rfAt ?? 0) < day.end) { row.riskFree++; summary.riskFree++; }
+  }
+  return summary;
+}
 
 export function previousNepalDay(nowSeconds: number): { date: string; start: number; end: number } {
   const offset = 20700;
@@ -91,6 +128,11 @@ export function countDailyTrades(signals: readonly {
 export function formatDailyTradeSummary(summary: DailyTradeCounts): string {
   const date = new Intl.DateTimeFormat('en-GB', { timeZone: 'UTC', day: 'numeric', month: 'short', year: 'numeric' })
     .format(new Date(`${summary.date}T12:00:00Z`));
+  if (summary.strategies) return [`📊 DAILY SUMMARY · ${date}`, '', `Total trades: ${summary.total}`,
+    `🟢 TP: ${summary.wins}`, `🔴 SL: ${summary.losses}`, `⏳ Open: ${summary.open ?? 0}`,
+    ...(summary.riskFree ? [`🟡 Risk-free: ${summary.riskFree}`] : []),
+    ...Object.entries(summary.strategies).flatMap(([style, row]) => ['', style === 'SCALP_1_1' ? 'SCALP 1:1' : style,
+      `Trades: ${row.total} · TP: ${row.wins} · SL: ${row.losses} · Open: ${row.open}${row.riskFree ? ` · RF: ${row.riskFree}` : ''}`])].join('\n');
   return [`DAILY TRADE SUMMARY — ${date}`, '', `Total trades: ${summary.total}`,
     `✅ Wins: ${summary.wins}`, `❌ Losses: ${summary.losses}`, `🟡 Risk-free: ${summary.riskFree}`].join('\n');
 }

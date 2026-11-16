@@ -4,6 +4,11 @@ export interface TelegramTradeNumber {
 }
 
 export interface SentTelegramTradeState extends Partial<TelegramTradeNumber> {
+  entry2?: boolean;
+  tradeStyle?: 'SCALPING' | 'INTRADAY' | 'SCALP_1_1';
+  openedAt?: number;
+  closedAt?: number;
+  rfAt?: number;
   summarySent?: boolean;
   pending?: boolean;
   cancelled?: boolean;
@@ -29,6 +34,7 @@ export function mergeTelegramAlertHistories(histories: SentTelegramAlerts[]): Se
         pending: previous?.pending || state.pending,
         cancelled: previous?.cancelled || state.cancelled,
         entry: previous?.entry || state.entry,
+        entry2: previous?.entry2 || state.entry2,
         rf: previous?.rf || state.rf,
         result: previous?.result ?? state.result,
       };
@@ -53,10 +59,12 @@ export function bindTelegramAlertAliases(sent: SentTelegramAlerts, id: string, t
     a.tradeDate.localeCompare(b.tradeDate) || a.tradeNumber - b.tradeNumber
   ))[0];
   const merged: SentTelegramTradeState = {
+    ...states[0],
     ...numbered,
     pending: states.some(state => state.pending),
     cancelled: states.some(state => state.cancelled),
     entry: states.some(state => state.entry),
+    entry2: states.some(state => state.entry2),
     rf: states.some(state => state.rf),
     result: states.find(state => state.result)?.result,
   };

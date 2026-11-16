@@ -53,6 +53,54 @@ class PartialCloseVolumeTests(BridgeTestCase):
 
 
 class PendingExpiryTests(BridgeTestCase):
+    def test_second_only_recomputes_size_using_second_entry_and_full_frozen_budget(self):
+        for intraday in (False, True):
+            signal = ScalpOneToOneTests().pullback(25)
+            signal['scalpEntry']['version'] = 3
+            signal['scalpSetupRiskBudget'] = 16
+            if intraday:
+                signal.update(tradeStyle='INTRADAY', intradayEntry=signal.pop('scalpEntry'),
+                              intradaySetupRiskBudget=signal.pop('scalpSetupRiskBudget'))
+            signal['pullbackFallback'] = 'SECOND_ONLY'
+            info = SimpleNamespace(name='XAUUSD', volume_step=.01, volume_min=.01, volume_max=100)
+            with patch.object(bridge.mt5, 'account_info', return_value=SimpleNamespace(equity=3200)), \
+                 patch.object(bridge.mt5, 'order_calc_profit', side_effect=lambda side, symbol, volume, entry, stop: (stop-entry)*volume*100):
+                config = {'riskPercent': .5, 'scalpOneToOneRiskPercent': .5}
+                self.assertEqual(bridge.signal_risk_money(signal, config, 3200), 16)
+                self.assertEqual(bridge.calculate_volume(signal, config, info), .02)
+                self.assertEqual(bridge.signal_risk_money(signal, config, 6400), 16, 'growth must not enlarge frozen allowance')
+                signal['entry'] = 99
+                signal['riskPips'] = 90
+                self.assertEqual(bridge.calculate_volume(signal, config, info), .01, 'entry price must affect sizing')
+
+    def test_either_split_below_minimum_skips_first_before_any_send(self):
+        signal = ScalpOneToOneTests().pullback()
+        signal['scalpEntry']['version'] = 3
+        signal['scalpSetupRiskBudget'] = 16
+        signal['expiresAt'] = 6300
+        info = SimpleNamespace(name='XAUUSD', volume_step=.01, volume_min=.01, volume_max=100, trade_tick_size=.01)
+        skipped = {**signal, 'pullbackFallback': 'SECOND_ONLY', 'status': 'CANCELLED'}
+        with patch.object(bridge, 'ALLOW_LIVE_EXECUTION', True), \
+             patch.object(bridge, 'check_safety', return_value=(info, SimpleNamespace(ask=100, bid=99.9))), \
+             patch.object(bridge.mt5, 'account_info', return_value=SimpleNamespace(equity=3200)), \
+             patch.object(bridge.mt5, 'order_calc_profit', side_effect=lambda side, symbol, volume, entry, stop: (stop-entry)*volume*100), \
+             patch.object(bridge, 'api', return_value={'ok': True, 'signal': skipped}) as api, \
+             patch.object(bridge.mt5, 'order_send') as send:
+            result = bridge.place_signal(signal, {'dryRun': False, 'riskPercent': .5, 'scalpOneToOneRiskPercent': .5})
+        self.assertEqual(result['status'], 'CANCELLED')
+        api.assert_called_once()
+        send.assert_not_called()
+
+    def test_full_second_budget_still_below_minimum_rejects_instead_of_rounding_up(self):
+        signal = ScalpOneToOneTests().pullback(25)
+        signal['scalpEntry']['version'] = 3
+        signal.update(pullbackFallback='SECOND_ONLY', scalpSetupRiskBudget=1)
+        info = SimpleNamespace(name='XAUUSD', volume_step=.01, volume_min=.01, volume_max=100)
+        with patch.object(bridge.mt5, 'account_info', return_value=SimpleNamespace(equity=3200)), \
+             patch.object(bridge.mt5, 'order_calc_profit', return_value=-750):
+            with self.assertRaises(bridge.BelowMinimumLot):
+                bridge.calculate_volume(signal, {'scalpOneToOneRiskPercent': .5}, info)
+
     def test_gtc_only_broker_uses_bridge_deadline_without_invalid_expiration(self):
         signal = ScalpOneToOneTests().pullback()
         signal['scalpEntry']['version'] = 3

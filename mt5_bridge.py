@@ -341,13 +341,17 @@ def update_status(signal_id: str, status: str, **details: Any) -> None:
     })
 
 
+class BelowMinimumLot(RuntimeError):
+    pass
+
+
 def normalize_volume(raw_volume: float, symbol_info: Any) -> float:
     step = float(symbol_info.volume_step)
     minimum = float(symbol_info.volume_min)
     maximum = float(symbol_info.volume_max)
     stepped = math.floor((raw_volume + 1e-12) / step) * step
     if stepped < minimum:
-        raise RuntimeError(
+        raise BelowMinimumLot(
             f"Calculated volume {raw_volume:.4f} is below broker minimum {minimum}; trade rejected to protect risk."
         )
     digits = max(0, len(f"{step:.10f}".rstrip("0").split(".")[-1]))
@@ -413,9 +417,13 @@ def signal_risk_percent(signal: dict[str, Any], config: dict[str, Any]) -> float
     leg = pullback_entry(signal)
     if leg:
         expected = {10: 0.6, 25: 0.4}.get(leg.get("leg"))
-        if leg.get("version") not in (1, 2) or expected is None or leg.get("riskShare") != expected:
+        if leg.get("version") not in (1, 2, 3) or expected is None or leg.get("riskShare") != expected:
             raise RuntimeError("Invalid pullback risk allocation.")
-        value *= expected
+        if signal.get('pullbackFallback') == 'SECOND_ONLY':
+            if leg.get('leg') != 25:
+                raise RuntimeError('First entry is skipped in second-only mode.')
+        else:
+            value *= expected
     return value
 
 
@@ -427,7 +435,7 @@ def signal_risk_money(signal: dict[str, Any], config: dict[str, Any], equity: fl
         frozen = float(signal.get(budget_key, 0))
         if not math.isfinite(frozen) or frozen <= 0:
             raise RuntimeError("Pullback shared setup risk budget is missing.")
-        budget = min(budget, frozen * float(leg['riskShare']))
+        budget = min(budget, frozen * (1 if signal.get('pullbackFallback') == 'SECOND_ONLY' else float(leg['riskShare'])))
     return budget
 
 
@@ -921,6 +929,41 @@ def send_with_filling_fallback(request: dict[str, Any], risk_config: dict[str, A
     raise RuntimeError(f"MT5 rejected the order: {detail}")
 
 
+def quantized_pullback_signal(signal: dict[str, Any], info: Any) -> dict[str, Any]:
+    step = float(getattr(info, 'trade_tick_size', 0) or getattr(info, 'point', 0))
+    if not math.isfinite(step) or step <= 0:
+        raise RuntimeError('Unable to verify broker tick size for a pullback limit.')
+    units = (Decimal(str(signal['entry'])) / Decimal(str(step))).to_integral_value(
+        rounding=ROUND_DOWN if signal['direction'] == 'BUY' else ROUND_UP)
+    entry = float(units * Decimal(str(step)))
+    return {**signal, 'entry': entry, 'riskPips': abs(entry - float(signal['stopLoss'])) * 10}
+
+
+def prepare_pullback_allocation(signal: dict[str, Any], config: dict[str, Any], info: Any) -> dict[str, Any]:
+    meta = pullback_entry(signal)
+    if not meta or meta.get('version', 0) < 3 or signal.get('pullbackFallback') == 'SECOND_ONLY':
+        return signal
+    below = False
+    for leg, share in ((10, .6), (25, .4)):
+        sign = 1 if signal['direction'] == 'BUY' else -1
+        entry = float(meta['nextOpen']) - sign * float(meta['confirmationBody']) * leg / 100
+        trial = {**signal, 'entry': entry, 'riskPips': abs(entry - float(signal['stopLoss'])) * 10,
+                 ('intradayEntry' if signal.get('intradayEntry') else 'scalpEntry'): {**meta, 'leg': leg, 'riskShare': share}}
+        try:
+            calculate_volume(quantized_pullback_signal(trial, info), config, info)
+        except BelowMinimumLot:
+            below = True
+    if not below:
+        return signal
+    # The server atomically skips leg one and records the allocation for both
+    # legs before any order can be sent. Never move risk from an accepted order.
+    response = api('POST', '/api/mt5/pullback-allocation', json={'id': signal['id'], 'bridgeId': BRIDGE_ID,
+        'account': ACTIVE_ACCOUNT[0], 'server': ACTIVE_ACCOUNT[1], 'brokerSymbol': info.name})
+    if not response.get('ok') or not response.get('signal'):
+        raise RuntimeError('Unable to confirm second-entry-only allocation.')
+    return response['signal']
+
+
 def place_signal(signal: dict[str, Any], config: dict[str, Any]) -> dict[str, Any]:
     if config.get("tradingTimeEnabled", False) and not is_nepal_trading_time():
         update_status(signal["id"], "REJECTED", message="Outside Nepal trading time; automatic entry is blocked.")
@@ -932,17 +975,12 @@ def place_signal(signal: dict[str, Any], config: dict[str, Any]) -> dict[str, An
         return {"status": "SIMULATED"}
 
     info, tick = check_safety(signal, config)
+    signal = prepare_pullback_allocation(signal, config, info)
+    if signal.get('pullbackFallback') == 'SECOND_ONLY' and pullback_entry(signal).get('leg') == 10:
+        return {'status': 'CANCELLED', 'pullbackFallback': 'SECOND_ONLY'}
     if pullback_entry(signal):
-        step = float(getattr(info, 'trade_tick_size', 0) or getattr(info, 'point', 0))
-        if not math.isfinite(step) or step <= 0:
-            raise RuntimeError('Unable to verify broker tick size for a pullback limit.')
         # Round toward a better entry, preserving the frozen exits and cash cap.
-        quantum = Decimal(str(step))
-        units = (Decimal(str(signal['entry'])) / quantum).to_integral_value(
-            rounding=ROUND_DOWN if signal['direction'] == 'BUY' else ROUND_UP)
-        executable = float(units * quantum)
-        signal = {**signal, 'entry': executable,
-                  'riskPips': abs(executable - float(signal['stopLoss'])) * 10}
+        signal = quantized_pullback_signal(signal, info)
     volume = calculate_volume(signal, config, info)
     is_buy = signal["direction"] == "BUY"
     is_limit = signal["orderType"] == "LIMIT"
@@ -999,6 +1037,7 @@ def place_signal(signal: dict[str, Any], config: dict[str, Any]) -> dict[str, An
         "riskPips": actual_risk * 10,
         "volume": volume,
         "comment": request["comment"],
+        **({'pullbackFallback': 'SECOND_ONLY'} if signal.get('pullbackFallback') == 'SECOND_ONLY' else {}),
     }
     update_status(signal["id"], status, **{key: value for key, value in details.items() if key != "status"})
     print(f"{status}: {signal['direction']} {volume} {info.name} ticket {result.order}")
@@ -1760,7 +1799,7 @@ def process_bridge_cycle(
                 raise RuntimeError("Broker symbol changed while claiming the signal; waiting for synchronization.")
             assert_execution_account()
             record = {**signal, **place_signal(signal, claim["config"])}
-            if record.get("status") not in {"SIMULATED", "REJECTED"}:
+            if record.get("status") not in {"SIMULATED", "REJECTED", "CANCELLED"}:
                 state[signal["id"]] = record
                 save_state(state)
         except Exception as error:  # Keep the bridge alive and make the failure visible.

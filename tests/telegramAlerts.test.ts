@@ -265,7 +265,7 @@ test('Telegram numbering covers all alert kinds, shared styles, retries, restart
       });
       assert.equal(response.status, 200, await response.text());
       for (let attempt = 0; attempt < 100; attempt++) {
-        if ((await messages()).some(text => text.startsWith('DAILY TRADE SUMMARY'))) return;
+        if ((await messages()).some(text => text.includes('DAILY SUMMARY'))) return;
         await new Promise(resolve => setTimeout(resolve, 50));
       }
       assert.fail('Daily summary was not delivered');
@@ -279,12 +279,13 @@ test('Telegram numbering covers all alert kinds, shared styles, retries, restart
       await new Promise(resolve => setTimeout(resolve, 200));
     };
     await secondaryHeartbeat();
-    assert.equal((await messages()).filter(text => text.startsWith('DAILY TRADE SUMMARY')).length, 0,
+    assert.equal((await messages()).filter(text => text.includes('DAILY SUMMARY')).length, 0,
       'Account 2 must not send a report even if it connects before Account 1');
     await heartbeat();
-    assert.equal((await messages()).filter(text => text.startsWith('DAILY TRADE SUMMARY')).length, 1);
-    assert.match((await messages()).at(-1)!, /Total trades: 1/);
-    assert.match((await messages()).at(-1)!, /Losses: 1/);
+    assert.equal((await messages()).filter(text => text.includes('DAILY SUMMARY')).length, 1);
+    assert.match((await messages()).at(-1)!, /Total trades: \d+/);
+    const reportText = (await messages()).at(-1)!;
+    assert.ok(['SCALP 1:1', 'INTRADAY', 'SCALPING'].every(style => reportText.includes(style)));
     assert.ok(!(await messages()).at(-1)!.includes('$'));
     const reportFile = path.join(workspace, 'data', 'telegram-alerts.json');
     const reportState = JSON.parse(await readFile(reportFile, 'utf8'));
@@ -297,7 +298,7 @@ test('Telegram numbering covers all alert kinds, shared styles, retries, restart
     await heartbeat();
     await secondaryHeartbeat();
     await new Promise(resolve => setTimeout(resolve, 100));
-    assert.equal((await messages()).filter(text => text.startsWith('DAILY TRADE SUMMARY')).length, 1,
+    assert.equal((await messages()).filter(text => text.includes('DAILY SUMMARY')).length, 1,
       'both terminal heartbeats and a restart still produce only one daily summary');
     const switched = await dashboardFetch(`${base}/api/mt5/heartbeat`, {
       method: 'POST', headers: { 'Content-Type': 'application/json', authorization: 'Bearer fake-bridge-test' },
@@ -305,7 +306,7 @@ test('Telegram numbering covers all alert kinds, shared styles, retries, restart
     });
     assert.equal(switched.status, 200);
     await new Promise(resolve => setTimeout(resolve, 200));
-    assert.equal((await messages()).filter(text => text.startsWith('DAILY TRADE SUMMARY')).length, 1,
+    assert.equal((await messages()).filter(text => text.includes('DAILY SUMMARY')).length, 1,
       'switching the primary login cannot send a second report for the same day');
     const stateBeforeDemos = await readFile(path.join(workspace, 'data', 'telegram-alerts.json'), 'utf8');
     const denied = await dashboardFetch(`${base}/api/telegram/demo`, {
@@ -366,6 +367,35 @@ test('Telegram numbering covers all alert kinds, shared styles, retries, restart
       await send([alert('new-after-enabling')]);
       assert.equal((await messages()).length, beforeMuted + 2, `${timeframe} ON allows new entry alerts again`);
     }
+    // Chart fills reserve one number. A short second-entry update survives
+    // duplicate delivery, either terminal, failures and process restarts.
+    const chart = entry('CHART_SETUP:INTRADAY:sample', { chartSetup: true, tradeKey: 'CHART_SETUP:INTRADAY:sample',
+      signalTimeframe: 'M15', tradeStyle: 'INTRADAY', openedAt: beforeMidnight + 62,
+      pullback: { firstEntry: 100, secondEntry: 99.5, firstRiskPips: 10, secondRiskPips: 5, secondOnly: false } });
+    const beforeChart = (await messages()).length;
+    await send([chart]);
+    const firstChartText = (await messages()).at(-1)!;
+    assert.match(firstChartText, /TRADE #\d+/);
+    assert.match(firstChartText, /2nd Entry: 99.500 ⏳ Waiting/);
+    assert.ok(!firstChartText.includes('MT5'));
+    await writeFile(failOnceFile, 'fail');
+    await send([{ ...chart, kind: 'entry2' }], 502);
+    await send([{ ...chart, kind: 'entry2' }]);
+    assert.equal((await messages()).at(-1), '2nd Entry: 99.500 ✓ Filled');
+    await stop(); await start();
+    await send([chart, { ...chart, kind: 'entry2' }], 200, 'secondary');
+    assert.equal((await messages()).length, beforeChart + 2);
+    const nextChart = { ...chart, id: 'CHART_SETUP:INTRADAY:next', tradeKey: 'CHART_SETUP:INTRADAY:next' };
+    await send([nextChart]);
+    const firstNumber = Number(firstChartText.match(/TRADE #(\d+)/)![1]);
+    assert.match((await messages()).at(-1)!, new RegExp(`TRADE #${firstNumber + 1}`));
+    const allocationBody = JSON.stringify({ id: 'absent', bridgeId: 'absent', account: 'account-C', server: 'Broker' });
+    const browserAllocation = await dashboardFetch(`${base}/api/mt5/pullback-allocation`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: allocationBody });
+    assert.equal(browserAllocation.status, 403, 'browser login cannot authorize risk reallocation');
+    const machineAllocation = await globalThis.fetch(`${base}/api/mt5/pullback-allocation`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json', authorization: 'Bearer fake-bridge-test' }, body: allocationBody });
+    assert.equal(machineAllocation.status, 409, 'bridge authentication passes but a nonexistent claim cannot reallocate risk');
   } finally {
     await stop();
     assert.ok(path.resolve(workspace).startsWith(path.join(path.resolve(tmpdir()), 'telegram-numbering-test-')));

@@ -4,6 +4,7 @@ import { tradeToMt5Signal } from '../services/mt5Automation';
 import { buildScalpChartDisplays, scalpDisplayOutcome, scalpHistoryFillDisplays, scalpOutcomeExpired, scalpPositionSignal, type ScalpChartDisplay, type ScalpDisplayOutcome } from '../services/scalpChartDisplay';
 import type { ScalpOneToOneChartFill } from '../services/scalpOneToOne';
 import { buildPullbackChartSetups, chartSignalFromRecord, belongsToPullbackSetup, type PullbackChartSetup } from '../services/pullbackChartSetup';
+import { pullbackTelegramAlerts } from '../services/pullbackTelegram';
 import { chartExecutionStatus, chartPullbackState, confirmedPullbackFill, currentPullbackDisplay, filledPullbackLegs, groupPullbackTableSignals, scalpReplayTableSignals, type PullbackFillEvidence, type PullbackTableSignal } from '../services/pullbackEntryDisplay';
 export { detectAutoTrendlines } from '../services/autoTrendlines';
 import { TrendlineStudy } from './TrendlineStudy';
@@ -920,6 +921,7 @@ export const PullbackSetupRows: React.FC<{
     .map(signal => currentPullbackDisplay(signal, asOf, positions)), connection);
   return <>{groups.flatMap(group => {
     const signal = group.entries[0], candles = entryCandles[signal.signalTimeframe] ?? [];
+    const secondOnly = group.entries.some(entry => entry.pullbackFallback === 'SECOND_ONLY');
     const states = group.entries.map(entry => {
       const open = !entry.preview && positions.some(position => scalpPositionSignal(position, [entry], connection) !== undefined);
       const chart = chartPullbackState(entry, candles, asOf);
@@ -927,13 +929,15 @@ export const PullbackSetupRows: React.FC<{
       const outcome = chartExit ? { ...chartExit, label: `${chartExit.level === 'both' ? 'SL/TP' : chartExit.level.toUpperCase()} ${chart.outcome ? 'HIT' : 'REACHED BEFORE ENTRY'}`,
         noFill: chart.outcome === undefined } : ['TP', 'SL'].includes(entry.status) ? scalpDisplayOutcome(entry, candles, asOf, open) : undefined;
       const executed = confirmedPullbackFill(entry, asOf, positions);
-      const filled = chart.status === 'filled' || entry.simulatedFill === true && (entry.openedAt ?? Infinity) <= asOf;
+      const filled = !(entry.pullbackFallback === 'SECOND_ONLY' && (entry.intradayEntry ?? entry.scalpEntry)?.leg === 10)
+        && (chart.status === 'filled' || entry.simulatedFill === true && (entry.openedAt ?? Infinity) <= asOf);
       return { signal: entry, outcome, filled, chart, executed };
     });
     const completed = states.every(state => state.outcome !== undefined);
     if (completed && states.every(state => scalpOutcomeExpired(state.outcome!, candles, signal.signalTimeframe, asOf))) return [];
     const entryName = (entry: PullbackTableSignal) => (entry.intradayEntry ?? entry.scalpEntry)?.leg === 25 ? '2nd' : '1st';
-    const status = (state: typeof states[number]) => state.signal.displayPlan?.error
+    const status = (state: typeof states[number]) => secondOnly && (state.signal.intradayEntry ?? state.signal.scalpEntry)?.leg === 10
+      ? 'Skipped — split lot below minimum' : state.signal.displayPlan?.error
       ? 'CHART: Entry outside limits · MT5: Not executed' : chartExecutionStatus(state.chart, state.executed, state.signal.status);
     const labels = states.map(status);
     const summary = labels.every(label => label === labels[0]) ? labels[0]
@@ -968,12 +972,13 @@ export const PullbackSetupRows: React.FC<{
               {index > 0 && <span aria-hidden="true">|</span>}
               <span className="text-blue-700">{slot === 10 ? '1st ENTRY' : slot === 25 ? '2nd ENTRY' : 'ENTRY'}
                 <EntryFillTick filled={state?.filled === true && !state.outcome} />{' '}
-                <span className="tabular-nums font-bold text-slate-700">{state?.outcome ? state.outcome.label : state?.signal.displayPlan?.error ? 'OUTSIDE LIMITS' : price !== undefined ? formatPrice(price) : '—'}</span>
+                <span className="tabular-nums font-bold text-slate-700">{secondOnly && slot === 10 ? 'SKIPPED' : state?.outcome ? state.outcome.label : state?.signal.displayPlan?.error ? 'OUTSIDE LIMITS' : price !== undefined ? formatPrice(price) : '—'}</span>
               </span>
               {state && !state.outcome && !state.signal.displayPlan?.error && price !== undefined && <span className="tabular-nums">SL {(Math.round(Math.abs(price - stop) * 1000 + 1e-7) / 100).toFixed(2)} PIPS</span>}
             </React.Fragment>;
           })}
           <span aria-hidden="true">|</span><span className="text-rose-700">SL <span className="tabular-nums font-bold text-slate-700">{formatPrice(stop)}</span></span>
+          {secondOnly && <span>2nd entry: 100% setup risk</span>}
           <span aria-hidden="true">|</span><span className="text-emerald-700">TP <span className="tabular-nums font-bold text-slate-700">{formatPrice(signal.takeProfit)}</span></span>
         </div>
       </td></tr>}
@@ -5233,6 +5238,24 @@ export const OandaProChart: React.FC<{
   }, [marketSymbol, granularity, scalpOneToOneChartFills, visibleCanonicalTradeRecords, scalpOneToOnePreview,
     intradayPullbackPreview, mt5Status, replayIndex, tradeDisplayAsOf, tableTimeframeData, scalpOneToOneEnabled, intradayEnabled]);
 
+  const chartFillAlertBusy = useRef(false);
+  const chartFillAlertSent = useRef(new Set<string>());
+  useEffect(() => {
+    if (terminalId !== 'primary' || !canAdmin || replayIndex !== null || chartFillAlertBusy.current || !telegramMessagesEnabled
+      || mt5Status?.config?.telegramMessagesEnabled === false) return;
+    const alerts = pullbackChartSetups.flatMap(setup => pullbackTelegramAlerts(setup, tradeDisplayAsOf))
+      .filter(alert => !chartFillAlertSent.current.has(`${alert.id}:${alert.kind}`)).slice(0, 40);
+    if (!alerts.length) return;
+    chartFillAlertBusy.current = true;
+    void fetch('/api/telegram/alerts', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ alerts }) }).then(async response => {
+      if (!response.ok) return;
+      const payload = await response.json();
+      for (const id of payload.acknowledged ?? []) chartFillAlertSent.current.add(id);
+    }).catch(error => console.error('Chart fill Telegram alert failed:', error))
+      .finally(() => { chartFillAlertBusy.current = false; });
+  }, [terminalId, canAdmin, pullbackChartSetups, replayIndex, telegramMessagesEnabled, mt5Status?.config?.telegramMessagesEnabled, tradeDisplayAsOf]);
+
   const visibleTradeOverlays = useMemo(() => {
     const overlays = new Map<string, TradeOverlay>();
     const chartSetupKeys = new Set<string>();
@@ -5371,6 +5394,7 @@ export const OandaProChart: React.FC<{
       trade: TradeLevels;
     }) => {
       const { trade } = details;
+      if (marketSymbol === 'XAUUSD' && details.tradeStyle !== 'SCALPING') return;
       if (!isTradeStyleEnabled({ scalpingEnabled, intradayEnabled, scalpOneToOneEnabled }, details)) return;
       if (trade.filledAt === undefined || trade.filledAt > now + 5
         || now - trade.filledAt > 180) return;
@@ -5441,6 +5465,7 @@ export const OandaProChart: React.FC<{
       addEntry({ zoneName: executionZoneName(zone), zoneTimeframe, tradeStyle: 'SCALPING', trade });
     }
     for (const record of [...allSavedAccuracyRecords].sort((first, second) => second.completedAt - first.completedAt)) {
+      if (record.scalpEntry || record.intradayEntry) continue;
       if (record.tradeStyle === 'SCALP_1_1' && !record.mt5Managed && record.brokerTicket === undefined) continue;
       if (record.symbol && record.symbol !== marketSymbol) continue;
       if (!record.openedAt || !record.signalAt || !['tp', 'sl'].includes(record.result)
@@ -7474,10 +7499,10 @@ export const OandaProChart: React.FC<{
         };
 
         if (overlay.pullbackSetup) {
-          makeLevelLine(entryY, '#1e40af', `1st Entry ${formatPrice(trade.entry)}`, false, true);
+          makeLevelLine(entryY, '#1e40af', `${overlay.pullbackSetup.secondOnly ? '2nd' : '1st'} Entry ${formatPrice(trade.entry)}`, false, true);
           const second = overlay.pullbackSetup.legs.find(leg => leg.leg === 25);
           const secondY = second ? series.priceToCoordinate(second.entry) : null;
-          if (secondY !== null) makeLevelLine(secondY, '#1e40af', `2nd Entry ${formatPrice(second!.entry)}`, true, true);
+          if (secondY !== null && !overlay.pullbackSetup.secondOnly) makeLevelLine(secondY, '#1e40af', `2nd Entry ${formatPrice(second!.entry)}`, true, true);
         } else makeLevelLine(entryY, '#1e40af', `${overlay.chartFilled ? 'CHART ENTRY' : overlay.referenceOnly ? 'SETUP ENTRY' : overlay.id.startsWith('GOLD_SCALP:') || overlay.label?.includes('SCALP') ? 'SCALP ENTRY' : 'ENTRY'} ${formatPrice(trade.entry)}`);
         makeLevelLine(stopY, '#be123c', `${overlay.pullbackSetup || overlay.referenceOnly ? 'SL' : 'SL EXIT'} ${formatPrice(trade.stopLoss)}`);
         makeLevelLine(targetY, '#047857', `${overlay.pullbackSetup || overlay.referenceOnly ? 'TP' : 'TP EXIT'} ${formatPrice(trade.takeProfit)}`);
@@ -11094,8 +11119,8 @@ export const OandaProChart: React.FC<{
               {entry.pullbackSetup && <div className="mt-2 border-t border-slate-100 pt-2" aria-label="Both pullback entry details">
                 {entry.pullbackSetup.legs.map(leg => <div key={leg.leg} className="mb-2">
                   <div><b>{leg.leg === 10 ? '1st Entry' : '2nd Entry'} ({leg.leg}%): {formatPrice(leg.entry)}</b></div>
-                  <div>SL: {leg.riskPips.toFixed(2)} pips · Risk share: {leg.leg === 10 ? '60%' : '40%'}</div>
-                  <div>CHART: {leg.filled ? '✓ Filled' : leg.uncertain ? 'Fill uncertain — insufficient candle evidence' : 'Not filled'}</div>
+                  <div>SL: {leg.riskPips.toFixed(2)} pips · Risk share: {entry.pullbackSetup!.secondOnly ? leg.leg === 25 ? '100%' : '0%' : leg.leg === 10 ? '60%' : '40%'}</div>
+                  <div>CHART: {entry.pullbackSetup!.secondOnly && leg.leg === 10 ? 'Skipped — split lot below minimum' : leg.filled ? '✓ Filled' : leg.uncertain ? 'Fill uncertain — insufficient candle evidence' : 'Not filled'}</div>
                   <div>MT5: {leg.executed ? 'Executed' : 'Not executed'}</div>
                   {leg.outcome && <div>Outcome: {leg.outcome === 'both' ? 'SL / TP order uncertain' : leg.outcome.toUpperCase()}</div>}
                   {leg.filledAt !== undefined && <div>Filled: {formatAccuracyTradeTime(leg.filledAt, chartTimeZone)}</div>}

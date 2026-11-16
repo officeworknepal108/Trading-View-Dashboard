@@ -675,6 +675,7 @@ export function priorGoldMt5ZoneExecution<T extends Pick<Mt5SignalInput,
 }
 
 export interface Mt5StoredSignal extends Mt5SignalInput {
+  pullbackFallback?: 'SECOND_ONLY';
   /** Set only by the server scanner after all strategy and execution prechecks pass. */
   entryQualifiedAt?: number;
   account?: string;
@@ -701,6 +702,34 @@ export interface Mt5StoredSignal extends Mt5SignalInput {
   closePrice?: number;
   realizedProfit?: number;
   message?: string;
+}
+
+/** Allocation can change only before either leg has reached the broker. */
+export function selectSecondOnlyPullback(signals: Mt5StoredSignal[], id: string, account: string, server: string, bridgeId: string, now: number): Mt5StoredSignal {
+  const current = signals.find(s => s.id === id);
+  if (!current || current.account !== account || current.server !== server || current.bridgeId !== bridgeId
+    || current.status !== 'CLAIMED' || current.expiresAt <= now) throw new Error('Pullback allocation requires the current unexpired bridge claim.');
+  const meta = current.intradayEntry ?? current.scalpEntry;
+  if (!meta || meta.version < 3) throw new Error('Minimum-lot fallback requires a new layered setup.');
+  const peers = signals.filter(s => s.account === account && s.server === server && s.brokerSymbol === current.brokerSymbol
+    && s.symbol === current.symbol && s.tradeStyle === current.tradeStyle && s.signalAt === current.signalAt
+    && s.signalTimeframe === current.signalTimeframe && s.direction === current.direction
+    && s.stopLoss === current.stopLoss && s.takeProfit === current.takeProfit
+    && (current.intradayEntry ? s.intradayEntry?.setupKey === current.intradayEntry.setupKey
+      : s.scalpEntry?.referenceEntry === current.scalpEntry?.referenceEntry));
+  if (peers.some(s => s.brokerTicket || s.executionPrice || s.openedAt || ['PLACED', 'ACTIVE', 'RISK_FREE', 'TP', 'SL', 'RF'].includes(s.status)))
+    throw new Error('Cannot transfer setup risk after either entry has reached the broker.');
+  if (peers.some(s => !['QUEUED', 'CLAIMED'].includes(s.status) && !(s.status === 'CANCELLED' && s.pullbackFallback === 'SECOND_ONLY')))
+    throw new Error('Cannot change allocation after a rejected or uncertain submission.');
+  if (!peers.some(s => (s.intradayEntry ?? s.scalpEntry)?.leg === 25 && ['QUEUED', 'CLAIMED'].includes(s.status)))
+    throw new Error('Second entry is unavailable for the minimum-lot fallback.');
+  for (const peer of peers) {
+    peer.pullbackFallback = 'SECOND_ONLY'; peer.updatedAt = now;
+    if ((peer.intradayEntry ?? peer.scalpEntry)?.leg === 10) {
+      peer.status = 'CANCELLED'; peer.message = 'First entry skipped: split lot below broker minimum; full setup risk reserved for second entry.';
+    }
+  }
+  return current;
 }
 
 /** Only a verified, unfilled opportunity can retire a zone as ENTRY MISSED. */

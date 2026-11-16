@@ -33,6 +33,7 @@ import { TradeMultiSelect } from './TradeMultiSelect';
 import { Mt5CapitalPanel } from './Mt5CapitalPanel';
 
 export interface JournalTradeRecord {
+  pullbackFallback?: 'SECOND_ONLY';
   mtfContext?: import('../services/mtf').MtfRow;
   id: string;
   zoneId?: string;
@@ -228,7 +229,8 @@ export function calculateJournalCashSummary(trades: JournalTradeRecord[]): Journ
 
 function tradeResultR(trade: JournalTradeRecord): number | undefined {
   if (!['tp', 'sl', 'rf'].includes(trade.result)) return undefined;
-  const share = trade.tradeStyle === 'SCALP_1_1' ? trade.scalpEntry?.riskShare ?? 1 : trade.intradayEntry?.riskShare ?? 1;
+  const share = trade.pullbackFallback === 'SECOND_ONLY' ? 1
+    : trade.tradeStyle === 'SCALP_1_1' ? trade.scalpEntry?.riskShare ?? 1 : trade.intradayEntry?.riskShare ?? 1;
   if ((trade.tradeStyle === 'INTRADAY' || trade.tradeStyle === 'SCALP_1_1') && !trade.partialClosedAt) {
     if (trade.result === 'tp') return trade.rewardRisk * share;
     if (trade.result === 'sl') return -share;
@@ -1177,7 +1179,7 @@ export const TradeJournal: React.FC<TradeJournalProps> = ({ records, timeframe, 
                     </div>}
                     {trade.tradeStyle === 'SCALP_1_1' && <div className="text-[8px] text-slate-500">
                       {trade.mt5Managed || trade.brokerTicket !== undefined ? 'MT5' : 'CHART ONLY'}
-                      {trade.scalpEntry && ` · ${trade.scalpEntry.leg}% pullback / ${Math.round(trade.scalpEntry.riskShare * 100)}% risk`}
+                      {trade.scalpEntry && ` · ${trade.scalpEntry.leg}% pullback / ${trade.pullbackFallback === 'SECOND_ONLY' ? 100 : Math.round(trade.scalpEntry.riskShare * 100)}% risk`}
                     </div>}
                   </td>
                   <td className={`px-2 py-1.5 font-black ${trade.direction === 'bullish' ? 'text-emerald-700' : 'text-rose-700'}`}>{trade.direction === 'bullish' ? 'BUY' : 'SELL'}</td>

@@ -9,9 +9,14 @@ import { chartPullbackState, confirmedPullbackFill, currentPullbackDisplay, grou
 export interface PullbackChartLeg {
   leg: 10 | 25; entry: number; riskPips: number;
   filled: boolean; filledAt?: number; uncertain: boolean; executed: boolean;
+  chartConfirmed?: boolean;
+  chartOutcome?: 'tp' | 'sl' | 'both';
+  chartResolvedAt?: number;
   outcome?: 'tp' | 'sl' | 'both';
 }
 export interface PullbackChartSetup {
+  secondOnly: boolean;
+  telegramKey: string;
   id: string; symbol: 'XAUUSD'; style: 'SCALP_1_1' | 'INTRADAY';
   setupId?: string; trade: TradeLevels; legs: PullbackChartLeg[];
   chartTimeframe: TradeTimeframe; zoneTimeframe: TradeTimeframe;
@@ -32,7 +37,7 @@ export function chartSignalFromRecord(record: JournalTradeRecord): PullbackTable
     engulfingType: record.engulfingType, entry: record.entry, stopLoss: record.stopLoss,
     takeProfit: record.takeProfit, riskFree: record.takeProfit, rewardRisk: record.rewardRisk,
     riskPips: record.riskPips, expiresAt: record.signalAt + seconds + pullbackExpirySeconds((record.scalpEntry ?? record.intradayEntry)!.version, seconds),
-    scalpEntry: record.scalpEntry, intradayEntry: record.intradayEntry,
+    scalpEntry: record.scalpEntry, intradayEntry: record.intradayEntry, pullbackFallback: record.pullbackFallback,
     status: closed ? record.result === 'tp' ? 'TP' : 'SL' : 'ACTIVE',
     openedAt: record.openedAt, closedAt: closed ? record.completedAt : undefined,
     createdAt: record.signalAt + seconds, updatedAt: record.completedAt,
@@ -58,6 +63,7 @@ export function buildPullbackChartSetups(options: {
     });
   return groupPullbackTableSignals(signals, context).map(({ key, entries }): PullbackChartSetup => {
     const base = entries[0], meta = (base.scalpEntry ?? base.intradayEntry)!;
+    const secondOnly = entries.some(s => s.pullbackFallback === 'SECOND_ONLY');
     const buy = base.direction === 'BUY', sign = buy ? 1 : -1;
     const candles = options.candles[base.signalTimeframe] ?? [];
     const states = ([10, 25] as const).map(leg => {
@@ -72,10 +78,12 @@ export function buildPullbackChartSetups(options: {
       const known = saved?.openedAt !== undefined && saved.openedAt <= asOf
         && (saved.simulatedFill || confirmedPullbackFill(saved, asOf, positions));
       const executed = !!saved && confirmedPullbackFill(saved, asOf, positions);
-      const filled = chart.status === 'filled' || !!known;
+      const filled = !(secondOnly && leg === 10) && (chart.status === 'filled' || !!known);
       const brokerExit = saved?.closedAt !== undefined && saved.closedAt <= asOf
         && (saved.status === 'TP' || saved.status === 'SL') ? saved.status.toLowerCase() as 'tp' | 'sl' : undefined;
       return { leg, entry, riskPips: Math.abs(entry - base.stopLoss) * 10, filled,
+        chartConfirmed: !(secondOnly && leg === 10) && chart.status === 'filled',
+        chartOutcome: chart.outcome?.level, chartResolvedAt: chart.outcome?.at,
         filledAt: filled ? chart.filledAt ?? saved?.openedAt : undefined,
         uncertain: chart.status === 'ambiguous' || chart.status === 'unavailable', executed,
         outcome: chart.outcome?.level ?? brokerExit,
@@ -87,9 +95,15 @@ export function buildPullbackChartSetups(options: {
     const result = filled.length && exits.length === filled.length && exits.every(s => s.outcome === exits[0].outcome)
       && (exits[0].outcome === 'tp' || exits[0].outcome === 'sl') ? exits[0].outcome : undefined;
     const markerTime = filled.length ? states[0].filledAt ?? Math.min(...filled.map(s => s.filledAt!)) : undefined;
-    const entry = states[0].entry, risk = Math.abs(entry - base.stopLoss);
+    const entry = states[secondOnly ? 1 : 0].entry, risk = Math.abs(entry - base.stopLoss);
     const resolvedAt = exits.length ? Math.max(...exits.map(s => s.resolvedAt ?? 0)) : undefined;
-    return { id: `PULLBACK_SETUP:${key}`, symbol: 'XAUUSD', style: base.scalpEntry ? 'SCALP_1_1' : 'INTRADAY',
+    const parent = (base.intradayEntry?.setupKey ?? base.setupId ?? '').replace(/:secondary$/, '').replace(/:P(?:10|25)$/, '');
+    const identity = [base.tradeStyle, base.symbol, base.source, base.zoneTimeframe, base.signalTimeframe,
+      base.signalAt, base.direction, parent, meta.referenceEntry, base.stopLoss, base.takeProfit].join(':');
+    let hash = 14695981039346656037n;
+    for (const ch of identity) hash = BigInt.asUintN(64, (hash ^ BigInt(ch.charCodeAt(0))) * 1099511628211n);
+    return { id: `PULLBACK_SETUP:${key}`, telegramKey: `CHART_SETUP:${base.tradeStyle}:${base.signalAt}:${hash.toString(16)}`,
+      secondOnly, symbol: 'XAUUSD', style: base.scalpEntry ? 'SCALP_1_1' : 'INTRADAY',
       memberIds: entries.flatMap(s => [s.id, s.setupId,
         s.brokerTicket === undefined ? undefined : `MT5:${s.brokerTicket}`,
         s.brokerPosition === undefined ? undefined : `MT5:${s.brokerPosition}`].filter((id): id is string => !!id)),

@@ -1,7 +1,9 @@
 import 'dotenv/config';
 import { buildScalpOneToOneSignals } from './src/services/scalpOneToOne';
+import { buildPullbackChartSetups } from './src/services/pullbackChartSetup';
+import { pullbackTelegramAlerts } from './src/services/pullbackTelegram';
 import { buildIntradayPullbackSignals, intradayPullbackSignalError, sameIntradayPullbackSetup } from './src/services/intradayPullback';
-import { normalizeScalpOneToOneRisk } from './src/services/mt5Automation';
+import { normalizeScalpOneToOneRisk, selectSecondOnlyPullback } from './src/services/mt5Automation';
 import { DashboardAuth } from './src/server/authentication';
 import { denyPrivateFiles, privateFilePatterns } from './src/server/privateFiles';
 import { clientVisibleTrades } from './src/server/clientJournal';
@@ -20,7 +22,7 @@ import {
   reserveTelegramTradeNumber, bindTelegramAlertAliases, telegramSignalKey, mergeTelegramAlertHistories,
   type SentTelegramAlerts, type TelegramTradeNumber,
 } from './src/services/telegramTradeNumbers';
-import { formatTelegramTradeMessage, countDailyTrades, formatDailyTradeSummary, previousNepalDay,
+import { formatTelegramTradeMessage, countDailyTrades, countTelegramSetups, formatDailyTradeSummary, previousNepalDay,
   telegramDemoMessages, type TelegramTradeAlert } from './src/services/telegramMessages';
 import {
   MT5_DEFAULT_ENABLED_TIMEFRAMES,
@@ -897,11 +899,11 @@ function buildJournalAutoReason(options: {
     + `${options.signal.direction} confirmation. Volume logic: ${options.volumeLogicStatus.toUpperCase()}.`;
 }
 
-async function loadOandaAutomationCandles(timeframe: TradeTimeframe): Promise<StructureCandle[] | undefined> {
+async function loadOandaAutomationCandles(timeframe: TradeTimeframe, liveAlerts = false): Promise<StructureCandle[] | undefined> {
   const cached = oandaAutomationCandles.get(timeframe);
   const brokerBarTime = mt5Context().automationCandleCache[timeframe]?.at(-1)?.time ?? 0;
   const ageMs = cached ? Date.now() - cached.fetchedAt : Infinity;
-  const cacheMs = Math.min(AUTOMATION_SECONDS[timeframe] * 500, 300_000);
+  const cacheMs = liveAlerts ? 5000 : Math.min(AUTOMATION_SECONDS[timeframe] * 500, 300_000);
   if (cached && ageMs < cacheMs && (
     (cached.candles.at(-1)?.time ?? 0) >= brokerBarTime || ageMs < 5_000
   )) return cached.candles;
@@ -1538,6 +1540,7 @@ async function updateMt5JournalRecord(
       tradeStyle: signal.tradeStyle,
       scalpEntry: signal.scalpEntry,
       intradayEntry: signal.intradayEntry,
+      pullbackFallback: signal.pullbackFallback,
       direction: signal.direction === 'BUY' ? 'bullish' : 'bearish',
       signalTimeframe: signal.signalTimeframe,
       engulfingType: signal.engulfingType,
@@ -1584,7 +1587,12 @@ function validTelegramTradeAlert(value: any): value is TelegramTradeAlert {
   return value && typeof value.id === 'string' && value.id.length > 0 && value.id.length <= 300
     && (value.tradeKey === undefined || typeof value.tradeKey === 'string'
       && value.tradeKey.length > 0 && value.tradeKey.length <= 300)
-    && ['pending', 'cancelled', 'entry', 'rf', 'tp', 'sl'].includes(value.kind)
+    && ['pending', 'cancelled', 'entry', 'entry2', 'rf', 'tp', 'sl'].includes(value.kind)
+    && (value.chartSetup === undefined || value.chartSetup === true && value.tradeKey?.startsWith('CHART_SETUP:')
+      && ['SCALP_1_1', 'INTRADAY'].includes(value.tradeStyle) && value.pullback
+      && typeof value.pullback.secondOnly === 'boolean'
+      && [value.pullback.firstEntry, value.pullback.secondEntry, value.pullback.firstRiskPips, value.pullback.secondRiskPips].every(v => Number.isFinite(v) && v > 0))
+    && (value.kind !== 'entry2' || value.chartSetup === true && !value.pullback.secondOnly)
     && (value.outsideTradingTime === undefined || typeof value.outsideTradingTime === 'boolean')
     && typeof value.symbol === 'string' && /^[A-Z0-9]{3,12}$/.test(value.symbol)
     && ['BUY', 'SELL'].includes(value.direction)
@@ -1602,7 +1610,8 @@ function validTelegramTradeAlert(value: any): value is TelegramTradeAlert {
       || Number.isFinite(value.riskFree) && value.riskFree > 0)
     && value.openedAt <= now + 5
     && (value.kind === 'pending' ? now - value.openedAt <= 14_400
-      : value.kind === 'entry' ? now - value.openedAt <= 180
+      : value.kind === 'entry' ? now - value.openedAt <= (value.chartSetup ? 4500 : 180)
+      : value.kind === 'entry2' ? now - value.openedAt <= 604800
       : value.kind === 'rf' ? value.tradeStyle === 'SCALPING'
         && Number.isFinite(value.riskFree) && value.riskFree > 0
         && Number.isFinite(value.partialClosedVolume) && value.partialClosedVolume > 0
@@ -1693,9 +1702,12 @@ async function deliverTelegramAlerts(
       if (alert.kind === 'pending' ? state.pending
         : alert.kind === 'cancelled' ? state.cancelled
         : alert.kind === 'rf' ? state.rf
-        : alert.kind === 'entry' ? state.entry : state.result === alert.kind) {
+        : alert.kind === 'entry' ? state.entry : alert.kind === 'entry2' ? state.entry2 : state.result === alert.kind) {
         acknowledged.push(`${alert.id}:${alert.kind}`);
         continue;
+      }
+      if (alert.kind === 'entry2' && (!state.entry || state.result)) {
+        acknowledged.push(`${alert.id}:${alert.kind}`); continue;
       }
       if ((alert.kind === 'tp' || alert.kind === 'sl')
         && ((!state.entry && !allowResultWithoutEntry) || state.result)) {
@@ -1709,7 +1721,12 @@ async function deliverTelegramAlerts(
       sent[alert.id] = alert.kind === 'pending' ? { ...numberedState, pending: true }
         : alert.kind === 'cancelled' ? { ...numberedState, cancelled: true }
         : alert.kind === 'rf' ? { ...numberedState, rf: true }
-        : alert.kind === 'entry' ? { ...numberedState, entry: true } : { ...numberedState, result: alert.kind };
+        : alert.kind === 'entry' ? { ...numberedState, entry: true }
+        : alert.kind === 'entry2' ? { ...numberedState, entry2: true } : { ...numberedState, result: alert.kind as 'tp' | 'sl' };
+      Object.assign(sent[alert.id], { tradeStyle: alert.tradeStyle ?? (['M1', 'M5'].includes(alert.zoneTimeframe) ? 'SCALPING' : 'INTRADAY'),
+        openedAt: numberedState.openedAt ?? alert.openedAt,
+        ...(alert.kind === 'rf' ? { rfAt: alert.rfAt } : {}),
+        ...((alert.kind === 'tp' || alert.kind === 'sl') ? { closedAt: alert.closedAt, entry: true } : {}) });
       for (const alias of aliases) sent[alias] = sent[alert.id];
       await saveSent();
       acknowledged.push(`${alert.id}:${alert.kind}`);
@@ -1720,14 +1737,42 @@ async function deliverTelegramAlerts(
   return task;
 }
 
+let chartTelegramScanRunning = false;
+async function deliverChartSetupAlerts(): Promise<void> {
+  if (terminalId() !== 'primary' || chartTelegramScanRunning) return;
+  chartTelegramScanRunning = true;
+  try {
+    const config = await readMt5Config(), connection = mt5Context().mt5BridgeHeartbeat;
+    if (!config.telegramMessagesEnabled || !connection?.account || !connection.server) return;
+    const now = Math.floor(Date.now() / 1000);
+    const signals = (await readMt5Signals()).filter(s => (s.scalpEntry || s.intradayEntry)
+      && s.account === connection.account && s.server === connection.server && s.signalAt <= now);
+    let ledger: SentTelegramAlerts = {};
+    try { ledger = JSON.parse(await readFile(TELEGRAM_ALERTS_FILE, 'utf8')); }
+    catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error; }
+    const context = { account: connection.account, server: connection.server, brokerSymbol: connection.brokerSymbol };
+    const selected = buildPullbackChartSetups({ signals, asOf: now, candles: {}, context }).filter(setup => {
+      const confirmation = setup.trade.signal.time + AUTOMATION_SECONDS[setup.chartTimeframe];
+      return now <= confirmation + 4500 || ledger[setup.telegramKey]?.entry && !ledger[setup.telegramKey]?.result;
+    });
+    const candles: Partial<Record<TradeTimeframe, StructureCandle[]>> = {};
+    await Promise.all([...new Set(selected.map(s => s.chartTimeframe))].map(async tf => {
+      const source = await loadOandaAutomationCandles(tf, true);
+      candles[tf] = source?.map(bar => ({ ...bar, complete: bar.time + AUTOMATION_SECONDS[tf] <= now }));
+    }));
+    const selectedIds = new Set(selected.flatMap(s => s.memberIds));
+    const setups = buildPullbackChartSetups({ signals: signals.filter(s => selectedIds.has(s.id)), candles, asOf: now, context });
+    const alerts = setups.flatMap(setup => pullbackTelegramAlerts(setup, now)).slice(0, 40);
+    if (alerts.length) await deliverTelegramAlerts(alerts);
+  } finally { chartTelegramScanRunning = false; }
+}
+
 async function deliverDailyTelegramSummary(): Promise<void> {
   // Account 1 owns the group's single daily report; Account 2 must not send another.
   if (terminalId() !== 'primary') return;
   const task = telegramAlertQueue.then(async () => {
     const connection = mt5Context().mt5BridgeHeartbeat;
     const now = Date.now() / 1000;
-    if (!connection?.account || !connection.server || connection.terminalConnected === false
-      || Date.now() - connection.lastHeartbeatAt > 15_000) return;
     const day = previousNepalDay(now);
     // Allow the bridge to synchronize trades closed in the final seconds of the day.
     if (now < day.end + 60 || !(await readMt5Config()).telegramMessagesEnabled) return;
@@ -1738,8 +1783,7 @@ async function deliverDailyTelegramSummary(): Promise<void> {
     // Honor reports already sent by earlier versions, including account-specific keys.
     if (Object.entries(sent).some(([savedKey, state]) => savedKey.startsWith('DAILY:')
       && savedKey.endsWith(`:${day.date}`) && state?.summarySent)) return;
-    const counts = countDailyTrades(await readMt5Signals(), connection.account, connection.server, now);
-    if (mt5Context().mt5BridgeHeartbeat?.account !== connection.account || mt5Context().mt5BridgeHeartbeat?.server !== connection.server) return;
+    const counts = countTelegramSetups(sent, now);
     await sendTelegramText(formatDailyTradeSummary(counts));
     sent[key] = { summarySent: true };
     await mkdir(path.dirname(terminalFile(TELEGRAM_ALERTS_FILE)), { recursive: true });
@@ -2232,6 +2276,22 @@ async function startServer() {
     }
   });
 
+  app.post('/api/mt5/pullback-allocation', async (req, res) => {
+    if (!mt5BridgeAuthorized(req)) return res.status(401).json({ ok: false, error: 'Bridge authorization failed.' });
+    try {
+      if (!mt5ConnectionMatches(mt5Context().mt5BridgeHeartbeat, req.body)
+        || req.body.bridgeId !== mt5Context().mt5BridgeHeartbeat?.bridgeId) throw new Error('Bridge connection changed.');
+      const signal = await serializeMt5Mutation(async () => {
+        const signals = await readMt5Signals();
+        const updated = selectSecondOnlyPullback(signals, req.body.id, req.body.account, req.body.server,
+          req.body.bridgeId, Math.floor(Date.now() / 1000));
+        await writeMt5Signals(signals);
+        return updated;
+      });
+      return res.json({ ok: true, signal });
+    } catch (error) { return res.status(409).json({ ok: false, error: error instanceof Error ? error.message : 'Allocation rejected.' }); }
+  });
+
   app.post('/api/mt5/signals/:id/status', async (req, res) => {
     if (!mt5BridgeAuthorized(req)) return res.status(401).json({ ok: false, error: 'Bridge authorization failed.' });
     const allowed = new Set<Mt5SignalStatus>([
@@ -2289,7 +2349,7 @@ async function startServer() {
           partialClosedVolume: updated.partialClosedVolume,
           partialClosePrice: updated.partialClosePrice,
         }) : 0;
-        if ((status === 'PLACED' || status === 'ACTIVE' || cancelledBeyondOneAndHalfR
+        if (!(updated.scalpEntry || updated.intradayEntry) && (status === 'PLACED' || status === 'ACTIVE' || cancelledBeyondOneAndHalfR
           || confirmedRf || confirmedResult)
           && (await readMt5Config()).telegramMessagesEnabled) {
           const telegramAlert: TelegramTradeAlert = {
@@ -2777,6 +2837,14 @@ async function startServer() {
     }
   };
   const scanTimer = setInterval(() => void runAutomationScan(), 1_000);
+  const chartTelegramTimer = setInterval(() => {
+    void terminalScope.run('primary', deliverChartSetupAlerts).catch(error => console.error('Chart Telegram scan failed:', error));
+  }, 5_000);
+  chartTelegramTimer.unref();
+  const dailyTelegramTimer = setInterval(() => {
+    void terminalScope.run('primary', deliverDailyTelegramSummary).catch(error => console.error('Daily Telegram summary failed:', error));
+  }, 60_000);
+  dailyTelegramTimer.unref();
   scanTimer.unref();
   setTimeout(() => void runAutomationScan(), 2_000).unref();
 }

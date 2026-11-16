@@ -450,7 +450,7 @@ export class DashboardAuth {
   guard: express.RequestHandler = (req, res, next) => {
     void this.ready.then(() => {
       if (req.path === '/health' && req.method === 'GET') { next(); return; }
-      const machineWrite = (req.method === 'POST' && (/^\/mt5\/(heartbeat|market-data|signals\/claim)$/.test(req.path)
+      const machineWrite = (req.method === 'POST' && (/^\/mt5\/(heartbeat|market-data|signals\/claim|pullback-allocation)$/.test(req.path)
         || /^\/mt5\/signals\/[^/]+\/status$/.test(req.path)));
       // The existing Python bridge reads status to synchronize its execution config.
       const machineRoute = machineWrite || req.method === 'GET' && req.path === '/mt5/status';
