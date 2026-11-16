@@ -3,7 +3,7 @@ import { buildIntradayPullbackSignals, intradayPullbackChartRecords } from '../s
 import { tradeToMt5Signal } from '../services/mt5Automation';
 import { buildScalpChartDisplays, scalpDisplayOutcome, scalpHistoryFillDisplays, scalpOutcomeExpired, scalpPositionSignal, type ScalpChartDisplay, type ScalpDisplayOutcome } from '../services/scalpChartDisplay';
 import type { ScalpOneToOneChartFill } from '../services/scalpOneToOne';
-import { buildPullbackChartSetups, chartSignalFromRecord, belongsToPullbackSetup, type PullbackChartSetup } from '../services/pullbackChartSetup';
+import { buildPullbackChartSetups, chartSignalFromRecord, chartSignalFromHistoryFill, belongsToPullbackSetup, type PullbackChartSetup } from '../services/pullbackChartSetup';
 import { pullbackTelegramAlerts } from '../services/pullbackTelegram';
 import { chartExecutionStatus, chartPullbackState, confirmedPullbackFill, currentPullbackDisplay, filledPullbackLegs, groupPullbackTableSignals, scalpReplayTableSignals, type PullbackFillEvidence, type PullbackTableSignal } from '../services/pullbackEntryDisplay';
 export { detectAutoTrendlines } from '../services/autoTrendlines';
@@ -5232,8 +5232,8 @@ export const OandaProChart: React.FC<{
     if (marketSymbol !== 'XAUUSD') return [];
     const history: PullbackTableSignal[] = scalpOneToOneChartFills.flatMap(fill => {
       if (!fill.signal || fill.trade.filledAt === undefined || fill.trade.filledAt + 900 > tradeDisplayAsOf) return [];
-      return [{ ...fill.signal, preview: true, simulatedFill: true, status: 'SIMULATED' as const,
-        openedAt: fill.trade.filledAt, createdAt: fill.signal.calculatedAt, updatedAt: fill.trade.filledAt }];
+      const signal = chartSignalFromHistoryFill(fill);
+      return signal ? [signal] : [];
     });
     const records = visibleCanonicalTradeRecords.flatMap(record => {
       const signal = chartSignalFromRecord(record); return signal ? [signal] : [];

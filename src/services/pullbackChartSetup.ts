@@ -4,6 +4,7 @@ import type { StructureCandle } from './marketStructure';
 import type { TradeLevels, TradeTimeframe } from './tradeLevels';
 import { entryTimeframeSeconds } from './intradayPullback';
 import { pullbackExpirySeconds } from './pullbackExpiry';
+import type { ScalpOneToOneChartFill } from './scalpOneToOne';
 import { chartPullbackState, confirmedPullbackFill, currentPullbackDisplay, groupPullbackTableSignals, type PullbackTableSignal } from './pullbackEntryDisplay';
 
 export interface PullbackChartLeg {
@@ -29,6 +30,7 @@ export function chartSignalFromRecord(record: JournalTradeRecord): PullbackTable
   if (!(record.scalpEntry || record.intradayEntry) || record.signalAt === undefined) return;
   const seconds = entryTimeframeSeconds(record.signalTimeframe);
   const closed = record.result === 'tp' || record.result === 'sl';
+  const simulated = !(record.mt5Managed || record.brokerTicket !== undefined);
   return { id: record.id, setupId: record.setupId, symbol: record.symbol ?? 'XAUUSD',
     source: record.source, tradeStyle: record.tradeStyle, zoneName: record.zoneName, brokerTicket: record.brokerTicket,
     zoneTimeframe: record.zoneTimeframe, signalTimeframe: record.signalTimeframe,
@@ -41,8 +43,21 @@ export function chartSignalFromRecord(record: JournalTradeRecord): PullbackTable
     status: closed ? record.result === 'tp' ? 'TP' : 'SL' : 'ACTIVE',
     openedAt: record.openedAt, closedAt: closed ? record.completedAt : undefined,
     createdAt: record.signalAt + seconds, updatedAt: record.completedAt,
-    preview: !(record.mt5Managed || record.brokerTicket !== undefined),
-    simulatedFill: !(record.mt5Managed || record.brokerTicket !== undefined) && record.openedAt !== undefined };
+    preview: simulated, simulatedFill: simulated && record.openedAt !== undefined,
+    chartEvidence: simulated && record.openedAt !== undefined ? { observedAt: record.openedAt + seconds,
+      outcome: closed ? record.result as 'tp' | 'sl' : 'active', resolvedAt: closed ? record.completedAt : undefined,
+      outcomeObservedAt: closed ? record.completedAt + seconds : undefined } : undefined };
+}
+
+/** Preserve history outcomes as chart evidence, never as broker executions. */
+export function chartSignalFromHistoryFill(fill: ScalpOneToOneChartFill): PullbackTableSignal | undefined {
+  if (!fill.signal || fill.trade.filledAt === undefined) return undefined;
+  const seconds = entryTimeframeSeconds(fill.signal.signalTimeframe);
+  return { ...fill.signal, preview: true, simulatedFill: true, status: 'SIMULATED',
+    openedAt: fill.trade.filledAt, createdAt: fill.signal.calculatedAt, updatedAt: fill.trade.filledAt,
+    chartEvidence: { observedAt: fill.trade.filledAt + seconds, outcome: fill.outcome,
+      resolvedAt: fill.trade.resolvedAt,
+      outcomeObservedAt: fill.trade.resolvedAt === undefined ? undefined : fill.trade.resolvedAt + seconds } };
 }
 
 /** Presentation only: a single fixed-exit drawing and marker, with independent leg facts. */
@@ -75,23 +90,38 @@ export function buildPullbackChartSetups(options: {
         ...(base.scalpEntry ? { scalpEntry: { ...meta, leg, riskShare: leg === 10 ? .6 : .4 } }
           : { intradayEntry: { ...base.intradayEntry!, leg, riskShare: leg === 10 ? .6 : .4 } }) };
       const chart = chartPullbackState(signal, candles, asOf);
+      const evidence = saved?.chartEvidence;
+      const visibleEvidence = evidence && evidence.observedAt <= asOf ? evidence : undefined;
+      const historyOutcome = visibleEvidence && (visibleEvidence.outcome === 'tp' || visibleEvidence.outcome === 'sl')
+        && visibleEvidence.outcomeObservedAt !== undefined && visibleEvidence.outcomeObservedAt <= asOf
+        ? visibleEvidence.outcome : undefined;
       const known = saved?.openedAt !== undefined && saved.openedAt <= asOf
-        && (saved.simulatedFill || confirmedPullbackFill(saved, asOf, positions));
+        && (visibleEvidence || !evidence && saved.simulatedFill || confirmedPullbackFill(saved, asOf, positions));
       const executed = !!saved && confirmedPullbackFill(saved, asOf, positions);
       const filled = !(secondOnly && leg === 10) && (chart.status === 'filled' || !!known);
-      const brokerExit = saved?.closedAt !== undefined && saved.closedAt <= asOf
+      const brokerExit = !saved?.preview && saved?.closedAt !== undefined && saved.closedAt <= asOf
         && (saved.status === 'TP' || saved.status === 'SL') ? saved.status.toLowerCase() as 'tp' | 'sl' : undefined;
+      const chartOutcome = historyOutcome ?? chart.outcome?.level;
       return { leg, entry, riskPips: Math.abs(entry - base.stopLoss) * 10, filled,
-        chartConfirmed: !(secondOnly && leg === 10) && chart.status === 'filled',
-        chartOutcome: chart.outcome?.level, chartResolvedAt: chart.outcome?.at,
+        chartConfirmed: !(secondOnly && leg === 10) && (chart.status === 'filled' || !!visibleEvidence),
+        chartOutcome, chartResolvedAt: historyOutcome ? visibleEvidence?.resolvedAt : chart.outcome?.at,
         filledAt: filled ? chart.filledAt ?? saved?.openedAt : undefined,
-        uncertain: chart.status === 'ambiguous' || chart.status === 'unavailable', executed,
-        outcome: chart.outcome?.level ?? brokerExit,
-        resolvedAt: chart.outcome?.at ?? (brokerExit ? saved?.closedAt : undefined),
+        uncertain: chart.status === 'ambiguous' || chart.status === 'unavailable' || chart.continuityLost === true, executed,
+        outcome: chartOutcome ?? brokerExit,
+        resolvedAt: historyOutcome ? visibleEvidence?.resolvedAt : chart.outcome?.at ?? (brokerExit ? saved?.closedAt : undefined),
+        chartRunning: chart.status === 'filled' && !chart.outcome && !chart.continuityLost && (chart.observedThrough ?? 0) >= asOf,
+        historyUncertain: visibleEvidence?.outcome === 'uncertain'
+          && (visibleEvidence.outcomeObservedAt === undefined || visibleEvidence.outcomeObservedAt <= asOf),
+        brokerRunning: !!saved && positions.some(p => p.openedAt <= asOf && p.volume > 0
+          && p.symbol === (saved.brokerSymbol ?? context.brokerSymbol)
+          && (p.ticket === saved.brokerTicket || p.ticket === saved.brokerPosition || p.identifier !== undefined && p.identifier === saved.brokerPosition
+            || p.setupId !== undefined && p.setupId === saved.setupId)),
         expired: chart.status === 'expired' };
     });
     const filled = states.filter(s => s.filled);
     const exits = filled.filter(s => s.outcome);
+    const running = filled.some(s => s.brokerRunning || s.chartRunning && !s.historyUncertain);
+    const brokerRunning = filled.some(s => s.brokerRunning);
     const result = filled.length && exits.length === filled.length && exits.every(s => s.outcome === exits[0].outcome)
       && (exits[0].outcome === 'tp' || exits[0].outcome === 'sl') ? exits[0].outcome : undefined;
     const markerTime = filled.length ? states[0].filledAt ?? Math.min(...filled.map(s => s.filledAt!)) : undefined;
@@ -108,8 +138,9 @@ export function buildPullbackChartSetups(options: {
         s.brokerTicket === undefined ? undefined : `MT5:${s.brokerTicket}`,
         s.brokerPosition === undefined ? undefined : `MT5:${s.brokerPosition}`].filter((id): id is string => !!id)),
       setupId: base.setupId, legs: states, chartTimeframe: base.signalTimeframe, zoneTimeframe: base.zoneTimeframe,
-      referenceOnly: !filled.length, chartFilled: !!filled.length, alwaysVisible: !!filled.length && !exits.length,
-      drawing: !exits.length && (filled.length > 0 || asOf < base.expiresAt && states.some(s => !s.expired)),
+      referenceOnly: !filled.length, chartFilled: !!filled.length, alwaysVisible: running && !exits.length,
+      drawing: !exits.length && (brokerRunning || !states.some(s => s.historyUncertain)
+        && (running || !filled.length && asOf < base.expiresAt && states.some(s => !s.expired))),
       markerTime, markerText: result?.toUpperCase() ?? '', label: '',
       trade: { entry, stopLoss: base.stopLoss, takeProfit: base.takeProfit,
         riskFree: base.takeProfit, riskFreeEnabled: false, riskPips: risk * 10,

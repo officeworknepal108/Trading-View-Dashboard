@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { buildPullbackChartSetups, belongsToPullbackSetup, chartSignalFromRecord } from '../src/services/pullbackChartSetup';
+import { buildPullbackChartSetups, belongsToPullbackSetup, chartSignalFromRecord, chartSignalFromHistoryFill } from '../src/services/pullbackChartSetup';
+import type { ScalpOneToOneChartFill } from '../src/services/scalpOneToOne';
 import type { PullbackTableSignal } from '../src/services/pullbackEntryDisplay';
 import type { StructureCandle } from '../src/services/marketStructure';
 
@@ -106,5 +107,46 @@ test('saved simulation remains chart only and a future close does not leak into 
     intradayEntry: first.intradayEntry, result: 'tp', openedAt: 1800, completedAt: 5000 })!;
   const [setup] = build([signal], [], 3000);
   assert.equal(setup.legs[0].filled, true); assert.equal(setup.legs[0].executed, false);
-  assert.equal(setup.markerText, ''); assert.equal(setup.drawing, true);
+  assert.equal(setup.markerText, ''); assert.equal(setup.drawing, false, 'old fill proof cannot establish a currently running trade without candles');
+});
+
+test('old fills survive data gaps as arrows without creating chart-wide active boxes', () => {
+  const gap = [candle(1800, 3007), candle(5400, 3007)];
+  const [missingMiddle] = build([first, second], gap, 6300);
+  assert.deepEqual(missingMiddle.legs.map(s => s.filled), [true, true]);
+  assert.equal(missingMiddle.markerTime, 1800);
+  assert.equal(missingMiddle.markerText, '', 'unknown exit must not become TP or SL');
+  assert.equal(missingMiddle.drawing, false); assert.equal(missingMiddle.alwaysVisible, false);
+  const [staleTail] = build([first, second], [candle(1800, 3007)], 100000);
+  assert.equal(staleTail.markerTime, 1800); assert.equal(staleTail.drawing, false);
+});
+
+test('a matched open broker position retains its drawing when chart candles are missing', () => {
+  const signal = { ...first, status: 'ACTIVE' as const, brokerTicket: 123, brokerSymbol: 'GOLD', openedAt: 1850 };
+  const position = { ticket: 123, symbol: 'GOLD', direction: 'BUY' as const, volume: .01, priceOpen: 3009,
+    priceCurrent: 3010, stopLoss: 2990, takeProfit: 3050, profit: 1, swap: 0, openedAt: 1850 };
+  const options = { signals: [signal], candles: {}, asOf: 100000, context: { brokerSymbol: 'GOLD' } };
+  assert.equal(buildPullbackChartSetups({ ...options, positions: [position] })[0].drawing, true);
+  assert.equal(buildPullbackChartSetups({ ...options, positions: [{ ...position, ticket: 999 }] })[0].drawing, false);
+});
+
+test('known historical TP/SL survives conversion, reload and missing candle history', () => {
+  for (const outcome of ['tp', 'sl'] as const) {
+    const active = build([first], [candle(1800, 3008)], 2700)[0];
+    const signal = { ...first, tradeStyle: 'SCALP_1_1' as const, intradayEntry: undefined, scalpEntry: first.intradayEntry };
+    const fill: ScalpOneToOneChartFill = { id: 'old-fill', signal, setupId: signal.setupId, leg: 10, outcome,
+      trade: { ...active.trade, filledAt: 1800, resolvedAt: 2700, result: outcome,
+        status: outcome === 'tp' ? 'tp-hit' : 'sl-hit' } };
+    const evidence = chartSignalFromHistoryFill(fill)!;
+    const [completed] = build([evidence], [], 100000);
+    assert.equal(completed.markerTime, 1800); assert.equal(completed.markerText, outcome.toUpperCase());
+    assert.equal(completed.drawing, false); assert.equal(completed.legs[0].executed, false);
+    const [withRejection] = build([evidence, { ...signal, status: 'REJECTED' }], [], 100000);
+    assert.equal(withRejection.markerText, outcome.toUpperCase(), 'broker rejection must not erase chart result evidence');
+    assert.equal(withRejection.drawing, false); assert.equal(withRejection.legs[0].executed, false);
+    const [beforeExitClose] = build([evidence], [], 3000);
+    assert.equal(beforeExitClose.markerText, '', 'future exit candle must not leak into replay');
+    const [beforeFillClose] = build([evidence], [], 2000);
+    assert.equal(beforeFillClose.markerTime, undefined, 'an unfinished historical fill candle must not create an arrow');
+  }
 });

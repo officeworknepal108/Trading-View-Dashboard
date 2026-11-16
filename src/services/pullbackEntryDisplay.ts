@@ -6,6 +6,8 @@ import type { StructureCandle } from './marketStructure';
 import { pullbackExpirySeconds } from './pullbackExpiry';
 
 export interface ChartPullbackState {
+  continuityLost?: boolean;
+  observedThrough?: number;
   status: 'filled' | 'waiting' | 'expired' | 'ambiguous' | 'unavailable';
   filledAt?: number;
   outcome?: { level: 'tp' | 'sl' | 'both'; at: number };
@@ -35,7 +37,8 @@ export function chartPullbackState(signal: Mt5SignalInput, candles: readonly Str
   for (const bar of bars) {
     // A data gap cannot prove a new fill or establish which exit happened first.
     if (previousTime !== undefined && bar.time > previousTime + seconds && paths.some(path => !path.exit)) {
-      if (paths.every(path => path.mask)) return { status: 'filled', filledAt: Math.max(...paths.map(path => path.filledAt!)) };
+      if (paths.every(path => path.mask)) return { status: 'filled', filledAt: Math.max(...paths.map(path => path.filledAt!)),
+        continuityLost: true, observedThrough: previousTime + seconds };
       if (paths.some(path => path.mask)) return { status: 'ambiguous' };
       return { status: previousTime + seconds >= signal.expiresAt ? 'expired' : 'unavailable' };
     }
@@ -54,7 +57,8 @@ export function chartPullbackState(signal: Mt5SignalInput, candles: readonly Str
     level: new Set(paths.map(path => path.exit)).size > 1 ? 'both' as const : paths[0].exit === 1 ? 'tp' as const : 'sl' as const,
     at: Math.max(...paths.map(path => path.exitAt!)),
   } : undefined;
-  if (allFilled) return { status: 'filled', filledAt: Math.max(...paths.map(path => path.filledAt!)), outcome: exit };
+  if (allFilled) return { status: 'filled', filledAt: Math.max(...paths.map(path => path.filledAt!)), outcome: exit,
+    observedThrough: Math.min(asOf, previousTime! + seconds), continuityLost: !exit && previousTime! + seconds < asOf };
   if (anyFilled) return { status: 'ambiguous' };
   if (!exit && asOf >= signal.expiresAt && (previousTime! + seconds < signal.expiresAt
     || bars.some(bar => bar.time < signal.expiresAt && bar.complete === false))) return { status: 'unavailable' };
@@ -73,6 +77,7 @@ export function chartExecutionStatus(chart: ChartPullbackState, executed: boolea
 
 type Positions = readonly Mt5AutomationStatus['positions'][number][];
 export type PullbackTableSignal = Mt5StoredSignal & { preview?: boolean; simulatedFill?: boolean;
+  chartEvidence?: { observedAt: number; outcome: 'active' | 'tp' | 'sl' | 'uncertain'; resolvedAt?: number; outcomeObservedAt?: number };
   displayPlan?: { previousEntry: number; expired: boolean; error?: string } };
 
 /** Display projection only. Never enqueue it or overwrite a broker execution record. */
@@ -115,7 +120,15 @@ export function groupPullbackTableSignals(signals: readonly PullbackTableSignal[
     let entries = groups.get(key);
     if (!entries) { entries = new Map(); groups.set(key, entries); }
     const slot = leg?.leg ?? 0, prior = entries.get(slot);
-    if (!prior || prior.preview && !signal.preview || prior.preview === signal.preview && signal.updatedAt > prior.updatedAt) entries.set(slot, signal);
+    const selected = !prior || prior.preview && !signal.preview || prior.preview === signal.preview && signal.updatedAt > prior.updatedAt ? signal : prior;
+    const other = selected === signal ? prior : signal;
+    const compatible = other && selected.entry === other.entry && selected.expiresAt === other.expiresAt
+      && (selected.intradayEntry ?? selected.scalpEntry)?.version === (other.intradayEntry ?? other.scalpEntry)?.version;
+    const evidence = compatible ? [selected.chartEvidence, other.chartEvidence].filter(e => e !== undefined)
+      .sort((a, b) => (b.outcome === 'tp' || b.outcome === 'sl' ? 1 : 0) - (a.outcome === 'tp' || a.outcome === 'sl' ? 1 : 0)
+        || (b.outcomeObservedAt ?? b.observedAt) - (a.outcomeObservedAt ?? a.observedAt))[0] : selected.chartEvidence;
+    entries.set(slot, evidence ? { ...selected, chartEvidence: evidence,
+      openedAt: selected.openedAt ?? other?.openedAt } : selected);
   }
   return [...groups].map(([key, entries]) => ({ key, entries: [...entries.values()]
     .sort((a, b) => (a.intradayEntry?.leg ?? a.scalpEntry?.leg ?? 0) - (b.intradayEntry?.leg ?? b.scalpEntry?.leg ?? 0)) }))
