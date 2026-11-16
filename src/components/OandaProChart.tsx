@@ -950,7 +950,7 @@ export const PullbackSetupRows: React.FC<{
           : signal.displayPlan ? '—' : formatPrice(leg?.referenceEntry ?? signal.executionPrice ?? signal.entry)}</td>
         <td className="px-2 py-1 text-center font-black">{signal.engulfingType}</td>
         <td title={states.map(state => `${entryName(state.signal)}: ${status(state)}${state.signal.displayPlan ? `\nOriginal entry: ${formatPrice(state.signal.displayPlan.previousEntry)}\nOriginal order: ${mt5SignalStatusLabel(state.signal)}` : ''}`).join('\n')}
-          className={`max-w-[380px] truncate px-2 py-1 text-right text-[8px] font-normal ${completed && states.every(state => state.outcome?.level === 'tp')
+          className={`max-w-[380px] truncate px-2 py-1 text-right text-[10px] font-bold ${completed && states.every(state => state.outcome?.level === 'tp')
             ? 'text-emerald-700' : states.some(state => state.signal.status === 'REJECTED' || state.outcome?.level === 'sl')
               ? 'text-rose-700' : mt5SignalStatusClassName(signal)}`}>{summary}</td>
       </tr>
