@@ -845,7 +845,7 @@ export const TradeDetailsRow: React.FC<{
             const entry = entries.find(candidate => candidate.intradayEntry?.leg === leg);
             return <React.Fragment key={leg}>
               {index > 0 && <span aria-hidden="true">|</span>}
-              <span className="text-blue-700">{index === 0 ? '1st' : '2nd'} ENTRY<EntryFillTick filled={filled.has(leg)} /> <span className="tabular-nums font-normal text-slate-700">{entry ? formatPrice(entry.entry) : '—'}</span></span>
+              <span className="text-blue-700">{index === 0 ? '1st' : '2nd'} ENTRY<EntryFillTick filled={filled.has(leg)} /> <span className="tabular-nums font-bold text-slate-700">{entry ? formatPrice(entry.entry) : '—'}</span></span>
               <span className="tabular-nums">SL {entry ? entry.riskPips.toFixed(2) : '—'} PIPS</span>
             </React.Fragment>;
           })}
@@ -867,7 +867,7 @@ export const TradeDetailsRow: React.FC<{
         <span className="text-blue-700">{mt5Signal?.intradayEntry || mt5Signal?.scalpEntry
           ? (mt5Signal.intradayEntry ?? mt5Signal.scalpEntry)!.leg === 10 ? '1st ENTRY' : '2nd ENTRY' : 'ENTRY'}
           <EntryFillTick filled={!!mt5Signal && !!(mt5Signal.intradayEntry || mt5Signal.scalpEntry)
-            && confirmedPullbackFill(mt5Signal, fillEvidence?.asOf ?? Date.now() / 1000, fillEvidence?.positions)} /> <span className="tabular-nums font-normal text-slate-700">{formatPrice(trade.entry)}</span></span>
+            && confirmedPullbackFill(mt5Signal, fillEvidence?.asOf ?? Date.now() / 1000, fillEvidence?.positions)} /> <span className="tabular-nums font-bold text-slate-700">{formatPrice(trade.entry)}</span></span>
         <span className="text-rose-700">SL <span className="tabular-nums font-semibold text-slate-700">{formatPrice(trade.stopLoss)}</span></span>
         <span className="text-emerald-700">TP <span className="tabular-nums font-semibold text-slate-700">{formatPrice(trade.takeProfit)}</span></span>
         <span>R:R 1:{trade.rewardRisk}</span>
@@ -961,7 +961,7 @@ export const PullbackSetupRows: React.FC<{
               {index > 0 && <span aria-hidden="true">|</span>}
               <span className="text-blue-700">{slot === 10 ? '1st ENTRY' : slot === 25 ? '2nd ENTRY' : 'ENTRY'}
                 <EntryFillTick filled={state?.filled === true && !state.outcome} />{' '}
-                <span className="tabular-nums font-normal text-slate-700">{state?.outcome ? state.outcome.label : state?.signal.displayPlan?.error ? 'OUTSIDE LIMITS' : price !== undefined ? formatPrice(price) : '—'}</span>
+                <span className="tabular-nums font-bold text-slate-700">{state?.outcome ? state.outcome.label : state?.signal.displayPlan?.error ? 'OUTSIDE LIMITS' : price !== undefined ? formatPrice(price) : '—'}</span>
               </span>
               {state && !state.outcome && !state.signal.displayPlan?.error && price !== undefined && <span className="tabular-nums">SL {(Math.round(Math.abs(price - stop) * 1000 + 1e-7) / 100).toFixed(2)} PIPS</span>}
             </React.Fragment>;
