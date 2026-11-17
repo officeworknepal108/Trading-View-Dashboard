@@ -1,4 +1,22 @@
 import React from 'react';
+import { TRADE_STRATEGIES, type TradeStrategy } from '../services/tradeRecordFilters';
+
+export const TradeStrategyCheckboxes: React.FC<{
+  label: string;
+  selected: TradeStrategy[];
+  onChange: (selected: TradeStrategy[]) => void;
+}> = ({ label, selected, onChange }) => (
+  <fieldset aria-label={label} className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded border border-slate-200 bg-white px-2 py-1 text-[9px] font-bold text-slate-700">
+    {TRADE_STRATEGIES.map(strategy => (
+      <label key={strategy} className="flex cursor-pointer items-center gap-1.5 py-0.5">
+        <input type="checkbox" checked={selected.includes(strategy)} onChange={event => onChange(
+          event.target.checked ? [...selected, strategy] : selected.filter(value => value !== strategy),
+        )} />
+        {strategy === 'SCALP_1_1' ? 'Scalp 1:1' : strategy === 'SCALPING' ? 'Scalping' : 'Intraday'}
+      </label>
+    ))}
+  </fieldset>
+);
 
 export interface TradeMultiSelectOption {
   value: string;

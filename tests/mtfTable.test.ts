@@ -9,7 +9,8 @@ import { MultiTimeframeEntryTable, mtfTableHitExpired, isSlTpTradeDisplayFinishe
   zoneTableMtfStatus, reconcileSavedMtfTrade, validateRecordedMtfTrade, ZoneTableEngulfingConfirmations,
   ZoneSourceTimeframeLabel, resolveZoneTableSourceTimeframe,
   selectChochStatusTableZones, ChochStatusTableRow, explainZoneEntry, ZoneEntryReadinessText, ZoneEntryReasonDetails,
-  ManualTradeTimeframeControl, compactZoneTableStatus, firstZoneTapBarsAgo } from '../src/components/OandaProChart';
+  ManualTradeTimeframeControl, compactZoneTableStatus, firstZoneTapBarsAgo,
+  latestZoneTapBarsAgo, ZoneTableTapAge } from '../src/components/OandaProChart';
 import type { Mt5AutomationStatus, Mt5StoredSignal } from '../src/services/mt5Automation';
 import type { JournalTradeRecord } from '../src/components/TradeJournal';
 import type { MtfRow } from '../src/services/mtf';
@@ -17,6 +18,60 @@ import type { StructureZone } from '../src/services/marketStructure';
 import type { TradeLevels } from '../src/services/tradeLevels';
 
 const bar = (time: number, complete = true) => ({ time, open: 100, high: 102, low: 99, close: 101, volume: 1, complete });
+
+test('each tap resets table age and keeps its own inclusive 50-bar window', () => {
+  const candles = Array.from({ length: 200 }, (_, i) => bar(i * 900));
+  const zone: StructureZone = { id: 'repeat-taps', name: 'QML', category: 'mg', isBuy: true,
+    active: true, status: 'valid', startTime: -900, endTime: 999999, bottom: 100, top: 102,
+    tapTime: 0, tapCount: 1 };
+  const original = structuredClone(zone);
+  for (let tap = 1; tap <= 5; tap++) {
+    const tapIndex = (tap - 1) * 20;
+    const current = { ...zone, tapCount: tap, lastTapTime: candles[tapIndex].time };
+    for (const age of [0, 1, 12, 49, 50, 51]) {
+      const visibleCandles = candles.slice(0, tapIndex + age + 1);
+      const actualAge = latestZoneTapBarsAgo(current, visibleCandles);
+      assert.equal(actualAge, age, `TAP ${tap} must count from its own touch`);
+      assert.equal(zoneTableTradeExpired({ status: 'tp-hit' }, actualAge!, visibleCandles,
+        visibleCandles.at(-1)!.time), age > 50);
+    }
+  }
+  assert.deepEqual(zone, original, 'table age must not alter tap or trading data');
+});
+
+test('latest-tap age follows replay and actual candles across gaps and merged zones', () => {
+  const zone: StructureZone = { id: 'latest-touch', name: 'QML', category: 'mg', isBuy: true,
+    active: true, status: 'valid', startTime: 0, endTime: 999999, bottom: 100, top: 102,
+    tapTime: 60, tapBarsAgo: 99, lastTapTime: 200000, lastTapBarsAgo: 0 };
+  const candles = [bar(60), bar(120), bar(200000), bar(200060)];
+  assert.equal(latestZoneTapBarsAgo(zone, candles.slice(0, 2)), 1, 'future taps must not leak into replay');
+  assert.equal(latestZoneTapBarsAgo(zone, candles), 1, 'gaps must not create imaginary candles');
+  const newer = { ...zone, id: 'newer', lastTapTime: 200060 };
+  assert.equal(latestZoneTapBarsAgo({ ...zone, confluenceMembers: [zone, newer] }, candles), 0);
+  assert.equal(latestZoneTapBarsAgo({ ...zone, lastTapBarsAgo: 0 }), 0);
+  assert.equal(latestZoneTapBarsAgo({ ...zone, lastTapTime: undefined, lastTapBarsAgo: undefined }), 99);
+  assert.equal(latestZoneTapBarsAgo({ ...zone, tapTime: undefined, lastTapTime: undefined }, candles), undefined);
+});
+
+test('tap age stays beside completed and pending status labels in the same table cell', () => {
+  for (const status of ['TP HIT', 'SL HIT', 'ENTRY MISSED', 'WAIT 1H ABOVE', 'TRADE', 'NO TRADE']) {
+    const html = renderToStaticMarkup(React.createElement(ZoneTableTapAge, { barsAgo: 12, children: status }));
+    assert.equal(html, `<span class="text-[8px] font-bold">12 bars · </span>${status}`);
+  }
+  assert.equal(renderToStaticMarkup(React.createElement(ZoneTableTapAge, { barsAgo: 1, children: 'TP HIT' })), '<span class="text-[8px] font-bold">1 bar · </span>TP HIT');
+  assert.equal(renderToStaticMarkup(React.createElement(ZoneTableTapAge, { barsAgo: 0, children: 'SL HIT' })), '<span class="text-[8px] font-bold">0 bars · </span>SL HIT');
+  assert.equal(renderToStaticMarkup(React.createElement(ZoneTableTapAge, { children: 'WAIT' })), 'WAIT');
+});
+
+test('tap tooltip describes the same latest-tap count and renewed table window', () => {
+  const options = entryDiagnosticOptions();
+  const readiness = explainZoneEntry({ ...options, barsAgo: 2,
+    zone: { ...options.zone, tapTime: 900, lastTapTime: 1800, tapCount: 3 } });
+  const text = readiness.narrative!.join('\n');
+  assert.ok(text.includes('last touched this zone 2 bars ago'));
+  assert.ok(text.includes('Each new tap restarts'));
+  assert.ok(!text.includes('Later touches do not restart'));
+});
 
 test('displayed bar age keeps increasing from the first touch when the same zone is touched again', () => {
   const zone: StructureZone = { id: 'qml-first-touch', name: 'QML', category: 'mg', isBuy: true,

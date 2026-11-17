@@ -24,6 +24,22 @@ button {
   font: inherit;
 }
 
+/* Wrap by available space, including browser zoom and OS display scaling. */
+.dashboard-toolbar > * {
+  min-width: 0;
+  max-width: 100%;
+  flex-shrink: 0;
+}
+
+.dashboard-toolbar > div {
+  flex-wrap: wrap;
+}
+
+.dashboard-toolbar-menu {
+  max-height: min(65dvh, var(--dashboard-menu-space, 65dvh));
+  overscroll-behavior: contain;
+}
+
 /* Match the compact entry-arrow summary throughout the indicator menus.
    Keep this scoped rule above Tailwind's layered utilities in the cascade,
    including the global button font reset. */

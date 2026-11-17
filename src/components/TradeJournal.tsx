@@ -21,6 +21,8 @@ import {
   tradeRecordDatePeriodKey,
   tradeRecordPeriodLabel,
   type TradeRecordFilters,
+  type TradeStrategy,
+  TRADE_STRATEGIES,
 } from '../services/tradeRecordFilters';
 import {
   calculateHalfAtOneRResult,
@@ -29,7 +31,7 @@ import {
   type TradeResult,
   type TradeTimeframe,
 } from '../services/tradeLevels';
-import { TradeMultiSelect } from './TradeMultiSelect';
+import { TradeMultiSelect, TradeStrategyCheckboxes } from './TradeMultiSelect';
 import { Mt5CapitalPanel } from './Mt5CapitalPanel';
 
 export interface JournalTradeRecord {
@@ -114,6 +116,8 @@ interface JournalResponse {
 }
 
 interface TradeJournalProps {
+  selectedStrategies?: TradeStrategy[];
+  onStrategiesChange?: (selected: TradeStrategy[]) => void;
   canManageCapital?: boolean;
   terminalId?: 'primary' | 'secondary';
   records: JournalTradeRecord[];
@@ -430,7 +434,7 @@ export function renderHistoricalTradeSnapshot(
   return canvas.toDataURL('image/jpeg', 0.78);
 }
 
-export const TradeJournal: React.FC<TradeJournalProps> = ({ records, timeframe, marketSymbol, historyAsOf, timeZone, onClose, terminalId = 'primary', canManageCapital = false }) => {
+export const TradeJournal: React.FC<TradeJournalProps> = ({ records, timeframe, marketSymbol, historyAsOf, timeZone, onClose, terminalId = 'primary', canManageCapital = false, selectedStrategies, onStrategiesChange }) => {
   const terminalFetch = (url: string, options?: RequestInit) => fetch(
     url.startsWith('/api/journal/') ? `${url}${url.includes('?') ? '&' : '?'}terminal=${terminalId}` : url, options);
 
@@ -457,8 +461,9 @@ export const TradeJournal: React.FC<TradeJournalProps> = ({ records, timeframe, 
   const [datePeriod, setDatePeriod] = useState<TradeRecordFilters['datePeriod']>('DAY');
   const [dateFilter, setDateFilter] = useState('ALL');
   const [sourceFilter, setSourceFilter] = useState<TradeRecordFilters['source']>('ALL');
-  const [tradeStyleFilter, setTradeStyleFilter] = useState<TradeRecordFilters['tradeStyle']>('ALL');
-  const [includeScalpOneToOne, setIncludeScalpOneToOne] = useState(true);
+  const [localStrategies, setLocalStrategies] = useState<TradeStrategy[]>([...TRADE_STRATEGIES]);
+  const tradeStyleFilter = selectedStrategies ?? localStrategies;
+  const setTradeStyleFilter = onStrategiesChange ?? setLocalStrategies;
   const [tradingTimeFilter, setTradingTimeFilter] = useState<TradeRecordFilters['tradingTime']>('ALL');
   const [sideFilter, setSideFilter] = useState<TradeRecordFilters['side']>('ALL');
   const [zoneFilter, setZoneFilter] = useState<TradeRecordFilters['zones']>('ALL');
@@ -665,13 +670,12 @@ export const TradeJournal: React.FC<TradeJournalProps> = ({ records, timeframe, 
       zones: zoneFilter,
     }, timeZone, marketSymbol);
     return coreFiltered.filter((trade) => (
-      (includeScalpOneToOne || trade.tradeStyle !== 'SCALP_1_1')
-      && (volumeFilter === 'ALL' || volumeStatus(trade) === volumeFilter)
+      (volumeFilter === 'ALL' || volumeStatus(trade) === volumeFilter)
       && (resultFilter === 'ALL' || trade.result === resultFilter)
       && (!query || [trade.zoneName, trade.engulfingType, volumeStatus(trade), trade.session, trade.reason, trade.autoReason, trade.mistake, trade.lesson]
         .some((value) => value?.toLowerCase().includes(query)))
     ));
-  }, [dateFilter, datePeriod, resultFilter, search, sideFilter, sourceFilter, timeframeFilter, timeZone, trades, tradeStyleFilter, tradingTimeFilter, volumeFilter, zoneFilter, historyAsOf, marketSymbol, includeScalpOneToOne]);
+  }, [dateFilter, datePeriod, resultFilter, search, sideFilter, sourceFilter, timeframeFilter, timeZone, trades, tradeStyleFilter, tradingTimeFilter, volumeFilter, zoneFilter, historyAsOf, marketSymbol]);
 
   useEffect(() => {
     if (filteredTrades.some((trade) => trade.id === selectedId)) return;
@@ -972,14 +976,7 @@ export const TradeJournal: React.FC<TradeJournalProps> = ({ records, timeframe, 
         <select value={sideFilter} onChange={(event) => setSideFilter(event.target.value as TradeRecordFilters['side'])} className="rounded border border-slate-200 px-2 py-1 text-[9px] font-bold">
           <option value="ALL">ALL SIDES</option><option value="BUY">BUY</option><option value="SELL">SELL</option>
         </select>
-        <select aria-label="Trade style" value={tradeStyleFilter} onChange={(event) => setTradeStyleFilter(event.target.value as TradeRecordFilters['tradeStyle'])} className="rounded border border-slate-200 px-2 py-1 text-[9px] font-bold">
-          <option value="ALL">ALL STYLES</option><option value="SCALPING">SCALPING</option><option value="INTRADAY">INTRADAY</option><option value="SCALP_1_1">SCALP 1:1</option>
-        </select>
-        {marketSymbol === 'XAUUSD' && <button type="button" aria-pressed={includeScalpOneToOne}
-          onClick={() => setIncludeScalpOneToOne(value => !value)}
-          className="rounded border border-emerald-200 bg-emerald-50 px-2 py-1 text-[9px] font-black text-emerald-800">
-          SCALP 1:1 RESULTS {includeScalpOneToOne ? 'ON' : 'OFF'}
-        </button>}
+        <TradeStrategyCheckboxes label="Journal strategies" selected={tradeStyleFilter} onChange={setTradeStyleFilter} />
         <select aria-label="Trading time" value={tradingTimeFilter} onChange={(event) => setTradingTimeFilter(event.target.value as TradeRecordFilters['tradingTime'])} className="rounded border border-slate-200 px-2 py-1 text-[9px] font-bold">
           <option value="ALL">ALL TRADING TIMES</option><option value="TRADING">IN SESSION</option><option value="NON_TRADING">OUTSIDE TIME</option>
         </select>
@@ -1001,7 +998,7 @@ export const TradeJournal: React.FC<TradeJournalProps> = ({ records, timeframe, 
         <button type="button" onClick={() => {
           setTimeframeFilter([timeframe]); setDatePeriod('DAY'); setDateFilter('ALL'); setSourceFilter('ALL');
           setSideFilter('ALL'); setResultFilter('ALL'); setZoneFilter('ALL');
-          setTradeStyleFilter('ALL'); setTradingTimeFilter('ALL');
+          setTradeStyleFilter([...TRADE_STRATEGIES]); setTradingTimeFilter('ALL');
           setVolumeFilter('ALL'); setSearch('');
         }} className="rounded border border-slate-200 bg-slate-50 px-2 py-1 text-[9px] font-black text-slate-600 hover:bg-slate-100">RESET</button>
       </div>

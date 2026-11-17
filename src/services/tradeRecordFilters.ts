@@ -46,6 +46,12 @@ export interface FilterableTradeRecord {
 }
 
 export type TradeDatePeriod = 'DAY' | 'WEEK' | 'MONTH';
+export type TradeStrategy = 'SCALPING' | 'SCALP_1_1' | 'INTRADAY';
+export const TRADE_STRATEGIES: TradeStrategy[] = ['SCALPING', 'SCALP_1_1', 'INTRADAY'];
+
+export function matchesTradeStrategies(style: string | undefined, selected: readonly TradeStrategy[]): boolean {
+  return selected.includes((style === 'ALL' ? 'INTRADAY' : style ?? 'INTRADAY') as TradeStrategy);
+}
 
 export interface TradeRecordFilters {
   timeframes: 'ALL' | TradeTimeframe[];
@@ -55,7 +61,7 @@ export interface TradeRecordFilters {
   side: 'ALL' | 'BUY' | 'SELL';
   result: 'ALL' | TradeResult;
   zones: 'ALL' | string[];
-  tradeStyle?: 'ALL' | 'SCALPING' | 'INTRADAY' | 'SCALP_1_1';
+  tradeStyle?: 'ALL' | TradeStrategy | TradeStrategy[];
   tradingTime?: 'ALL' | 'TRADING' | 'NON_TRADING';
 }
 
@@ -167,7 +173,10 @@ export function filterTradeRecords<T extends FilterableTradeRecord>(
       || (filters.side === 'BUY' ? record.direction === 'bullish' : record.direction === 'bearish'))
     && (filters.result === 'ALL' || record.result === filters.result)
     && (filters.zones === 'ALL' || filters.zones.includes(record.zoneName))
-    && (!filters.tradeStyle || filters.tradeStyle === 'ALL' || record.tradeStyle === filters.tradeStyle)
+    && (!filters.tradeStyle || filters.tradeStyle === 'ALL'
+      || (Array.isArray(filters.tradeStyle)
+        ? matchesTradeStrategies(record.tradeStyle, filters.tradeStyle)
+        : record.tradeStyle === filters.tradeStyle))
     && (!filters.tradingTime || filters.tradingTime === 'ALL'
       || tradeRecordOutsideTradingTime(record) === (filters.tradingTime === 'NON_TRADING'))
   ));

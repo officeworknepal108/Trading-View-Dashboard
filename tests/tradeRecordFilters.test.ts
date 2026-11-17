@@ -20,10 +20,47 @@ import {
   type CanonicalTradeRecord,
   type TradeRecordVerification,
   type TradeRecordFilters,
+  TRADE_STRATEGIES,
+  matchesTradeStrategies,
 } from '../src/services/tradeRecordFilters';
 import { mergeTradeRecordAnnotations } from '../src/services/tradeRecordDeduplication';
 import { calculateJournalPerformance, type JournalTradeRecord } from '../src/components/TradeJournal';
 import { isTradeStyleEnabled } from '../src/services/mt5Automation';
+
+test('strategy checkboxes support every combination, including none, for rows and journal totals', () => {
+  const { scalp, intraday } = synchronizedFixture();
+  const history: JournalTradeRecord[] = [
+    { ...scalp, id: 'scalping', realizedProfit: 30 },
+    { ...scalp, id: 'scalp-1-1', tradeStyle: 'SCALP_1_1', realizedProfit: -10, result: 'sl' },
+    { ...intraday, id: 'intraday', realizedProfit: 20 },
+  ];
+  for (let mask = 0; mask < 8; mask++) {
+    const selected = TRADE_STRATEGIES.filter((_, index) => mask & (1 << index));
+    const expected = history.filter(record => selected.includes(record.tradeStyle!));
+    const filtered = filterAccuracyTradeRecords(history, {
+      ...DEFAULT_TRADE_RECORD_FILTERS, tradeStyle: selected,
+    }, 'Asia/Kathmandu', 'XAUUSD');
+    assert.deepEqual(filtered.map(record => record.id), expected.map(record => record.id));
+    assert.deepEqual(history.filter(record => matchesTradeStrategies(record.tradeStyle, selected)), expected);
+    const totals = calculateJournalPerformance(filtered);
+    assert.equal(totals.completed, expected.length);
+    assert.equal(totals.realizedProfit, expected.reduce((sum, record) => sum + record.realizedProfit!, 0));
+    assert.deepEqual(filterTradeRecords(history, {
+      ...DEFAULT_TRADE_RECORD_FILTERS, tradeStyle: selected, side: 'SELL',
+    }, 'Asia/Kathmandu'), [], 'strategy selection must preserve other filters');
+  }
+});
+
+test('legacy records without a strategy are grouped as Intraday in checkbox filters', () => {
+  const { intraday } = synchronizedFixture();
+  const legacy = { ...intraday, tradeStyle: undefined };
+  assert.equal(matchesTradeStrategies(undefined, ['INTRADAY']), true);
+  assert.equal(matchesTradeStrategies(undefined, ['SCALPING', 'SCALP_1_1']), false);
+  assert.equal(matchesTradeStrategies('ALL', ['INTRADAY']), true, 'legacy Forex arrows use the Intraday checkbox');
+  assert.deepEqual(filterTradeRecords([legacy], {
+    ...DEFAULT_TRADE_RECORD_FILTERS, tradeStyle: ['INTRADAY'],
+  }, 'Asia/Kathmandu'), [legacy]);
+});
 
 function synchronizedFixture() {
   const scalp: JournalTradeRecord = {

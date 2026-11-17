@@ -161,7 +161,8 @@ import {
   renderHistoricalTradeSnapshot,
   type JournalTradeRecord,
 } from './TradeJournal';
-import { TradeMultiSelect } from './TradeMultiSelect';
+import { TradeMultiSelect, TradeStrategyCheckboxes } from './TradeMultiSelect';
+import { matchesTradeStrategies, TRADE_STRATEGIES, type TradeStrategy } from '../services/tradeRecordFilters';
 import {
   findEarlierZoneEntry,
   confirmedBrokerZoneEntry,
@@ -1125,6 +1126,26 @@ function confluenceTapBarsAgo(zone: DisplayStructureZone): number | undefined {
   return values.length > 0 ? Math.min(...values) : undefined;
 }
 
+/** Table age restarts on each visit and counts actual candles, including in replay. */
+export function latestZoneTapBarsAgo(
+  zone: DisplayStructureZone, candles: readonly { time: number }[] = [],
+): number | undefined {
+  const members = displayZoneMembers(zone);
+  if (candles.length) {
+    const asOf = candles[candles.length - 1].time;
+    const times = members.flatMap(member => [member.lastTapTime, member.tapTime])
+      .filter((time): time is number => time !== undefined && Number.isFinite(time) && time <= asOf);
+    if (!times.length) return undefined;
+    const latestTouch = Math.max(...times);
+    return candles.filter(candle => candle.time > latestTouch && candle.time <= asOf).length;
+  }
+  return confluenceTapBarsAgo(zone);
+}
+
+export const ZoneTableTapAge: React.FC<{ barsAgo?: number; children: React.ReactNode }> = ({ barsAgo, children }) => (
+  <>{barsAgo !== undefined && Number.isFinite(barsAgo) && <span className="text-[8px] font-bold">{Math.max(0, barsAgo)} {barsAgo === 1 ? 'bar' : 'bars'} · </span>}{children}</>
+);
+
 /** Display age stays anchored to the first visit; later visits never restart it. */
 export function firstZoneTapBarsAgo(
   zone: DisplayStructureZone, candles: readonly { time: number }[] = [],
@@ -1248,7 +1269,7 @@ function zoneEntryStory(options: Parameters<typeof explainZoneEntry>[0],
     ? `The chart shows ${fib.join(' and ')} alignment, but this entry route has not yet confirmed the required numerical Fib conditions.`
     : `This zone has ${fib.join(' and ')} alignment. ${fib.length === 1 ? 'That alignment condition has' : 'Those alignment conditions have'} passed.`);
   if (options.barsAgo !== undefined && Number.isFinite(options.barsAgo) && zone.tapTime !== undefined && zone.tapTime <= now) {
-    narrative.push(`Price first touched this zone ${options.barsAgo} ${options.barsAgo === 1 ? 'bar' : 'bars'} ago. Later touches do not restart this count. Touching the zone alone does not open a trade.`);
+    narrative.push(`Price last touched this zone ${options.barsAgo} ${options.barsAgo === 1 ? 'bar' : 'bars'} ago. Each new tap restarts the table's 50-bar window. Touching the zone alone does not open a trade.`);
   }
   const signal = options.evidence.signal;
   if (signal && signal.time + TIMEFRAME_SECONDS[signal.timeframe] <= now) {
@@ -1670,7 +1691,7 @@ const MultiTimeframeTrendTable: React.FC<{ rows: TrendTableRow[]; replayActive: 
   }, [expanded, replayActive]);
 
   return (
-    <div data-journal-exclude="true" className={`pointer-events-auto absolute bottom-3 right-20 z-20 overflow-hidden rounded-md border border-slate-300 bg-white/95 shadow-sm ${expanded ? 'w-[238px]' : 'w-auto'}`}>
+    <div data-journal-exclude="true" className={`pointer-events-auto absolute bottom-3 right-3 sm:right-20 z-20 max-h-[calc(100%_-_24px)] max-w-[calc(100%_-_24px)] overflow-auto rounded-md border border-slate-300 bg-white/95 shadow-sm ${expanded ? 'w-[238px]' : 'w-auto'}`}>
       <div className="flex items-center justify-between gap-2 border-b border-slate-300 bg-slate-100 px-1.5 py-0.5 text-[8px] font-black uppercase tracking-wide text-slate-600">
         <span>{expanded ? 'Trend table' : 'Trend table minimized'}</span>
         <button
@@ -2175,8 +2196,8 @@ export const MultiTimeframeEntryTable: React.FC<{
     || savedRows.length > 0 || waitingForExpiryData;
   const [expanded, toggleExpanded] = useAutoExpandedTable(hasContent);
   return (
-    <div data-journal-exclude="true" className={`pointer-events-auto absolute right-3 top-3 z-20 overflow-hidden rounded-md border border-slate-300 bg-white/95 shadow-sm ${expanded ? 'w-fit max-w-[calc(100%_-_24px)]' : 'w-auto'}`}>
-      <div className="flex items-center justify-between gap-3 border-b border-slate-200 bg-indigo-50 px-2 py-1 text-[9px] font-black uppercase tracking-wide text-indigo-700">
+    <div data-journal-exclude="true" className={`pointer-events-auto absolute right-3 top-3 z-20 flex max-h-[calc(100%_-_24px)] max-w-[calc(100%_-_24px)] flex-col overflow-hidden rounded-md border border-slate-300 bg-white/95 shadow-sm ${expanded ? 'w-fit' : 'w-auto'}`}>
+      <div className="flex shrink-0 items-center justify-between gap-3 border-b border-slate-200 bg-indigo-50 px-2 py-1 text-[9px] font-black uppercase tracking-wide text-indigo-700">
         <span>{expanded ? 'MTF table' : 'MTF table minimized'}</span>
         <button
           type="button"
@@ -2189,7 +2210,7 @@ export const MultiTimeframeEntryTable: React.FC<{
         </button>
       </div>
       {expanded && (
-        <div className="max-h-[50vh] overflow-auto">
+        <div className="min-h-0 max-h-[50vh] overflow-auto">
         <table className="table-auto border-collapse text-left text-[9px]">
           <thead className="bg-slate-100 text-[9px] uppercase text-slate-500">
             <tr>
@@ -2454,8 +2475,9 @@ const EngulfingAccuracyTable: React.FC<{
   marketSymbol: OandaMarketSymbol;
   entryArrowsVisible: boolean;
   onClose: () => void;
-  onVisibleRecordIdsChange: (ids: string[]) => void;
-}> = ({ records, allRecords, mt5Records, canViewMt5 = false, timeframe, showAllTrades, historyAsOf, timeZone, marketSymbol, entryArrowsVisible, onClose, onVisibleRecordIdsChange }) => {
+  selectedStrategies: TradeStrategy[];
+  onStrategiesChange: (selected: TradeStrategy[]) => void;
+}> = ({ records, allRecords, mt5Records, canViewMt5 = false, timeframe, showAllTrades, historyAsOf, timeZone, marketSymbol, entryArrowsVisible, onClose, selectedStrategies, onStrategiesChange }) => {
   const [activeTab, setActiveTab] = useState<'SETUPS' | 'MT5'>('SETUPS');
   const [filters, setFilters] = useState<TradeRecordFilters>(() => ({
     ...DEFAULT_TRADE_RECORD_FILTERS,
@@ -2465,11 +2487,6 @@ const EngulfingAccuracyTable: React.FC<{
     setFilters((current) => ({ ...current, timeframes: [timeframe] }));
   }, [timeframe]);
   const [tradingTimeFilter, setTradingTimeFilter] = useState<AccuracyTradingTimeFilter>('ALL');
-  const [tradeStyleFilter, setTradeStyleFilter] = useState<'ALL' | 'SCALPING' | 'INTRADAY' | 'SCALP_1_1'>('ALL');
-  const [includeScalpOneToOne, setIncludeScalpOneToOne] = useState(true);
-  const selectedStyle = marketSymbol === 'XAUUSD' ? tradeStyleFilter : 'ALL';
-  const matchesStyle = (record: AccuracyTradeRecord) => selectedStyle === 'ALL'
-    || record.tradeStyle === selectedStyle;
   const historyWindow = twoMonthAccuracyWindow(historyAsOf);
   const formatHistoryDate = (time: number) => new Date(time * 1000).toLocaleDateString('en-GB', {
     timeZone, day: '2-digit', month: 'short', year: 'numeric',
@@ -2479,10 +2496,9 @@ const EngulfingAccuracyTable: React.FC<{
       activeTab === 'MT5'
         ? selectTwoMonthJournalRecords(mt5Records, historyAsOf)
         : selectTwoMonthAccuracyRecords(allRecords, historyAsOf),
-      filters, timeZone, marketSymbol)
-      .filter((record) => matchesAccuracyTradingTime(record, tradingTimeFilter)
-        && matchesStyle(record) && (includeScalpOneToOne || record.tradeStyle !== 'SCALP_1_1')),
-    [activeTab, allRecords, mt5Records, filters, timeZone, tradingTimeFilter, selectedStyle, historyAsOf, marketSymbol, includeScalpOneToOne],
+      { ...filters, tradeStyle: selectedStrategies }, timeZone, marketSymbol)
+      .filter((record) => matchesAccuracyTradingTime(record, tradingTimeFilter)),
+    [activeTab, allRecords, mt5Records, filters, timeZone, tradingTimeFilter, selectedStrategies, historyAsOf, marketSymbol],
   );
   const summaryRecords = useMemo(() => filteredAllRecords.filter((record) => (
     record.result === 'tp' || record.result === 'sl' || record.result === 'rf'
@@ -2491,9 +2507,6 @@ const EngulfingAccuracyTable: React.FC<{
     const selectedIds = new Set(summaryRecords.map((record) => record.id));
     return new Set(records.filter((record) => selectedIds.has(record.id)).map((record) => record.id));
   }, [records, summaryRecords]);
-  useEffect(() => {
-    onVisibleRecordIdsChange(summaryRecords.map((record) => record.id));
-  }, [onVisibleRecordIdsChange, summaryRecords]);
   const timeframeCounts = accuracyCounts(summaryRecords);
   const availableTimeframes = useMemo(() => Array.from(new Set<TradeTimeframe>(
     [...TIMEFRAMES.map(({ value }) => value),
@@ -2540,7 +2553,7 @@ const EngulfingAccuracyTable: React.FC<{
         ? 'bottom-3 left-3 top-3 flex w-fit max-w-[calc(100%_-_24px)] flex-col'
         : 'left-3 top-1/2 flex max-h-[calc(100%_-_24px)] max-w-[calc(100%_-_24px)] -translate-y-1/2 flex-col'
     }`}>
-      <div className="flex shrink-0 items-center gap-2 border-b border-slate-300 bg-indigo-50 px-2 py-1 text-[9px] font-black uppercase tracking-wide text-indigo-700">
+      <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-slate-300 bg-indigo-50 px-2 py-1 text-[9px] font-black uppercase tracking-wide text-indigo-700">
         <span>
           {marketSymbol} trade accuracy · {entryArrowsVisible ? visibleChartIds.size : 0} arrow{visibleChartIds.size === 1 && entryArrowsVisible ? '' : 's'}
         </span>
@@ -2565,23 +2578,7 @@ const EngulfingAccuracyTable: React.FC<{
           <option value="TRADING">TRADING TIME</option>
           <option value="NON_TRADING">NON-TRADING TIME</option>
         </select>
-        {marketSymbol === 'XAUUSD' && <select
-          value={tradeStyleFilter}
-          onChange={(event) => setTradeStyleFilter(event.target.value as 'ALL' | 'SCALPING' | 'INTRADAY' | 'SCALP_1_1')}
-          className="rounded border border-indigo-200 bg-white px-1.5 py-0.5 text-[9px] font-bold text-indigo-700"
-          aria-label="Filter accuracy by trade style"
-        >
-          <option value="ALL">ALL STYLES</option>
-          <option value="SCALPING">SCALPING</option>
-          <option value="INTRADAY">INTRADAY</option>
-          <option value="SCALP_1_1">SCALP 1:1</option>
-        </select>}
-        {marketSymbol === 'XAUUSD' && <button type="button"
-          aria-pressed={includeScalpOneToOne}
-          onClick={() => setIncludeScalpOneToOne(value => !value)}
-          className="rounded border border-emerald-200 bg-emerald-50 px-2 py-1 text-[9px] font-black text-emerald-800">
-          SCALP 1:1 RESULTS {includeScalpOneToOne ? 'ON' : 'OFF'}
-        </button>}
+        <TradeStrategyCheckboxes label="Accuracy strategies" selected={selectedStrategies} onChange={onStrategiesChange} />
         <button
           type="button"
           onClick={onClose}
@@ -2686,7 +2683,7 @@ const EngulfingAccuracyTable: React.FC<{
                 <button type="button" onClick={() => {
                   setFilters({ ...DEFAULT_TRADE_RECORD_FILTERS, timeframes: [timeframe] });
                   setTradingTimeFilter('ALL');
-                  setTradeStyleFilter('ALL');
+                  onStrategiesChange([...TRADE_STRATEGIES]);
                 }} className="rounded border border-slate-200 bg-white px-1.5 py-1 text-[8px] font-black text-slate-600 hover:bg-slate-100">RESET</button>
               </div>
             </div>
@@ -2776,8 +2773,6 @@ const EngulfingAccuracyTable: React.FC<{
                   <tr>
                     <td colSpan={activeTab === 'MT5' ? 18 : 15} className="px-2 py-3 text-center text-slate-400">
                       {activeTab === 'MT5' ? 'No executed MT5 trades match these filters'
-                        : selectedStyle === 'INTRADAY'
-                        ? 'No classified Intraday trades yet; rules are still being defined.'
                         : 'No completed setups match these filters'}
                     </td>
                   </tr>
@@ -2853,7 +2848,7 @@ export const OandaProChart: React.FC<{
   const showMgZonesRef = useRef(true);
   const showSupplyDemandRef = useRef(true);
   const showStructureRef = useRef(true);
-  const showTrendlinesRef = useRef(true);
+  const showTrendlinesRef = useRef(false);
   const showAllTrendlinesRef = useRef(false);
   const showIssRef = useRef(true);
   const showInternalRef = useRef(true);
@@ -2922,7 +2917,7 @@ export const OandaProChart: React.FC<{
   const [chartTimeZone, setChartTimeZone] = useState<ChartTimeZone>('Asia/Kathmandu');
   const [showStructure, setShowStructure] = useState(true);
   const [showStructureOptions, setShowStructureOptions] = useState(false);
-  const [showTrendlines, setShowTrendlines] = useState(true);
+  const [showTrendlines, setShowTrendlines] = useState(false);
   const [showAllTrendlines, setShowAllTrendlines] = useState(false);
   const [trendlineTimeframes, setTrendlineTimeframes] = useState<Set<OandaGranularity>>(() => loadStoredTrendlineTimeframes(granularity));
   const [showTrendlineOptions, setShowTrendlineOptions] = useState(false);
@@ -2951,18 +2946,14 @@ export const OandaProChart: React.FC<{
   const [telegramMessagesEnabled, setTelegramMessagesEnabled] = useState(true);
   const [showInvalidZones, setShowInvalidZones] = useState(false);
   const [showTradeLevels, setShowTradeLevels] = useState(true);
-  const [showScalpOneToOneArrows, setShowScalpOneToOneArrows] = useState(true);
-  const [showOtherEntryArrows, setShowOtherEntryArrows] = useState(false);
-  const showEntryArrows = showScalpOneToOneArrows || showOtherEntryArrows;
-  const enableEntryArrows = () => {
-    if (showEntryArrows) return;
-    setShowScalpOneToOneArrows(true);
-    setShowOtherEntryArrows(true);
-  };
+  const [arrowStrategies, setArrowStrategies] = useState<TradeStrategy[]>([]);
+  const [accuracyStrategies, setAccuracyStrategies] = useState<TradeStrategy[]>([...TRADE_STRATEGIES]);
+  const [journalStrategies, setJournalStrategies] = useState<TradeStrategy[]>([...TRADE_STRATEGIES]);
+  const showScalpOneToOneArrows = arrowStrategies.includes('SCALP_1_1');
+  const showEntryArrows = arrowStrategies.length > 0;
   const [showAccuracyTable, setShowAccuracyTable] = useState(false);
   const [showTrendlineStudy, setShowTrendlineStudy] = useState(false);
   const [showVolumeStudy, setShowVolumeStudy] = useState(false);
-  const [visibleAccuracyRecordIds, setVisibleAccuracyRecordIds] = useState<string[] | null>(null);
   const [showAccuracyOptions, setShowAccuracyOptions] = useState(false);
   const [showAllAccuracyTrades, setShowAllAccuracyTrades] = useState(false);
   const [executedMt5Trades, setExecutedMt5Trades] = useState<AccuracyTradeRecord[]>([]);
@@ -5719,8 +5710,6 @@ export const OandaProChart: React.FC<{
         trade, source, zone, fib, style, tradingTimeBlocked, display,
       });
     };
-    const visibleIds = visibleAccuracyRecordIds === null
-      ? null : new Set<string>(visibleAccuracyRecordIds);
     for (const item of scalpChartDisplays) {
       if (item.markerOnly && chartEntryRecords.some(record => record.tradeStyle === 'SCALP_1_1'
         && (record.mt5Managed || record.brokerTicket !== undefined) && record.signalAt === item.trade.signal.time
@@ -5750,7 +5739,6 @@ export const OandaProChart: React.FC<{
       if (scalpChartDisplays.some(item => item.kind === 'live' && record.brokerTicket === item.brokerTicket)) continue;
       if (blockedGoldHistoricalTrade(record)) continue;
       const active = record.result === 'open' || record.result === 'risk-free';
-      if (!active && record.tradeStyle !== 'SCALP_1_1' && visibleIds !== null && !visibleIds.has(record.id)) continue;
       const signalAt = record.signalAt!;
       const projected = record.signalTimeframe !== granularity;
       const risk = Math.abs(record.entry - record.stopLoss);
@@ -5826,10 +5814,10 @@ export const OandaProChart: React.FC<{
     return [...Array.from(entries.values()).filter(entry => !pullbackChartSetups.some(setup =>
       belongsToPullbackSetup(setup, entry.trade, entry.style, entry))), ...grouped];
   }, [pullbackChartSetups, scalpOneToOneChartFills, tradeDisplayAsOf, scalpChartDisplays, blockedGoldHistoricalTrade, chartEntryRecords, displayCandles, granularity, marketSymbol, replayIndex,
-    directTradeStyleEnabled, directZoneEntryDecisions, displayZones, retainedDirectChartTradesForTimeframe, tradingTimeEnabled, visibleAccuracyRecordIds]);
+    directTradeStyleEnabled, directZoneEntryDecisions, displayZones, retainedDirectChartTradesForTimeframe, tradingTimeEnabled]);
   const visibleEntryHovers = useMemo(() => entryHovers.filter(entry => (
-    entry.pullbackSetup?.alwaysVisible || entry.display?.alwaysVisible || (entry.style === 'SCALP_1_1' ? showScalpOneToOneArrows : showOtherEntryArrows)
-  )), [entryHovers, showScalpOneToOneArrows, showOtherEntryArrows]);
+    matchesTradeStrategies(entry.style, arrowStrategies)
+  )), [entryHovers, arrowStrategies]);
   const trendlineSetupLabel = useMemo(() => {
     const records = new Map<string, JournalTradeRecord>(chartEntryRecords.map(record => [record.id, record] as const));
     const key = (trade: TradeLevels) => `${trade.signal.time}:${tradeOverlayExecutionKey(trade)}`;
@@ -8370,7 +8358,6 @@ export const OandaProChart: React.FC<{
 
   const changeMarketSymbol = (nextSymbol: OandaMarketSymbol) => {
     if (nextSymbol === marketSymbol) return;
-    setVisibleAccuracyRecordIds(null);
     // Invalidate every request started for the previous symbol immediately.
     // Waiting for the next render left a short window where an older forex
     // response could repopulate the chart after Gold had been selected.
@@ -9193,7 +9180,7 @@ export const OandaProChart: React.FC<{
       countertrendBlocked: signal && blockedGoldChartEntry(signal.time, signal.timeframe, signal.direction),
       replay: replayIndex !== null, automationSupported: marketConfig.mt5AutomationEnabled,
       automation: mt5Status ?? undefined, now: tradeDisplayAsOf, symbol: marketSymbol,
-      barsAgo: firstZoneTapBarsAgo(zone, displayCandles), brokerSignal, ...extra,
+      barsAgo: latestZoneTapBarsAgo(zone, displayCandles), brokerSignal, ...extra,
     });
   };
 
@@ -9388,7 +9375,10 @@ export const OandaProChart: React.FC<{
               <ZoneTableEngulfingConfirmations confirmations={additionalConfirmations} />
             </td>
             <td className={`whitespace-nowrap px-2 py-1 text-right font-black ${trade.status === 'sl-hit' ? 'text-rose-700' : 'text-emerald-700'}`}>
+              <ZoneTableTapAge barsAgo={sourceZone ? latestZoneTapBarsAgo(sourceZone,
+                sourceTimeframe ? tableTimeframeData[sourceTimeframe]?.candles ?? displayCandles : displayCandles) : undefined}>
               {pullback ? <ZonePullbackTradeStatus setup={pullback} /> : zoneTableCompletedStatus(trade) ?? <TradeStatusText trade={trade} />}
+              </ZoneTableTapAge>
               {bestTrendlineBadge(trade)}
             </td>
           </tr>
@@ -9510,12 +9500,14 @@ export const OandaProChart: React.FC<{
               : outsideTimePreview ? 'text-rose-700'
                 : pending ? 'text-amber-700' : 'text-emerald-700'
           }`}>
+            <ZoneTableTapAge barsAgo={latestZoneTapBarsAgo(zone, displayCandles)}>
             {pullback ? <ZonePullbackTradeStatus setup={pullback} /> : <ZoneEntryReadinessText readiness={readiness} compactLabel={completedStatus ?? (isCompletedTrade(outsideTimePreview)
               ? <TradeStatusText trade={outsideTimePreview!} />
               : mt5Signal ? mt5SignalStatusLabel(mt5Signal)
               : replayIndex !== null && trade?.filledAt !== undefined ? <TradeStatusText trade={trade} />
               : pending ? `WAIT ${confirmationLabel} ${confirmationSide}`
-              : compactZoneTableStatus(readiness, firstZoneTapBarsAgo(zone, displayCandles), confluenceIsTradeable(zone)))} />}
+              : compactZoneTableStatus(readiness, undefined, confluenceIsTradeable(zone)))} />}
+            </ZoneTableTapAge>
           </td>
         </tr>
         {pullback ? <ZonePullbackDetailsRow setup={pullback} /> : displayedTrade
@@ -9567,7 +9559,7 @@ export const OandaProChart: React.FC<{
       const measurement = confluenceFirstValue(zone, (member) => (
         measureTradeableFibZone(member, marketConfig.pipSize)
       )) ?? measureListedZone(zone, marketConfig.pipSize);
-      const tapBarsAgo = firstZoneTapBarsAgo(zone, displayCandles);
+      const tapBarsAgo = latestZoneTapBarsAgo(zone, displayCandles);
       const latestTap = confluenceLatestTap(zone);
       const tapCount = displayedTapCount(zone);
       const repeatedTap = marketSymbol === 'XAUUSD' && (tapCount ?? 0) > 1;
@@ -9708,6 +9700,7 @@ export const OandaProChart: React.FC<{
         <td className={`px-2 py-1 text-right font-bold whitespace-nowrap ${
           trade?.status === 'sl-hit' ? 'text-rose-700' : ''
         }`}>
+          <ZoneTableTapAge barsAgo={tapBarsAgo}>
           {pullback ? <ZonePullbackTradeStatus setup={pullback} /> : <ZoneEntryReadinessText readiness={readiness} compactLabel={
             completedStatus ? completedStatus
               : outsideTimePreview && isCompletedTrade(outsideTimePreview) ? <TradeStatusText trade={outsideTimePreview} />
@@ -9716,8 +9709,9 @@ export const OandaProChart: React.FC<{
               : isCompletedTrade(trade) ? <TradeStatusText trade={trade!} />
               : replayIndex !== null && trade?.filledAt !== undefined ? <TradeStatusText trade={trade} />
               : mtfStatus?.confirmed && !outsideTimePreview && !extremeAPlusBlocked && !repeatedTap ? mtfStatus.label
-              : compactZoneTableStatus(readiness, tapBarsAgo, confluenceIsTradeable(zone))
+              : compactZoneTableStatus(readiness, undefined, confluenceIsTradeable(zone))
           } />}
+          </ZoneTableTapAge>
           {!outsideTimePreview && !historicalEntry?.tradingTimeBlocked
             && (!repeatedTap || completedStatus) && !extremeAPlusBlocked
             && bestTrendlineBadge(engulfingTrade)}
@@ -9779,10 +9773,12 @@ export const OandaProChart: React.FC<{
               ? mt5SignalStatusClassName(mt5Signal)
               : trade.status === 'sl-hit' ? 'text-rose-700' : 'text-emerald-700'
             }`}>
+              <ZoneTableTapAge barsAgo={latestZoneTapBarsAgo(zone, displayCandles)}>
               <ZoneEntryReadinessText readiness={zoneReadiness(zone, trade)} compactLabel={
-                completedStatus ?? <>{firstZoneTapBarsAgo(zone, displayCandles)} bars · {mt5Signal
+                completedStatus ?? <>{mt5Signal
                   ? mt5SignalStatusLabel(mt5Signal) : <TradeStatusText trade={trade} />}</>
               } />
+              </ZoneTableTapAge>
               {bestTrendlineBadge(trade)}
             </td>
           </tr>
@@ -9795,11 +9791,30 @@ export const OandaProChart: React.FC<{
   );
   const hasZoneTableContent = React.Children.toArray(zoneTableContent.props.children).length > 0;
   const [showZoneTable, toggleZoneTable] = useAutoExpandedTable(hasZoneTableContent);
+  const toolbarRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const toolbar = toolbarRef.current;
+    if (!toolbar) return;
+    const fitMenus = () => {
+      const available = Math.max(0, window.innerHeight - toolbar.getBoundingClientRect().bottom - 16);
+      toolbar.style.setProperty('--dashboard-menu-space', `${available}px`);
+    };
+    const observer = new ResizeObserver(fitMenus);
+    observer.observe(toolbar);
+    window.addEventListener('resize', fitMenus);
+    document.addEventListener('scroll', fitMenus, true);
+    fitMenus();
+    return () => {
+      observer.disconnect();
+      window.removeEventListener('resize', fitMenus);
+      document.removeEventListener('scroll', fitMenus, true);
+    };
+  }, []);
 
   return (
-    <section className="h-full w-full bg-slate-100 p-3 sm:p-4 overflow-hidden">
-      <div className="h-full w-full overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm flex flex-col">
-        <div className="flex flex-wrap items-center gap-1.5 border-b border-slate-200 bg-white px-2.5 py-1 xl:flex-nowrap">
+    <section className="dashboard-layout flex h-full min-w-0 w-full flex-col overflow-auto bg-slate-100 p-2 sm:p-4">
+      <div className="flex min-h-full min-w-0 w-full flex-1 shrink-0 flex-col rounded-xl border border-slate-200 bg-white shadow-sm">
+        <div ref={toolbarRef} className="dashboard-toolbar relative flex shrink-0 flex-wrap items-center gap-1.5 rounded-t-xl border-b border-slate-200 bg-white px-2.5 py-1">
           <div className="flex items-center gap-1 pr-1.5 border-r border-slate-200">
             <div className="grid h-5 w-5 place-items-center rounded-full bg-amber-100 text-[6px] font-black text-amber-700">
               {marketSymbol === 'XAUUSD' ? 'Au' : 'FX'}
@@ -9872,7 +9887,7 @@ export const OandaProChart: React.FC<{
             <option value="primary">ACCOUNT 1</option>
             <option value="secondary">ACCOUNT 2</option>
           </select>
-          <div className="relative">
+          <div>
             <button
               type="button"
               onClick={() => setMt5SettingsOpen((visible) => !visible)}
@@ -9896,7 +9911,7 @@ export const OandaProChart: React.FC<{
                 : 'OFF'}
             </button>
             {mt5SettingsOpen && mt5Status && (
-              <div className="absolute right-0 top-full z-[70] mt-1 max-h-[calc(100dvh_-_96px)] w-64 overflow-y-auto overscroll-contain rounded-lg border border-slate-200 bg-white p-3 text-[10px] shadow-xl">
+              <div className="dashboard-toolbar-menu absolute left-2 top-full z-[70] mt-1 w-64 max-w-[calc(100%_-_16px)] overflow-auto overscroll-contain rounded-lg border border-slate-200 bg-white p-3 text-[10px] shadow-xl">
                 <div className="sticky top-0 z-10 mb-2 flex items-center justify-between border-b border-slate-100 bg-white pb-2">
                   <div>
                     <div className="font-black text-slate-800">MT5 AUTO EXECUTION ? ACCOUNT {terminalId === 'primary' ? '1' : '2'}</div>
@@ -10235,7 +10250,7 @@ export const OandaProChart: React.FC<{
                       }`}
                       title="Show or hide HH, HL, LH and LL structure markings"
                     >
-                      MG STRUCTURE {showStructure ? 'ON' : 'OFF'}
+                      Structure {showStructure ? 'ON' : 'OFF'}
                     </button>
                     <button
                       type="button"
@@ -10245,7 +10260,7 @@ export const OandaProChart: React.FC<{
                       }`}
                       title="Show or hide TJL1, TJL2, QML, SBR, RBS, DT and DB zones"
                     >
-                      MG ZONES {showMgZones ? 'ON' : 'OFF'}
+                      ZONE {showMgZones ? 'ON' : 'OFF'}
                     </button>
                     <button
                       type="button"
@@ -10583,7 +10598,6 @@ export const OandaProChart: React.FC<{
               onClick={() => {
                 setShowJournal(true);
                 setShowAccuracyTable(false);
-                setVisibleAccuracyRecordIds(null);
                 setShowAccuracyOptions(false);
               }}
               className={`whitespace-nowrap rounded-full border px-1.5 py-0.5 text-[8px] font-black transition ${
@@ -10650,20 +10664,10 @@ export const OandaProChart: React.FC<{
                 title="Choose which entry arrows to display"
                 aria-label="Entry arrow options"
               >
-                ENTRY HISTORY {showEntryArrows ? showScalpOneToOneArrows && showOtherEntryArrows ? 'ALL' : showScalpOneToOneArrows ? '1:1 ONLY' : 'OTHER ONLY' : 'OFF'} ▾
+                ENTRY HISTORY {arrowStrategies.length === 3 ? 'ALL' : showEntryArrows ? `${arrowStrategies.length} SELECTED` : 'OFF'} ▾
               </summary>
               <div className="absolute left-0 top-full z-50 mt-1 w-44 rounded-md border border-emerald-200 bg-white p-2 text-[10px] shadow-lg">
-                <label className="flex cursor-pointer items-center gap-2 py-1 font-bold text-slate-700">
-                  <input type="checkbox" checked={showScalpOneToOneArrows}
-                    onChange={event => setShowScalpOneToOneArrows(event.target.checked)} />
-                  Scalp 1:1
-                </label>
-                <label className="flex cursor-pointer items-center gap-2 py-1 font-bold text-slate-700">
-                  <input type="checkbox" checked={showOtherEntryArrows}
-                    onChange={event => setShowOtherEntryArrows(event.target.checked)} />
-                  Other entries
-                </label>
-                <div className="mt-1 border-t border-slate-100 pt-1 text-[9px] text-slate-500">History filters. Live Scalp entries and current setup markers remain visible.</div>
+                <TradeStrategyCheckboxes label="Entry arrow strategies" selected={arrowStrategies} onChange={setArrowStrategies} />
               </div>
             </details>
             <button type="button" onClick={() => { setShowTrendlineStudy(value => !value); setShowVolumeStudy(false); }}
@@ -10680,8 +10684,6 @@ export const OandaProChart: React.FC<{
               <button
                 type="button"
                 onClick={() => {
-                  if (showAccuracyTable) setVisibleAccuracyRecordIds(null);
-                  else enableEntryArrows();
                   setShowAccuracyTable((value) => !value);
                 }}
                 className={`whitespace-nowrap rounded-l-full border border-r-0 px-1.5 py-0.5 text-[8px] font-black transition ${
@@ -10718,7 +10720,6 @@ export const OandaProChart: React.FC<{
                     type="button"
                     onClick={() => {
                       setShowAllAccuracyTrades((value) => !value);
-                      enableEntryArrows();
                       setShowAccuracyTable(true);
                     }}
                     className={`flex w-full items-center justify-between whitespace-nowrap rounded border px-1.5 py-1 text-[8px] font-black leading-none ${
@@ -10940,7 +10941,7 @@ export const OandaProChart: React.FC<{
             )}
           </div>
 
-          <div className="relative flex items-center">
+          <div className="flex items-center">
             <button
               type="button"
               onClick={() => {
@@ -10960,7 +10961,7 @@ export const OandaProChart: React.FC<{
               TOOLS {activeDrawingTool ? '●' : showDrawingTools ? '▴' : '▾'}
             </button>
             {showDrawingTools && (
-              <div className="absolute right-0 top-full z-[65] mt-1 w-80 rounded-lg border border-violet-100 bg-white p-2 shadow-xl ring-1 ring-slate-900/5">
+              <div className="dashboard-toolbar-menu absolute left-2 top-full z-[65] mt-1 w-80 max-w-[calc(100%_-_16px)] overflow-auto rounded-lg border border-violet-100 bg-white p-2 shadow-xl ring-1 ring-slate-900/5">
                 <div className="relative mb-2 flex min-h-8 items-center justify-center border-b border-slate-100 pb-1.5 pr-8">
                   <div className="text-center">
                     <div className="text-[10px] font-black tracking-wide text-slate-700">CHART DRAWING TOOLS</div>
@@ -11052,7 +11053,7 @@ export const OandaProChart: React.FC<{
             )}
           </div>
 
-          <div className="flex max-w-full flex-wrap items-center justify-end gap-1 xl:ml-0 xl:shrink-0 xl:flex-nowrap">
+          <div className="flex min-w-0 max-w-full flex-wrap items-center gap-1">
             <label className="flex items-center gap-1 rounded-md border border-slate-200 bg-white px-1.5 py-0.5 text-[8px] font-black text-slate-600">
               TIME
               <select
@@ -11131,7 +11132,7 @@ export const OandaProChart: React.FC<{
             </div>
           ))}
 
-        <div className="flex flex-wrap items-center gap-x-4 gap-y-1 border-b border-slate-100 px-4 py-2 text-xs">
+        <div className="flex shrink-0 flex-wrap items-center gap-x-4 gap-y-1 border-b border-slate-100 px-4 py-2 text-xs">
           <span className="flex items-center gap-1.5 font-black text-slate-800">
             <Crosshair className="h-3.5 w-3.5 text-slate-400" />
             O <b ref={headerOpenRef} />
@@ -11149,7 +11150,7 @@ export const OandaProChart: React.FC<{
           }`}>
             STRUCTURE: {structure.trend.toUpperCase()}
           </span>
-          <span className="ml-auto flex items-center gap-1 text-[10px] font-bold text-slate-500">
+          <span className="ml-auto flex min-w-0 items-center gap-1 break-words text-[10px] font-bold text-slate-500">
             <Wifi className="h-3.5 w-3.5 text-emerald-600" />
             {source} · no fallback · {candles.length.toLocaleString()} bars
           </span>
@@ -11157,7 +11158,7 @@ export const OandaProChart: React.FC<{
 
         <div
           ref={chartPaneRef}
-          className="relative flex-1 min-h-0 bg-white"
+          className="dashboard-chart relative min-h-[280px] flex-1 bg-white"
           onMouseLeave={() => setHoveredEntry(null)}
           onMouseDown={() => {
             if (!activeDrawingTool && !drawingDrag) {
@@ -11572,8 +11573,8 @@ export const OandaProChart: React.FC<{
               <button onClick={() => setReplaySelecting(false)} className="rounded border border-slate-200 px-2 py-1 text-[10px] font-black text-slate-500 hover:bg-slate-100">CANCEL</button>
             </div>
           )}
-          <div data-journal-exclude="true" className={`pointer-events-auto absolute left-3 top-3 z-20 overflow-hidden rounded-md border border-slate-300 bg-white/95 shadow-sm ${showZoneTable ? 'w-fit max-w-[calc(100%_-_24px)]' : 'w-auto'}`}>
-            <div className="flex items-center justify-between gap-3 border-b border-slate-200 bg-violet-50 px-2 py-1 text-[9px] font-black uppercase tracking-wide text-violet-700">
+          <div data-journal-exclude="true" className={`pointer-events-auto absolute left-3 top-3 z-20 flex max-h-[calc(100%_-_24px)] max-w-[calc(100%_-_24px)] flex-col overflow-hidden rounded-md border border-slate-300 bg-white/95 shadow-sm ${showZoneTable ? 'w-fit' : 'w-auto'}`}>
+            <div className="flex shrink-0 items-center justify-between gap-3 border-b border-slate-200 bg-violet-50 px-2 py-1 text-[9px] font-black uppercase tracking-wide text-violet-700">
               <span>{showZoneTable ? 'Zone table' : 'Zone table minimized'}</span>
               <button
                 type="button"
@@ -11585,7 +11586,7 @@ export const OandaProChart: React.FC<{
                 {showZoneTable ? '− MINIMIZE' : '+ SHOW TABLE'}
               </button>
             </div>
-            {showZoneTable && <>
+            {showZoneTable && <div className="min-h-0 overflow-auto">
             <table className="table-auto border-collapse text-left text-[10px]">
               <thead className="bg-slate-100 text-[9px] uppercase text-slate-500">
                 <tr>
@@ -11605,7 +11606,7 @@ export const OandaProChart: React.FC<{
                 )}
               </tbody>
             </table>
-            </>}
+            </div>}
           </div>
           {marketSymbol === 'XAUUSD' && (showAccuracyTable || showJournal) && scalpOneToOneHistoryStatus && (
             <div role="status" className="px-2 py-1 text-[9px] font-semibold text-emerald-800">{scalpOneToOneHistoryStatus}</div>
@@ -11613,9 +11614,7 @@ export const OandaProChart: React.FC<{
           {showAccuracyTable && (
             <EngulfingAccuracyTable
               canViewMt5={canAdmin}
-              records={timeframeAccuracyRecords.filter(record => (
-                record.tradeStyle === 'SCALP_1_1' ? showScalpOneToOneArrows : showOtherEntryArrows
-              ))}
+              records={timeframeAccuracyRecords.filter(record => matchesTradeStrategies(record.tradeStyle, arrowStrategies))}
               allRecords={replayVisibleAccuracyRecords}
               mt5Records={executedMt5Trades.filter((trade) => (
                 (trade.symbol ?? 'XAUUSD') === marketSymbol
@@ -11628,16 +11627,18 @@ export const OandaProChart: React.FC<{
               timeZone={chartTimeZone}
               marketSymbol={marketSymbol}
               entryArrowsVisible={showEntryArrows}
-              onVisibleRecordIdsChange={setVisibleAccuracyRecordIds}
+              selectedStrategies={accuracyStrategies}
+              onStrategiesChange={setAccuracyStrategies}
               onClose={() => {
                 setShowAccuracyTable(false);
-                setVisibleAccuracyRecordIds(null);
                 setShowAccuracyOptions(false);
               }}
             />
           )}
           {showJournal && (
             <TradeJournal
+              selectedStrategies={journalStrategies}
+              onStrategiesChange={setJournalStrategies}
               canManageCapital={canAdmin}
               terminalId={terminalId}
               records={visibleCanonicalTradeRecords}
@@ -11679,7 +11680,7 @@ export const OandaProChart: React.FC<{
           )}
         </div>
 
-        <div className="flex flex-wrap items-center gap-4 border-t border-slate-200 bg-slate-50 px-4 py-1.5 text-[10px] font-bold text-slate-500">
+        <div className="flex shrink-0 flex-wrap items-center gap-x-4 gap-y-1 break-words rounded-b-xl border-t border-slate-200 bg-slate-50 px-4 py-1.5 text-[10px] font-bold text-slate-500">
           <span className={`flex items-center gap-1 ${source.startsWith('MetaTrader 5') ? 'text-emerald-700' : 'text-amber-700'}`}>
             {source.startsWith('MetaTrader 5')
               ? <CheckCircle2 className="h-3 w-3" /> : <AlertTriangle className="h-3 w-3" />}
@@ -11691,7 +11692,7 @@ export const OandaProChart: React.FC<{
           <span>OHLC source: {source}</span>
           <span>Structure: HH · HL · LH · LL · BOS · CHoCH</span>
           <span>Genesis Low: {formatPrice(structure.genesis?.price)}</span>
-          <span>Active MG zones: {displayZones.filter((zone) => zone.category === 'mg' && zone.active).length}</span>
+          <span>Active zones: {displayZones.filter((zone) => zone.category === 'mg' && zone.active).length}</span>
           <span>Invalid zones: {displayZones.filter((zone) => !zone.active).length}</span>
           <span>S/D: {['H1', 'H4', 'D', 'W'].includes(granularity) ? displayZones.filter((zone) => zone.category === 'supplyDemand').length : 'H1+ ONLY'}</span>
           <span>Last candle: {latestCandle?.complete === false ? 'FORMING' : 'COMPLETE'}</span>

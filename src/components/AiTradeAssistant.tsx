@@ -160,7 +160,7 @@ export const AiTradeAssistant: React.FC<AiTradeAssistantProps> = ({ context }) =
   }
 
   return (
-    <section className="pointer-events-auto absolute bottom-3 left-3 z-30 flex h-[440px] w-[390px] max-w-[calc(100%_-_24px)] flex-col overflow-hidden rounded-xl border border-indigo-200 bg-white/98 shadow-2xl">
+    <section className="pointer-events-auto absolute bottom-3 left-3 z-30 flex h-[440px] max-h-[calc(100%_-_24px)] w-[390px] max-w-[calc(100%_-_24px)] flex-col overflow-hidden rounded-xl border border-indigo-200 bg-white/98 shadow-2xl">
       <header className="flex items-center justify-between border-b border-indigo-100 bg-indigo-50 px-3 py-2">
         <div>
           <div className="flex items-center gap-1.5 text-[11px] font-black text-indigo-800"><Bot className="h-4 w-4" /> CHART KNOWLEDGE AGENT</div>
