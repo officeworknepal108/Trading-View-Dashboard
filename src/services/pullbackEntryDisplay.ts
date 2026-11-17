@@ -14,6 +14,24 @@ export interface ChartPullbackState {
   beforeEntryExit?: { level: 'tp' | 'sl' | 'both'; at: number };
 }
 
+const goldSessionClock = new Intl.DateTimeFormat('en-US', {
+  timeZone: 'America/New_York', weekday: 'short', hour: '2-digit', hourCycle: 'h23',
+});
+
+/** Only bridge fully closed intraday slots; a missing trading candle remains unknown. */
+function scheduledGoldBreak(symbol: string, from: number, to: number, seconds: number): boolean {
+  if (symbol !== 'XAUUSD' || seconds > 3600 || to - from > 3600) return false;
+  for (let time = from; time < to; time += seconds) {
+    for (const instant of [time, Math.min(time + seconds, to) - 1]) {
+      const parts = goldSessionClock.formatToParts(new Date(instant * 1000));
+      const weekday = parts.find(part => part.type === 'weekday')?.value;
+      const hour = parts.find(part => part.type === 'hour')?.value;
+      if (!['Mon', 'Tue', 'Wed', 'Thu'].includes(weekday ?? '') || hour !== '17') return false;
+    }
+  }
+  return true;
+}
+
 /** Chart simulation only; independent of rejection, lot size and broker execution. */
 export function chartPullbackState(signal: Mt5SignalInput, candles: readonly StructureCandle[], asOf: number): ChartPullbackState {
   const seconds = signal.signalTimeframe === 'D' ? 86400
@@ -35,8 +53,11 @@ export function chartPullbackState(signal: Mt5SignalInput, candles: readonly Str
   let paths: Path[] = [{ mask: immediate ? 1 : 0, exit: 0, filledAt: immediate ? signal.calculatedAt : undefined }];
   let previousTime: number | undefined;
   for (const bar of bars) {
-    // A data gap cannot prove a new fill or establish which exit happened first.
-    if (previousTime !== undefined && bar.time > previousTime + seconds && paths.some(path => !path.exit)) {
+    // Filled positions survive the scheduled daily closure. Other gaps cannot
+    // establish a new fill or which exit happened first.
+    if (previousTime !== undefined && bar.time > previousTime + seconds && paths.some(path => !path.exit)
+      && !(paths.every(path => path.mask)
+        && scheduledGoldBreak(signal.symbol, previousTime + seconds, bar.time, seconds))) {
       if (paths.every(path => path.mask)) return { status: 'filled', filledAt: Math.max(...paths.map(path => path.filledAt!)),
         continuityLost: true, observedThrough: previousTime + seconds };
       if (paths.some(path => path.mask)) return { status: 'ambiguous' };

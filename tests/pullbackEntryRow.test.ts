@@ -92,6 +92,15 @@ test('merged details retain second-only skips, chart-only ticks and completed re
   }
 });
 
+test('zone table does not label an unresolved old fill as an active trade', () => {
+  const { setup } = mergedZoneFixture();
+  const uncertain = { ...setup, chartFilled: true, alwaysVisible: false };
+  assert.equal(text(renderToStaticMarkup(React.createElement(ZonePullbackTradeStatus, { setup: uncertain }))),
+    'OUTCOME UNCONFIRMED');
+  assert.equal(text(renderToStaticMarkup(React.createElement(ZonePullbackTradeStatus,
+    { setup: { ...uncertain, alwaysVisible: true } }))), 'ACTIVE TRADE');
+});
+
 test('completed Scalp retains type, price and engulfing while omitting the entry-details line', () => {
   for (const label of ['TP HIT', 'SL HIT', 'TP REACHED · NO FILL', 'SL REACHED · NO FILL']) {
     const row = renderToStaticMarkup(React.createElement(ScalpOutcomeRow, {

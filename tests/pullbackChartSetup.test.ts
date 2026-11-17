@@ -121,6 +121,36 @@ test('old fills survive data gaps as arrows without creating chart-wide active b
   assert.equal(staleTail.markerTime, 1800); assert.equal(staleTail.drawing, false);
 });
 
+for (const date of ['2026-11-16T21:45:00Z', '2026-07-13T20:45:00Z']) {
+  test(`filled sell resolves after the New York gold break (${date})`, () => {
+    const start = Date.parse(date) / 1000;
+    const signals = [first, second].map((signal, index) => ({ ...signal,
+      direction: 'SELL' as const, signalAt: start - 900, calculatedAt: start, expiresAt: start + 900,
+      entry: index === 0 ? 3874.1855 : 3874.89875, stopLoss: 3890.955, takeProfit: 3839.22,
+    }));
+    const bars: StructureCandle[] = [
+      { time: start, open: 3873.71, high: 3876.005, low: 3863.84, close: 3865.105, complete: true },
+      { time: start + 4500, open: 3865, high: 3870, low: 3836.96, close: 3846.49, complete: true },
+    ];
+    const [closed] = build(signals, bars, start + 5400);
+    assert.equal(closed.trade.result, 'tp');
+    assert.equal(closed.trade.resolvedAt, start + 4500);
+    assert.deepEqual(closed.legs.map(leg => leg.chartOutcome), ['tp', 'tp']);
+    assert.equal(closed.drawing, false);
+    assert.equal(closed.markerText, 'TP');
+    assert.equal(build(signals, bars, start + 4500)[0].trade.result, undefined,
+      'a future completed candle must not leak into replay');
+
+    const stopped = build(signals, [bars[0], { ...bars[1], high: 3891, low: 3860 }], start + 5400)[0];
+    assert.equal(stopped.trade.result, 'sl');
+
+    const missingTradingBar = build(signals, [bars[0], { ...bars[1], time: start + 5400 }], start + 6300)[0];
+    assert.equal(missingTradingBar.trade.result, undefined, 'missing open-session candles remain uncertain');
+    const pending = build(signals, [{ ...bars[0], high: 3874 }, bars[1]], start + 5400)[0];
+    assert.equal(pending.chartFilled, false, 'the closure cannot prove a pending entry filled');
+  });
+}
+
 test('a matched open broker position retains its drawing when chart candles are missing', () => {
   const signal = { ...first, status: 'ACTIVE' as const, brokerTicket: 123, brokerSymbol: 'GOLD', openedAt: 1850 };
   const position = { ticket: 123, symbol: 'GOLD', direction: 'BUY' as const, volume: .01, priceOpen: 3009,

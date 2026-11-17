@@ -1,0 +1,32 @@
+﻿OPEN MANUALLY WITHOUT VS CODE
+
+1. OPEN POWERSHELL
+Click Start, type PowerShell, and open it.
+
+2. COPY AND PASTE THIS WHOLE BLOCK, THEN PRESS ENTER
+
+Set-Location 'C:\Users\ABHI\Desktop\backup also 29 09 2026 3am'
+$env:Path = 'C:\Users\ABHI\Desktop\Algo file\.tools\node-v24.21.0-win-x64;' + $env:Path
+Start-Process 'C:\Program Files\MetaTrader 5\terminal64.exe'
+Start-Process 'C:\Program Files\MetaTrader 5- Account 2\terminal64.exe'
+Start-Process 'http://127.0.0.1:3002'
+npm.cmd run dev
+
+3. WAIT, THEN REFRESH THE BROWSER
+Wait until PowerShell says the dashboard is running.
+Go to the browser that opened and press Ctrl+F5.
+Log into the dashboard if asked.
+
+CHECK THE BRIDGE
+Select Account 1, open the MT5 menu, and check that it is connected.
+If the bridge is stopped, click START BRIDGE.
+Repeat for Account 2 if you use it. Make sure both MT5 terminals are logged in.
+
+KEEP IT RUNNING
+Keep PowerShell, the dashboard browser tab, and MT5 open.
+You can minimize them. Keep your computer awake and online.
+VS Code can stay closed.
+
+TO STOP
+Click the PowerShell window and press Ctrl+C.
+This stops the dashboard and its managed bridges; it does not close trades.

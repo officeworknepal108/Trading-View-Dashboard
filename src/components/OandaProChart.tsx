@@ -179,7 +179,6 @@ import {
   goldOpposingZoneBeforeOneR,
   prepareGoldOpposingZones,
   goldOpposingZoneBlockLabel,
-  mt5FibProfitEventLabel,
   isTradeStyleEnabled,
   mt5SignalDisabledReason,
   MT5_FIB_EXIT_TIMEFRAMES,
@@ -938,7 +937,8 @@ function pullbackSetupTooltip(setup: PullbackChartSetup): string {
 
 export const ZonePullbackTradeStatus: React.FC<{ setup: PullbackChartSetup }> = ({ setup }) => (
   <span title={pullbackSetupTooltip(setup)} className="cursor-help text-[10px] font-bold">
-    {zoneTableCompletedStatus(setup.trade) ?? (setup.chartFilled ? 'ACTIVE TRADE'
+    {zoneTableCompletedStatus(setup.trade) ?? (setup.chartFilled
+      ? setup.alwaysVisible ? 'ACTIVE TRADE' : 'OUTCOME UNCONFIRMED'
       : setup.drawing ? 'WAITING ENTRY' : 'ENTRY EXPIRED')}
   </span>
 );
@@ -9263,23 +9263,6 @@ export const OandaProChart: React.FC<{
       signals={scalpOneToOneTableSignals} style="SCALP_1_1" asOf={tradeDisplayAsOf} entryCandles={pullbackTableCandles}
       positions={replayIndex === null ? mt5Status?.positions ?? [] : []}
       connection={mt5Status?.bridge} timeZone={chartTimeZone} />}
-    {replayIndex === null && marketSymbol === 'XAUUSD' && mt5Status?.bridge.connected
-      && mt5Status.bridge.fibProfitEvents?.map(event => (
-        <tr key={`fib-exit-${event.ticket}`} className="border-t border-cyan-200 bg-cyan-50/80">
-          <td className="px-2 py-1 font-black text-slate-800">
-            <div>MT5 #{event.ticket}</div>
-            <div className="text-[8px] text-slate-500">{event.zoneTimeframe} {event.zoneName ?? 'Opposing Fib zone'}</div>
-          </td>
-          <td className={`px-2 py-1 font-bold ${event.direction === 'BUY' ? 'text-emerald-700' : 'text-rose-700'}`}>{event.direction}</td>
-          <td className="whitespace-nowrap px-2 py-1 text-slate-600">
-            {event.originalVolume} → {event.remainingVolume} LOT
-          </td>
-          <td className="px-2 py-1 text-center font-black">
-            {event.phase === 'engulfing' ? 'OPPOSING CONFIRMED' : 'WAITING FOR CONFIRMATION'}
-          </td>
-          <td className="whitespace-nowrap px-2 py-1 text-right font-black text-cyan-800">{mt5FibProfitEventLabel(event)}</td>
-        </tr>
-      ))}
     {scalpEntryTableRows.map(({ id, zone, trade: sourceTrade, tradingTimeBlocked }) => {
       const trade = zoneTableTrade(sourceTrade, undefined, zone, id)!;
       const sourceSetup = goldScalpingAccuracyTrades.find(candidate => candidate.trade.signal.time === trade.signal.time
