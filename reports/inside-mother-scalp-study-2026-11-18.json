@@ -1,0 +1,6943 @@
+{
+  "method": {
+    "source": "TradingView OANDA:XAUUSD, archived OHLC merged with latest fetched completed candles",
+    "firstCandleUTC": "2026-08-02T22:00:00.000Z",
+    "throughUTC": "2026-11-18T02:00:00.000Z",
+    "computedAtUTC": "2026-11-18T02:14:17.000Z",
+    "definition": "Entire T1/T2/T3 pattern and all intervening M15 candles fit within an earlier candle high/low including wicks; mother precedes the entire pattern; stop at any missing M15 candle. Inclusive edges with at least one strictly inside edge. Nearest enclosing mother recorded.",
+    "strategy": "Current Scalp 1:1 functions: H4 structure and EMA20/50, H1 continuation/Far, volume decrease >=250, 10/25% pullback legs, original fixed exits, 75-minute entry expiry, 300-pip per-leg limit.",
+    "counting": "One signal is one setup; 10% and 25% entries additionally counted as separate legs. TP/SL setup requires at least one confirmed filled leg and no uncertain or conflicting leg outcome.",
+    "scope": "Chart simulations, not MT5 executions. OHLC ordering ambiguity and missing candles remain uncertain. No spread, commission, slippage or live operational/session restrictions applied. Trading code/settings unchanged."
+  },
+  "all": {
+    "setups": 235,
+    "tp": 116,
+    "sl": 75,
+    "open": 0,
+    "pending": 0,
+    "uncertain": 32,
+    "mixed": 0,
+    "notFilled": 10,
+    "noValidEntry": 2,
+    "closedWinRate": 60.73298429319372,
+    "entryLegs": 466,
+    "legOutcomes": {
+      "tp": 216,
+      "sl": 150,
+      "active": 0,
+      "pending": 0,
+      "uncertain": 63,
+      "not-filled": 37
+    }
+  },
+  "inside": {
+    "setups": 22,
+    "tp": 10,
+    "sl": 9,
+    "open": 0,
+    "pending": 0,
+    "uncertain": 2,
+    "mixed": 0,
+    "notFilled": 1,
+    "noValidEntry": 0,
+    "closedWinRate": 52.63157894736842,
+    "entryLegs": 44,
+    "legOutcomes": {
+      "tp": 20,
+      "sl": 18,
+      "active": 0,
+      "pending": 0,
+      "uncertain": 4,
+      "not-filled": 2
+    }
+  },
+  "outside": {
+    "setups": 213,
+    "tp": 106,
+    "sl": 66,
+    "open": 0,
+    "pending": 0,
+    "uncertain": 30,
+    "mixed": 0,
+    "notFilled": 9,
+    "noValidEntry": 2,
+    "closedWinRate": 61.627906976744185,
+    "entryLegs": 422,
+    "legOutcomes": {
+      "tp": 196,
+      "sl": 132,
+      "active": 0,
+      "pending": 0,
+      "uncertain": 59,
+      "not-filled": 35
+    }
+  },
+  "insideByType": {
+    "T1": {
+      "setups": 17,
+      "tp": 7,
+      "sl": 8,
+      "open": 0,
+      "pending": 0,
+      "uncertain": 1,
+      "mixed": 0,
+      "notFilled": 1,
+      "noValidEntry": 0,
+      "closedWinRate": 46.666666666666664,
+      "entryLegs": 34,
+      "legOutcomes": {
+        "tp": 14,
+        "sl": 16,
+        "active": 0,
+        "pending": 0,
+        "uncertain": 2,
+        "not-filled": 2
+      }
+    },
+    "T2": {
+      "setups": 4,
+      "tp": 3,
+      "sl": 0,
+      "open": 0,
+      "pending": 0,
+      "uncertain": 1,
+      "mixed": 0,
+      "notFilled": 0,
+      "noValidEntry": 0,
+      "closedWinRate": 100,
+      "entryLegs": 8,
+      "legOutcomes": {
+        "tp": 6,
+        "sl": 0,
+        "active": 0,
+        "pending": 0,
+        "uncertain": 2,
+        "not-filled": 0
+      }
+    },
+    "T3": {
+      "setups": 1,
+      "tp": 0,
+      "sl": 1,
+      "open": 0,
+      "pending": 0,
+      "uncertain": 0,
+      "mixed": 0,
+      "notFilled": 0,
+      "noValidEntry": 0,
+      "closedWinRate": 0,
+      "entryLegs": 2,
+      "legOutcomes": {
+        "tp": 0,
+        "sl": 2,
+        "active": 0,
+        "pending": 0,
+        "uncertain": 0,
+        "not-filled": 0
+      }
+    }
+  },
+  "insideByMonth": {
+    "2026-08": {
+      "setups": 3,
+      "tp": 1,
+      "sl": 1,
+      "open": 0,
+      "pending": 0,
+      "uncertain": 1,
+      "mixed": 0,
+      "notFilled": 0,
+      "noValidEntry": 0,
+      "closedWinRate": 50,
+      "entryLegs": 6,
+      "legOutcomes": {
+        "tp": 2,
+        "sl": 2,
+        "active": 0,
+        "pending": 0,
+        "uncertain": 2,
+        "not-filled": 0
+      }
+    },
+    "2026-09": {
+      "setups": 8,
+      "tp": 5,
+      "sl": 2,
+      "open": 0,
+      "pending": 0,
+      "uncertain": 0,
+      "mixed": 0,
+      "notFilled": 1,
+      "noValidEntry": 0,
+      "closedWinRate": 71.42857142857143,
+      "entryLegs": 16,
+      "legOutcomes": {
+        "tp": 10,
+        "sl": 4,
+        "active": 0,
+        "pending": 0,
+        "uncertain": 0,
+        "not-filled": 2
+      }
+    },
+    "2026-10": {
+      "setups": 7,
+      "tp": 1,
+      "sl": 5,
+      "open": 0,
+      "pending": 0,
+      "uncertain": 1,
+      "mixed": 0,
+      "notFilled": 0,
+      "noValidEntry": 0,
+      "closedWinRate": 16.666666666666664,
+      "entryLegs": 14,
+      "legOutcomes": {
+        "tp": 2,
+        "sl": 10,
+        "active": 0,
+        "pending": 0,
+        "uncertain": 2,
+        "not-filled": 0
+      }
+    },
+    "2026-11": {
+      "setups": 4,
+      "tp": 3,
+      "sl": 1,
+      "open": 0,
+      "pending": 0,
+      "uncertain": 0,
+      "mixed": 0,
+      "notFilled": 0,
+      "noValidEntry": 0,
+      "closedWinRate": 75,
+      "entryLegs": 8,
+      "legOutcomes": {
+        "tp": 6,
+        "sl": 2,
+        "active": 0,
+        "pending": 0,
+        "uncertain": 0,
+        "not-filled": 0
+      }
+    }
+  },
+  "rows": [
+    {
+      "signalUTC": "2026-08-03T13:15:00.000Z",
+      "direction": "bearish",
+      "type": "T2",
+      "insideMother": false,
+      "patternHigh": 4053.855,
+      "patternLow": 4031.63,
+      "outcome": "sl",
+      "legs": [
+        {
+          "leg": 10,
+          "entry": 4034.7255000000005,
+          "stopLoss": 4056.855,
+          "takeProfit": 4016.855,
+          "outcome": "sl",
+          "filledUTC": "2026-08-03T13:30:00.000Z",
+          "resolvedUTC": "2026-08-03T20:30:00.000Z"
+        },
+        {
+          "leg": 25,
+          "entry": 4035.4237500000004,
+          "stopLoss": 4056.855,
+          "takeProfit": 4016.855,
+          "outcome": "sl",
+          "filledUTC": "2026-08-03T13:30:00.000Z",
+          "resolvedUTC": "2026-08-03T20:30:00.000Z"
+        }
+      ]
+    },
+    {
+      "signalUTC": "2026-08-04T06:15:00.000Z",
+      "direction": "bearish",
+      "type": "T1",
+      "insideMother": false,
+      "patternHigh": 4066.215,
+      "patternLow": 4059.55,
+      "outcome": "sl",
+      "legs": [
+        {
+          "leg": 10,
+          "entry": 4060.3275,
+          "stopLoss": 4069.215,
+          "takeProfit": 4050.575,
+          "outcome": "sl",
+          "filledUTC": "2026-08-04T06:45:00.000Z",
+          "resolvedUTC": "2026-08-04T08:00:00.000Z"
+        },
+        {
+          "leg": 25,
+          "entry": 4060.97625,
+          "stopLoss": 4069.215,
+          "takeProfit": 4050.575,
+          "outcome": "sl",
+          "filledUTC": "2026-08-04T06:45:00.000Z",
+          "resolvedUTC": "2026-08-04T08:00:00.000Z"
+        }
+      ]
+    },
+    {
+      "signalUTC": "2026-08-04T08:15:00.000Z",
+      "direction": "bearish",
+      "type": "T1",
+      "insideMother": false,
+      "patternHigh": 4072.97,
+      "patternLow": 4060.44,
+      "outcome": "tp",
+      "legs": [
+        {
+          "leg": 10,
+          "entry": 4063.9045,
+          "stopLoss": 4075.97,
+          "takeProfit": 4050.9100000000003,
+          "outcome": "tp",
+          "filledUTC": "2026-08-04T08:30:00.000Z",
+          "resolvedUTC": "2026-08-04T09:00:00.000Z"
+        },
+        {
+          "leg": 25,
+          "entry": 4064.60125,
+          "stopLoss": 4075.97,
+          "takeProfit": 4050.9100000000003,
+          "outcome": "not-filled"
+        }
+      ]
+    },
+    {
+      "signalUTC": "2026-08-04T12:00:00.000Z",
+      "direction": "bearish",
+      "type": "T1",
+      "insideMother": false,
+      "patternHigh": 4084.345,
+      "patternLow": 4061.115,
+      "outcome": "sl",
+      "legs": [
+        {
+          "leg": 10,
+          "entry": 4063.5069999999996,
+          "stopLoss": 4087.345,
+          "takeProfit": 4047.345,
+          "outcome": "sl",
+          "filledUTC": "2026-08-04T12:15:00.000Z",
+          "resolvedUTC": "2026-08-04T13:15:00.000Z"
+        },
+        {
+          "leg": 25,
+          "entry": 4065.4375,
+          "stopLoss": 4087.345,
+          "takeProfit": 4047.345,
+          "outcome": "sl",
+          "filledUTC": "2026-08-04T12:15:00.000Z",
+          "resolvedUTC": "2026-08-04T13:15:00.000Z"
+        }
+      ]
+    },
+    {
+      "signalUTC": "2026-08-11T01:15:00.000Z",
+      "direction": "bullish",
+      "type": "T2",
+      "insideMother": false,
+      "patternHigh": 4420.38,
+      "patternLow": 4393.78,
+      "outcome": "tp",
+      "legs": [
+        {
+          "leg": 10,
+          "entry": 4418.9655,
+          "stopLoss": 4390.78,
+          "takeProfit": 4430.78,
+          "outcome": "tp",
+          "filledUTC": "2026-08-11T01:30:00.000Z",
+          "resolvedUTC": "2026-08-11T01:45:00.000Z"
+        },
+        {
+          "leg": 25,
+          "entry": 4418.26875,
+          "stopLoss": 4390.78,
+          "takeProfit": 4430.78,
+          "outcome": "tp",
+          "filledUTC": "2026-08-11T01:30:00.000Z",
+          "resolvedUTC": "2026-08-11T01:45:00.000Z"
+        }
+      ]
+    },
+    {
+      "signalUTC": "2026-08-11T02:00:00.000Z",
+      "direction": "bullish",
+      "type": "T2",
+      "insideMother": false,
+      "patternHigh": 4434.59,
+      "patternLow": 4414.7,
+      "outcome": "sl",
+      "legs": [
+        {
+          "leg": 10,
+          "entry": 4433.591,
+          "stopLoss": 4411.7,
+          "takeProfit": 4451.7,
+          "outcome": "sl",
+          "filledUTC": "2026-08-11T02:15:00.000Z",
+          "resolvedUTC": "2026-08-11T02:45:00.000Z"
+        },
+        {
+          "leg": 25,
+          "entry": 4432.9475,
+          "stopLoss": 4411.7,
+          "takeProfit": 4451.7,
+          "outcome": "sl",
+          "filledUTC": "2026-08-11T02:15:00.000Z",
+          "resolvedUTC": "2026-08-11T02:45:00.000Z"
+        }
+      ]
+    },
+    {
+      "signalUTC": "2026-08-11T16:30:00.000Z",
+      "direction": "bullish",
+      "type": "T3",
+      "insideMother": true,
+      "motherUTC": "2026-08-11T15:30:00.000Z",
+      "motherHigh": 4387.1,
+      "motherLow": 4369.15,
+      "patternHigh": 4385.9,
+      "patternLow": 4378.52,
+      "motherAgeBars": 4,
+      "outcome": "sl",
+      "legs": [
+        {
+          "leg": 10,
+          "entry": 4384.643999999999,
+          "stopLoss": 4375.52,
+          "takeProfit": 4394.109999999999,
+          "outcome": "sl",
+          "filledUTC": "2026-08-11T16:45:00.000Z",
+          "resolvedUTC": "2026-08-11T17:30:00.000Z"
+        },
+        {
+          "leg": 25,
+          "entry": 4384.3875,
+          "stopLoss": 4375.52,
+          "takeProfit": 4394.109999999999,
+          "outcome": "sl",
+          "filledUTC": "2026-08-11T16:45:00.000Z",
+          "resolvedUTC": "2026-08-11T17:30:00.000Z"
+        }
+      ]
+    },
+    {
+      "signalUTC": "2026-08-11T23:15:00.000Z",
+      "direction": "bullish",
+      "type": "T1",
+      "insideMother": false,
+      "patternHigh": 4374.77,
+      "patternLow": 4362.655,
+      "outcome": "tp",
+      "legs": [
+        {
+          "leg": 10,
+          "entry": 4372.346500000001,
+          "stopLoss": 4359.655,
+          "takeProfit": 4386.365000000001,
+          "outcome": "tp",
+          "filledUTC": "2026-08-11T23:30:00.000Z",
+          "resolvedUTC": "2026-08-12T01:00:00.000Z"
+        },
+        {
+          "leg": 25,
+          "entry": 4371.35125,
+          "stopLoss": 4359.655,
+          "takeProfit": 4386.365000000001,
+          "outcome": "tp",
+          "filledUTC": "2026-08-11T23:30:00.000Z",
+          "resolvedUTC": "2026-08-12T01:00:00.000Z"
+        }
+      ]
+    },
+    {
+      "signalUTC": "2026-08-12T04:30:00.000Z",
+      "direction": "bullish",
+      "type": "T3",
+      "insideMother": false,
+      "patternHigh": 4403.425,
+      "patternLow": 4395.44,
+      "outcome": "sl",
+      "legs": [
+        {
+          "leg": 10,
+          "entry": 4400.162,
+          "stopLoss": 4392.44,
+          "takeProfit": 4408.100000000001,
+          "outcome": "sl",
+          "filledUTC": "2026-08-12T04:45:00.000Z",
+          "resolvedUTC": "2026-08-12T05:30:00.000Z"
+        },
+        {
+          "leg": 25,
+          "entry": 4400,
+          "stopLoss": 4392.44,
+          "takeProfit": 4408.100000000001,
+          "outcome": "sl",
+          "filledUTC": "2026-08-12T04:45:00.000Z",
+          "resolvedUTC": "2026-08-12T05:30:00.000Z"
+        }
+      ]
+    },
+    {
+      "signalUTC": "2026-08-12T13:45:00.000Z",
+      "direction": "bullish",
+      "type": "T1",
+      "insideMother": false,
+      "patternHigh": 4434.035,
+      "patternLow": 4408.65,
+      "outcome": "sl",
+      "legs": [
+        {
+          "leg": 10,
+          "entry": 4426.4385,
+          "stopLoss": 4405.65,
+          "takeProfit": 4445.65,
+          "outcome": "sl",
+          "filledUTC": "2026-08-12T14:00:00.000Z",
+          "resolvedUTC": "2026-08-12T16:45:00.000Z"
+        },
+        {
+          "leg": 25,
+          "entry": 4424.79375,
+          "stopLoss": 4405.65,
+          "takeProfit": 4445.65,
+          "outcome": "sl",
+          "filledUTC": "2026-08-12T14:00:00.000Z",
+          "resolvedUTC": "2026-08-12T16:45:00.000Z"
+        }
+      ]
+    },
+    {
+      "signalUTC": "2026-08-13T06:45:00.000Z",
+      "direction": "bullish",
+      "type": "T1",
+      "insideMother": false,
+      "patternHigh": 4381.69,
+      "patternLow": 4369.035,
+      "outcome": "sl",
+      "legs": [
+        {
+          "leg": 10,
+          "entry": 4380.2775,
+          "stopLoss": 4366.035,
+          "takeProfit": 4395.875,
+          "outcome": "sl",
+          "filledUTC": "2026-08-13T07:00:00.000Z",
+          "resolvedUTC": "2026-08-13T08:00:00.000Z"
+        },
+        {
+          "leg": 25,
+          "entry": 4379.26125,
+          "stopLoss": 4366.035,
+          "takeProfit": 4395.875,
+          "outcome": "sl",
+          "filledUTC": "2026-08-13T07:00:00.000Z",
+          "resolvedUTC": "2026-08-13T08:00:00.000Z"
+        }
+      ]
+    },
+    {
+      "signalUTC": "2026-08-13T08:15:00.000Z",
+      "direction": "bullish",
+      "type": "T1",
+      "insideMother": false,
+      "patternHigh": 4373.665,
+      "patternLow": 4364.17,
+      "outcome": "tp",
+      "legs": [
+        {
+          "leg": 10,
+          "entry": 4372.241,
+          "stopLoss": 4361.17,
+          "takeProfit": 4384.68,
+          "outcome": "tp",
+          "filledUTC": "2026-08-13T08:30:00.000Z",
+          "resolvedUTC": "2026-08-13T09:45:00.000Z"
+        },
+        {
+          "leg": 25,
+          "entry": 4371.215,
+          "stopLoss": 4361.17,
+          "takeProfit": 4384.68,
+          "outcome": "not-filled"
+        }
+      ]
+    },
+    {
+      "signalUTC": "2026-08-13T16:30:00.000Z",
+      "direction": "bullish",
+      "type": "T3",
+      "insideMother": false,
+      "patternHigh": 4367.515,
+      "patternLow": 4351.355,
+      "outcome": "sl",
+      "legs": [
+        {
+          "leg": 10,
+          "entry": 4365.4535000000005,
+          "stopLoss": 4348.355,
+          "takeProfit": 4383.185000000001,
+          "outcome": "sl",
+          "filledUTC": "2026-08-13T16:45:00.000Z",
+          "resolvedUTC": "2026-08-13T19:00:00.000Z"
+        },
+        {
+          "leg": 25,
+          "entry": 4364.97875,
+          "stopLoss": 4348.355,
+          "takeProfit": 4383.185000000001,
+          "outcome": "sl",
+          "filledUTC": "2026-08-13T16:45:00.000Z",
+          "resolvedUTC": "2026-08-13T19:00:00.000Z"
+        }
+      ]
+    },
+    {
+      "signalUTC": "2026-08-13T20:15:00.000Z",
+      "direction": "bullish",
+      "type": "T2",
+      "insideMother": false,
+      "patternHigh": 4352.28,
+      "patternLow": 4346.985,
+      "outcome": "uncertain",
+      "legs": [
+        {
+          "leg": 10,
+          "entry": 4351.642000000001,
+          "stopLoss": 4343.985,
+          "takeProfit": 4359.555000000001,
+          "outcome": "uncertain",
+          "filledUTC": "2026-08-13T20:30:00.000Z"
+        },
+        {
+          "leg": 25,
+          "entry": 4351.450000000001,
+          "stopLoss": 4343.985,
+          "takeProfit": 4359.555000000001,
+          "outcome": "uncertain",
+          "filledUTC": "2026-08-13T20:30:00.000Z"
+        }
+      ]
+    },
+    {
+      "signalUTC": "2026-08-19T18:45:00.000Z",
+      "direction": "bullish",
+      "type": "T2",
+      "insideMother": false,
+      "patternHigh": 4497.215,
+      "patternLow": 4472.18,
+      "outcome": "tp",
+      "legs": [
+        {
+          "leg": 10,
+          "entry": 4494.6965,
+          "stopLoss": 4469.18,
+          "takeProfit": 4509.18,
+          "outcome": "tp",
+          "filledUTC": "2026-08-19T19:00:00.000Z",
+          "resolvedUTC": "2026-08-19T19:30:00.000Z"
+        },
+        {
+          "leg": 25,
+          "entry": 4494.01625,
+          "stopLoss": 4469.18,
+          "takeProfit": 4509.18,
+          "outcome": "not-filled"
+        }
+      ]
+    },
+    {
+      "signalUTC": "2026-08-19T20:15:00.000Z",
+      "direction": "bullish",
+      "type": "T1",
+      "insideMother": false,
+      "patternHigh": 4522.19,
+      "patternLow": 4505.165,
+      "outcome": "uncertain",
+      "legs": [
+        {
+          "leg": 10,
+          "entry": 4517.3225,
+          "stopLoss": 4502.165,
+          "takeProfit": 4534.835,
+          "outcome": "uncertain"
+        },
+        {
+          "leg": 25,
+          "entry": 4515.55625,
+          "stopLoss": 4502.165,
+          "takeProfit": 4534.835,
+          "outcome": "uncertain"
+        }
+      ]
+    },
+    {
+      "signalUTC": "2026-08-20T10:15:00.000Z",
+      "direction": "bullish",
+      "type": "T2",
+      "insideMother": false,
+      "patternHigh": 4494.375,
+      "patternLow": 4480.865,
+      "outcome": "sl",
+      "legs": [
+        {
+          "leg": 10,
+          "entry": 4493.653499999999,
+          "stopLoss": 4477.865,
+          "takeProfit": 4510.105,
+          "outcome": "sl",
+          "filledUTC": "2026-08-20T10:30:00.000Z",
+          "resolvedUTC": "2026-08-20T11:30:00.000Z"
+        },
+        {
+          "leg": 25,
+          "entry": 4493.15625,
+          "stopLoss": 4477.865,
+          "takeProfit": 4510.105,
+          "outcome": "sl",
+          "filledUTC": "2026-08-20T10:30:00.000Z",
+          "resolvedUTC": "2026-08-20T11:30:00.000Z"
+        }
+      ]
+    },
+    {
+      "signalUTC": "2026-08-20T12:45:00.000Z",
+      "direction": "bullish",
+      "type": "T2",
+      "insideMother": false,
+      "patternHigh": 4477.1,
+      "patternLow": 4451.205,
+      "outcome": "tp",
+      "legs": [
+        {
+          "leg": 10,
+          "entry": 4474.0695,
+          "stopLoss": 4448.205,
+          "takeProfit": 4488.205,
+          "outcome": "tp",
+          "filledUTC": "2026-08-20T13:00:00.000Z",
+          "resolvedUTC": "2026-08-20T13:45:00.000Z"
+        },
+        {
+          "leg": 25,
+          "entry": 4472.86125,
+          "stopLoss": 4448.205,
+          "takeProfit": 4488.205,
+          "outcome": "tp",
+          "filledUTC": "2026-08-20T13:00:00.000Z",
+          "resolvedUTC": "2026-08-20T13:45:00.000Z"
+        }
+      ]
+    },
+    {
+      "signalUTC": "2026-08-21T01:15:00.000Z",
+      "direction": "bullish",
+      "type": "T2",
+      "insideMother": false,
+      "patternHigh": 4530.76,
+      "patternLow": 4508.995,
+      "outcome": "tp",
+      "legs": [
+        {
+          "leg": 10,
+          "entry": 4528.536,
+          "stopLoss": 4505.995,
+          "takeProfit": 4545.995,
+          "outcome": "tp",
+          "filledUTC": "2026-08-21T01:30:00.000Z",
+          "resolvedUTC": "2026-08-21T04:15:00.000Z"
+        },
+        {
+          "leg": 25,
+          "entry": 4527.255,
+          "stopLoss": 4505.995,
+          "takeProfit": 4545.995,
+          "outcome": "tp",
+          "filledUTC": "2026-08-21T01:30:00.000Z",
+          "resolvedUTC": "2026-08-21T04:15:00.000Z"
+        }
+      ]
+    },
+    {
+      "signalUTC": "2026-08-21T16:30:00.000Z",
+      "direction": "bullish",
+      "type": "T1",
+      "insideMother": false,
+      "patternHigh": 4622.025,
+      "patternLow": 4610.715,
+      "outcome": "sl",
+      "legs": [
+        {
+          "leg": 10,
+          "entry": 4620.7285,
+          "stopLoss": 4607.715,
+          "takeProfit": 4635.225,
+          "outcome": "sl",
+          "filledUTC": "2026-08-21T17:15:00.000Z",
+          "resolvedUTC": "2026-08-21T20:30:00.000Z"
+        },
+        {
+          "leg": 25,
+          "entry": 4619.61625,
+          "stopLoss": 4607.715,
+          "takeProfit": 4635.225,
+          "outcome": "sl",
+          "filledUTC": "2026-08-21T17:15:00.000Z",
+          "resolvedUTC": "2026-08-21T20:30:00.000Z"
+        }
+      ]
+    },
+    {
+      "signalUTC": "2026-08-23T22:00:00.000Z",
+      "direction": "bullish",
+      "type": "T1",
+      "insideMother": false,
+      "patternHigh": 4620.65,
+      "patternLow": 4602.67,
+      "outcome": "tp",
+      "legs": [
+        {
+          "leg": 10,
+          "entry": 4617.071,
+          "stopLoss": 4599.67,
+          "takeProfit": 4636.0599999999995,
+          "outcome": "tp",
+          "filledUTC": "2026-08-23T22:15:00.000Z",
+          "resolvedUTC": "2026-08-24T00:00:00.000Z"
+        },
+        {
+          "leg": 25,
+          "entry": 4615.879999999999,
+          "stopLoss": 4599.67,
+          "takeProfit": 4636.0599999999995,
+          "outcome": "tp",
+          "filledUTC": "2026-08-23T22:15:00.000Z",
+          "resolvedUTC": "2026-08-24T00:00:00.000Z"
+        }
+      ]
+    },
+    {
+      "signalUTC": "2026-08-24T01:45:00.000Z",
+      "direction": "bullish",
+      "type": "T2",
+      "insideMother": true,
+      "motherUTC": "2026-08-24T00:15:00.000Z",
+      "motherHigh": 4640.475,
+      "motherLow": 4594.515,
+      "patternHigh": 4637.745,
+      "patternLow": 4608.155,
+      "motherAgeBars": 6,
+      "outcome": "uncertain",
+      "legs": [
+        {
+          "leg": 10,
+          "entry": 4630.830999999999,
+          "stopLoss": 4605.155,
+          "takeProfit": 4645.155,
+          "outcome": "uncertain"
+        },
+        {
+          "leg": 25,
+          "entry": 4628.7325,
+          "stopLoss": 4605.155,
+          "takeProfit": 4645.155,
+          "outcome": "uncertain"
+        }
+      ]
+    },
+    {
+      "signalUTC": "2026-08-24T05:45:00.000Z",
+      "direction": "bullish",
+      "type": "T1",
+      "insideMother": false,
+      "patternHigh": 4643.445,
+      "patternLow": 4630.015,
+      "outcome": "tp",
+      "legs": [
+        {
+          "leg": 10,
+          "entry": 4640.1585,
+          "stopLoss": 4627.015,
+          "takeProfit": 4654.804999999999,
+          "outcome": "tp",
+          "filledUTC": "2026-08-24T06:00:00.000Z",
+          "resolvedUTC": "2026-08-24T06:15:00.000Z"
+        },
+        {
+          "leg": 25,
+          "entry": 4639.03125,
+          "stopLoss": 4627.015,
+          "takeProfit": 4654.804999999999,
+          "outcome": "not-filled"
+        }
+      ]
+    },
+    {
+      "signalUTC": "2026-08-24T09:45:00.000Z",
+      "direction": "bullish",
+      "type": "T2",
+      "insideMother": true,
+      "motherUTC": "2026-08-24T08:30:00.000Z",
+      "motherHigh": 4646.3,
+      "motherLow": 4628.895,
+      "patternHigh": 4646.095,
+      "patternLow": 4632.895,
+      "motherAgeBars": 5,
+      "outcome": "tp",
+      "legs": [
+        {
+          "leg": 10,
+          "entry": 4645.2145,
+          "stopLoss": 4629.895,
+          "takeProfit": 4661.895,
+          "outcome": "tp",
+          "filledUTC": "2026-08-24T10:15:00.000Z",
+          "resolvedUTC": "2026-08-24T11:30:00.000Z"
+        },
+        {
+          "leg": 25,
+          "entry": 4644.19375,
+          "stopLoss": 4629.895,
+          "takeProfit": 4661.895,
+          "outcome": "tp",
+          "filledUTC": "2026-08-24T10:15:00.000Z",
+          "resolvedUTC": "2026-08-24T11:30:00.000Z"
+        }
+      ]
+    },
+    {
+      "signalUTC": "2026-08-24T19:15:00.000Z",
+      "direction": "bullish",
+      "type": "T1",
+      "insideMother": false,
+      "patternHigh": 4645,
+      "patternLow": 4635.955,
+      "outcome": "uncertain",
+      "legs": [
+        {
+          "leg": 10,
+          "entry": 4640.972,
+          "stopLoss": 4632.955,
+          "takeProfit": 4650.014999999999,
+          "outcome": "uncertain"
+        },
+        {
+          "leg": 25,
+          "entry": 4640.202499999999,
+          "stopLoss": 4632.955,
+          "takeProfit": 4650.014999999999,
+          "outcome": "not-filled"
+        }
+      ]
+    },
+    {
+      "signalUTC": "2026-08-24T22:00:00.000Z",
+      "direction": "bullish",
+      "type": "T2",
+      "insideMother": false,
+      "patternHigh": 4660.735,
+      "patternLow": 4647.27,
+      "outcome": "tp",
+      "legs": [
+        {
+          "leg": 10,
+          "entry": 4658.3985,
+          "stopLoss": 4644.27,
+          "takeProfit": 4673.17,
+          "outcome": "tp",
+          "filledUTC": "2026-08-24T22:15:00.000Z",
+          "resolvedUTC": "2026-08-24T23:15:00.000Z"
+        },
+        {
+          "leg": 25,
+          "entry": 4657.91625,
+          "stopLoss": 4644.27,
+          "takeProfit": 4673.17,
+          "outcome": "tp",
+          "filledUTC": "2026-08-24T22:15:00.000Z",
+          "resolvedUTC": "2026-08-24T23:15:00.000Z"
+        }
+      ]
+    },
+    {
+      "signalUTC": "2026-08-25T05:15:00.000Z",
+      "direction": "bullish",
+      "type": "T2",
+      "insideMother": false,
+      "patternHigh": 4647.97,
+      "patternLow": 4624.115,
+      "outcome": "sl",
+      "legs": [
+        {
+          "leg": 10,
+          "entry": 4645.706,
+          "stopLoss": 4621.115,
+          "takeProfit": 4661.115,
+          "outcome": "sl",
+          "filledUTC": "2026-08-25T05:30:00.000Z",
+          "resolvedUTC": "2026-08-25T08:00:00.000Z"
+        },
+        {
+          "leg": 25,
+          "entry": 4644.41,
+          "stopLoss": 4621.115,
+          "takeProfit": 4661.115,
+          "outcome": "sl",
+          "filledUTC": "2026-08-25T05:30:00.000Z",
+          "resolvedUTC": "2026-08-25T08:00:00.000Z"
+        }
+      ]
+    },
+    {
+      "signalUTC": "2026-08-25T06:00:00.000Z",
+      "direction": "bullish",
+      "type": "T2",
+      "insideMother": false,
+      "patternHigh": 4650.49,
+      "patternLow": 4635.875,
+      "outcome": "sl",
+      "legs": [
+        {
+          "leg": 10,
+          "entry": 4648.9435,
+          "stopLoss": 4632.875,
+          "takeProfit": 4666.3150000000005,
+          "outcome": "sl",
+          "filledUTC": "2026-08-25T06:15:00.000Z",
+          "resolvedUTC": "2026-08-25T07:45:00.000Z"
+        },
+        {
+          "leg": 25,
+          "entry": 4647.96625,
+          "stopLoss": 4632.875,
+          "takeProfit": 4666.3150000000005,
+          "outcome": "sl",
+          "filledUTC": "2026-08-25T06:15:00.000Z",
+          "resolvedUTC": "2026-08-25T07:45:00.000Z"
+        }
+      ]
+    },
+    {
+      "signalUTC": "2026-08-25T22:00:00.000Z",
+      "direction": "bullish",
+      "type": "T1",
+      "insideMother": false,
+      "patternHigh": 4664.95,
+      "patternLow": 4657.75,
+      "outcome": "sl",
+      "legs": [
+        {
+          "leg": 10,
+          "entry": 4664.433,
+          "stopLoss": 4654.75,
+          "takeProfit": 4674.77,
+          "outcome": "sl",
+          "filledUTC": "2026-08-25T23:15:00.000Z",
+          "resolvedUTC": "2026-08-25T23:45:00.000Z"
+        },
+        {
+          "leg": 25,
+          "entry": 4663.9425,
+          "stopLoss": 4654.75,
+          "takeProfit": 4674.77,
+          "outcome": "sl",
+          "filledUTC": "2026-08-25T23:15:00.000Z",
+          "resolvedUTC": "2026-08-25T23:45:00.000Z"
+        }
+      ]
+    },
+    {
+      "signalUTC": "2026-08-26T01:45:00.000Z",
+      "direction": "bullish",
+      "type": "T2",
+      "insideMother": false,
+      "patternHigh": 4661.005,
+      "patternLow": 4639.065,
+      "outcome": "sl",
+      "legs": [
+        {
+          "leg": 10,
+          "entry": 4655.7335,
+          "stopLoss": 4636.065,
+          "takeProfit": 4676.065,
+          "outcome": "sl",
+          "filledUTC": "2026-08-26T02:00:00.000Z",
+          "resolvedUTC": "2026-08-26T05:45:00.000Z"
+        },
+        {
+          "leg": 25,
+          "entry": 4653.90875,
+          "stopLoss": 4636.065,
+          "takeProfit": 4676.065,
+          "outcome": "sl",
+          "filledUTC": "2026-08-26T03:00:00.000Z",
+          "resolvedUTC": "2026-08-26T05:45:00.000Z"
+        }
+      ]
+    },
+    {
+      "signalUTC": "2026-08-26T15:30:00.000Z",
+      "direction": "bullish",
+      "type": "T3",
+      "insideMother": false,
+      "patternHigh": 4605.52,
+      "patternLow": 4583.065,
+      "outcome": "uncertain",
+      "legs": [
+        {
+          "leg": 10,
+          "entry": 4603.9665,
+          "stopLoss": 4580.065,
+          "takeProfit": 4620.065,
+          "outcome": "uncertain",
+          "filledUTC": "2026-08-26T15:45:00.000Z"
+        },
+        {
+          "leg": 25,
+          "entry": 4602.46125,
+          "stopLoss": 4580.065,
+          "takeProfit": 4620.065,
+          "outcome": "uncertain",
+          "filledUTC": "2026-08-26T15:45:00.000Z"
+        }
+      ]
+    },
+    {
+      "signalUTC": "2026-08-26T19:15:00.000Z",
+      "direction": "bullish",
+      "type": "T2",
+      "insideMother": false,
+      "patternHigh": 4599.185,
+      "patternLow": 4591.23,
+      "outcome": "sl",
+      "legs": [
+        {
+          "leg": 10,
+          "entry": 4598.312,
+          "stopLoss": 4588.23,
+          "takeProfit": 4609.200000000001,
+          "outcome": "sl",
+          "filledUTC": "2026-08-26T19:30:00.000Z",
+          "resolvedUTC": "2026-08-26T20:15:00.000Z"
+        },
+        {
+          "leg": 25,
+          "entry": 4597.7075,
+          "stopLoss": 4588.23,
+          "takeProfit": 4609.200000000001,
+          "outcome": "sl",
+          "filledUTC": "2026-08-26T19:30:00.000Z",
+          "resolvedUTC": "2026-08-26T20:15:00.000Z"
+        }
+      ]
+    },
+    {
+      "signalUTC": "2026-08-27T06:15:00.000Z",
+      "direction": "bullish",
+      "type": "T1",
+      "insideMother": false,
+      "patternHigh": 4610.62,
+      "patternLow": 4599.795,
+      "outcome": "sl",
+      "legs": [
+        {
+          "leg": 10,
+          "entry": 4610.046,
+          "stopLoss": 4596.795,
+          "takeProfit": 4624.155000000001,
+          "outcome": "sl",
+          "filledUTC": "2026-08-27T06:30:00.000Z",
+          "resolvedUTC": "2026-08-27T07:15:00.000Z"
+        },
+        {
+          "leg": 25,
+          "entry": 4609.4025,
+          "stopLoss": 4596.795,
+          "takeProfit": 4624.155000000001,
+          "outcome": "sl",
+          "filledUTC": "2026-08-27T06:30:00.000Z",
+          "resolvedUTC": "2026-08-27T07:15:00.000Z"
+        }
+      ]
+    },
+    {
+      "signalUTC": "2026-08-27T10:45:00.000Z",
+      "direction": "bullish",
+      "type": "T2",
+      "insideMother": false,
+      "patternHigh": 4590.585,
+      "patternLow": 4576.23,
+      "outcome": "sl",
+      "legs": [
+        {
+          "leg": 10,
+          "entry": 4589.682,
+          "stopLoss": 4573.23,
+          "takeProfit": 4607.01,
+          "outcome": "sl",
+          "filledUTC": "2026-08-27T11:00:00.000Z",
+          "resolvedUTC": "2026-08-27T13:30:00.000Z"
+        },
+        {
+          "leg": 25,
+          "entry": 4589.025,
+          "stopLoss": 4573.23,
+          "takeProfit": 4607.01,
+          "outcome": "sl",
+          "filledUTC": "2026-08-27T11:00:00.000Z",
+          "resolvedUTC": "2026-08-27T13:30:00.000Z"
+        }
+      ]
+    },
+    {
+      "signalUTC": "2026-08-28T02:15:00.000Z",
+      "direction": "bullish",
+      "type": "T2",
+      "insideMother": false,
+      "patternHigh": 4585.05,
+      "patternLow": 4575.055,
+      "outcome": "sl",
+      "legs": [
+        {
+          "leg": 10,
+          "entry": 4583.4345,
+          "stopLoss": 4572.055,
+          "takeProfit": 4595.225,
+          "outcome": "sl",
+          "filledUTC": "2026-08-28T02:30:00.000Z",
+          "resolvedUTC": "2026-08-28T05:30:00.000Z"
+        },
+        {
+          "leg": 25,
+          "entry": 4583.12625,
+          "stopLoss": 4572.055,
+          "takeProfit": 4595.225,
+          "outcome": "sl",
+          "filledUTC": "2026-08-28T02:45:00.000Z",
+          "resolvedUTC": "2026-08-28T05:30:00.000Z"
+        }
+      ]
+    },
+    {
+      "signalUTC": "2026-08-28T04:15:00.000Z",
+      "direction": "bullish",
+      "type": "T1",
+      "insideMother": false,
+      "patternHigh": 4585.52,
+      "patternLow": 4578.05,
+      "outcome": "sl",
+      "legs": [
+        {
+          "leg": 10,
+          "entry": 4584.3234999999995,
+          "stopLoss": 4575.05,
+          "takeProfit": 4594.659999999999,
+          "outcome": "sl",
+          "filledUTC": "2026-08-28T04:30:00.000Z",
+          "resolvedUTC": "2026-08-28T05:30:00.000Z"
+        },
+        {
+          "leg": 25,
+          "entry": 4583.526249999999,
+          "stopLoss": 4575.05,
+          "takeProfit": 4594.659999999999,
+          "outcome": "sl",
+          "filledUTC": "2026-08-28T04:30:00.000Z",
+          "resolvedUTC": "2026-08-28T05:30:00.000Z"
+        }
+      ]
+    },
+    {
+      "signalUTC": "2026-08-28T12:15:00.000Z",
+      "direction": "bullish",
+      "type": "T2",
+      "insideMother": false,
+      "patternHigh": 4603.775,
+      "patternLow": 4590.955,
+      "outcome": "tp",
+      "legs": [
+        {
+          "leg": 10,
+          "entry": 4600.7465,
+          "stopLoss": 4587.955,
+          "takeProfit": 4614.915000000001,
+          "outcome": "tp",
+          "filledUTC": "2026-08-28T12:30:00.000Z",
+          "resolvedUTC": "2026-08-28T13:45:00.000Z"
+        },
+        {
+          "leg": 25,
+          "entry": 4599.713750000001,
+          "stopLoss": 4587.955,
+          "takeProfit": 4614.915000000001,
+          "outcome": "tp",
+          "filledUTC": "2026-08-28T12:30:00.000Z",
+          "resolvedUTC": "2026-08-28T13:45:00.000Z"
+        }
+      ]
+    },
+    {
+      "signalUTC": "2026-08-31T03:00:00.000Z",
+      "direction": "bullish",
+      "type": "T2",
+      "insideMother": false,
+      "patternHigh": 4428.23,
+      "patternLow": 4396.525,
+      "outcome": "no-valid-entry",
+      "legs": []
+    },
+    {
+      "signalUTC": "2026-08-31T04:45:00.000Z",
+      "direction": "bullish",
+      "type": "T2",
+      "insideMother": false,
+      "patternHigh": 4425.06,
+      "patternLow": 4413,
+      "outcome": "tp",
+      "legs": [
+        {
+          "leg": 10,
+          "entry": 4424.1804999999995,
+          "stopLoss": 4410,
+          "takeProfit": 4439.23,
+          "outcome": "tp",
+          "filledUTC": "2026-08-31T05:00:00.000Z",
+          "resolvedUTC": "2026-08-31T05:15:00.000Z"
+        },
+        {
+          "leg": 25,
+          "entry": 4423.5287499999995,
+          "stopLoss": 4410,
+          "takeProfit": 4439.23,
+          "outcome": "tp",
+          "filledUTC": "2026-08-31T05:00:00.000Z",
+          "resolvedUTC": "2026-08-31T05:15:00.000Z"
+        }
+      ]
+    },
+    {
+      "signalUTC": "2026-08-31T05:45:00.000Z",
+      "direction": "bullish",
+      "type": "T1",
+      "insideMother": false,
+      "patternHigh": 4443.98,
+      "patternLow": 4430.695,
+      "outcome": "tp",
+      "legs": [
+        {
+          "leg": 10,
+          "entry": 4442.4885,
+          "stopLoss": 4427.695,
+          "takeProfit": 4458.335000000001,
+          "outcome": "tp",
+          "filledUTC": "2026-08-31T06:00:00.000Z",
+          "resolvedUTC": "2026-08-31T11:15:00.000Z"
+        },
+        {
+          "leg": 25,
+          "entry": 4441.6987500000005,
+          "stopLoss": 4427.695,
+          "takeProfit": 4458.335000000001,
+          "outcome": "tp",
+          "filledUTC": "2026-08-31T06:00:00.000Z",
+          "resolvedUTC": "2026-08-31T11:15:00.000Z"
+        }
+      ]
+    },
+    {
+      "signalUTC": "2026-08-31T07:30:00.000Z",
+      "direction": "bullish",
+      "type": "T2",
+      "insideMother": false,
+      "patternHigh": 4448.32,
+      "patternLow": 4435.23,
+      "outcome": "tp",
+      "legs": [
+        {
+          "leg": 10,
+          "entry": 4446.3555,
+          "stopLoss": 4432.23,
+          "takeProfit": 4461,
+          "outcome": "tp",
+          "filledUTC": "2026-08-31T07:45:00.000Z",
+          "resolvedUTC": "2026-08-31T11:15:00.000Z"
+        },
+        {
+          "leg": 25,
+          "entry": 4445.9662499999995,
+          "stopLoss": 4432.23,
+          "takeProfit": 4461,
+          "outcome": "tp",
+          "filledUTC": "2026-08-31T07:45:00.000Z",
+          "resolvedUTC": "2026-08-31T11:15:00.000Z"
+        }
+      ]
+    },
+    {
+      "signalUTC": "2026-08-31T16:45:00.000Z",
+      "direction": "bearish",
+      "type": "T2",
+      "insideMother": false,
+      "patternHigh": 4440.4,
+      "patternLow": 4431.5,
+      "outcome": "sl",
+      "legs": [
+        {
+          "leg": 10,
+          "entry": 4433.6065,
+          "stopLoss": 4443.4,
+          "takeProfit": 4423.32,
+          "outcome": "sl",
+          "filledUTC": "2026-08-31T17:00:00.000Z",
+          "resolvedUTC": "2026-08-31T19:30:00.000Z"
+        },
+        {
+          "leg": 25,
+          "entry": 4433.97625,
+          "stopLoss": 4443.4,
+          "takeProfit": 4423.32,
+          "outcome": "sl",
+          "filledUTC": "2026-08-31T17:00:00.000Z",
+          "resolvedUTC": "2026-08-31T19:30:00.000Z"
+        }
+      ]
+    },
+    {
+      "signalUTC": "2026-08-31T20:15:00.000Z",
+      "direction": "bearish",
+      "type": "T3",
+      "insideMother": false,
+      "patternHigh": 4455.925,
+      "patternLow": 4441.575,
+      "outcome": "uncertain",
+      "legs": [
+        {
+          "leg": 10,
+          "entry": 4447.570000000001,
+          "stopLoss": 4458.925,
+          "takeProfit": 4435.685,
+          "outcome": "uncertain",
+          "filledUTC": "2026-08-31T20:30:00.000Z"
+        },
+        {
+          "leg": 25,
+          "entry": 4447.967500000001,
+          "stopLoss": 4458.925,
+          "takeProfit": 4435.685,
+          "outcome": "uncertain",
+          "filledUTC": "2026-08-31T20:30:00.000Z"
+        }
+      ]
+    },
+    {
+      "signalUTC": "2026-09-01T02:15:00.000Z",
+      "direction": "bearish",
+      "type": "T1",
+      "insideMother": false,
+      "patternHigh": 4449.395,
+      "patternLow": 4440.335,
+      "outcome": "uncertain",
+      "legs": [
+        {
+          "leg": 10,
+          "entry": 4441.196000000001,
+          "stopLoss": 4452.395,
+          "takeProfit": 4429.145,
+          "outcome": "uncertain"
+        },
+        {
+          "leg": 25,
+          "entry": 4441.835000000001,
+          "stopLoss": 4452.395,
+          "takeProfit": 4429.145,
+          "outcome": "uncertain"
+        }
+      ]
+    },
+    {
+      "signalUTC": "2026-09-01T03:15:00.000Z",
+      "direction": "bearish",
+      "type": "T3",
+      "insideMother": false,
+      "patternHigh": 4444.175,
+      "patternLow": 4427.695,
+      "outcome": "tp",
+      "legs": [
+        {
+          "leg": 10,
+          "entry": 4434.7755,
+          "stopLoss": 4447.175,
+          "takeProfit": 4421.214999999999,
+          "outcome": "tp",
+          "filledUTC": "2026-09-01T03:30:00.000Z",
+          "resolvedUTC": "2026-09-01T07:30:00.000Z"
+        },
+        {
+          "leg": 25,
+          "entry": 4435.64625,
+          "stopLoss": 4447.175,
+          "takeProfit": 4421.214999999999,
+          "outcome": "tp",
+          "filledUTC": "2026-09-01T03:30:00.000Z",
+          "resolvedUTC": "2026-09-01T07:30:00.000Z"
+        }
+      ]
+    },
+    {
+      "signalUTC": "2026-09-01T06:00:00.000Z",
+      "direction": "bearish",
+      "type": "T3",
+      "insideMother": false,
+      "patternHigh": 4446.105,
+      "patternLow": 4423.705,
+      "outcome": "tp",
+      "legs": [
+        {
+          "leg": 10,
+          "entry": 4433.809499999999,
+          "stopLoss": 4449.105,
+          "takeProfit": 4417.105,
+          "outcome": "tp",
+          "filledUTC": "2026-09-01T06:15:00.000Z",
+          "resolvedUTC": "2026-09-01T07:30:00.000Z"
+        },
+        {
+          "leg": 25,
+          "entry": 4434.866249999999,
+          "stopLoss": 4449.105,
+          "takeProfit": 4417.105,
+          "outcome": "tp",
+          "filledUTC": "2026-09-01T06:15:00.000Z",
+          "resolvedUTC": "2026-09-01T07:30:00.000Z"
+        }
+      ]
+    },
+    {
+      "signalUTC": "2026-09-01T14:45:00.000Z",
+      "direction": "bearish",
+      "type": "T1",
+      "insideMother": false,
+      "patternHigh": 4373.335,
+      "patternLow": 4356.785,
+      "outcome": "tp",
+      "legs": [
+        {
+          "leg": 10,
+          "entry": 4361.1695,
+          "stopLoss": 4376.335,
+          "takeProfit": 4344.675,
+          "outcome": "tp",
+          "filledUTC": "2026-09-01T15:00:00.000Z",
+          "resolvedUTC": "2026-09-01T17:00:00.000Z"
+        },
+        {
+          "leg": 25,
+          "entry": 4362.16625,
+          "stopLoss": 4376.335,
+          "takeProfit": 4344.675,
+          "outcome": "tp",
+          "filledUTC": "2026-09-01T15:00:00.000Z",
+          "resolvedUTC": "2026-09-01T17:00:00.000Z"
+        }
+      ]
+    },
+    {
+      "signalUTC": "2026-09-02T00:45:00.000Z",
+      "direction": "bearish",
+      "type": "T1",
+      "insideMother": false,
+      "patternHigh": 4331.8,
+      "patternLow": 4314.63,
+      "outcome": "tp",
+      "legs": [
+        {
+          "leg": 10,
+          "entry": 4317.237999999999,
+          "stopLoss": 4334.8,
+          "takeProfit": 4296.829999999999,
+          "outcome": "tp",
+          "filledUTC": "2026-09-02T01:00:00.000Z",
+          "resolvedUTC": "2026-09-02T01:45:00.000Z"
+        },
+        {
+          "leg": 25,
+          "entry": 4319.3724999999995,
+          "stopLoss": 4334.8,
+          "takeProfit": 4296.829999999999,
+          "outcome": "tp",
+          "filledUTC": "2026-09-02T01:00:00.000Z",
+          "resolvedUTC": "2026-09-02T01:45:00.000Z"
+        }
+      ]
+    },
+    {
+      "signalUTC": "2026-09-02T07:30:00.000Z",
+      "direction": "bearish",
+      "type": "T1",
+      "insideMother": false,
+      "patternHigh": 4331.405,
+      "patternLow": 4321.955,
+      "outcome": "tp",
+      "legs": [
+        {
+          "leg": 10,
+          "entry": 4323.091,
+          "stopLoss": 4334.405,
+          "takeProfit": 4310.935,
+          "outcome": "tp",
+          "filledUTC": "2026-09-02T07:45:00.000Z",
+          "resolvedUTC": "2026-09-02T09:15:00.000Z"
+        },
+        {
+          "leg": 25,
+          "entry": 4323.7225,
+          "stopLoss": 4334.405,
+          "takeProfit": 4310.935,
+          "outcome": "tp",
+          "filledUTC": "2026-09-02T07:45:00.000Z",
+          "resolvedUTC": "2026-09-02T09:15:00.000Z"
+        }
+      ]
+    },
+    {
+      "signalUTC": "2026-09-02T09:15:00.000Z",
+      "direction": "bearish",
+      "type": "T1",
+      "insideMother": false,
+      "patternHigh": 4322.54,
+      "patternLow": 4304.87,
+      "outcome": "sl",
+      "legs": [
+        {
+          "leg": 10,
+          "entry": 4309.5740000000005,
+          "stopLoss": 4325.54,
+          "takeProfit": 4292.64,
+          "outcome": "sl",
+          "filledUTC": "2026-09-02T09:30:00.000Z",
+          "resolvedUTC": "2026-09-02T11:30:00.000Z"
+        },
+        {
+          "leg": 25,
+          "entry": 4310.3,
+          "stopLoss": 4325.54,
+          "takeProfit": 4292.64,
+          "outcome": "sl",
+          "filledUTC": "2026-09-02T09:30:00.000Z",
+          "resolvedUTC": "2026-09-02T11:30:00.000Z"
+        }
+      ]
+    },
+    {
+      "signalUTC": "2026-09-02T16:15:00.000Z",
+      "direction": "bearish",
+      "type": "T3",
+      "insideMother": false,
+      "patternHigh": 4374.91,
+      "patternLow": 4364.64,
+      "outcome": "sl",
+      "legs": [
+        {
+          "leg": 10,
+          "entry": 4368.998,
+          "stopLoss": 4377.91,
+          "takeProfit": 4359.33,
+          "outcome": "sl",
+          "filledUTC": "2026-09-02T16:30:00.000Z",
+          "resolvedUTC": "2026-09-02T17:45:00.000Z"
+        },
+        {
+          "leg": 25,
+          "entry": 4369.565,
+          "stopLoss": 4377.91,
+          "takeProfit": 4359.33,
+          "outcome": "sl",
+          "filledUTC": "2026-09-02T16:30:00.000Z",
+          "resolvedUTC": "2026-09-02T17:45:00.000Z"
+        }
+      ]
+    },
+    {
+      "signalUTC": "2026-09-02T18:00:00.000Z",
+      "direction": "bearish",
+      "type": "T1",
+      "insideMother": false,
+      "patternHigh": 4380.855,
+      "patternLow": 4370.265,
+      "outcome": "sl",
+      "legs": [
+        {
+          "leg": 10,
+          "entry": 4371.037499999999,
+          "stopLoss": 4383.855,
+          "takeProfit": 4356.875,
+          "outcome": "sl",
+          "filledUTC": "2026-09-02T18:15:00.000Z",
+          "resolvedUTC": "2026-09-02T19:30:00.000Z"
+        },
+        {
+          "leg": 25,
+          "entry": 4372.046249999999,
+          "stopLoss": 4383.855,
+          "takeProfit": 4356.875,
+          "outcome": "sl",
+          "filledUTC": "2026-09-02T18:15:00.000Z",
+          "resolvedUTC": "2026-09-02T19:30:00.000Z"
+        }
+      ]
+    },
+    {
+      "signalUTC": "2026-09-03T13:15:00.000Z",
+      "direction": "bearish",
+      "type": "T3",
+      "insideMother": false,
+      "patternHigh": 4496.01,
+      "patternLow": 4465.54,
+      "outcome": "tp",
+      "legs": [
+        {
+          "leg": 10,
+          "entry": 4480.825500000001,
+          "stopLoss": 4499.01,
+          "takeProfit": 4461.530000000001,
+          "outcome": "tp",
+          "filledUTC": "2026-09-03T13:30:00.000Z",
+          "resolvedUTC": "2026-09-03T13:45:00.000Z"
+        },
+        {
+          "leg": 25,
+          "entry": 4481.6587500000005,
+          "stopLoss": 4499.01,
+          "takeProfit": 4461.530000000001,
+          "outcome": "tp",
+          "filledUTC": "2026-09-03T13:30:00.000Z",
+          "resolvedUTC": "2026-09-03T13:45:00.000Z"
+        }
+      ]
+    },
+    {
+      "signalUTC": "2026-09-03T15:30:00.000Z",
+      "direction": "bearish",
+      "type": "T1",
+      "insideMother": false,
+      "patternHigh": 4510.93,
+      "patternLow": 4494.9,
+      "outcome": "not-filled",
+      "legs": [
+        {
+          "leg": 10,
+          "entry": 4496.203,
+          "stopLoss": 4513.93,
+          "takeProfit": 4476.17,
+          "outcome": "not-filled"
+        },
+        {
+          "leg": 25,
+          "entry": 4497.932500000001,
+          "stopLoss": 4513.93,
+          "takeProfit": 4476.17,
+          "outcome": "not-filled"
+        }
+      ]
+    },
+    {
+      "signalUTC": "2026-09-03T20:00:00.000Z",
+      "direction": "bearish",
+      "type": "T2",
+      "insideMother": false,
+      "patternHigh": 4480.805,
+      "patternLow": 4471.55,
+      "outcome": "uncertain",
+      "legs": [
+        {
+          "leg": 10,
+          "entry": 4472.215,
+          "stopLoss": 4483.805,
+          "takeProfit": 4459.965,
+          "outcome": "uncertain",
+          "filledUTC": "2026-09-03T20:15:00.000Z"
+        },
+        {
+          "leg": 25,
+          "entry": 4472.71,
+          "stopLoss": 4483.805,
+          "takeProfit": 4459.965,
+          "outcome": "uncertain",
+          "filledUTC": "2026-09-03T20:30:00.000Z"
+        }
+      ]
+    },
+    {
+      "signalUTC": "2026-09-04T00:15:00.000Z",
+      "direction": "bearish",
+      "type": "T1",
+      "insideMother": false,
+      "patternHigh": 4483.455,
+      "patternLow": 4474.305,
+      "outcome": "sl",
+      "legs": [
+        {
+          "leg": 10,
+          "entry": 4475.375,
+          "stopLoss": 4486.455,
+          "takeProfit": 4463.045,
+          "outcome": "sl",
+          "filledUTC": "2026-09-04T00:30:00.000Z",
+          "resolvedUTC": "2026-09-04T00:45:00.000Z"
+        },
+        {
+          "leg": 25,
+          "entry": 4476.3125,
+          "stopLoss": 4486.455,
+          "takeProfit": 4463.045,
+          "outcome": "sl",
+          "filledUTC": "2026-09-04T00:30:00.000Z",
+          "resolvedUTC": "2026-09-04T00:45:00.000Z"
+        }
+      ]
+    },
+    {
+      "signalUTC": "2026-09-04T01:15:00.000Z",
+      "direction": "bearish",
+      "type": "T2",
+      "insideMother": false,
+      "patternHigh": 4487.545,
+      "patternLow": 4468.03,
+      "outcome": "sl",
+      "legs": [
+        {
+          "leg": 10,
+          "entry": 4471.397,
+          "stopLoss": 4490.545,
+          "takeProfit": 4451.455,
+          "outcome": "sl",
+          "filledUTC": "2026-09-04T01:30:00.000Z",
+          "resolvedUTC": "2026-09-04T07:45:00.000Z"
+        },
+        {
+          "leg": 25,
+          "entry": 4471.9925,
+          "stopLoss": 4490.545,
+          "takeProfit": 4451.455,
+          "outcome": "sl",
+          "filledUTC": "2026-09-04T01:30:00.000Z",
+          "resolvedUTC": "2026-09-04T07:45:00.000Z"
+        }
+      ]
+    },
+    {
+      "signalUTC": "2026-09-04T02:15:00.000Z",
+      "direction": "bearish",
+      "type": "T1",
+      "insideMother": false,
+      "patternHigh": 4482.605,
+      "patternLow": 4471.68,
+      "outcome": "tp",
+      "legs": [
+        {
+          "leg": 10,
+          "entry": 4474.6425,
+          "stopLoss": 4485.605,
+          "takeProfit": 4462.615,
+          "outcome": "tp",
+          "filledUTC": "2026-09-04T02:30:00.000Z",
+          "resolvedUTC": "2026-09-04T06:45:00.000Z"
+        },
+        {
+          "leg": 25,
+          "entry": 4475.44125,
+          "stopLoss": 4485.605,
+          "takeProfit": 4462.615,
+          "outcome": "tp",
+          "filledUTC": "2026-09-04T02:30:00.000Z",
+          "resolvedUTC": "2026-09-04T06:45:00.000Z"
+        }
+      ]
+    },
+    {
+      "signalUTC": "2026-09-07T02:00:00.000Z",
+      "direction": "bearish",
+      "type": "T3",
+      "insideMother": false,
+      "patternHigh": 4416.87,
+      "patternLow": 4403.085,
+      "outcome": "tp",
+      "legs": [
+        {
+          "leg": 10,
+          "entry": 4404.574500000001,
+          "stopLoss": 4419.87,
+          "takeProfit": 4388.240000000001,
+          "outcome": "tp",
+          "filledUTC": "2026-09-07T02:15:00.000Z",
+          "resolvedUTC": "2026-09-07T06:00:00.000Z"
+        },
+        {
+          "leg": 25,
+          "entry": 4405.35375,
+          "stopLoss": 4419.87,
+          "takeProfit": 4388.240000000001,
+          "outcome": "tp",
+          "filledUTC": "2026-09-07T02:15:00.000Z",
+          "resolvedUTC": "2026-09-07T06:00:00.000Z"
+        }
+      ]
+    },
+    {
+      "signalUTC": "2026-09-07T03:30:00.000Z",
+      "direction": "bearish",
+      "type": "T1",
+      "insideMother": false,
+      "patternHigh": 4410.335,
+      "patternLow": 4401.84,
+      "outcome": "tp",
+      "legs": [
+        {
+          "leg": 10,
+          "entry": 4402.616999999999,
+          "stopLoss": 4413.335,
+          "takeProfit": 4390.544999999999,
+          "outcome": "tp",
+          "filledUTC": "2026-09-07T03:45:00.000Z",
+          "resolvedUTC": "2026-09-07T06:00:00.000Z"
+        },
+        {
+          "leg": 25,
+          "entry": 4403.6325,
+          "stopLoss": 4413.335,
+          "takeProfit": 4390.544999999999,
+          "outcome": "tp",
+          "filledUTC": "2026-09-07T03:45:00.000Z",
+          "resolvedUTC": "2026-09-07T06:00:00.000Z"
+        }
+      ]
+    },
+    {
+      "signalUTC": "2026-09-07T05:45:00.000Z",
+      "direction": "bearish",
+      "type": "T2",
+      "insideMother": false,
+      "patternHigh": 4413.315,
+      "patternLow": 4393.25,
+      "outcome": "sl",
+      "legs": [
+        {
+          "leg": 10,
+          "entry": 4395.2695,
+          "stopLoss": 4416.315,
+          "takeProfit": 4376.315,
+          "outcome": "sl",
+          "filledUTC": "2026-09-07T06:15:00.000Z",
+          "resolvedUTC": "2026-09-07T08:00:00.000Z"
+        },
+        {
+          "leg": 25,
+          "entry": 4396.79125,
+          "stopLoss": 4416.315,
+          "takeProfit": 4376.315,
+          "outcome": "sl",
+          "filledUTC": "2026-09-07T06:15:00.000Z",
+          "resolvedUTC": "2026-09-07T08:00:00.000Z"
+        }
+      ]
+    },
+    {
+      "signalUTC": "2026-09-07T08:45:00.000Z",
+      "direction": "bearish",
+      "type": "T2",
+      "insideMother": false,
+      "patternHigh": 4423.885,
+      "patternLow": 4409.685,
+      "outcome": "tp",
+      "legs": [
+        {
+          "leg": 10,
+          "entry": 4411.428,
+          "stopLoss": 4426.885,
+          "takeProfit": 4395.225,
+          "outcome": "tp",
+          "filledUTC": "2026-09-07T09:00:00.000Z",
+          "resolvedUTC": "2026-09-07T10:30:00.000Z"
+        },
+        {
+          "leg": 25,
+          "entry": 4411.9875,
+          "stopLoss": 4426.885,
+          "takeProfit": 4395.225,
+          "outcome": "tp",
+          "filledUTC": "2026-09-07T09:00:00.000Z",
+          "resolvedUTC": "2026-09-07T10:30:00.000Z"
+        }
+      ]
+    },
+    {
+      "signalUTC": "2026-09-08T02:00:00.000Z",
+      "direction": "bearish",
+      "type": "T1",
+      "insideMother": false,
+      "patternHigh": 4440.81,
+      "patternLow": 4426.22,
+      "outcome": "tp",
+      "legs": [
+        {
+          "leg": 10,
+          "entry": 4429.2005,
+          "stopLoss": 4443.81,
+          "takeProfit": 4412.79,
+          "outcome": "tp",
+          "filledUTC": "2026-09-08T02:15:00.000Z",
+          "resolvedUTC": "2026-09-08T06:00:00.000Z"
+        },
+        {
+          "leg": 25,
+          "entry": 4430.55125,
+          "stopLoss": 4443.81,
+          "takeProfit": 4412.79,
+          "outcome": "tp",
+          "filledUTC": "2026-09-08T03:00:00.000Z",
+          "resolvedUTC": "2026-09-08T06:00:00.000Z"
+        }
+      ]
+    },
+    {
+      "signalUTC": "2026-09-08T04:15:00.000Z",
+      "direction": "bearish",
+      "type": "T1",
+      "insideMother": false,
+      "patternHigh": 4442.98,
+      "patternLow": 4431.695,
+      "outcome": "tp",
+      "legs": [
+        {
+          "leg": 10,
+          "entry": 4433.454,
+          "stopLoss": 4445.98,
+          "takeProfit": 4419.620000000001,
+          "outcome": "tp",
+          "filledUTC": "2026-09-08T04:30:00.000Z",
+          "resolvedUTC": "2026-09-08T05:30:00.000Z"
+        },
+        {
+          "leg": 25,
+          "entry": 4434.435,
+          "stopLoss": 4445.98,
+          "takeProfit": 4419.620000000001,
+          "outcome": "tp",
+          "filledUTC": "2026-09-08T04:30:00.000Z",
+          "resolvedUTC": "2026-09-08T05:30:00.000Z"
+        }
+      ]
+    },
+    {
+      "signalUTC": "2026-09-08T07:00:00.000Z",
+      "direction": "bearish",
+      "type": "T3",
+      "insideMother": false,
+      "patternHigh": 4409.465,
+      "patternLow": 4398.325,
+      "outcome": "tp",
+      "legs": [
+        {
+          "leg": 10,
+          "entry": 4403.0815,
+          "stopLoss": 4412.465,
+          "takeProfit": 4393.535,
+          "outcome": "tp",
+          "filledUTC": "2026-09-08T07:15:00.000Z",
+          "resolvedUTC": "2026-09-08T07:30:00.000Z"
+        },
+        {
+          "leg": 25,
+          "entry": 4403.20375,
+          "stopLoss": 4412.465,
+          "takeProfit": 4393.535,
+          "outcome": "tp",
+          "filledUTC": "2026-09-08T07:15:00.000Z",
+          "resolvedUTC": "2026-09-08T07:30:00.000Z"
+        }
+      ]
+    },
+    {
+      "signalUTC": "2026-09-08T13:15:00.000Z",
+      "direction": "bearish",
+      "type": "T3",
+      "insideMother": false,
+      "patternHigh": 4413.235,
+      "patternLow": 4395.85,
+      "outcome": "tp",
+      "legs": [
+        {
+          "leg": 10,
+          "entry": 4401.163500000001,
+          "stopLoss": 4416.235,
+          "takeProfit": 4384.455000000001,
+          "outcome": "tp",
+          "filledUTC": "2026-09-08T13:30:00.000Z",
+          "resolvedUTC": "2026-09-08T16:00:00.000Z"
+        },
+        {
+          "leg": 25,
+          "entry": 4402.391250000001,
+          "stopLoss": 4416.235,
+          "takeProfit": 4384.455000000001,
+          "outcome": "tp",
+          "filledUTC": "2026-09-08T13:30:00.000Z",
+          "resolvedUTC": "2026-09-08T16:00:00.000Z"
+        }
+      ]
+    },
+    {
+      "signalUTC": "2026-09-09T12:00:00.000Z",
+      "direction": "bearish",
+      "type": "T1",
+      "insideMother": false,
+      "patternHigh": 4415.365,
+      "patternLow": 4399.295,
+      "outcome": "sl",
+      "legs": [
+        {
+          "leg": 10,
+          "entry": 4400.321000000001,
+          "stopLoss": 4418.365,
+          "takeProfit": 4380.675000000001,
+          "outcome": "sl",
+          "filledUTC": "2026-09-09T12:15:00.000Z",
+          "resolvedUTC": "2026-09-09T13:15:00.000Z"
+        },
+        {
+          "leg": 25,
+          "entry": 4401.522500000001,
+          "stopLoss": 4418.365,
+          "takeProfit": 4380.675000000001,
+          "outcome": "sl",
+          "filledUTC": "2026-09-09T12:45:00.000Z",
+          "resolvedUTC": "2026-09-09T13:15:00.000Z"
+        }
+      ]
+    },
+    {
+      "signalUTC": "2026-09-10T03:15:00.000Z",
+      "direction": "bearish",
+      "type": "T2",
+      "insideMother": false,
+      "patternHigh": 4421.17,
+      "patternLow": 4409.485,
+      "outcome": "sl",
+      "legs": [
+        {
+          "leg": 10,
+          "entry": 4410.458,
+          "stopLoss": 4424.17,
+          "takeProfit": 4396.209999999999,
+          "outcome": "sl",
+          "filledUTC": "2026-09-10T03:30:00.000Z",
+          "resolvedUTC": "2026-09-10T05:30:00.000Z"
+        },
+        {
+          "leg": 25,
+          "entry": 4410.86,
+          "stopLoss": 4424.17,
+          "takeProfit": 4396.209999999999,
+          "outcome": "sl",
+          "filledUTC": "2026-09-10T03:30:00.000Z",
+          "resolvedUTC": "2026-09-10T05:30:00.000Z"
+        }
+      ]
+    },
+    {
+      "signalUTC": "2026-09-10T07:00:00.000Z",
+      "direction": "bearish",
+      "type": "T3",
+      "insideMother": false,
+      "patternHigh": 4428.945,
+      "patternLow": 4413.24,
+      "outcome": "tp",
+      "legs": [
+        {
+          "leg": 10,
+          "entry": 4414.635,
+          "stopLoss": 4431.945,
+          "takeProfit": 4394.975,
+          "outcome": "tp",
+          "filledUTC": "2026-09-10T07:15:00.000Z",
+          "resolvedUTC": "2026-09-10T08:30:00.000Z"
+        },
+        {
+          "leg": 25,
+          "entry": 4416.3975,
+          "stopLoss": 4431.945,
+          "takeProfit": 4394.975,
+          "outcome": "not-filled"
+        }
+      ]
+    },
+    {
+      "signalUTC": "2026-09-11T02:15:00.000Z",
+      "direction": "bearish",
+      "type": "T1",
+      "insideMother": true,
+      "motherUTC": "2026-09-11T01:30:00.000Z",
+      "motherHigh": 4335.07,
+      "motherLow": 4322.61,
+      "patternHigh": 4334.515,
+      "patternLow": 4323.565,
+      "motherAgeBars": 3,
+      "outcome": "tp",
+      "legs": [
+        {
+          "leg": 10,
+          "entry": 4325.7285,
+          "stopLoss": 4337.515,
+          "takeProfit": 4312.804999999999,
+          "outcome": "tp",
+          "filledUTC": "2026-09-11T02:30:00.000Z",
+          "resolvedUTC": "2026-09-11T03:15:00.000Z"
+        },
+        {
+          "leg": 25,
+          "entry": 4326.58125,
+          "stopLoss": 4337.515,
+          "takeProfit": 4312.804999999999,
+          "outcome": "tp",
+          "filledUTC": "2026-09-11T02:45:00.000Z",
+          "resolvedUTC": "2026-09-11T03:15:00.000Z"
+        }
+      ]
+    },
+    {
+      "signalUTC": "2026-09-11T07:15:00.000Z",
+      "direction": "bearish",
+      "type": "T2",
+      "insideMother": true,
+      "motherUTC": "2026-09-11T06:00:00.000Z",
+      "motherHigh": 4361.15,
+      "motherLow": 4345.775,
+      "patternHigh": 4356.24,
+      "patternLow": 4346.18,
+      "motherAgeBars": 5,
+      "outcome": "tp",
+      "legs": [
+        {
+          "leg": 10,
+          "entry": 4347.001,
+          "stopLoss": 4359.24,
+          "takeProfit": 4333.68,
+          "outcome": "tp",
+          "filledUTC": "2026-09-11T07:30:00.000Z",
+          "resolvedUTC": "2026-09-11T11:30:00.000Z"
+        },
+        {
+          "leg": 25,
+          "entry": 4347.8125,
+          "stopLoss": 4359.24,
+          "takeProfit": 4333.68,
+          "outcome": "tp",
+          "filledUTC": "2026-09-11T07:30:00.000Z",
+          "resolvedUTC": "2026-09-11T11:30:00.000Z"
+        }
+      ]
+    },
+    {
+      "signalUTC": "2026-09-11T08:45:00.000Z",
+      "direction": "bearish",
+      "type": "T1",
+      "insideMother": true,
+      "motherUTC": "2026-09-11T08:15:00.000Z",
+      "motherHigh": 4357.635,
+      "motherLow": 4343.645,
+      "patternHigh": 4356.825,
+      "patternLow": 4345.55,
+      "motherAgeBars": 2,
+      "outcome": "tp",
+      "legs": [
+        {
+          "leg": 10,
+          "entry": 4347.619500000001,
+          "stopLoss": 4359.825,
+          "takeProfit": 4334.285000000001,
+          "outcome": "tp",
+          "filledUTC": "2026-09-11T09:00:00.000Z",
+          "resolvedUTC": "2026-09-11T11:30:00.000Z"
+        },
+        {
+          "leg": 25,
+          "entry": 4348.46625,
+          "stopLoss": 4359.825,
+          "takeProfit": 4334.285000000001,
+          "outcome": "tp",
+          "filledUTC": "2026-09-11T09:00:00.000Z",
+          "resolvedUTC": "2026-09-11T11:30:00.000Z"
+        }
+      ]
+    },
+    {
+      "signalUTC": "2026-09-11T10:30:00.000Z",
+      "direction": "bearish",
+      "type": "T1",
+      "insideMother": false,
+      "patternHigh": 4349.975,
+      "patternLow": 4343.795,
+      "outcome": "not-filled",
+      "legs": [
+        {
+          "leg": 10,
+          "entry": 4345.724,
+          "stopLoss": 4352.975,
+          "takeProfit": 4337.635,
+          "outcome": "not-filled"
+        },
+        {
+          "leg": 25,
+          "entry": 4346.352500000001,
+          "stopLoss": 4352.975,
+          "takeProfit": 4337.635,
+          "outcome": "not-filled"
+        }
+      ]
+    },
+    {
+      "signalUTC": "2026-09-11T15:45:00.000Z",
+      "direction": "bearish",
+      "type": "T1",
+      "insideMother": false,
+      "patternHigh": 4377.245,
+      "patternLow": 4365.19,
+      "outcome": "tp",
+      "legs": [
+        {
+          "leg": 10,
+          "entry": 4367.5965,
+          "stopLoss": 4380.245,
+          "takeProfit": 4353.804999999999,
+          "outcome": "tp",
+          "filledUTC": "2026-09-11T16:00:00.000Z",
+          "resolvedUTC": "2026-09-11T16:15:00.000Z"
+        },
+        {
+          "leg": 25,
+          "entry": 4368.45375,
+          "stopLoss": 4380.245,
+          "takeProfit": 4353.804999999999,
+          "outcome": "tp",
+          "filledUTC": "2026-09-11T16:00:00.000Z",
+          "resolvedUTC": "2026-09-11T16:15:00.000Z"
+        }
+      ]
+    },
+    {
+      "signalUTC": "2026-09-11T17:30:00.000Z",
+      "direction": "bearish",
+      "type": "T1",
+      "insideMother": false,
+      "patternHigh": 4370.43,
+      "patternLow": 4359.945,
+      "outcome": "tp",
+      "legs": [
+        {
+          "leg": 10,
+          "entry": 4362.4965,
+          "stopLoss": 4373.43,
+          "takeProfit": 4350.610000000001,
+          "outcome": "tp",
+          "filledUTC": "2026-09-11T17:45:00.000Z",
+          "resolvedUTC": "2026-09-11T18:00:00.000Z"
+        },
+        {
+          "leg": 25,
+          "entry": 4363.21125,
+          "stopLoss": 4373.43,
+          "takeProfit": 4350.610000000001,
+          "outcome": "tp",
+          "filledUTC": "2026-09-11T17:45:00.000Z",
+          "resolvedUTC": "2026-09-11T18:00:00.000Z"
+        }
+      ]
+    },
+    {
+      "signalUTC": "2026-09-11T17:45:00.000Z",
+      "direction": "bearish",
+      "type": "T2",
+      "insideMother": false,
+      "patternHigh": 4370.43,
+      "patternLow": 4357.98,
+      "outcome": "tp",
+      "legs": [
+        {
+          "leg": 10,
+          "entry": 4358.7085,
+          "stopLoss": 4373.43,
+          "takeProfit": 4343.24,
+          "outcome": "tp",
+          "filledUTC": "2026-09-11T18:00:00.000Z",
+          "resolvedUTC": "2026-09-11T19:45:00.000Z"
+        },
+        {
+          "leg": 25,
+          "entry": 4359.26875,
+          "stopLoss": 4373.43,
+          "takeProfit": 4343.24,
+          "outcome": "tp",
+          "filledUTC": "2026-09-11T18:00:00.000Z",
+          "resolvedUTC": "2026-09-11T19:45:00.000Z"
+        }
+      ]
+    },
+    {
+      "signalUTC": "2026-09-14T02:45:00.000Z",
+      "direction": "bearish",
+      "type": "T2",
+      "insideMother": false,
+      "patternHigh": 4355.405,
+      "patternLow": 4330.375,
+      "outcome": "tp",
+      "legs": [
+        {
+          "leg": 10,
+          "entry": 4332.4484999999995,
+          "stopLoss": 4358.405,
+          "takeProfit": 4318.405,
+          "outcome": "tp",
+          "filledUTC": "2026-09-14T03:00:00.000Z",
+          "resolvedUTC": "2026-09-14T07:00:00.000Z"
+        },
+        {
+          "leg": 25,
+          "entry": 4334.62875,
+          "stopLoss": 4358.405,
+          "takeProfit": 4318.405,
+          "outcome": "tp",
+          "filledUTC": "2026-09-14T03:00:00.000Z",
+          "resolvedUTC": "2026-09-14T07:00:00.000Z"
+        }
+      ]
+    },
+    {
+      "signalUTC": "2026-09-14T05:15:00.000Z",
+      "direction": "bearish",
+      "type": "T1",
+      "insideMother": false,
+      "patternHigh": 4332.855,
+      "patternLow": 4326.41,
+      "outcome": "sl",
+      "legs": [
+        {
+          "leg": 10,
+          "entry": 4327.0235,
+          "stopLoss": 4335.855,
+          "takeProfit": 4317.305,
+          "outcome": "sl",
+          "filledUTC": "2026-09-14T05:30:00.000Z",
+          "resolvedUTC": "2026-09-14T05:30:00.000Z"
+        },
+        {
+          "leg": 25,
+          "entry": 4327.688749999999,
+          "stopLoss": 4335.855,
+          "takeProfit": 4317.305,
+          "outcome": "sl",
+          "filledUTC": "2026-09-14T05:30:00.000Z",
+          "resolvedUTC": "2026-09-14T05:30:00.000Z"
+        }
+      ]
+    },
+    {
+      "signalUTC": "2026-09-14T07:15:00.000Z",
+      "direction": "bearish",
+      "type": "T1",
+      "insideMother": false,
+      "patternHigh": 4324.395,
+      "patternLow": 4316.47,
+      "outcome": "tp",
+      "legs": [
+        {
+          "leg": 10,
+          "entry": 4317.746,
+          "stopLoss": 4327.395,
+          "takeProfit": 4306.674999999999,
+          "outcome": "tp",
+          "filledUTC": "2026-09-14T07:30:00.000Z",
+          "resolvedUTC": "2026-09-14T08:45:00.000Z"
+        },
+        {
+          "leg": 25,
+          "entry": 4318.8125,
+          "stopLoss": 4327.395,
+          "takeProfit": 4306.674999999999,
+          "outcome": "tp",
+          "filledUTC": "2026-09-14T07:30:00.000Z",
+          "resolvedUTC": "2026-09-14T08:45:00.000Z"
+        }
+      ]
+    },
+    {
+      "signalUTC": "2026-09-14T08:15:00.000Z",
+      "direction": "bearish",
+      "type": "T1",
+      "insideMother": true,
+      "motherUTC": "2026-09-14T07:45:00.000Z",
+      "motherHigh": 4322.24,
+      "motherLow": 4307.995,
+      "patternHigh": 4318.36,
+      "patternLow": 4310.345,
+      "motherAgeBars": 2,
+      "outcome": "tp",
+      "legs": [
+        {
+          "leg": 10,
+          "entry": 4310.954,
+          "stopLoss": 4321.36,
+          "takeProfit": 4300.0199999999995,
+          "outcome": "tp",
+          "filledUTC": "2026-09-14T08:30:00.000Z",
+          "resolvedUTC": "2026-09-14T09:15:00.000Z"
+        },
+        {
+          "leg": 25,
+          "entry": 4311.349999999999,
+          "stopLoss": 4321.36,
+          "takeProfit": 4300.0199999999995,
+          "outcome": "tp",
+          "filledUTC": "2026-09-14T08:30:00.000Z",
+          "resolvedUTC": "2026-09-14T09:15:00.000Z"
+        }
+      ]
+    },
+    {
+      "signalUTC": "2026-09-15T03:00:00.000Z",
+      "direction": "bearish",
+      "type": "T1",
+      "insideMother": false,
+      "patternHigh": 4317.63,
+      "patternLow": 4310.035,
+      "outcome": "tp",
+      "legs": [
+        {
+          "leg": 10,
+          "entry": 4311.4,
+          "stopLoss": 4320.63,
+          "takeProfit": 4301.5199999999995,
+          "outcome": "tp",
+          "filledUTC": "2026-09-15T03:15:00.000Z",
+          "resolvedUTC": "2026-09-15T04:30:00.000Z"
+        },
+        {
+          "leg": 25,
+          "entry": 4311.8875,
+          "stopLoss": 4320.63,
+          "takeProfit": 4301.5199999999995,
+          "outcome": "tp",
+          "filledUTC": "2026-09-15T03:15:00.000Z",
+          "resolvedUTC": "2026-09-15T04:30:00.000Z"
+        }
+      ]
+    },
+    {
+      "signalUTC": "2026-09-15T14:15:00.000Z",
+      "direction": "bearish",
+      "type": "T2",
+      "insideMother": false,
+      "patternHigh": 4300.695,
+      "patternLow": 4282.955,
+      "outcome": "sl",
+      "legs": [
+        {
+          "leg": 10,
+          "entry": 4285.3634999999995,
+          "stopLoss": 4303.695,
+          "takeProfit": 4264.9349999999995,
+          "outcome": "sl",
+          "filledUTC": "2026-09-15T14:30:00.000Z",
+          "resolvedUTC": "2026-09-15T18:00:00.000Z"
+        },
+        {
+          "leg": 25,
+          "entry": 4286.93625,
+          "stopLoss": 4303.695,
+          "takeProfit": 4264.9349999999995,
+          "outcome": "sl",
+          "filledUTC": "2026-09-15T15:15:00.000Z",
+          "resolvedUTC": "2026-09-15T18:00:00.000Z"
+        }
+      ]
+    },
+    {
+      "signalUTC": "2026-09-15T19:00:00.000Z",
+      "direction": "bearish",
+      "type": "T1",
+      "insideMother": false,
+      "patternHigh": 4310.76,
+      "patternLow": 4300.385,
+      "outcome": "uncertain",
+      "legs": [
+        {
+          "leg": 10,
+          "entry": 4301.254,
+          "stopLoss": 4313.76,
+          "takeProfit": 4287.08,
+          "outcome": "uncertain",
+          "filledUTC": "2026-09-15T19:15:00.000Z"
+        },
+        {
+          "leg": 25,
+          "entry": 4302.505,
+          "stopLoss": 4313.76,
+          "takeProfit": 4287.08,
+          "outcome": "uncertain",
+          "filledUTC": "2026-09-15T19:30:00.000Z"
+        }
+      ]
+    },
+    {
+      "signalUTC": "2026-09-15T19:30:00.000Z",
+      "direction": "bearish",
+      "type": "T1",
+      "insideMother": false,
+      "patternHigh": 4302.575,
+      "patternLow": 4296.81,
+      "outcome": "uncertain",
+      "legs": [
+        {
+          "leg": 10,
+          "entry": 4297.3445,
+          "stopLoss": 4305.575,
+          "takeProfit": 4288.255,
+          "outcome": "uncertain",
+          "filledUTC": "2026-09-15T19:45:00.000Z"
+        },
+        {
+          "leg": 25,
+          "entry": 4297.98875,
+          "stopLoss": 4305.575,
+          "takeProfit": 4288.255,
+          "outcome": "uncertain",
+          "filledUTC": "2026-09-15T19:45:00.000Z"
+        }
+      ]
+    },
+    {
+      "signalUTC": "2026-09-16T03:30:00.000Z",
+      "direction": "bearish",
+      "type": "T3",
+      "insideMother": false,
+      "patternHigh": 4341.135,
+      "patternLow": 4321.495,
+      "outcome": "sl",
+      "legs": [
+        {
+          "leg": 10,
+          "entry": 4327.614500000001,
+          "stopLoss": 4344.135,
+          "takeProfit": 4310.135,
+          "outcome": "sl",
+          "filledUTC": "2026-09-16T03:45:00.000Z",
+          "resolvedUTC": "2026-09-16T10:00:00.000Z"
+        },
+        {
+          "leg": 25,
+          "entry": 4328.33375,
+          "stopLoss": 4344.135,
+          "takeProfit": 4310.135,
+          "outcome": "sl",
+          "filledUTC": "2026-09-16T04:00:00.000Z",
+          "resolvedUTC": "2026-09-16T10:00:00.000Z"
+        }
+      ]
+    },
+    {
+      "signalUTC": "2026-09-16T15:15:00.000Z",
+      "direction": "bearish",
+      "type": "T2",
+      "insideMother": false,
+      "patternHigh": 4358.185,
+      "patternLow": 4344.205,
+      "outcome": "sl",
+      "legs": [
+        {
+          "leg": 10,
+          "entry": 4345.294,
+          "stopLoss": 4361.185,
+          "takeProfit": 4327.614999999999,
+          "outcome": "sl",
+          "filledUTC": "2026-09-16T15:30:00.000Z",
+          "resolvedUTC": "2026-09-16T15:45:00.000Z"
+        },
+        {
+          "leg": 25,
+          "entry": 4346.634999999999,
+          "stopLoss": 4361.185,
+          "takeProfit": 4327.614999999999,
+          "outcome": "sl",
+          "filledUTC": "2026-09-16T15:30:00.000Z",
+          "resolvedUTC": "2026-09-16T15:45:00.000Z"
+        }
+      ]
+    },
+    {
+      "signalUTC": "2026-09-17T01:45:00.000Z",
+      "direction": "bearish",
+      "type": "T3",
+      "insideMother": false,
+      "patternHigh": 4318.29,
+      "patternLow": 4298.155,
+      "outcome": "not-filled",
+      "legs": [
+        {
+          "leg": 10,
+          "entry": 4301.3215,
+          "stopLoss": 4321.29,
+          "takeProfit": 4281.29,
+          "outcome": "not-filled"
+        },
+        {
+          "leg": 25,
+          "entry": 4302.6587500000005,
+          "stopLoss": 4321.29,
+          "takeProfit": 4281.29,
+          "outcome": "not-filled"
+        }
+      ]
+    },
+    {
+      "signalUTC": "2026-09-17T07:45:00.000Z",
+      "direction": "bearish",
+      "type": "T1",
+      "insideMother": false,
+      "patternHigh": 4335.45,
+      "patternLow": 4323.77,
+      "outcome": "tp",
+      "legs": [
+        {
+          "leg": 10,
+          "entry": 4327.732,
+          "stopLoss": 4338.45,
+          "takeProfit": 4316.150000000001,
+          "outcome": "tp",
+          "filledUTC": "2026-09-17T08:00:00.000Z",
+          "resolvedUTC": "2026-09-17T08:15:00.000Z"
+        },
+        {
+          "leg": 25,
+          "entry": 4328.38,
+          "stopLoss": 4338.45,
+          "takeProfit": 4316.150000000001,
+          "outcome": "not-filled"
+        }
+      ]
+    },
+    {
+      "signalUTC": "2026-09-17T18:15:00.000Z",
+      "direction": "bearish",
+      "type": "T1",
+      "insideMother": false,
+      "patternHigh": 4365.735,
+      "patternLow": 4356.035,
+      "outcome": "not-filled",
+      "legs": [
+        {
+          "leg": 10,
+          "entry": 4357.202499999999,
+          "stopLoss": 4368.735,
+          "takeProfit": 4343.985,
+          "outcome": "not-filled"
+        },
+        {
+          "leg": 25,
+          "entry": 4358.4662499999995,
+          "stopLoss": 4368.735,
+          "takeProfit": 4343.985,
+          "outcome": "not-filled"
+        }
+      ]
+    },
+    {
+      "signalUTC": "2026-09-17T20:00:00.000Z",
+      "direction": "bearish",
+      "type": "T1",
+      "insideMother": false,
+      "patternHigh": 4349.43,
+      "patternLow": 4342.495,
+      "outcome": "uncertain",
+      "legs": [
+        {
+          "leg": 10,
+          "entry": 4343.3535,
+          "stopLoss": 4352.43,
+          "takeProfit": 4333.639999999999,
+          "outcome": "uncertain",
+          "filledUTC": "2026-09-17T20:15:00.000Z"
+        },
+        {
+          "leg": 25,
+          "entry": 4343.831249999999,
+          "stopLoss": 4352.43,
+          "takeProfit": 4333.639999999999,
+          "outcome": "uncertain",
+          "filledUTC": "2026-09-17T20:15:00.000Z"
+        }
+      ]
+    },
+    {
+      "signalUTC": "2026-09-21T02:00:00.000Z",
+      "direction": "bearish",
+      "type": "T2",
+      "insideMother": false,
+      "patternHigh": 4383.03,
+      "patternLow": 4368.57,
+      "outcome": "tp",
+      "legs": [
+        {
+          "leg": 10,
+          "entry": 4369.866,
+          "stopLoss": 4386.03,
+          "takeProfit": 4352.000000000001,
+          "outcome": "tp",
+          "filledUTC": "2026-09-21T02:15:00.000Z",
+          "resolvedUTC": "2026-09-21T05:45:00.000Z"
+        },
+        {
+          "leg": 25,
+          "entry": 4371.1425,
+          "stopLoss": 4386.03,
+          "takeProfit": 4352.000000000001,
+          "outcome": "tp",
+          "filledUTC": "2026-09-21T02:30:00.000Z",
+          "resolvedUTC": "2026-09-21T05:45:00.000Z"
+        }
+      ]
+    },
+    {
+      "signalUTC": "2026-09-21T02:45:00.000Z",
+      "direction": "bearish",
+      "type": "T3",
+      "insideMother": false,
+      "patternHigh": 4372.64,
+      "patternLow": 4361.28,
+      "outcome": "tp",
+      "legs": [
+        {
+          "leg": 10,
+          "entry": 4364.086499999999,
+          "stopLoss": 4375.64,
+          "takeProfit": 4351.989999999999,
+          "outcome": "tp",
+          "filledUTC": "2026-09-21T03:00:00.000Z",
+          "resolvedUTC": "2026-09-21T05:45:00.000Z"
+        },
+        {
+          "leg": 25,
+          "entry": 4364.49375,
+          "stopLoss": 4375.64,
+          "takeProfit": 4351.989999999999,
+          "outcome": "tp",
+          "filledUTC": "2026-09-21T03:00:00.000Z",
+          "resolvedUTC": "2026-09-21T05:45:00.000Z"
+        }
+      ]
+    },
+    {
+      "signalUTC": "2026-09-21T04:45:00.000Z",
+      "direction": "bearish",
+      "type": "T1",
+      "insideMother": false,
+      "patternHigh": 4363.385,
+      "patternLow": 4355.28,
+      "outcome": "tp",
+      "legs": [
+        {
+          "leg": 10,
+          "entry": 4356.5545,
+          "stopLoss": 4366.385,
+          "takeProfit": 4345.525,
+          "outcome": "tp",
+          "filledUTC": "2026-09-21T05:00:00.000Z",
+          "resolvedUTC": "2026-09-21T07:30:00.000Z"
+        },
+        {
+          "leg": 25,
+          "entry": 4357.45375,
+          "stopLoss": 4366.385,
+          "takeProfit": 4345.525,
+          "outcome": "tp",
+          "filledUTC": "2026-09-21T05:00:00.000Z",
+          "resolvedUTC": "2026-09-21T07:30:00.000Z"
+        }
+      ]
+    },
+    {
+      "signalUTC": "2026-09-21T10:30:00.000Z",
+      "direction": "bearish",
+      "type": "T3",
+      "insideMother": false,
+      "patternHigh": 4356.765,
+      "patternLow": 4345.245,
+      "outcome": "sl",
+      "legs": [
+        {
+          "leg": 10,
+          "entry": 4348.762,
+          "stopLoss": 4359.765,
+          "takeProfit": 4337.284999999999,
+          "outcome": "sl",
+          "filledUTC": "2026-09-21T10:45:00.000Z",
+          "resolvedUTC": "2026-09-21T11:30:00.000Z"
+        },
+        {
+          "leg": 25,
+          "entry": 4349.117499999999,
+          "stopLoss": 4359.765,
+          "takeProfit": 4337.284999999999,
+          "outcome": "sl",
+          "filledUTC": "2026-09-21T10:45:00.000Z",
+          "resolvedUTC": "2026-09-21T11:30:00.000Z"
+        }
+      ]
+    },
+    {
+      "signalUTC": "2026-09-21T16:30:00.000Z",
+      "direction": "bearish",
+      "type": "T2",
+      "insideMother": false,
+      "patternHigh": 4357.105,
+      "patternLow": 4343.58,
+      "outcome": "uncertain",
+      "legs": [
+        {
+          "leg": 10,
+          "entry": 4344.5865,
+          "stopLoss": 4360.105,
+          "takeProfit": 4327.675000000001,
+          "outcome": "uncertain",
+          "filledUTC": "2026-09-21T16:45:00.000Z"
+        },
+        {
+          "leg": 25,
+          "entry": 4345.63125,
+          "stopLoss": 4360.105,
+          "takeProfit": 4327.675000000001,
+          "outcome": "uncertain",
+          "filledUTC": "2026-09-21T16:45:00.000Z"
+        }
+      ]
+    },
+    {
+      "signalUTC": "2026-09-22T01:30:00.000Z",
+      "direction": "bearish",
+      "type": "T1",
+      "insideMother": false,
+      "patternHigh": 4358.9,
+      "patternLow": 4349.28,
+      "outcome": "tp",
+      "legs": [
+        {
+          "leg": 10,
+          "entry": 4349.8075,
+          "stopLoss": 4361.9,
+          "takeProfit": 4336.42,
+          "outcome": "tp",
+          "filledUTC": "2026-09-22T01:45:00.000Z",
+          "resolvedUTC": "2026-09-22T04:00:00.000Z"
+        },
+        {
+          "leg": 25,
+          "entry": 4350.7787499999995,
+          "stopLoss": 4361.9,
+          "takeProfit": 4336.42,
+          "outcome": "tp",
+          "filledUTC": "2026-09-22T01:45:00.000Z",
+          "resolvedUTC": "2026-09-22T04:00:00.000Z"
+        }
+      ]
+    },
+    {
+      "signalUTC": "2026-09-22T07:30:00.000Z",
+      "direction": "bearish",
+      "type": "T2",
+      "insideMother": false,
+      "patternHigh": 4324.415,
+      "patternLow": 4308.895,
+      "outcome": "tp",
+      "legs": [
+        {
+          "leg": 10,
+          "entry": 4311.4580000000005,
+          "stopLoss": 4327.415,
+          "takeProfit": 4294.595,
+          "outcome": "tp",
+          "filledUTC": "2026-09-22T07:45:00.000Z",
+          "resolvedUTC": "2026-09-22T08:30:00.000Z"
+        },
+        {
+          "leg": 25,
+          "entry": 4312.1375,
+          "stopLoss": 4327.415,
+          "takeProfit": 4294.595,
+          "outcome": "tp",
+          "filledUTC": "2026-09-22T07:45:00.000Z",
+          "resolvedUTC": "2026-09-22T08:30:00.000Z"
+        }
+      ]
+    },
+    {
+      "signalUTC": "2026-09-22T15:30:00.000Z",
+      "direction": "bearish",
+      "type": "T3",
+      "insideMother": false,
+      "patternHigh": 4340.78,
+      "patternLow": 4325.665,
+      "outcome": "sl",
+      "legs": [
+        {
+          "leg": 10,
+          "entry": 4328.35,
+          "stopLoss": 4343.78,
+          "takeProfit": 4312.06,
+          "outcome": "sl",
+          "filledUTC": "2026-09-22T15:45:00.000Z",
+          "resolvedUTC": "2026-09-22T17:45:00.000Z"
+        },
+        {
+          "leg": 25,
+          "entry": 4328.995,
+          "stopLoss": 4343.78,
+          "takeProfit": 4312.06,
+          "outcome": "sl",
+          "filledUTC": "2026-09-22T15:45:00.000Z",
+          "resolvedUTC": "2026-09-22T17:45:00.000Z"
+        }
+      ]
+    },
+    {
+      "signalUTC": "2026-09-22T16:00:00.000Z",
+      "direction": "bearish",
+      "type": "T1",
+      "insideMother": false,
+      "patternHigh": 4332.505,
+      "patternLow": 4322.68,
+      "outcome": "sl",
+      "legs": [
+        {
+          "leg": 10,
+          "entry": 4324.659,
+          "stopLoss": 4335.505,
+          "takeProfit": 4312.335,
+          "outcome": "sl",
+          "filledUTC": "2026-09-22T16:15:00.000Z",
+          "resolvedUTC": "2026-09-22T16:45:00.000Z"
+        },
+        {
+          "leg": 25,
+          "entry": 4325.7675,
+          "stopLoss": 4335.505,
+          "takeProfit": 4312.335,
+          "outcome": "sl",
+          "filledUTC": "2026-09-22T16:15:00.000Z",
+          "resolvedUTC": "2026-09-22T16:45:00.000Z"
+        }
+      ]
+    },
+    {
+      "signalUTC": "2026-09-22T18:30:00.000Z",
+      "direction": "bearish",
+      "type": "T3",
+      "insideMother": false,
+      "patternHigh": 4360.665,
+      "patternLow": 4347.59,
+      "outcome": "sl",
+      "legs": [
+        {
+          "leg": 10,
+          "entry": 4351.071,
+          "stopLoss": 4363.665,
+          "takeProfit": 4337.275000000001,
+          "outcome": "sl",
+          "filledUTC": "2026-09-22T18:45:00.000Z",
+          "resolvedUTC": "2026-09-22T19:30:00.000Z"
+        },
+        {
+          "leg": 25,
+          "entry": 4351.9725,
+          "stopLoss": 4363.665,
+          "takeProfit": 4337.275000000001,
+          "outcome": "sl",
+          "filledUTC": "2026-09-22T18:45:00.000Z",
+          "resolvedUTC": "2026-09-22T19:30:00.000Z"
+        }
+      ]
+    },
+    {
+      "signalUTC": "2026-09-23T00:15:00.000Z",
+      "direction": "bearish",
+      "type": "T1",
+      "insideMother": false,
+      "patternHigh": 4369.56,
+      "patternLow": 4358.855,
+      "outcome": "tp",
+      "legs": [
+        {
+          "leg": 10,
+          "entry": 4359.5415,
+          "stopLoss": 4372.56,
+          "takeProfit": 4345.13,
+          "outcome": "tp",
+          "filledUTC": "2026-09-23T00:30:00.000Z",
+          "resolvedUTC": "2026-09-23T01:15:00.000Z"
+        },
+        {
+          "leg": 25,
+          "entry": 4360.58625,
+          "stopLoss": 4372.56,
+          "takeProfit": 4345.13,
+          "outcome": "tp",
+          "filledUTC": "2026-09-23T00:30:00.000Z",
+          "resolvedUTC": "2026-09-23T01:15:00.000Z"
+        }
+      ]
+    },
+    {
+      "signalUTC": "2026-09-23T02:00:00.000Z",
+      "direction": "bearish",
+      "type": "T2",
+      "insideMother": false,
+      "patternHigh": 4346.71,
+      "patternLow": 4337.275,
+      "outcome": "tp",
+      "legs": [
+        {
+          "leg": 10,
+          "entry": 4337.746499999999,
+          "stopLoss": 4349.71,
+          "takeProfit": 4324.999999999999,
+          "outcome": "tp",
+          "filledUTC": "2026-09-23T02:15:00.000Z",
+          "resolvedUTC": "2026-09-23T07:00:00.000Z"
+        },
+        {
+          "leg": 25,
+          "entry": 4338.33375,
+          "stopLoss": 4349.71,
+          "takeProfit": 4324.999999999999,
+          "outcome": "tp",
+          "filledUTC": "2026-09-23T02:15:00.000Z",
+          "resolvedUTC": "2026-09-23T07:00:00.000Z"
+        }
+      ]
+    },
+    {
+      "signalUTC": "2026-09-23T04:30:00.000Z",
+      "direction": "bearish",
+      "type": "T3",
+      "insideMother": false,
+      "patternHigh": 4347.39,
+      "patternLow": 4342.48,
+      "outcome": "tp",
+      "legs": [
+        {
+          "leg": 10,
+          "entry": 4344.6225,
+          "stopLoss": 4350.39,
+          "takeProfit": 4338.63,
+          "outcome": "tp",
+          "filledUTC": "2026-09-23T04:45:00.000Z",
+          "resolvedUTC": "2026-09-23T05:30:00.000Z"
+        },
+        {
+          "leg": 25,
+          "entry": 4344.79125,
+          "stopLoss": 4350.39,
+          "takeProfit": 4338.63,
+          "outcome": "tp",
+          "filledUTC": "2026-09-23T04:45:00.000Z",
+          "resolvedUTC": "2026-09-23T05:30:00.000Z"
+        }
+      ]
+    },
+    {
+      "signalUTC": "2026-09-23T08:30:00.000Z",
+      "direction": "bearish",
+      "type": "T2",
+      "insideMother": false,
+      "patternHigh": 4322.75,
+      "patternLow": 4315.985,
+      "outcome": "tp",
+      "legs": [
+        {
+          "leg": 10,
+          "entry": 4316.797500000001,
+          "stopLoss": 4325.75,
+          "takeProfit": 4307.370000000001,
+          "outcome": "tp",
+          "filledUTC": "2026-09-23T08:45:00.000Z",
+          "resolvedUTC": "2026-09-23T11:15:00.000Z"
+        },
+        {
+          "leg": 25,
+          "entry": 4317.15375,
+          "stopLoss": 4325.75,
+          "takeProfit": 4307.370000000001,
+          "outcome": "tp",
+          "filledUTC": "2026-09-23T08:45:00.000Z",
+          "resolvedUTC": "2026-09-23T11:15:00.000Z"
+        }
+      ]
+    },
+    {
+      "signalUTC": "2026-09-23T19:30:00.000Z",
+      "direction": "bearish",
+      "type": "T1",
+      "insideMother": false,
+      "patternHigh": 4287.31,
+      "patternLow": 4281.25,
+      "outcome": "uncertain",
+      "legs": [
+        {
+          "leg": 10,
+          "entry": 4283.0235,
+          "stopLoss": 4290.31,
+          "takeProfit": 4274.929999999999,
+          "outcome": "uncertain",
+          "filledUTC": "2026-09-23T19:45:00.000Z"
+        },
+        {
+          "leg": 25,
+          "entry": 4283.62875,
+          "stopLoss": 4290.31,
+          "takeProfit": 4274.929999999999,
+          "outcome": "uncertain",
+          "filledUTC": "2026-09-23T19:45:00.000Z"
+        }
+      ]
+    },
+    {
+      "signalUTC": "2026-09-24T10:15:00.000Z",
+      "direction": "bearish",
+      "type": "T2",
+      "insideMother": false,
+      "patternHigh": 4259.475,
+      "patternLow": 4244.975,
+      "outcome": "sl",
+      "legs": [
+        {
+          "leg": 10,
+          "entry": 4246.3975,
+          "stopLoss": 4262.475,
+          "takeProfit": 4229.004999999999,
+          "outcome": "sl",
+          "filledUTC": "2026-09-24T10:30:00.000Z",
+          "resolvedUTC": "2026-09-24T10:30:00.000Z"
+        },
+        {
+          "leg": 25,
+          "entry": 4247.38375,
+          "stopLoss": 4262.475,
+          "takeProfit": 4229.004999999999,
+          "outcome": "sl",
+          "filledUTC": "2026-09-24T10:30:00.000Z",
+          "resolvedUTC": "2026-09-24T10:30:00.000Z"
+        }
+      ]
+    },
+    {
+      "signalUTC": "2026-09-24T13:15:00.000Z",
+      "direction": "bearish",
+      "type": "T3",
+      "insideMother": false,
+      "patternHigh": 4285.005,
+      "patternLow": 4271.33,
+      "outcome": "tp",
+      "legs": [
+        {
+          "leg": 10,
+          "entry": 4276.719,
+          "stopLoss": 4288.005,
+          "takeProfit": 4265.075,
+          "outcome": "tp",
+          "filledUTC": "2026-09-24T13:30:00.000Z",
+          "resolvedUTC": "2026-09-24T13:45:00.000Z"
+        },
+        {
+          "leg": 25,
+          "entry": 4276.9875,
+          "stopLoss": 4288.005,
+          "takeProfit": 4265.075,
+          "outcome": "tp",
+          "filledUTC": "2026-09-24T13:30:00.000Z",
+          "resolvedUTC": "2026-09-24T13:45:00.000Z"
+        }
+      ]
+    },
+    {
+      "signalUTC": "2026-09-24T20:00:00.000Z",
+      "direction": "bearish",
+      "type": "T2",
+      "insideMother": false,
+      "patternHigh": 4276.015,
+      "patternLow": 4269.94,
+      "outcome": "uncertain",
+      "legs": [
+        {
+          "leg": 10,
+          "entry": 4270.389,
+          "stopLoss": 4279.015,
+          "takeProfit": 4260.985,
+          "outcome": "uncertain",
+          "filledUTC": "2026-09-24T20:15:00.000Z"
+        },
+        {
+          "leg": 25,
+          "entry": 4270.9725,
+          "stopLoss": 4279.015,
+          "takeProfit": 4260.985,
+          "outcome": "uncertain",
+          "filledUTC": "2026-09-24T20:30:00.000Z"
+        }
+      ]
+    },
+    {
+      "signalUTC": "2026-09-24T23:15:00.000Z",
+      "direction": "bearish",
+      "type": "T1",
+      "insideMother": false,
+      "patternHigh": 4275.6,
+      "patternLow": 4271.485,
+      "outcome": "tp",
+      "legs": [
+        {
+          "leg": 10,
+          "entry": 4272.097,
+          "stopLoss": 4278.6,
+          "takeProfit": 4265.32,
+          "outcome": "tp",
+          "filledUTC": "2026-09-24T23:30:00.000Z",
+          "resolvedUTC": "2026-09-24T23:45:00.000Z"
+        },
+        {
+          "leg": 25,
+          "entry": 4272.3025,
+          "stopLoss": 4278.6,
+          "takeProfit": 4265.32,
+          "outcome": "tp",
+          "filledUTC": "2026-09-24T23:30:00.000Z",
+          "resolvedUTC": "2026-09-24T23:45:00.000Z"
+        }
+      ]
+    },
+    {
+      "signalUTC": "2026-09-25T01:45:00.000Z",
+      "direction": "bearish",
+      "type": "T2",
+      "insideMother": false,
+      "patternHigh": 4295.895,
+      "patternLow": 4286.43,
+      "outcome": "tp",
+      "legs": [
+        {
+          "leg": 10,
+          "entry": 4288.3255,
+          "stopLoss": 4298.895,
+          "takeProfit": 4276.785,
+          "outcome": "tp",
+          "filledUTC": "2026-09-25T02:00:00.000Z",
+          "resolvedUTC": "2026-09-25T03:30:00.000Z"
+        },
+        {
+          "leg": 25,
+          "entry": 4289.05375,
+          "stopLoss": 4298.895,
+          "takeProfit": 4276.785,
+          "outcome": "tp",
+          "filledUTC": "2026-09-25T02:00:00.000Z",
+          "resolvedUTC": "2026-09-25T03:30:00.000Z"
+        }
+      ]
+    },
+    {
+      "signalUTC": "2026-09-25T11:15:00.000Z",
+      "direction": "bearish",
+      "type": "T1",
+      "insideMother": false,
+      "patternHigh": 4315.795,
+      "patternLow": 4304.605,
+      "outcome": "tp",
+      "legs": [
+        {
+          "leg": 10,
+          "entry": 4305.5325,
+          "stopLoss": 4318.795,
+          "takeProfit": 4290.705,
+          "outcome": "tp",
+          "filledUTC": "2026-09-25T11:30:00.000Z",
+          "resolvedUTC": "2026-09-25T13:15:00.000Z"
+        },
+        {
+          "leg": 25,
+          "entry": 4306.70625,
+          "stopLoss": 4318.795,
+          "takeProfit": 4290.705,
+          "outcome": "tp",
+          "filledUTC": "2026-09-25T11:30:00.000Z",
+          "resolvedUTC": "2026-09-25T13:15:00.000Z"
+        }
+      ]
+    },
+    {
+      "signalUTC": "2026-09-28T06:45:00.000Z",
+      "direction": "bearish",
+      "type": "T1",
+      "insideMother": false,
+      "patternHigh": 4177.75,
+      "patternLow": 4161.945,
+      "outcome": "tp",
+      "legs": [
+        {
+          "leg": 10,
+          "entry": 4165.003000000001,
+          "stopLoss": 4180.75,
+          "takeProfit": 4147.76,
+          "outcome": "tp",
+          "filledUTC": "2026-09-28T07:00:00.000Z",
+          "resolvedUTC": "2026-09-28T08:15:00.000Z"
+        },
+        {
+          "leg": 25,
+          "entry": 4166.125,
+          "stopLoss": 4180.75,
+          "takeProfit": 4147.76,
+          "outcome": "tp",
+          "filledUTC": "2026-09-28T07:00:00.000Z",
+          "resolvedUTC": "2026-09-28T08:15:00.000Z"
+        }
+      ]
+    },
+    {
+      "signalUTC": "2026-09-28T12:30:00.000Z",
+      "direction": "bearish",
+      "type": "T2",
+      "insideMother": false,
+      "patternHigh": 4171.42,
+      "patternLow": 4143.21,
+      "outcome": "tp",
+      "legs": [
+        {
+          "leg": 10,
+          "entry": 4146.1935,
+          "stopLoss": 4174.42,
+          "takeProfit": 4134.42,
+          "outcome": "tp",
+          "filledUTC": "2026-09-28T12:45:00.000Z",
+          "resolvedUTC": "2026-09-28T14:30:00.000Z"
+        },
+        {
+          "leg": 25,
+          "entry": 4147.54125,
+          "stopLoss": 4174.42,
+          "takeProfit": 4134.42,
+          "outcome": "tp",
+          "filledUTC": "2026-09-28T12:45:00.000Z",
+          "resolvedUTC": "2026-09-28T14:30:00.000Z"
+        }
+      ]
+    },
+    {
+      "signalUTC": "2026-09-28T14:00:00.000Z",
+      "direction": "bearish",
+      "type": "T1",
+      "insideMother": false,
+      "patternHigh": 4160.65,
+      "patternLow": 4138.135,
+      "outcome": "tp",
+      "legs": [
+        {
+          "leg": 10,
+          "entry": 4140.638,
+          "stopLoss": 4163.65,
+          "takeProfit": 4123.65,
+          "outcome": "tp",
+          "filledUTC": "2026-09-28T14:15:00.000Z",
+          "resolvedUTC": "2026-09-28T14:30:00.000Z"
+        },
+        {
+          "leg": 25,
+          "entry": 4143.365,
+          "stopLoss": 4163.65,
+          "takeProfit": 4123.65,
+          "outcome": "tp",
+          "filledUTC": "2026-09-28T14:15:00.000Z",
+          "resolvedUTC": "2026-09-28T14:30:00.000Z"
+        }
+      ]
+    },
+    {
+      "signalUTC": "2026-09-28T19:00:00.000Z",
+      "direction": "bearish",
+      "type": "T1",
+      "insideMother": true,
+      "motherUTC": "2026-09-28T17:00:00.000Z",
+      "motherHigh": 4146.77,
+      "motherLow": 4126.215,
+      "patternHigh": 4141.89,
+      "patternLow": 4130.95,
+      "motherAgeBars": 8,
+      "outcome": "tp",
+      "legs": [
+        {
+          "leg": 10,
+          "entry": 4133.3975,
+          "stopLoss": 4144.89,
+          "takeProfit": 4120.61,
+          "outcome": "tp",
+          "filledUTC": "2026-09-28T19:15:00.000Z",
+          "resolvedUTC": "2026-09-28T20:00:00.000Z"
+        },
+        {
+          "leg": 25,
+          "entry": 4134.36875,
+          "stopLoss": 4144.89,
+          "takeProfit": 4120.61,
+          "outcome": "tp",
+          "filledUTC": "2026-09-28T19:15:00.000Z",
+          "resolvedUTC": "2026-09-28T20:00:00.000Z"
+        }
+      ]
+    },
+    {
+      "signalUTC": "2026-09-28T19:30:00.000Z",
+      "direction": "bearish",
+      "type": "T1",
+      "insideMother": true,
+      "motherUTC": "2026-09-28T17:00:00.000Z",
+      "motherHigh": 4146.77,
+      "motherLow": 4126.215,
+      "patternHigh": 4136.52,
+      "patternLow": 4128.4,
+      "motherAgeBars": 10,
+      "outcome": "not-filled",
+      "legs": [
+        {
+          "leg": 10,
+          "entry": 4129.8679999999995,
+          "stopLoss": 4139.52,
+          "takeProfit": 4119.359999999999,
+          "outcome": "not-filled"
+        },
+        {
+          "leg": 25,
+          "entry": 4130.509999999999,
+          "stopLoss": 4139.52,
+          "takeProfit": 4119.359999999999,
+          "outcome": "not-filled"
+        }
+      ]
+    },
+    {
+      "signalUTC": "2026-09-29T11:30:00.000Z",
+      "direction": "bearish",
+      "type": "T1",
+      "insideMother": false,
+      "patternHigh": 4161.325,
+      "patternLow": 4151.125,
+      "outcome": "sl",
+      "legs": [
+        {
+          "leg": 10,
+          "entry": 4152.6225,
+          "stopLoss": 4164.325,
+          "takeProfit": 4139.345,
+          "outcome": "sl",
+          "filledUTC": "2026-09-29T11:45:00.000Z",
+          "resolvedUTC": "2026-09-29T13:45:00.000Z"
+        },
+        {
+          "leg": 25,
+          "entry": 4153.80375,
+          "stopLoss": 4164.325,
+          "takeProfit": 4139.345,
+          "outcome": "sl",
+          "filledUTC": "2026-09-29T11:45:00.000Z",
+          "resolvedUTC": "2026-09-29T13:45:00.000Z"
+        }
+      ]
+    },
+    {
+      "signalUTC": "2026-09-29T16:00:00.000Z",
+      "direction": "bearish",
+      "type": "T1",
+      "insideMother": true,
+      "motherUTC": "2026-09-29T15:15:00.000Z",
+      "motherHigh": 4163,
+      "motherLow": 4148.42,
+      "patternHigh": 4162.17,
+      "patternLow": 4150.445,
+      "motherAgeBars": 3,
+      "outcome": "sl",
+      "legs": [
+        {
+          "leg": 10,
+          "entry": 4151.319,
+          "stopLoss": 4165.17,
+          "takeProfit": 4135.92,
+          "outcome": "sl",
+          "filledUTC": "2026-09-29T16:15:00.000Z",
+          "resolvedUTC": "2026-09-29T18:00:00.000Z"
+        },
+        {
+          "leg": 25,
+          "entry": 4152.4800000000005,
+          "stopLoss": 4165.17,
+          "takeProfit": 4135.92,
+          "outcome": "sl",
+          "filledUTC": "2026-09-29T16:15:00.000Z",
+          "resolvedUTC": "2026-09-29T18:00:00.000Z"
+        }
+      ]
+    },
+    {
+      "signalUTC": "2026-09-29T17:30:00.000Z",
+      "direction": "bearish",
+      "type": "T1",
+      "insideMother": false,
+      "patternHigh": 4149.08,
+      "patternLow": 4143.735,
+      "outcome": "sl",
+      "legs": [
+        {
+          "leg": 10,
+          "entry": 4145.477,
+          "stopLoss": 4152.08,
+          "takeProfit": 4138.24,
+          "outcome": "sl",
+          "filledUTC": "2026-09-29T17:45:00.000Z",
+          "resolvedUTC": "2026-09-29T18:00:00.000Z"
+        },
+        {
+          "leg": 25,
+          "entry": 4145.952499999999,
+          "stopLoss": 4152.08,
+          "takeProfit": 4138.24,
+          "outcome": "sl",
+          "filledUTC": "2026-09-29T17:45:00.000Z",
+          "resolvedUTC": "2026-09-29T18:00:00.000Z"
+        }
+      ]
+    },
+    {
+      "signalUTC": "2026-09-30T03:30:00.000Z",
+      "direction": "bearish",
+      "type": "T1",
+      "insideMother": false,
+      "patternHigh": 4181,
+      "patternLow": 4174.11,
+      "outcome": "sl",
+      "legs": [
+        {
+          "leg": 10,
+          "entry": 4176.1515,
+          "stopLoss": 4184,
+          "takeProfit": 4167.200000000001,
+          "outcome": "sl",
+          "filledUTC": "2026-09-30T04:00:00.000Z",
+          "resolvedUTC": "2026-09-30T04:30:00.000Z"
+        },
+        {
+          "leg": 25,
+          "entry": 4176.97875,
+          "stopLoss": 4184,
+          "takeProfit": 4167.200000000001,
+          "outcome": "sl",
+          "filledUTC": "2026-09-30T04:15:00.000Z",
+          "resolvedUTC": "2026-09-30T04:30:00.000Z"
+        }
+      ]
+    },
+    {
+      "signalUTC": "2026-09-30T03:45:00.000Z",
+      "direction": "bearish",
+      "type": "T2",
+      "insideMother": false,
+      "patternHigh": 4181,
+      "patternLow": 4171.445,
+      "outcome": "sl",
+      "legs": [
+        {
+          "leg": 10,
+          "entry": 4173.065,
+          "stopLoss": 4184,
+          "takeProfit": 4161.57,
+          "outcome": "sl",
+          "filledUTC": "2026-09-30T04:00:00.000Z",
+          "resolvedUTC": "2026-09-30T04:30:00.000Z"
+        },
+        {
+          "leg": 25,
+          "entry": 4173.485,
+          "stopLoss": 4184,
+          "takeProfit": 4161.57,
+          "outcome": "sl",
+          "filledUTC": "2026-09-30T04:00:00.000Z",
+          "resolvedUTC": "2026-09-30T04:30:00.000Z"
+        }
+      ]
+    },
+    {
+      "signalUTC": "2026-09-30T08:45:00.000Z",
+      "direction": "bearish",
+      "type": "T2",
+      "insideMother": false,
+      "patternHigh": 4202.39,
+      "patternLow": 4191.355,
+      "outcome": "tp",
+      "legs": [
+        {
+          "leg": 10,
+          "entry": 4192.647999999999,
+          "stopLoss": 4205.39,
+          "takeProfit": 4178.669999999999,
+          "outcome": "tp",
+          "filledUTC": "2026-09-30T09:00:00.000Z",
+          "resolvedUTC": "2026-09-30T11:15:00.000Z"
+        },
+        {
+          "leg": 25,
+          "entry": 4193.575,
+          "stopLoss": 4205.39,
+          "takeProfit": 4178.669999999999,
+          "outcome": "tp",
+          "filledUTC": "2026-09-30T09:00:00.000Z",
+          "resolvedUTC": "2026-09-30T11:15:00.000Z"
+        }
+      ]
+    },
+    {
+      "signalUTC": "2026-09-30T10:30:00.000Z",
+      "direction": "bearish",
+      "type": "T1",
+      "insideMother": true,
+      "motherUTC": "2026-09-30T09:15:00.000Z",
+      "motherHigh": 4191.02,
+      "motherLow": 4183.11,
+      "patternHigh": 4190.515,
+      "patternLow": 4183.85,
+      "motherAgeBars": 5,
+      "outcome": "sl",
+      "legs": [
+        {
+          "leg": 10,
+          "entry": 4184.4235,
+          "stopLoss": 4193.515,
+          "takeProfit": 4174.485,
+          "outcome": "sl",
+          "filledUTC": "2026-09-30T10:45:00.000Z",
+          "resolvedUTC": "2026-09-30T12:00:00.000Z"
+        },
+        {
+          "leg": 25,
+          "entry": 4185.05875,
+          "stopLoss": 4193.515,
+          "takeProfit": 4174.485,
+          "outcome": "sl",
+          "filledUTC": "2026-09-30T10:45:00.000Z",
+          "resolvedUTC": "2026-09-30T12:00:00.000Z"
+        }
+      ]
+    },
+    {
+      "signalUTC": "2026-09-30T14:15:00.000Z",
+      "direction": "bearish",
+      "type": "T1",
+      "insideMother": false,
+      "patternHigh": 4183.94,
+      "patternLow": 4169.955,
+      "outcome": "tp",
+      "legs": [
+        {
+          "leg": 10,
+          "entry": 4172.3625,
+          "stopLoss": 4186.94,
+          "takeProfit": 4155.990000000001,
+          "outcome": "tp",
+          "filledUTC": "2026-09-30T14:30:00.000Z",
+          "resolvedUTC": "2026-09-30T15:15:00.000Z"
+        },
+        {
+          "leg": 25,
+          "entry": 4173.70875,
+          "stopLoss": 4186.94,
+          "takeProfit": 4155.990000000001,
+          "outcome": "tp",
+          "filledUTC": "2026-09-30T14:30:00.000Z",
+          "resolvedUTC": "2026-09-30T15:15:00.000Z"
+        }
+      ]
+    },
+    {
+      "signalUTC": "2026-10-01T13:00:00.000Z",
+      "direction": "bearish",
+      "type": "T2",
+      "insideMother": false,
+      "patternHigh": 4187.81,
+      "patternLow": 4173.205,
+      "outcome": "tp",
+      "legs": [
+        {
+          "leg": 10,
+          "entry": 4173.6495,
+          "stopLoss": 4190.81,
+          "takeProfit": 4155.38,
+          "outcome": "tp",
+          "filledUTC": "2026-10-01T13:15:00.000Z",
+          "resolvedUTC": "2026-10-01T14:00:00.000Z"
+        },
+        {
+          "leg": 25,
+          "entry": 4174.481250000001,
+          "stopLoss": 4190.81,
+          "takeProfit": 4155.38,
+          "outcome": "tp",
+          "filledUTC": "2026-10-01T13:15:00.000Z",
+          "resolvedUTC": "2026-10-01T14:00:00.000Z"
+        }
+      ]
+    },
+    {
+      "signalUTC": "2026-10-01T17:45:00.000Z",
+      "direction": "bearish",
+      "type": "T1",
+      "insideMother": false,
+      "patternHigh": 4186.375,
+      "patternLow": 4166.75,
+      "outcome": "uncertain",
+      "legs": [
+        {
+          "leg": 10,
+          "entry": 4170.9425,
+          "stopLoss": 4189.375,
+          "takeProfit": 4151.235000000001,
+          "outcome": "uncertain",
+          "filledUTC": "2026-10-01T18:00:00.000Z"
+        },
+        {
+          "leg": 25,
+          "entry": 4171.89875,
+          "stopLoss": 4189.375,
+          "takeProfit": 4151.235000000001,
+          "outcome": "uncertain",
+          "filledUTC": "2026-10-01T18:00:00.000Z"
+        }
+      ]
+    },
+    {
+      "signalUTC": "2026-10-01T20:15:00.000Z",
+      "direction": "bearish",
+      "type": "T1",
+      "insideMother": true,
+      "motherUTC": "2026-10-01T18:30:00.000Z",
+      "motherHigh": 4182.265,
+      "motherLow": 4171.665,
+      "patternHigh": 4180.41,
+      "patternLow": 4175.06,
+      "motherAgeBars": 7,
+      "outcome": "uncertain",
+      "legs": [
+        {
+          "leg": 10,
+          "entry": 4176.017,
+          "stopLoss": 4183.41,
+          "takeProfit": 4168.1900000000005,
+          "outcome": "uncertain",
+          "filledUTC": "2026-10-01T20:30:00.000Z"
+        },
+        {
+          "leg": 25,
+          "entry": 4176.342500000001,
+          "stopLoss": 4183.41,
+          "takeProfit": 4168.1900000000005,
+          "outcome": "uncertain",
+          "filledUTC": "2026-10-01T20:45:00.000Z"
+        }
+      ]
+    },
+    {
+      "signalUTC": "2026-10-02T07:30:00.000Z",
+      "direction": "bearish",
+      "type": "T3",
+      "insideMother": false,
+      "patternHigh": 4189.375,
+      "patternLow": 4177.72,
+      "outcome": "sl",
+      "legs": [
+        {
+          "leg": 10,
+          "entry": 4183.2865,
+          "stopLoss": 4192.375,
+          "takeProfit": 4173.715,
+          "outcome": "sl",
+          "filledUTC": "2026-10-02T07:45:00.000Z",
+          "resolvedUTC": "2026-10-02T08:00:00.000Z"
+        },
+        {
+          "leg": 25,
+          "entry": 4183.64875,
+          "stopLoss": 4192.375,
+          "takeProfit": 4173.715,
+          "outcome": "sl",
+          "filledUTC": "2026-10-02T07:45:00.000Z",
+          "resolvedUTC": "2026-10-02T08:00:00.000Z"
+        }
+      ]
+    },
+    {
+      "signalUTC": "2026-10-02T11:15:00.000Z",
+      "direction": "bearish",
+      "type": "T1",
+      "insideMother": false,
+      "patternHigh": 4188.475,
+      "patternLow": 4180.515,
+      "outcome": "sl",
+      "legs": [
+        {
+          "leg": 10,
+          "entry": 4181.4055,
+          "stopLoss": 4191.475,
+          "takeProfit": 4169.994999999999,
+          "outcome": "sl",
+          "filledUTC": "2026-10-02T11:30:00.000Z",
+          "resolvedUTC": "2026-10-02T12:30:00.000Z"
+        },
+        {
+          "leg": 25,
+          "entry": 4182.411249999999,
+          "stopLoss": 4191.475,
+          "takeProfit": 4169.994999999999,
+          "outcome": "sl",
+          "filledUTC": "2026-10-02T11:30:00.000Z",
+          "resolvedUTC": "2026-10-02T12:30:00.000Z"
+        }
+      ]
+    },
+    {
+      "signalUTC": "2026-10-02T14:15:00.000Z",
+      "direction": "bearish",
+      "type": "T2",
+      "insideMother": false,
+      "patternHigh": 4196.835,
+      "patternLow": 4174.03,
+      "outcome": "tp",
+      "legs": [
+        {
+          "leg": 10,
+          "entry": 4175.877,
+          "stopLoss": 4199.835,
+          "takeProfit": 4159.835,
+          "outcome": "tp",
+          "filledUTC": "2026-10-02T14:30:00.000Z",
+          "resolvedUTC": "2026-10-02T14:45:00.000Z"
+        },
+        {
+          "leg": 25,
+          "entry": 4178.07,
+          "stopLoss": 4199.835,
+          "takeProfit": 4159.835,
+          "outcome": "tp",
+          "filledUTC": "2026-10-02T14:30:00.000Z",
+          "resolvedUTC": "2026-10-02T14:45:00.000Z"
+        }
+      ]
+    },
+    {
+      "signalUTC": "2026-10-05T12:45:00.000Z",
+      "direction": "bearish",
+      "type": "T3",
+      "insideMother": false,
+      "patternHigh": 4166.295,
+      "patternLow": 4153.72,
+      "outcome": "tp",
+      "legs": [
+        {
+          "leg": 10,
+          "entry": 4157.034,
+          "stopLoss": 4169.295,
+          "takeProfit": 4143.885,
+          "outcome": "tp",
+          "filledUTC": "2026-10-05T13:00:00.000Z",
+          "resolvedUTC": "2026-10-05T13:30:00.000Z"
+        },
+        {
+          "leg": 25,
+          "entry": 4157.7,
+          "stopLoss": 4169.295,
+          "takeProfit": 4143.885,
+          "outcome": "tp",
+          "filledUTC": "2026-10-05T13:00:00.000Z",
+          "resolvedUTC": "2026-10-05T13:30:00.000Z"
+        }
+      ]
+    },
+    {
+      "signalUTC": "2026-10-05T23:30:00.000Z",
+      "direction": "bearish",
+      "type": "T1",
+      "insideMother": false,
+      "patternHigh": 4141.025,
+      "patternLow": 4136.725,
+      "outcome": "sl",
+      "legs": [
+        {
+          "leg": 10,
+          "entry": 4137.3435,
+          "stopLoss": 4144.025,
+          "takeProfit": 4130.035,
+          "outcome": "sl",
+          "filledUTC": "2026-10-06T00:00:00.000Z",
+          "resolvedUTC": "2026-10-06T00:30:00.000Z"
+        },
+        {
+          "leg": 25,
+          "entry": 4137.813749999999,
+          "stopLoss": 4144.025,
+          "takeProfit": 4130.035,
+          "outcome": "sl",
+          "filledUTC": "2026-10-06T00:15:00.000Z",
+          "resolvedUTC": "2026-10-06T00:30:00.000Z"
+        }
+      ]
+    },
+    {
+      "signalUTC": "2026-10-06T01:15:00.000Z",
+      "direction": "bearish",
+      "type": "T2",
+      "insideMother": false,
+      "patternHigh": 4152.27,
+      "patternLow": 4135.58,
+      "outcome": "tp",
+      "legs": [
+        {
+          "leg": 10,
+          "entry": 4137.6205,
+          "stopLoss": 4155.27,
+          "takeProfit": 4117.359999999999,
+          "outcome": "tp",
+          "filledUTC": "2026-10-06T01:30:00.000Z",
+          "resolvedUTC": "2026-10-06T02:30:00.000Z"
+        },
+        {
+          "leg": 25,
+          "entry": 4139.57875,
+          "stopLoss": 4155.27,
+          "takeProfit": 4117.359999999999,
+          "outcome": "not-filled"
+        }
+      ]
+    },
+    {
+      "signalUTC": "2026-10-06T02:15:00.000Z",
+      "direction": "bearish",
+      "type": "T1",
+      "insideMother": false,
+      "patternHigh": 4131.63,
+      "patternLow": 4126.55,
+      "outcome": "uncertain",
+      "legs": [
+        {
+          "leg": 10,
+          "entry": 4127.1335,
+          "stopLoss": 4134.63,
+          "takeProfit": 4118.849999999999,
+          "outcome": "uncertain"
+        },
+        {
+          "leg": 25,
+          "entry": 4127.72375,
+          "stopLoss": 4134.63,
+          "takeProfit": 4118.849999999999,
+          "outcome": "uncertain"
+        }
+      ]
+    },
+    {
+      "signalUTC": "2026-10-06T13:15:00.000Z",
+      "direction": "bearish",
+      "type": "T1",
+      "insideMother": false,
+      "patternHigh": 4174.545,
+      "patternLow": 4161.05,
+      "outcome": "tp",
+      "legs": [
+        {
+          "leg": 10,
+          "entry": 4162.6720000000005,
+          "stopLoss": 4177.545,
+          "takeProfit": 4145.645,
+          "outcome": "tp",
+          "filledUTC": "2026-10-06T13:30:00.000Z",
+          "resolvedUTC": "2026-10-06T14:15:00.000Z"
+        },
+        {
+          "leg": 25,
+          "entry": 4164.2875,
+          "stopLoss": 4177.545,
+          "takeProfit": 4145.645,
+          "outcome": "tp",
+          "filledUTC": "2026-10-06T13:30:00.000Z",
+          "resolvedUTC": "2026-10-06T14:15:00.000Z"
+        }
+      ]
+    },
+    {
+      "signalUTC": "2026-10-06T14:15:00.000Z",
+      "direction": "bearish",
+      "type": "T1",
+      "insideMother": false,
+      "patternHigh": 4158.625,
+      "patternLow": 4143.825,
+      "outcome": "sl",
+      "legs": [
+        {
+          "leg": 10,
+          "entry": 4146.975,
+          "stopLoss": 4161.625,
+          "takeProfit": 4130.5650000000005,
+          "outcome": "sl",
+          "filledUTC": "2026-10-06T14:30:00.000Z",
+          "resolvedUTC": "2026-10-06T15:00:00.000Z"
+        },
+        {
+          "leg": 25,
+          "entry": 4148.295,
+          "stopLoss": 4161.625,
+          "takeProfit": 4130.5650000000005,
+          "outcome": "sl",
+          "filledUTC": "2026-10-06T14:30:00.000Z",
+          "resolvedUTC": "2026-10-06T15:00:00.000Z"
+        }
+      ]
+    },
+    {
+      "signalUTC": "2026-10-06T20:15:00.000Z",
+      "direction": "bearish",
+      "type": "T2",
+      "insideMother": false,
+      "patternHigh": 4170.275,
+      "patternLow": 4162.445,
+      "outcome": "uncertain",
+      "legs": [
+        {
+          "leg": 10,
+          "entry": 4164.4529999999995,
+          "stopLoss": 4173.275,
+          "takeProfit": 4154.895,
+          "outcome": "uncertain",
+          "filledUTC": "2026-10-06T20:30:00.000Z"
+        },
+        {
+          "leg": 25,
+          "entry": 4165.005,
+          "stopLoss": 4173.275,
+          "takeProfit": 4154.895,
+          "outcome": "uncertain"
+        }
+      ]
+    },
+    {
+      "signalUTC": "2026-10-07T00:15:00.000Z",
+      "direction": "bearish",
+      "type": "T1",
+      "insideMother": false,
+      "patternHigh": 4169.605,
+      "patternLow": 4160.09,
+      "outcome": "tp",
+      "legs": [
+        {
+          "leg": 10,
+          "entry": 4161.054,
+          "stopLoss": 4172.605,
+          "takeProfit": 4147.745000000001,
+          "outcome": "tp",
+          "filledUTC": "2026-10-07T00:30:00.000Z",
+          "resolvedUTC": "2026-10-07T01:45:00.000Z"
+        },
+        {
+          "leg": 25,
+          "entry": 4162.3725,
+          "stopLoss": 4172.605,
+          "takeProfit": 4147.745000000001,
+          "outcome": "tp",
+          "filledUTC": "2026-10-07T00:30:00.000Z",
+          "resolvedUTC": "2026-10-07T01:45:00.000Z"
+        }
+      ]
+    },
+    {
+      "signalUTC": "2026-10-07T01:45:00.000Z",
+      "direction": "bearish",
+      "type": "T2",
+      "insideMother": false,
+      "patternHigh": 4155.12,
+      "patternLow": 4146.315,
+      "outcome": "tp",
+      "legs": [
+        {
+          "leg": 10,
+          "entry": 4147.690500000001,
+          "stopLoss": 4158.12,
+          "takeProfit": 4136.4800000000005,
+          "outcome": "tp",
+          "filledUTC": "2026-10-07T02:00:00.000Z",
+          "resolvedUTC": "2026-10-07T04:45:00.000Z"
+        },
+        {
+          "leg": 25,
+          "entry": 4148.27625,
+          "stopLoss": 4158.12,
+          "takeProfit": 4136.4800000000005,
+          "outcome": "tp",
+          "filledUTC": "2026-10-07T02:30:00.000Z",
+          "resolvedUTC": "2026-10-07T04:45:00.000Z"
+        }
+      ]
+    },
+    {
+      "signalUTC": "2026-10-07T03:00:00.000Z",
+      "direction": "bearish",
+      "type": "T2",
+      "insideMother": false,
+      "patternHigh": 4149.31,
+      "patternLow": 4138.715,
+      "outcome": "tp",
+      "legs": [
+        {
+          "leg": 10,
+          "entry": 4140.0935,
+          "stopLoss": 4152.31,
+          "takeProfit": 4127.319999999999,
+          "outcome": "tp",
+          "filledUTC": "2026-10-07T03:15:00.000Z",
+          "resolvedUTC": "2026-10-07T06:00:00.000Z"
+        },
+        {
+          "leg": 25,
+          "entry": 4140.51125,
+          "stopLoss": 4152.31,
+          "takeProfit": 4127.319999999999,
+          "outcome": "tp",
+          "filledUTC": "2026-10-07T03:15:00.000Z",
+          "resolvedUTC": "2026-10-07T06:00:00.000Z"
+        }
+      ]
+    },
+    {
+      "signalUTC": "2026-10-08T02:45:00.000Z",
+      "direction": "bearish",
+      "type": "T1",
+      "insideMother": false,
+      "patternHigh": 4143.425,
+      "patternLow": 4132,
+      "outcome": "tp",
+      "legs": [
+        {
+          "leg": 10,
+          "entry": 4134.4995,
+          "stopLoss": 4146.425,
+          "takeProfit": 4120.6449999999995,
+          "outcome": "tp",
+          "filledUTC": "2026-10-08T03:00:00.000Z",
+          "resolvedUTC": "2026-10-08T05:45:00.000Z"
+        },
+        {
+          "leg": 25,
+          "entry": 4135.94625,
+          "stopLoss": 4146.425,
+          "takeProfit": 4120.6449999999995,
+          "outcome": "tp",
+          "filledUTC": "2026-10-08T03:15:00.000Z",
+          "resolvedUTC": "2026-10-08T05:45:00.000Z"
+        }
+      ]
+    },
+    {
+      "signalUTC": "2026-10-08T05:15:00.000Z",
+      "direction": "bearish",
+      "type": "T2",
+      "insideMother": false,
+      "patternHigh": 4135.745,
+      "patternLow": 4127.99,
+      "outcome": "tp",
+      "legs": [
+        {
+          "leg": 10,
+          "entry": 4128.7625,
+          "stopLoss": 4138.745,
+          "takeProfit": 4117.985,
+          "outcome": "tp",
+          "filledUTC": "2026-10-08T05:30:00.000Z",
+          "resolvedUTC": "2026-10-08T05:45:00.000Z"
+        },
+        {
+          "leg": 25,
+          "entry": 4129.358749999999,
+          "stopLoss": 4138.745,
+          "takeProfit": 4117.985,
+          "outcome": "tp",
+          "filledUTC": "2026-10-08T05:30:00.000Z",
+          "resolvedUTC": "2026-10-08T05:45:00.000Z"
+        }
+      ]
+    },
+    {
+      "signalUTC": "2026-10-08T14:00:00.000Z",
+      "direction": "bearish",
+      "type": "T1",
+      "insideMother": false,
+      "patternHigh": 4133.9,
+      "patternLow": 4121.93,
+      "outcome": "sl",
+      "legs": [
+        {
+          "leg": 10,
+          "entry": 4124.0965,
+          "stopLoss": 4136.9,
+          "takeProfit": 4110.02,
+          "outcome": "sl",
+          "filledUTC": "2026-10-08T14:15:00.000Z",
+          "resolvedUTC": "2026-10-08T14:15:00.000Z"
+        },
+        {
+          "leg": 25,
+          "entry": 4125.05125,
+          "stopLoss": 4136.9,
+          "takeProfit": 4110.02,
+          "outcome": "sl",
+          "filledUTC": "2026-10-08T14:15:00.000Z",
+          "resolvedUTC": "2026-10-08T14:15:00.000Z"
+        }
+      ]
+    },
+    {
+      "signalUTC": "2026-10-08T15:45:00.000Z",
+      "direction": "bearish",
+      "type": "T1",
+      "insideMother": false,
+      "patternHigh": 4118.57,
+      "patternLow": 4110.92,
+      "outcome": "sl",
+      "legs": [
+        {
+          "leg": 10,
+          "entry": 4112.263999999999,
+          "stopLoss": 4121.57,
+          "takeProfit": 4102.0599999999995,
+          "outcome": "sl",
+          "filledUTC": "2026-10-08T16:00:00.000Z",
+          "resolvedUTC": "2026-10-08T16:15:00.000Z"
+        },
+        {
+          "leg": 25,
+          "entry": 4112.9375,
+          "stopLoss": 4121.57,
+          "takeProfit": 4102.0599999999995,
+          "outcome": "sl",
+          "filledUTC": "2026-10-08T16:00:00.000Z",
+          "resolvedUTC": "2026-10-08T16:15:00.000Z"
+        }
+      ]
+    },
+    {
+      "signalUTC": "2026-10-08T18:15:00.000Z",
+      "direction": "bearish",
+      "type": "T2",
+      "insideMother": false,
+      "patternHigh": 4134.455,
+      "patternLow": 4123.98,
+      "outcome": "uncertain",
+      "legs": [
+        {
+          "leg": 10,
+          "entry": 4125.962,
+          "stopLoss": 4137.455,
+          "takeProfit": 4114.085000000001,
+          "outcome": "uncertain",
+          "filledUTC": "2026-10-08T18:45:00.000Z"
+        },
+        {
+          "leg": 25,
+          "entry": 4126.25,
+          "stopLoss": 4137.455,
+          "takeProfit": 4114.085000000001,
+          "outcome": "uncertain",
+          "filledUTC": "2026-10-08T18:45:00.000Z"
+        }
+      ]
+    },
+    {
+      "signalUTC": "2026-10-08T20:30:00.000Z",
+      "direction": "bearish",
+      "type": "T3",
+      "insideMother": false,
+      "patternHigh": 4136.475,
+      "patternLow": 4132.075,
+      "outcome": "uncertain",
+      "legs": [
+        {
+          "leg": 10,
+          "entry": 4133.4165,
+          "stopLoss": 4139.475,
+          "takeProfit": 4127.1849999999995,
+          "outcome": "uncertain",
+          "filledUTC": "2026-10-08T20:45:00.000Z"
+        },
+        {
+          "leg": 25,
+          "entry": 4133.546249999999,
+          "stopLoss": 4139.475,
+          "takeProfit": 4127.1849999999995,
+          "outcome": "uncertain",
+          "filledUTC": "2026-10-08T20:45:00.000Z"
+        }
+      ]
+    },
+    {
+      "signalUTC": "2026-10-09T08:30:00.000Z",
+      "direction": "bearish",
+      "type": "T1",
+      "insideMother": false,
+      "patternHigh": 4201.87,
+      "patternLow": 4189.32,
+      "outcome": "not-filled",
+      "legs": [
+        {
+          "leg": 10,
+          "entry": 4192.0045,
+          "stopLoss": 4204.87,
+          "takeProfit": 4177.7300000000005,
+          "outcome": "not-filled"
+        },
+        {
+          "leg": 25,
+          "entry": 4193.061250000001,
+          "stopLoss": 4204.87,
+          "takeProfit": 4177.7300000000005,
+          "outcome": "not-filled"
+        }
+      ]
+    },
+    {
+      "signalUTC": "2026-10-12T06:15:00.000Z",
+      "direction": "bearish",
+      "type": "T2",
+      "insideMother": false,
+      "patternHigh": 4193,
+      "patternLow": 4181.4,
+      "outcome": "tp",
+      "legs": [
+        {
+          "leg": 10,
+          "entry": 4183.764,
+          "stopLoss": 4196,
+          "takeProfit": 4171.0599999999995,
+          "outcome": "tp",
+          "filledUTC": "2026-10-12T06:30:00.000Z",
+          "resolvedUTC": "2026-10-12T09:30:00.000Z"
+        },
+        {
+          "leg": 25,
+          "entry": 4184.115,
+          "stopLoss": 4196,
+          "takeProfit": 4171.0599999999995,
+          "outcome": "tp",
+          "filledUTC": "2026-10-12T06:30:00.000Z",
+          "resolvedUTC": "2026-10-12T09:30:00.000Z"
+        }
+      ]
+    },
+    {
+      "signalUTC": "2026-10-12T11:45:00.000Z",
+      "direction": "bearish",
+      "type": "T1",
+      "insideMother": false,
+      "patternHigh": 4173.215,
+      "patternLow": 4167.375,
+      "outcome": "tp",
+      "legs": [
+        {
+          "leg": 10,
+          "entry": 4168.793,
+          "stopLoss": 4176.215,
+          "takeProfit": 4160.754999999999,
+          "outcome": "tp",
+          "filledUTC": "2026-10-12T12:00:00.000Z",
+          "resolvedUTC": "2026-10-12T12:30:00.000Z"
+        },
+        {
+          "leg": 25,
+          "entry": 4169.254999999999,
+          "stopLoss": 4176.215,
+          "takeProfit": 4160.754999999999,
+          "outcome": "tp",
+          "filledUTC": "2026-10-12T12:00:00.000Z",
+          "resolvedUTC": "2026-10-12T12:30:00.000Z"
+        }
+      ]
+    },
+    {
+      "signalUTC": "2026-10-12T14:45:00.000Z",
+      "direction": "bearish",
+      "type": "T1",
+      "insideMother": true,
+      "motherUTC": "2026-10-12T14:15:00.000Z",
+      "motherHigh": 4170.32,
+      "motherLow": 4158.84,
+      "patternHigh": 4169.665,
+      "patternLow": 4162.66,
+      "motherAgeBars": 2,
+      "outcome": "sl",
+      "legs": [
+        {
+          "leg": 10,
+          "entry": 4164.665,
+          "stopLoss": 4172.665,
+          "takeProfit": 4156.285000000001,
+          "outcome": "sl",
+          "filledUTC": "2026-10-12T15:00:00.000Z",
+          "resolvedUTC": "2026-10-12T18:15:00.000Z"
+        },
+        {
+          "leg": 25,
+          "entry": 4164.950000000001,
+          "stopLoss": 4172.665,
+          "takeProfit": 4156.285000000001,
+          "outcome": "sl",
+          "filledUTC": "2026-10-12T15:00:00.000Z",
+          "resolvedUTC": "2026-10-12T18:15:00.000Z"
+        }
+      ]
+    },
+    {
+      "signalUTC": "2026-10-13T05:15:00.000Z",
+      "direction": "bearish",
+      "type": "T1",
+      "insideMother": false,
+      "patternHigh": 4200.625,
+      "patternLow": 4194.02,
+      "outcome": "tp",
+      "legs": [
+        {
+          "leg": 10,
+          "entry": 4194.468999999999,
+          "stopLoss": 4203.625,
+          "takeProfit": 4184.584999999999,
+          "outcome": "tp",
+          "filledUTC": "2026-10-13T05:30:00.000Z",
+          "resolvedUTC": "2026-10-13T06:15:00.000Z"
+        },
+        {
+          "leg": 25,
+          "entry": 4195.014999999999,
+          "stopLoss": 4203.625,
+          "takeProfit": 4184.584999999999,
+          "outcome": "tp",
+          "filledUTC": "2026-10-13T05:30:00.000Z",
+          "resolvedUTC": "2026-10-13T06:15:00.000Z"
+        }
+      ]
+    },
+    {
+      "signalUTC": "2026-10-13T07:30:00.000Z",
+      "direction": "bearish",
+      "type": "T1",
+      "insideMother": false,
+      "patternHigh": 4193.87,
+      "patternLow": 4183.555,
+      "outcome": "tp",
+      "legs": [
+        {
+          "leg": 10,
+          "entry": 4185.3730000000005,
+          "stopLoss": 4196.87,
+          "takeProfit": 4172.750000000001,
+          "outcome": "tp",
+          "filledUTC": "2026-10-13T07:45:00.000Z",
+          "resolvedUTC": "2026-10-13T13:45:00.000Z"
+        },
+        {
+          "leg": 25,
+          "entry": 4186.217500000001,
+          "stopLoss": 4196.87,
+          "takeProfit": 4172.750000000001,
+          "outcome": "tp",
+          "filledUTC": "2026-10-13T07:45:00.000Z",
+          "resolvedUTC": "2026-10-13T13:45:00.000Z"
+        }
+      ]
+    },
+    {
+      "signalUTC": "2026-10-13T08:30:00.000Z",
+      "direction": "bearish",
+      "type": "T1",
+      "insideMother": false,
+      "patternHigh": 4193.82,
+      "patternLow": 4187.155,
+      "outcome": "tp",
+      "legs": [
+        {
+          "leg": 10,
+          "entry": 4188.4715,
+          "stopLoss": 4196.82,
+          "takeProfit": 4179.09,
+          "outcome": "tp",
+          "filledUTC": "2026-10-13T08:45:00.000Z",
+          "resolvedUTC": "2026-10-13T12:45:00.000Z"
+        },
+        {
+          "leg": 25,
+          "entry": 4189.24625,
+          "stopLoss": 4196.82,
+          "takeProfit": 4179.09,
+          "outcome": "tp",
+          "filledUTC": "2026-10-13T08:45:00.000Z",
+          "resolvedUTC": "2026-10-13T12:45:00.000Z"
+        }
+      ]
+    },
+    {
+      "signalUTC": "2026-10-13T12:45:00.000Z",
+      "direction": "bearish",
+      "type": "T2",
+      "insideMother": false,
+      "patternHigh": 4190.88,
+      "patternLow": 4177.56,
+      "outcome": "tp",
+      "legs": [
+        {
+          "leg": 10,
+          "entry": 4180.244000000001,
+          "stopLoss": 4193.88,
+          "takeProfit": 4165.650000000001,
+          "outcome": "tp",
+          "filledUTC": "2026-10-13T13:00:00.000Z",
+          "resolvedUTC": "2026-10-13T14:00:00.000Z"
+        },
+        {
+          "leg": 25,
+          "entry": 4180.962500000001,
+          "stopLoss": 4193.88,
+          "takeProfit": 4165.650000000001,
+          "outcome": "tp",
+          "filledUTC": "2026-10-13T13:00:00.000Z",
+          "resolvedUTC": "2026-10-13T14:00:00.000Z"
+        }
+      ]
+    },
+    {
+      "signalUTC": "2026-10-14T13:45:00.000Z",
+      "direction": "bearish",
+      "type": "T1",
+      "insideMother": false,
+      "patternHigh": 4107.37,
+      "patternLow": 4087.86,
+      "outcome": "uncertain",
+      "legs": [
+        {
+          "leg": 10,
+          "entry": 4089.993,
+          "stopLoss": 4110.37,
+          "takeProfit": 4070.37,
+          "outcome": "uncertain",
+          "filledUTC": "2026-10-14T14:00:00.000Z"
+        },
+        {
+          "leg": 25,
+          "entry": 4092.36,
+          "stopLoss": 4110.37,
+          "takeProfit": 4070.37,
+          "outcome": "uncertain",
+          "filledUTC": "2026-10-14T14:00:00.000Z"
+        }
+      ]
+    },
+    {
+      "signalUTC": "2026-10-14T15:30:00.000Z",
+      "direction": "bearish",
+      "type": "T1",
+      "insideMother": false,
+      "patternHigh": 4096.095,
+      "patternLow": 4079.69,
+      "outcome": "sl",
+      "legs": [
+        {
+          "leg": 10,
+          "entry": 4086.6639999999998,
+          "stopLoss": 4099.095,
+          "takeProfit": 4072.865,
+          "outcome": "sl",
+          "filledUTC": "2026-10-14T15:45:00.000Z",
+          "resolvedUTC": "2026-10-14T19:15:00.000Z"
+        },
+        {
+          "leg": 25,
+          "entry": 4087.69,
+          "stopLoss": 4099.095,
+          "takeProfit": 4072.865,
+          "outcome": "sl",
+          "filledUTC": "2026-10-14T15:45:00.000Z",
+          "resolvedUTC": "2026-10-14T19:15:00.000Z"
+        }
+      ]
+    },
+    {
+      "signalUTC": "2026-10-15T03:15:00.000Z",
+      "direction": "bearish",
+      "type": "T3",
+      "insideMother": false,
+      "patternHigh": 4161.77,
+      "patternLow": 4144.025,
+      "outcome": "tp",
+      "legs": [
+        {
+          "leg": 10,
+          "entry": 4148.4305,
+          "stopLoss": 4164.77,
+          "takeProfit": 4130.889999999999,
+          "outcome": "tp",
+          "filledUTC": "2026-10-15T03:30:00.000Z",
+          "resolvedUTC": "2026-10-15T12:30:00.000Z"
+        },
+        {
+          "leg": 25,
+          "entry": 4149.33125,
+          "stopLoss": 4164.77,
+          "takeProfit": 4130.889999999999,
+          "outcome": "tp",
+          "filledUTC": "2026-10-15T03:30:00.000Z",
+          "resolvedUTC": "2026-10-15T12:30:00.000Z"
+        }
+      ]
+    },
+    {
+      "signalUTC": "2026-10-15T03:45:00.000Z",
+      "direction": "bearish",
+      "type": "T1",
+      "insideMother": false,
+      "patternHigh": 4152.695,
+      "patternLow": 4144.625,
+      "outcome": "tp",
+      "legs": [
+        {
+          "leg": 10,
+          "entry": 4146.3814999999995,
+          "stopLoss": 4155.695,
+          "takeProfit": 4135.955,
+          "outcome": "tp",
+          "filledUTC": "2026-10-15T04:00:00.000Z",
+          "resolvedUTC": "2026-10-15T06:00:00.000Z"
+        },
+        {
+          "leg": 25,
+          "entry": 4147.2162499999995,
+          "stopLoss": 4155.695,
+          "takeProfit": 4135.955,
+          "outcome": "tp",
+          "filledUTC": "2026-10-15T04:00:00.000Z",
+          "resolvedUTC": "2026-10-15T06:00:00.000Z"
+        }
+      ]
+    },
+    {
+      "signalUTC": "2026-10-15T15:30:00.000Z",
+      "direction": "bearish",
+      "type": "T1",
+      "insideMother": false,
+      "patternHigh": 4158.975,
+      "patternLow": 4149.395,
+      "outcome": "sl",
+      "legs": [
+        {
+          "leg": 10,
+          "entry": 4152.3685,
+          "stopLoss": 4161.975,
+          "takeProfit": 4142.1849999999995,
+          "outcome": "sl",
+          "filledUTC": "2026-10-15T15:45:00.000Z",
+          "resolvedUTC": "2026-10-15T19:15:00.000Z"
+        },
+        {
+          "leg": 25,
+          "entry": 4152.80125,
+          "stopLoss": 4161.975,
+          "takeProfit": 4142.1849999999995,
+          "outcome": "sl",
+          "filledUTC": "2026-10-15T15:45:00.000Z",
+          "resolvedUTC": "2026-10-15T19:15:00.000Z"
+        }
+      ]
+    },
+    {
+      "signalUTC": "2026-10-15T20:15:00.000Z",
+      "direction": "bearish",
+      "type": "T3",
+      "insideMother": false,
+      "patternHigh": 4177.455,
+      "patternLow": 4168.4,
+      "outcome": "uncertain",
+      "legs": [
+        {
+          "leg": 10,
+          "entry": 4170.6605,
+          "stopLoss": 4180.455,
+          "takeProfit": 4160.264999999999,
+          "outcome": "uncertain",
+          "filledUTC": "2026-10-15T20:30:00.000Z"
+        },
+        {
+          "leg": 25,
+          "entry": 4171.11125,
+          "stopLoss": 4180.455,
+          "takeProfit": 4160.264999999999,
+          "outcome": "uncertain",
+          "filledUTC": "2026-10-15T20:30:00.000Z"
+        }
+      ]
+    },
+    {
+      "signalUTC": "2026-10-16T01:15:00.000Z",
+      "direction": "bearish",
+      "type": "T1",
+      "insideMother": false,
+      "patternHigh": 4160.895,
+      "patternLow": 4150.045,
+      "outcome": "sl",
+      "legs": [
+        {
+          "leg": 10,
+          "entry": 4151.281499999999,
+          "stopLoss": 4163.895,
+          "takeProfit": 4137.154999999999,
+          "outcome": "sl",
+          "filledUTC": "2026-10-16T01:45:00.000Z",
+          "resolvedUTC": "2026-10-16T02:30:00.000Z"
+        },
+        {
+          "leg": 25,
+          "entry": 4152.416249999999,
+          "stopLoss": 4163.895,
+          "takeProfit": 4137.154999999999,
+          "outcome": "sl",
+          "filledUTC": "2026-10-16T01:45:00.000Z",
+          "resolvedUTC": "2026-10-16T02:30:00.000Z"
+        }
+      ]
+    },
+    {
+      "signalUTC": "2026-10-16T09:15:00.000Z",
+      "direction": "bearish",
+      "type": "T1",
+      "insideMother": false,
+      "patternHigh": 4192.285,
+      "patternLow": 4182.17,
+      "outcome": "tp",
+      "legs": [
+        {
+          "leg": 10,
+          "entry": 4183.468,
+          "stopLoss": 4195.285,
+          "takeProfit": 4169.865,
+          "outcome": "tp",
+          "filledUTC": "2026-10-16T09:30:00.000Z",
+          "resolvedUTC": "2026-10-16T12:45:00.000Z"
+        },
+        {
+          "leg": 25,
+          "entry": 4184.8075,
+          "stopLoss": 4195.285,
+          "takeProfit": 4169.865,
+          "outcome": "tp",
+          "filledUTC": "2026-10-16T10:15:00.000Z",
+          "resolvedUTC": "2026-10-16T12:45:00.000Z"
+        }
+      ]
+    },
+    {
+      "signalUTC": "2026-10-16T18:15:00.000Z",
+      "direction": "bearish",
+      "type": "T1",
+      "insideMother": true,
+      "motherUTC": "2026-10-16T17:30:00.000Z",
+      "motherHigh": 4168.125,
+      "motherLow": 4158.505,
+      "patternHigh": 4168.025,
+      "patternLow": 4159.365,
+      "motherAgeBars": 3,
+      "outcome": "sl",
+      "legs": [
+        {
+          "leg": 10,
+          "entry": 4159.956,
+          "stopLoss": 4171.025,
+          "takeProfit": 4147.915000000001,
+          "outcome": "sl",
+          "filledUTC": "2026-10-16T18:30:00.000Z",
+          "resolvedUTC": "2026-10-16T19:30:00.000Z"
+        },
+        {
+          "leg": 25,
+          "entry": 4160.685,
+          "stopLoss": 4171.025,
+          "takeProfit": 4147.915000000001,
+          "outcome": "sl",
+          "filledUTC": "2026-10-16T18:30:00.000Z",
+          "resolvedUTC": "2026-10-16T19:30:00.000Z"
+        }
+      ]
+    },
+    {
+      "signalUTC": "2026-10-19T01:15:00.000Z",
+      "direction": "bearish",
+      "type": "T2",
+      "insideMother": false,
+      "patternHigh": 4178.38,
+      "patternLow": 4165.76,
+      "outcome": "sl",
+      "legs": [
+        {
+          "leg": 10,
+          "entry": 4168.030000000001,
+          "stopLoss": 4181.38,
+          "takeProfit": 4153.660000000001,
+          "outcome": "sl",
+          "filledUTC": "2026-10-19T01:30:00.000Z",
+          "resolvedUTC": "2026-10-19T02:00:00.000Z"
+        },
+        {
+          "leg": 25,
+          "entry": 4168.795,
+          "stopLoss": 4181.38,
+          "takeProfit": 4153.660000000001,
+          "outcome": "sl",
+          "filledUTC": "2026-10-19T01:30:00.000Z",
+          "resolvedUTC": "2026-10-19T02:00:00.000Z"
+        }
+      ]
+    },
+    {
+      "signalUTC": "2026-10-19T02:15:00.000Z",
+      "direction": "bearish",
+      "type": "T1",
+      "insideMother": false,
+      "patternHigh": 4184.745,
+      "patternLow": 4170.19,
+      "outcome": "sl",
+      "legs": [
+        {
+          "leg": 10,
+          "entry": 4171.879,
+          "stopLoss": 4187.745,
+          "takeProfit": 4153.8550000000005,
+          "outcome": "sl",
+          "filledUTC": "2026-10-19T02:30:00.000Z",
+          "resolvedUTC": "2026-10-19T07:00:00.000Z"
+        },
+        {
+          "leg": 25,
+          "entry": 4173.4975,
+          "stopLoss": 4187.745,
+          "takeProfit": 4153.8550000000005,
+          "outcome": "sl",
+          "filledUTC": "2026-10-19T02:30:00.000Z",
+          "resolvedUTC": "2026-10-19T07:00:00.000Z"
+        }
+      ]
+    },
+    {
+      "signalUTC": "2026-10-19T07:30:00.000Z",
+      "direction": "bearish",
+      "type": "T1",
+      "insideMother": false,
+      "patternHigh": 4190.42,
+      "patternLow": 4181.355,
+      "outcome": "tp",
+      "legs": [
+        {
+          "leg": 10,
+          "entry": 4182.987,
+          "stopLoss": 4193.42,
+          "takeProfit": 4171.719999999999,
+          "outcome": "tp",
+          "filledUTC": "2026-10-19T07:45:00.000Z",
+          "resolvedUTC": "2026-10-19T08:45:00.000Z"
+        },
+        {
+          "leg": 25,
+          "entry": 4183.612499999999,
+          "stopLoss": 4193.42,
+          "takeProfit": 4171.719999999999,
+          "outcome": "tp",
+          "filledUTC": "2026-10-19T07:45:00.000Z",
+          "resolvedUTC": "2026-10-19T08:45:00.000Z"
+        }
+      ]
+    },
+    {
+      "signalUTC": "2026-10-19T20:00:00.000Z",
+      "direction": "bearish",
+      "type": "T1",
+      "insideMother": false,
+      "patternHigh": 4144.155,
+      "patternLow": 4139.245,
+      "outcome": "uncertain",
+      "legs": [
+        {
+          "leg": 10,
+          "entry": 4139.588,
+          "stopLoss": 4147.155,
+          "takeProfit": 4131.415,
+          "outcome": "uncertain",
+          "filledUTC": "2026-10-19T20:15:00.000Z"
+        },
+        {
+          "leg": 25,
+          "entry": 4140.0425,
+          "stopLoss": 4147.155,
+          "takeProfit": 4131.415,
+          "outcome": "uncertain",
+          "filledUTC": "2026-10-19T20:45:00.000Z"
+        }
+      ]
+    },
+    {
+      "signalUTC": "2026-10-20T04:30:00.000Z",
+      "direction": "bearish",
+      "type": "T1",
+      "insideMother": false,
+      "patternHigh": 4147.415,
+      "patternLow": 4141.91,
+      "outcome": "tp",
+      "legs": [
+        {
+          "leg": 10,
+          "entry": 4142.7155,
+          "stopLoss": 4150.415,
+          "takeProfit": 4134.615000000001,
+          "outcome": "tp",
+          "filledUTC": "2026-10-20T04:45:00.000Z",
+          "resolvedUTC": "2026-10-20T05:15:00.000Z"
+        },
+        {
+          "leg": 25,
+          "entry": 4143.016250000001,
+          "stopLoss": 4150.415,
+          "takeProfit": 4134.615000000001,
+          "outcome": "tp",
+          "filledUTC": "2026-10-20T04:45:00.000Z",
+          "resolvedUTC": "2026-10-20T05:15:00.000Z"
+        }
+      ]
+    },
+    {
+      "signalUTC": "2026-10-20T14:45:00.000Z",
+      "direction": "bearish",
+      "type": "T3",
+      "insideMother": false,
+      "patternHigh": 4155.57,
+      "patternLow": 4131.295,
+      "outcome": "tp",
+      "legs": [
+        {
+          "leg": 10,
+          "entry": 4143.896,
+          "stopLoss": 4158.57,
+          "takeProfit": 4127.92,
+          "outcome": "tp",
+          "filledUTC": "2026-10-20T15:00:00.000Z",
+          "resolvedUTC": "2026-10-20T16:00:00.000Z"
+        },
+        {
+          "leg": 25,
+          "entry": 4144.8724999999995,
+          "stopLoss": 4158.57,
+          "takeProfit": 4127.92,
+          "outcome": "not-filled"
+        }
+      ]
+    },
+    {
+      "signalUTC": "2026-10-20T16:45:00.000Z",
+      "direction": "bearish",
+      "type": "T1",
+      "insideMother": false,
+      "patternHigh": 4128.065,
+      "patternLow": 4120.855,
+      "outcome": "uncertain",
+      "legs": [
+        {
+          "leg": 10,
+          "entry": 4121.71,
+          "stopLoss": 4131.065,
+          "takeProfit": 4111.555000000001,
+          "outcome": "uncertain",
+          "filledUTC": "2026-10-20T17:00:00.000Z"
+        },
+        {
+          "leg": 25,
+          "entry": 4122.31,
+          "stopLoss": 4131.065,
+          "takeProfit": 4111.555000000001,
+          "outcome": "uncertain",
+          "filledUTC": "2026-10-20T17:15:00.000Z"
+        }
+      ]
+    },
+    {
+      "signalUTC": "2026-10-21T03:45:00.000Z",
+      "direction": "bearish",
+      "type": "T3",
+      "insideMother": false,
+      "patternHigh": 4125.78,
+      "patternLow": 4116.255,
+      "outcome": "sl",
+      "legs": [
+        {
+          "leg": 10,
+          "entry": 4118.1875,
+          "stopLoss": 4128.78,
+          "takeProfit": 4106.900000000001,
+          "outcome": "sl",
+          "filledUTC": "2026-10-21T04:00:00.000Z",
+          "resolvedUTC": "2026-10-21T05:15:00.000Z"
+        },
+        {
+          "leg": 25,
+          "entry": 4118.70875,
+          "stopLoss": 4128.78,
+          "takeProfit": 4106.900000000001,
+          "outcome": "sl",
+          "filledUTC": "2026-10-21T04:00:00.000Z",
+          "resolvedUTC": "2026-10-21T05:15:00.000Z"
+        }
+      ]
+    },
+    {
+      "signalUTC": "2026-10-21T04:15:00.000Z",
+      "direction": "bearish",
+      "type": "T1",
+      "insideMother": false,
+      "patternHigh": 4126.225,
+      "patternLow": 4114.95,
+      "outcome": "sl",
+      "legs": [
+        {
+          "leg": 10,
+          "entry": 4115.8565,
+          "stopLoss": 4129.225,
+          "takeProfit": 4100.844999999999,
+          "outcome": "sl",
+          "filledUTC": "2026-10-21T04:30:00.000Z",
+          "resolvedUTC": "2026-10-21T05:30:00.000Z"
+        },
+        {
+          "leg": 25,
+          "entry": 4117.08875,
+          "stopLoss": 4129.225,
+          "takeProfit": 4100.844999999999,
+          "outcome": "sl",
+          "filledUTC": "2026-10-21T04:30:00.000Z",
+          "resolvedUTC": "2026-10-21T05:30:00.000Z"
+        }
+      ]
+    },
+    {
+      "signalUTC": "2026-10-21T13:45:00.000Z",
+      "direction": "bearish",
+      "type": "T1",
+      "insideMother": false,
+      "patternHigh": 4138.915,
+      "patternLow": 4128.88,
+      "outcome": "tp",
+      "legs": [
+        {
+          "leg": 10,
+          "entry": 4129.896,
+          "stopLoss": 4141.915,
+          "takeProfit": 4116.224999999999,
+          "outcome": "tp",
+          "filledUTC": "2026-10-21T14:15:00.000Z",
+          "resolvedUTC": "2026-10-21T18:45:00.000Z"
+        },
+        {
+          "leg": 25,
+          "entry": 4131.135,
+          "stopLoss": 4141.915,
+          "takeProfit": 4116.224999999999,
+          "outcome": "tp",
+          "filledUTC": "2026-10-21T14:15:00.000Z",
+          "resolvedUTC": "2026-10-21T18:45:00.000Z"
+        }
+      ]
+    },
+    {
+      "signalUTC": "2026-10-21T15:00:00.000Z",
+      "direction": "bearish",
+      "type": "T1",
+      "insideMother": true,
+      "motherUTC": "2026-10-21T14:15:00.000Z",
+      "motherHigh": 4135.365,
+      "motherLow": 4126.12,
+      "patternHigh": 4132.585,
+      "patternLow": 4126.42,
+      "motherAgeBars": 3,
+      "outcome": "sl",
+      "legs": [
+        {
+          "leg": 10,
+          "entry": 4127.6995,
+          "stopLoss": 4135.585,
+          "takeProfit": 4119.214999999999,
+          "outcome": "sl",
+          "filledUTC": "2026-10-21T15:15:00.000Z",
+          "resolvedUTC": "2026-10-21T15:15:00.000Z"
+        },
+        {
+          "leg": 25,
+          "entry": 4128.148749999999,
+          "stopLoss": 4135.585,
+          "takeProfit": 4119.214999999999,
+          "outcome": "sl",
+          "filledUTC": "2026-10-21T15:15:00.000Z",
+          "resolvedUTC": "2026-10-21T15:15:00.000Z"
+        }
+      ]
+    },
+    {
+      "signalUTC": "2026-10-22T07:30:00.000Z",
+      "direction": "bearish",
+      "type": "T3",
+      "insideMother": false,
+      "patternHigh": 4101.13,
+      "patternLow": 4088.04,
+      "outcome": "tp",
+      "legs": [
+        {
+          "leg": 10,
+          "entry": 4090.8875000000003,
+          "stopLoss": 4104.13,
+          "takeProfit": 4077.01,
+          "outcome": "tp",
+          "filledUTC": "2026-10-22T07:45:00.000Z",
+          "resolvedUTC": "2026-10-22T11:00:00.000Z"
+        },
+        {
+          "leg": 25,
+          "entry": 4091.3637500000004,
+          "stopLoss": 4104.13,
+          "takeProfit": 4077.01,
+          "outcome": "tp",
+          "filledUTC": "2026-10-22T07:45:00.000Z",
+          "resolvedUTC": "2026-10-22T11:00:00.000Z"
+        }
+      ]
+    },
+    {
+      "signalUTC": "2026-10-22T08:45:00.000Z",
+      "direction": "bearish",
+      "type": "T1",
+      "insideMother": true,
+      "motherUTC": "2026-10-22T08:15:00.000Z",
+      "motherHigh": 4094.07,
+      "motherLow": 4081.885,
+      "patternHigh": 4094.02,
+      "patternLow": 4082.08,
+      "motherAgeBars": 2,
+      "outcome": "tp",
+      "legs": [
+        {
+          "leg": 10,
+          "entry": 4084.0905,
+          "stopLoss": 4097.02,
+          "takeProfit": 4069.2599999999993,
+          "outcome": "tp",
+          "filledUTC": "2026-10-22T09:00:00.000Z",
+          "resolvedUTC": "2026-10-22T11:15:00.000Z"
+        },
+        {
+          "leg": 25,
+          "entry": 4085.5162499999997,
+          "stopLoss": 4097.02,
+          "takeProfit": 4069.2599999999993,
+          "outcome": "tp",
+          "filledUTC": "2026-10-22T09:00:00.000Z",
+          "resolvedUTC": "2026-10-22T11:15:00.000Z"
+        }
+      ]
+    },
+    {
+      "signalUTC": "2026-10-22T15:00:00.000Z",
+      "direction": "bearish",
+      "type": "T3",
+      "insideMother": false,
+      "patternHigh": 4064.995,
+      "patternLow": 4050.06,
+      "outcome": "tp",
+      "legs": [
+        {
+          "leg": 10,
+          "entry": 4055.5625,
+          "stopLoss": 4067.995,
+          "takeProfit": 4042.205,
+          "outcome": "tp",
+          "filledUTC": "2026-10-22T15:15:00.000Z",
+          "resolvedUTC": "2026-10-22T16:30:00.000Z"
+        },
+        {
+          "leg": 25,
+          "entry": 4056.25625,
+          "stopLoss": 4067.995,
+          "takeProfit": 4042.205,
+          "outcome": "tp",
+          "filledUTC": "2026-10-22T15:15:00.000Z",
+          "resolvedUTC": "2026-10-22T16:30:00.000Z"
+        }
+      ]
+    },
+    {
+      "signalUTC": "2026-10-23T01:30:00.000Z",
+      "direction": "bearish",
+      "type": "T1",
+      "insideMother": false,
+      "patternHigh": 4023.525,
+      "patternLow": 4010.1,
+      "outcome": "uncertain",
+      "legs": [
+        {
+          "leg": 10,
+          "entry": 4011.118,
+          "stopLoss": 4026.525,
+          "takeProfit": 3995.0849999999996,
+          "outcome": "uncertain"
+        },
+        {
+          "leg": 25,
+          "entry": 4011.5874999999996,
+          "stopLoss": 4026.525,
+          "takeProfit": 3995.0849999999996,
+          "outcome": "uncertain"
+        }
+      ]
+    },
+    {
+      "signalUTC": "2026-10-23T07:45:00.000Z",
+      "direction": "bearish",
+      "type": "T1",
+      "insideMother": true,
+      "motherUTC": "2026-10-23T05:30:00.000Z",
+      "motherHigh": 4028.56,
+      "motherLow": 4010.905,
+      "patternHigh": 4021.975,
+      "patternLow": 4010.99,
+      "motherAgeBars": 9,
+      "outcome": "sl",
+      "legs": [
+        {
+          "leg": 10,
+          "entry": 4012.3855,
+          "stopLoss": 4024.975,
+          "takeProfit": 3998.185,
+          "outcome": "sl",
+          "filledUTC": "2026-10-23T08:00:00.000Z",
+          "resolvedUTC": "2026-10-23T08:45:00.000Z"
+        },
+        {
+          "leg": 25,
+          "entry": 4013.59375,
+          "stopLoss": 4024.975,
+          "takeProfit": 3998.185,
+          "outcome": "sl",
+          "filledUTC": "2026-10-23T08:00:00.000Z",
+          "resolvedUTC": "2026-10-23T08:45:00.000Z"
+        }
+      ]
+    },
+    {
+      "signalUTC": "2026-10-23T16:15:00.000Z",
+      "direction": "bearish",
+      "type": "T1",
+      "insideMother": false,
+      "patternHigh": 4006.05,
+      "patternLow": 4001.41,
+      "outcome": "tp",
+      "legs": [
+        {
+          "leg": 10,
+          "entry": 4001.9480000000003,
+          "stopLoss": 4009.05,
+          "takeProfit": 3994.2200000000003,
+          "outcome": "tp",
+          "filledUTC": "2026-10-23T16:30:00.000Z",
+          "resolvedUTC": "2026-10-23T17:15:00.000Z"
+        },
+        {
+          "leg": 25,
+          "entry": 4002.4175,
+          "stopLoss": 4009.05,
+          "takeProfit": 3994.2200000000003,
+          "outcome": "tp",
+          "filledUTC": "2026-10-23T16:30:00.000Z",
+          "resolvedUTC": "2026-10-23T17:15:00.000Z"
+        }
+      ]
+    },
+    {
+      "signalUTC": "2026-10-23T17:00:00.000Z",
+      "direction": "bearish",
+      "type": "T2",
+      "insideMother": false,
+      "patternHigh": 4006.565,
+      "patternLow": 3996.49,
+      "outcome": "uncertain",
+      "legs": [
+        {
+          "leg": 10,
+          "entry": 3997.4905,
+          "stopLoss": 4009.565,
+          "takeProfit": 3984.6749999999997,
+          "outcome": "uncertain",
+          "filledUTC": "2026-10-23T17:45:00.000Z"
+        },
+        {
+          "leg": 25,
+          "entry": 3998.04625,
+          "stopLoss": 4009.565,
+          "takeProfit": 3984.6749999999997,
+          "outcome": "uncertain",
+          "filledUTC": "2026-10-23T17:45:00.000Z"
+        }
+      ]
+    },
+    {
+      "signalUTC": "2026-10-23T20:00:00.000Z",
+      "direction": "bearish",
+      "type": "T1",
+      "insideMother": false,
+      "patternHigh": 4001.655,
+      "patternLow": 3995.48,
+      "outcome": "uncertain",
+      "legs": [
+        {
+          "leg": 10,
+          "entry": 3996.9080000000004,
+          "stopLoss": 4004.655,
+          "takeProfit": 3988.485,
+          "outcome": "uncertain",
+          "filledUTC": "2026-10-23T20:15:00.000Z"
+        },
+        {
+          "leg": 25,
+          "entry": 3997.415,
+          "stopLoss": 4004.655,
+          "takeProfit": 3988.485,
+          "outcome": "uncertain",
+          "filledUTC": "2026-10-23T20:15:00.000Z"
+        }
+      ]
+    },
+    {
+      "signalUTC": "2026-10-26T07:00:00.000Z",
+      "direction": "bearish",
+      "type": "T3",
+      "insideMother": false,
+      "patternHigh": 4010.035,
+      "patternLow": 4003.78,
+      "outcome": "sl",
+      "legs": [
+        {
+          "leg": 10,
+          "entry": 4005.5665,
+          "stopLoss": 4013.035,
+          "takeProfit": 3997.9350000000004,
+          "outcome": "sl",
+          "filledUTC": "2026-10-26T07:15:00.000Z",
+          "resolvedUTC": "2026-10-26T08:00:00.000Z"
+        },
+        {
+          "leg": 25,
+          "entry": 4005.6887500000003,
+          "stopLoss": 4013.035,
+          "takeProfit": 3997.9350000000004,
+          "outcome": "sl",
+          "filledUTC": "2026-10-26T07:15:00.000Z",
+          "resolvedUTC": "2026-10-26T08:00:00.000Z"
+        }
+      ]
+    },
+    {
+      "signalUTC": "2026-10-26T12:45:00.000Z",
+      "direction": "bearish",
+      "type": "T3",
+      "insideMother": false,
+      "patternHigh": 4025.42,
+      "patternLow": 4014.925,
+      "outcome": "tp",
+      "legs": [
+        {
+          "leg": 10,
+          "entry": 4016.2095,
+          "stopLoss": 4028.42,
+          "takeProfit": 4003.24,
+          "outcome": "tp",
+          "filledUTC": "2026-10-26T13:00:00.000Z",
+          "resolvedUTC": "2026-10-26T13:30:00.000Z"
+        },
+        {
+          "leg": 25,
+          "entry": 4016.77875,
+          "stopLoss": 4028.42,
+          "takeProfit": 4003.24,
+          "outcome": "tp",
+          "filledUTC": "2026-10-26T13:00:00.000Z",
+          "resolvedUTC": "2026-10-26T13:30:00.000Z"
+        }
+      ]
+    },
+    {
+      "signalUTC": "2026-10-26T18:15:00.000Z",
+      "direction": "bearish",
+      "type": "T1",
+      "insideMother": false,
+      "patternHigh": 4021.505,
+      "patternLow": 4017.015,
+      "outcome": "not-filled",
+      "legs": [
+        {
+          "leg": 10,
+          "entry": 4018.5315,
+          "stopLoss": 4024.505,
+          "takeProfit": 4012.0950000000003,
+          "outcome": "not-filled"
+        },
+        {
+          "leg": 25,
+          "entry": 4018.8787500000003,
+          "stopLoss": 4024.505,
+          "takeProfit": 4012.0950000000003,
+          "outcome": "not-filled"
+        }
+      ]
+    },
+    {
+      "signalUTC": "2026-10-27T04:30:00.000Z",
+      "direction": "bearish",
+      "type": "T2",
+      "insideMother": false,
+      "patternHigh": 4025.63,
+      "patternLow": 4013.71,
+      "outcome": "tp",
+      "legs": [
+        {
+          "leg": 10,
+          "entry": 4014.795,
+          "stopLoss": 4028.63,
+          "takeProfit": 3999.95,
+          "outcome": "tp",
+          "filledUTC": "2026-10-27T04:45:00.000Z",
+          "resolvedUTC": "2026-10-27T06:30:00.000Z"
+        },
+        {
+          "leg": 25,
+          "entry": 4015.5525,
+          "stopLoss": 4028.63,
+          "takeProfit": 3999.95,
+          "outcome": "not-filled"
+        }
+      ]
+    },
+    {
+      "signalUTC": "2026-10-27T06:15:00.000Z",
+      "direction": "bearish",
+      "type": "T2",
+      "insideMother": false,
+      "patternHigh": 4012.23,
+      "patternLow": 4001.76,
+      "outcome": "tp",
+      "legs": [
+        {
+          "leg": 10,
+          "entry": 4003.5785,
+          "stopLoss": 4015.23,
+          "takeProfit": 3991.0400000000004,
+          "outcome": "tp",
+          "filledUTC": "2026-10-27T06:30:00.000Z",
+          "resolvedUTC": "2026-10-27T08:45:00.000Z"
+        },
+        {
+          "leg": 25,
+          "entry": 4004.24375,
+          "stopLoss": 4015.23,
+          "takeProfit": 3991.0400000000004,
+          "outcome": "tp",
+          "filledUTC": "2026-10-27T07:00:00.000Z",
+          "resolvedUTC": "2026-10-27T08:45:00.000Z"
+        }
+      ]
+    },
+    {
+      "signalUTC": "2026-10-27T17:45:00.000Z",
+      "direction": "bearish",
+      "type": "T1",
+      "insideMother": false,
+      "patternHigh": 4065.7,
+      "patternLow": 4056.51,
+      "outcome": "uncertain",
+      "legs": [
+        {
+          "leg": 10,
+          "entry": 4057.3669999999997,
+          "stopLoss": 4068.7,
+          "takeProfit": 4044.7799999999997,
+          "outcome": "uncertain",
+          "filledUTC": "2026-10-27T18:00:00.000Z"
+        },
+        {
+          "leg": 25,
+          "entry": 4058.3075,
+          "stopLoss": 4068.7,
+          "takeProfit": 4044.7799999999997,
+          "outcome": "uncertain",
+          "filledUTC": "2026-10-27T18:00:00.000Z"
+        }
+      ]
+    },
+    {
+      "signalUTC": "2026-10-28T05:15:00.000Z",
+      "direction": "bearish",
+      "type": "T1",
+      "insideMother": false,
+      "patternHigh": 4037.785,
+      "patternLow": 4033.21,
+      "outcome": "sl",
+      "legs": [
+        {
+          "leg": 10,
+          "entry": 4034.187,
+          "stopLoss": 4040.785,
+          "takeProfit": 4027.0150000000003,
+          "outcome": "sl",
+          "filledUTC": "2026-10-28T05:30:00.000Z",
+          "resolvedUTC": "2026-10-28T07:30:00.000Z"
+        },
+        {
+          "leg": 25,
+          "entry": 4034.6175000000003,
+          "stopLoss": 4040.785,
+          "takeProfit": 4027.0150000000003,
+          "outcome": "sl",
+          "filledUTC": "2026-10-28T05:30:00.000Z",
+          "resolvedUTC": "2026-10-28T07:30:00.000Z"
+        }
+      ]
+    },
+    {
+      "signalUTC": "2026-10-28T09:00:00.000Z",
+      "direction": "bearish",
+      "type": "T3",
+      "insideMother": false,
+      "patternHigh": 4058.3,
+      "patternLow": 4048.54,
+      "outcome": "tp",
+      "legs": [
+        {
+          "leg": 10,
+          "entry": 4051.5299999999997,
+          "stopLoss": 4061.3,
+          "takeProfit": 4041.4299999999994,
+          "outcome": "tp",
+          "filledUTC": "2026-10-28T09:15:00.000Z",
+          "resolvedUTC": "2026-10-28T14:15:00.000Z"
+        },
+        {
+          "leg": 25,
+          "entry": 4051.7774999999997,
+          "stopLoss": 4061.3,
+          "takeProfit": 4041.4299999999994,
+          "outcome": "tp",
+          "filledUTC": "2026-10-28T09:15:00.000Z",
+          "resolvedUTC": "2026-10-28T14:15:00.000Z"
+        }
+      ]
+    },
+    {
+      "signalUTC": "2026-10-28T13:15:00.000Z",
+      "direction": "bearish",
+      "type": "T1",
+      "insideMother": false,
+      "patternHigh": 4057.94,
+      "patternLow": 4050.44,
+      "outcome": "tp",
+      "legs": [
+        {
+          "leg": 10,
+          "entry": 4052.0499999999997,
+          "stopLoss": 4060.94,
+          "takeProfit": 4042.6299999999997,
+          "outcome": "tp",
+          "filledUTC": "2026-10-28T13:30:00.000Z",
+          "resolvedUTC": "2026-10-28T14:15:00.000Z"
+        },
+        {
+          "leg": 25,
+          "entry": 4052.4474999999998,
+          "stopLoss": 4060.94,
+          "takeProfit": 4042.6299999999997,
+          "outcome": "tp",
+          "filledUTC": "2026-10-28T13:30:00.000Z",
+          "resolvedUTC": "2026-10-28T14:15:00.000Z"
+        }
+      ]
+    },
+    {
+      "signalUTC": "2026-10-28T20:15:00.000Z",
+      "direction": "bearish",
+      "type": "T2",
+      "insideMother": false,
+      "patternHigh": 4082.825,
+      "patternLow": 4056.865,
+      "outcome": "uncertain",
+      "legs": [
+        {
+          "leg": 10,
+          "entry": 4058.77,
+          "stopLoss": 4085.825,
+          "takeProfit": 4045.825,
+          "outcome": "uncertain",
+          "filledUTC": "2026-10-28T20:30:00.000Z"
+        },
+        {
+          "leg": 25,
+          "entry": 4060.4649999999997,
+          "stopLoss": 4085.825,
+          "takeProfit": 4045.825,
+          "outcome": "uncertain",
+          "filledUTC": "2026-10-28T20:30:00.000Z"
+        }
+      ]
+    },
+    {
+      "signalUTC": "2026-10-28T22:00:00.000Z",
+      "direction": "bearish",
+      "type": "T3",
+      "insideMother": false,
+      "patternHigh": 4071.105,
+      "patternLow": 4055.505,
+      "outcome": "tp",
+      "legs": [
+        {
+          "leg": 10,
+          "entry": 4063.2599999999998,
+          "stopLoss": 4074.105,
+          "takeProfit": 4051.845,
+          "outcome": "tp",
+          "filledUTC": "2026-10-28T22:15:00.000Z",
+          "resolvedUTC": "2026-10-28T22:45:00.000Z"
+        },
+        {
+          "leg": 25,
+          "entry": 4063.6875,
+          "stopLoss": 4074.105,
+          "takeProfit": 4051.845,
+          "outcome": "tp",
+          "filledUTC": "2026-10-28T22:15:00.000Z",
+          "resolvedUTC": "2026-10-28T22:45:00.000Z"
+        }
+      ]
+    },
+    {
+      "signalUTC": "2026-10-29T03:45:00.000Z",
+      "direction": "bearish",
+      "type": "T1",
+      "insideMother": false,
+      "patternHigh": 4044.66,
+      "patternLow": 4038.105,
+      "outcome": "tp",
+      "legs": [
+        {
+          "leg": 10,
+          "entry": 4038.9069999999997,
+          "stopLoss": 4047.66,
+          "takeProfit": 4029.0299999999997,
+          "outcome": "tp",
+          "filledUTC": "2026-10-29T04:00:00.000Z",
+          "resolvedUTC": "2026-10-29T05:45:00.000Z"
+        },
+        {
+          "leg": 25,
+          "entry": 4039.75,
+          "stopLoss": 4047.66,
+          "takeProfit": 4029.0299999999997,
+          "outcome": "tp",
+          "filledUTC": "2026-10-29T04:30:00.000Z",
+          "resolvedUTC": "2026-10-29T05:45:00.000Z"
+        }
+      ]
+    },
+    {
+      "signalUTC": "2026-10-29T10:15:00.000Z",
+      "direction": "bearish",
+      "type": "T1",
+      "insideMother": true,
+      "motherUTC": "2026-10-29T09:00:00.000Z",
+      "motherHigh": 4038.045,
+      "motherLow": 4022.68,
+      "patternHigh": 4034.06,
+      "patternLow": 4026.925,
+      "motherAgeBars": 5,
+      "outcome": "sl",
+      "legs": [
+        {
+          "leg": 10,
+          "entry": 4029.078,
+          "stopLoss": 4037.06,
+          "takeProfit": 4020.15,
+          "outcome": "sl",
+          "filledUTC": "2026-10-29T10:30:00.000Z",
+          "resolvedUTC": "2026-10-29T11:00:00.000Z"
+        },
+        {
+          "leg": 25,
+          "entry": 4029.7875,
+          "stopLoss": 4037.06,
+          "takeProfit": 4020.15,
+          "outcome": "sl",
+          "filledUTC": "2026-10-29T10:45:00.000Z",
+          "resolvedUTC": "2026-10-29T11:00:00.000Z"
+        }
+      ]
+    },
+    {
+      "signalUTC": "2026-10-29T12:45:00.000Z",
+      "direction": "bearish",
+      "type": "T1",
+      "insideMother": false,
+      "patternHigh": 4032.69,
+      "patternLow": 4016.71,
+      "outcome": "sl",
+      "legs": [
+        {
+          "leg": 10,
+          "entry": 4021.2025,
+          "stopLoss": 4035.69,
+          "takeProfit": 4005.7899999999995,
+          "outcome": "sl",
+          "filledUTC": "2026-10-29T13:00:00.000Z",
+          "resolvedUTC": "2026-10-29T13:30:00.000Z"
+        },
+        {
+          "leg": 25,
+          "entry": 4021.89625,
+          "stopLoss": 4035.69,
+          "takeProfit": 4005.7899999999995,
+          "outcome": "sl",
+          "filledUTC": "2026-10-29T13:00:00.000Z",
+          "resolvedUTC": "2026-10-29T13:30:00.000Z"
+        }
+      ]
+    },
+    {
+      "signalUTC": "2026-10-29T14:45:00.000Z",
+      "direction": "bearish",
+      "type": "T1",
+      "insideMother": false,
+      "patternHigh": 4037.455,
+      "patternLow": 4025.98,
+      "outcome": "tp",
+      "legs": [
+        {
+          "leg": 10,
+          "entry": 4027.532,
+          "stopLoss": 4040.455,
+          "takeProfit": 4012.665,
+          "outcome": "tp",
+          "filledUTC": "2026-10-29T15:00:00.000Z",
+          "resolvedUTC": "2026-10-29T16:00:00.000Z"
+        },
+        {
+          "leg": 25,
+          "entry": 4028.99,
+          "stopLoss": 4040.455,
+          "takeProfit": 4012.665,
+          "outcome": "not-filled"
+        }
+      ]
+    },
+    {
+      "signalUTC": "2026-10-30T00:45:00.000Z",
+      "direction": "bearish",
+      "type": "T1",
+      "insideMother": false,
+      "patternHigh": 4019,
+      "patternLow": 4003.175,
+      "outcome": "tp",
+      "legs": [
+        {
+          "leg": 10,
+          "entry": 4006.2549999999997,
+          "stopLoss": 4022,
+          "takeProfit": 3988.3199999999997,
+          "outcome": "tp",
+          "filledUTC": "2026-10-30T01:00:00.000Z",
+          "resolvedUTC": "2026-10-30T04:00:00.000Z"
+        },
+        {
+          "leg": 25,
+          "entry": 4007.8975,
+          "stopLoss": 4022,
+          "takeProfit": 3988.3199999999997,
+          "outcome": "tp",
+          "filledUTC": "2026-10-30T01:15:00.000Z",
+          "resolvedUTC": "2026-10-30T04:00:00.000Z"
+        }
+      ]
+    },
+    {
+      "signalUTC": "2026-10-30T02:15:00.000Z",
+      "direction": "bearish",
+      "type": "T1",
+      "insideMother": false,
+      "patternHigh": 4013.95,
+      "patternLow": 4004.395,
+      "outcome": "tp",
+      "legs": [
+        {
+          "leg": 10,
+          "entry": 4005.6165,
+          "stopLoss": 4016.95,
+          "takeProfit": 3992.92,
+          "outcome": "tp",
+          "filledUTC": "2026-10-30T02:30:00.000Z",
+          "resolvedUTC": "2026-10-30T03:00:00.000Z"
+        },
+        {
+          "leg": 25,
+          "entry": 4006.63875,
+          "stopLoss": 4016.95,
+          "takeProfit": 3992.92,
+          "outcome": "not-filled"
+        }
+      ]
+    },
+    {
+      "signalUTC": "2026-10-30T05:45:00.000Z",
+      "direction": "bearish",
+      "type": "T2",
+      "insideMother": false,
+      "patternHigh": 4011.63,
+      "patternLow": 3988.14,
+      "outcome": "tp",
+      "legs": [
+        {
+          "leg": 10,
+          "entry": 3992.622,
+          "stopLoss": 4014.63,
+          "takeProfit": 3974.63,
+          "outcome": "tp",
+          "filledUTC": "2026-10-30T06:00:00.000Z",
+          "resolvedUTC": "2026-10-30T07:45:00.000Z"
+        },
+        {
+          "leg": 25,
+          "entry": 3994.2225,
+          "stopLoss": 4014.63,
+          "takeProfit": 3974.63,
+          "outcome": "not-filled"
+        }
+      ]
+    },
+    {
+      "signalUTC": "2026-10-30T06:45:00.000Z",
+      "direction": "bearish",
+      "type": "T2",
+      "insideMother": false,
+      "patternHigh": 3994.105,
+      "patternLow": 3980.255,
+      "outcome": "tp",
+      "legs": [
+        {
+          "leg": 10,
+          "entry": 3983.3740000000003,
+          "stopLoss": 3997.105,
+          "takeProfit": 3968.905,
+          "outcome": "tp",
+          "filledUTC": "2026-10-30T07:00:00.000Z",
+          "resolvedUTC": "2026-10-30T07:45:00.000Z"
+        },
+        {
+          "leg": 25,
+          "entry": 3983.9275000000002,
+          "stopLoss": 3997.105,
+          "takeProfit": 3968.905,
+          "outcome": "tp",
+          "filledUTC": "2026-10-30T07:00:00.000Z",
+          "resolvedUTC": "2026-10-30T07:45:00.000Z"
+        }
+      ]
+    },
+    {
+      "signalUTC": "2026-10-30T12:30:00.000Z",
+      "direction": "bearish",
+      "type": "T1",
+      "insideMother": false,
+      "patternHigh": 3970.885,
+      "patternLow": 3955.705,
+      "outcome": "tp",
+      "legs": [
+        {
+          "leg": 10,
+          "entry": 3958.2265,
+          "stopLoss": 3973.885,
+          "takeProfit": 3941.325,
+          "outcome": "tp",
+          "filledUTC": "2026-10-30T12:45:00.000Z",
+          "resolvedUTC": "2026-10-30T13:00:00.000Z"
+        },
+        {
+          "leg": 25,
+          "entry": 3959.15875,
+          "stopLoss": 3973.885,
+          "takeProfit": 3941.325,
+          "outcome": "tp",
+          "filledUTC": "2026-10-30T12:45:00.000Z",
+          "resolvedUTC": "2026-10-30T13:00:00.000Z"
+        }
+      ]
+    },
+    {
+      "signalUTC": "2026-10-30T12:45:00.000Z",
+      "direction": "bearish",
+      "type": "T2",
+      "insideMother": false,
+      "patternHigh": 3970.885,
+      "patternLow": 3953.915,
+      "outcome": "tp",
+      "legs": [
+        {
+          "leg": 10,
+          "entry": 3954.7855,
+          "stopLoss": 3973.885,
+          "takeProfit": 3935.0549999999994,
+          "outcome": "tp",
+          "filledUTC": "2026-10-30T13:00:00.000Z",
+          "resolvedUTC": "2026-10-30T13:30:00.000Z"
+        },
+        {
+          "leg": 25,
+          "entry": 3955.25875,
+          "stopLoss": 3973.885,
+          "takeProfit": 3935.0549999999994,
+          "outcome": "tp",
+          "filledUTC": "2026-10-30T13:00:00.000Z",
+          "resolvedUTC": "2026-10-30T13:30:00.000Z"
+        }
+      ]
+    },
+    {
+      "signalUTC": "2026-10-30T15:15:00.000Z",
+      "direction": "bearish",
+      "type": "T2",
+      "insideMother": false,
+      "patternHigh": 3923.875,
+      "patternLow": 3906.405,
+      "outcome": "not-filled",
+      "legs": [
+        {
+          "leg": 10,
+          "entry": 3907.732,
+          "stopLoss": 3926.875,
+          "takeProfit": 3887.9449999999997,
+          "outcome": "not-filled"
+        },
+        {
+          "leg": 25,
+          "entry": 3908.2149999999997,
+          "stopLoss": 3926.875,
+          "takeProfit": 3887.9449999999997,
+          "outcome": "not-filled"
+        }
+      ]
+    },
+    {
+      "signalUTC": "2026-10-30T17:00:00.000Z",
+      "direction": "bearish",
+      "type": "T1",
+      "insideMother": false,
+      "patternHigh": 3898.59,
+      "patternLow": 3888.64,
+      "outcome": "tp",
+      "legs": [
+        {
+          "leg": 10,
+          "entry": 3890.0005,
+          "stopLoss": 3901.59,
+          "takeProfit": 3876.95,
+          "outcome": "tp",
+          "filledUTC": "2026-10-30T17:15:00.000Z",
+          "resolvedUTC": "2026-10-30T18:15:00.000Z"
+        },
+        {
+          "leg": 25,
+          "entry": 3891.09625,
+          "stopLoss": 3901.59,
+          "takeProfit": 3876.95,
+          "outcome": "tp",
+          "filledUTC": "2026-10-30T17:15:00.000Z",
+          "resolvedUTC": "2026-10-30T18:15:00.000Z"
+        }
+      ]
+    },
+    {
+      "signalUTC": "2026-10-30T17:30:00.000Z",
+      "direction": "bearish",
+      "type": "T1",
+      "insideMother": false,
+      "patternHigh": 3894.035,
+      "patternLow": 3879.975,
+      "outcome": "tp",
+      "legs": [
+        {
+          "leg": 10,
+          "entry": 3884.523,
+          "stopLoss": 3897.035,
+          "takeProfit": 3870.875,
+          "outcome": "tp",
+          "filledUTC": "2026-10-30T17:45:00.000Z",
+          "resolvedUTC": "2026-10-30T19:30:00.000Z"
+        },
+        {
+          "leg": 25,
+          "entry": 3885.375,
+          "stopLoss": 3897.035,
+          "takeProfit": 3870.875,
+          "outcome": "not-filled"
+        }
+      ]
+    },
+    {
+      "signalUTC": "2026-11-02T10:15:00.000Z",
+      "direction": "bearish",
+      "type": "T1",
+      "insideMother": false,
+      "patternHigh": 3900.2,
+      "patternLow": 3894.115,
+      "outcome": "sl",
+      "legs": [
+        {
+          "leg": 10,
+          "entry": 3895.3345,
+          "stopLoss": 3903.2,
+          "takeProfit": 3886.83,
+          "outcome": "sl",
+          "filledUTC": "2026-11-02T10:30:00.000Z",
+          "resolvedUTC": "2026-11-02T11:15:00.000Z"
+        },
+        {
+          "leg": 25,
+          "entry": 3895.81375,
+          "stopLoss": 3903.2,
+          "takeProfit": 3886.83,
+          "outcome": "sl",
+          "filledUTC": "2026-11-02T10:30:00.000Z",
+          "resolvedUTC": "2026-11-02T11:15:00.000Z"
+        }
+      ]
+    },
+    {
+      "signalUTC": "2026-11-02T11:45:00.000Z",
+      "direction": "bearish",
+      "type": "T1",
+      "insideMother": false,
+      "patternHigh": 3906.995,
+      "patternLow": 3900.695,
+      "outcome": "sl",
+      "legs": [
+        {
+          "leg": 10,
+          "entry": 3901.789,
+          "stopLoss": 3909.995,
+          "takeProfit": 3892.8450000000003,
+          "outcome": "sl",
+          "filledUTC": "2026-11-02T12:00:00.000Z",
+          "resolvedUTC": "2026-11-02T13:30:00.000Z"
+        },
+        {
+          "leg": 25,
+          "entry": 3902.3425,
+          "stopLoss": 3909.995,
+          "takeProfit": 3892.8450000000003,
+          "outcome": "sl",
+          "filledUTC": "2026-11-02T12:00:00.000Z",
+          "resolvedUTC": "2026-11-02T13:30:00.000Z"
+        }
+      ]
+    },
+    {
+      "signalUTC": "2026-11-02T23:00:00.000Z",
+      "direction": "bearish",
+      "type": "T2",
+      "insideMother": false,
+      "patternHigh": 3948.11,
+      "patternLow": 3943.115,
+      "outcome": "sl",
+      "legs": [
+        {
+          "leg": 10,
+          "entry": 3944.013,
+          "stopLoss": 3951.11,
+          "takeProfit": 3936.2499999999995,
+          "outcome": "sl",
+          "filledUTC": "2026-11-02T23:15:00.000Z",
+          "resolvedUTC": "2026-11-03T00:00:00.000Z"
+        },
+        {
+          "leg": 25,
+          "entry": 3944.5125,
+          "stopLoss": 3951.11,
+          "takeProfit": 3936.2499999999995,
+          "outcome": "sl",
+          "filledUTC": "2026-11-02T23:15:00.000Z",
+          "resolvedUTC": "2026-11-03T00:00:00.000Z"
+        }
+      ]
+    },
+    {
+      "signalUTC": "2026-11-03T01:30:00.000Z",
+      "direction": "bearish",
+      "type": "T1",
+      "insideMother": true,
+      "motherUTC": "2026-11-03T01:00:00.000Z",
+      "motherHigh": 3961.165,
+      "motherLow": 3945.94,
+      "patternHigh": 3959.415,
+      "patternLow": 3946.53,
+      "motherAgeBars": 2,
+      "outcome": "tp",
+      "legs": [
+        {
+          "leg": 10,
+          "entry": 3950.5115,
+          "stopLoss": 3962.415,
+          "takeProfit": 3937.255,
+          "outcome": "tp",
+          "filledUTC": "2026-11-03T01:45:00.000Z",
+          "resolvedUTC": "2026-11-03T03:15:00.000Z"
+        },
+        {
+          "leg": 25,
+          "entry": 3951.52625,
+          "stopLoss": 3962.415,
+          "takeProfit": 3937.255,
+          "outcome": "tp",
+          "filledUTC": "2026-11-03T01:45:00.000Z",
+          "resolvedUTC": "2026-11-03T03:15:00.000Z"
+        }
+      ]
+    },
+    {
+      "signalUTC": "2026-11-03T03:00:00.000Z",
+      "direction": "bearish",
+      "type": "T1",
+      "insideMother": false,
+      "patternHigh": 3951.395,
+      "patternLow": 3940.78,
+      "outcome": "tp",
+      "legs": [
+        {
+          "leg": 10,
+          "entry": 3941.3905,
+          "stopLoss": 3954.395,
+          "takeProfit": 3927.405,
+          "outcome": "tp",
+          "filledUTC": "2026-11-03T03:15:00.000Z",
+          "resolvedUTC": "2026-11-03T03:30:00.000Z"
+        },
+        {
+          "leg": 25,
+          "entry": 3942.1262500000003,
+          "stopLoss": 3954.395,
+          "takeProfit": 3927.405,
+          "outcome": "not-filled"
+        }
+      ]
+    },
+    {
+      "signalUTC": "2026-11-03T14:00:00.000Z",
+      "direction": "bearish",
+      "type": "T2",
+      "insideMother": false,
+      "patternHigh": 3971.355,
+      "patternLow": 3948.59,
+      "outcome": "not-filled",
+      "legs": [
+        {
+          "leg": 10,
+          "entry": 3950.366,
+          "stopLoss": 3974.355,
+          "takeProfit": 3934.355,
+          "outcome": "not-filled"
+        },
+        {
+          "leg": 25,
+          "entry": 3952.115,
+          "stopLoss": 3974.355,
+          "takeProfit": 3934.355,
+          "outcome": "not-filled"
+        }
+      ]
+    },
+    {
+      "signalUTC": "2026-11-03T18:15:00.000Z",
+      "direction": "bearish",
+      "type": "T1",
+      "insideMother": false,
+      "patternHigh": 3935.32,
+      "patternLow": 3930.22,
+      "outcome": "tp",
+      "legs": [
+        {
+          "leg": 10,
+          "entry": 3930.8050000000003,
+          "stopLoss": 3938.32,
+          "takeProfit": 3922.53,
+          "outcome": "tp",
+          "filledUTC": "2026-11-03T18:30:00.000Z",
+          "resolvedUTC": "2026-11-03T19:45:00.000Z"
+        },
+        {
+          "leg": 25,
+          "entry": 3931.375,
+          "stopLoss": 3938.32,
+          "takeProfit": 3922.53,
+          "outcome": "tp",
+          "filledUTC": "2026-11-03T18:30:00.000Z",
+          "resolvedUTC": "2026-11-03T19:45:00.000Z"
+        }
+      ]
+    },
+    {
+      "signalUTC": "2026-11-04T01:45:00.000Z",
+      "direction": "bearish",
+      "type": "T1",
+      "insideMother": false,
+      "patternHigh": 3964.745,
+      "patternLow": 3946.405,
+      "outcome": "tp",
+      "legs": [
+        {
+          "leg": 10,
+          "entry": 3948.3265,
+          "stopLoss": 3967.745,
+          "takeProfit": 3927.745,
+          "outcome": "tp",
+          "filledUTC": "2026-11-04T02:00:00.000Z",
+          "resolvedUTC": "2026-11-04T03:00:00.000Z"
+        },
+        {
+          "leg": 25,
+          "entry": 3950.0837500000002,
+          "stopLoss": 3967.745,
+          "takeProfit": 3927.745,
+          "outcome": "not-filled"
+        }
+      ]
+    },
+    {
+      "signalUTC": "2026-11-04T09:30:00.000Z",
+      "direction": "bearish",
+      "type": "T1",
+      "insideMother": false,
+      "patternHigh": 4048.725,
+      "patternLow": 4040.975,
+      "outcome": "tp",
+      "legs": [
+        {
+          "leg": 10,
+          "entry": 4043.1715,
+          "stopLoss": 4051.725,
+          "takeProfit": 4033.9649999999997,
+          "outcome": "tp",
+          "filledUTC": "2026-11-04T09:45:00.000Z",
+          "resolvedUTC": "2026-11-04T12:00:00.000Z"
+        },
+        {
+          "leg": 25,
+          "entry": 4043.66125,
+          "stopLoss": 4051.725,
+          "takeProfit": 4033.9649999999997,
+          "outcome": "tp",
+          "filledUTC": "2026-11-04T09:45:00.000Z",
+          "resolvedUTC": "2026-11-04T12:00:00.000Z"
+        }
+      ]
+    },
+    {
+      "signalUTC": "2026-11-04T10:30:00.000Z",
+      "direction": "bearish",
+      "type": "T2",
+      "insideMother": false,
+      "patternHigh": 4049.52,
+      "patternLow": 4039.905,
+      "outcome": "sl",
+      "legs": [
+        {
+          "leg": 10,
+          "entry": 4040.5840000000003,
+          "stopLoss": 4052.52,
+          "takeProfit": 4027.5800000000004,
+          "outcome": "sl",
+          "filledUTC": "2026-11-04T10:45:00.000Z",
+          "resolvedUTC": "2026-11-04T16:30:00.000Z"
+        },
+        {
+          "leg": 25,
+          "entry": 4041.385,
+          "stopLoss": 4052.52,
+          "takeProfit": 4027.5800000000004,
+          "outcome": "sl",
+          "filledUTC": "2026-11-04T10:45:00.000Z",
+          "resolvedUTC": "2026-11-04T16:30:00.000Z"
+        }
+      ]
+    },
+    {
+      "signalUTC": "2026-11-04T16:15:00.000Z",
+      "direction": "bearish",
+      "type": "T3",
+      "insideMother": false,
+      "patternHigh": 4051.375,
+      "patternLow": 4036.96,
+      "outcome": "sl",
+      "legs": [
+        {
+          "leg": 10,
+          "entry": 4042.025,
+          "stopLoss": 4054.375,
+          "takeProfit": 4028.7650000000003,
+          "outcome": "sl",
+          "filledUTC": "2026-11-04T16:30:00.000Z",
+          "resolvedUTC": "2026-11-04T16:30:00.000Z"
+        },
+        {
+          "leg": 25,
+          "entry": 4042.7075000000004,
+          "stopLoss": 4054.375,
+          "takeProfit": 4028.7650000000003,
+          "outcome": "sl",
+          "filledUTC": "2026-11-04T16:30:00.000Z",
+          "resolvedUTC": "2026-11-04T16:30:00.000Z"
+        }
+      ]
+    },
+    {
+      "signalUTC": "2026-11-04T21:15:00.000Z",
+      "direction": "bearish",
+      "type": "T1",
+      "insideMother": false,
+      "patternHigh": 4066.375,
+      "patternLow": 4060.705,
+      "outcome": "uncertain",
+      "legs": [
+        {
+          "leg": 10,
+          "entry": 4061.259,
+          "stopLoss": 4069.375,
+          "takeProfit": 4052.285,
+          "outcome": "uncertain",
+          "filledUTC": "2026-11-04T21:30:00.000Z"
+        },
+        {
+          "leg": 25,
+          "entry": 4061.9025,
+          "stopLoss": 4069.375,
+          "takeProfit": 4052.285,
+          "outcome": "uncertain"
+        }
+      ]
+    },
+    {
+      "signalUTC": "2026-11-06T12:15:00.000Z",
+      "direction": "bullish",
+      "type": "T3",
+      "insideMother": false,
+      "patternHigh": 4072.75,
+      "patternLow": 4059.48,
+      "outcome": "sl",
+      "legs": [
+        {
+          "leg": 10,
+          "entry": 4069.471,
+          "stopLoss": 4056.48,
+          "takeProfit": 4083.7599999999998,
+          "outcome": "sl",
+          "filledUTC": "2026-11-06T12:30:00.000Z",
+          "resolvedUTC": "2026-11-06T13:15:00.000Z"
+        },
+        {
+          "leg": 25,
+          "entry": 4068.4975,
+          "stopLoss": 4056.48,
+          "takeProfit": 4083.7599999999998,
+          "outcome": "sl",
+          "filledUTC": "2026-11-06T12:30:00.000Z",
+          "resolvedUTC": "2026-11-06T13:15:00.000Z"
+        }
+      ]
+    },
+    {
+      "signalUTC": "2026-11-06T14:45:00.000Z",
+      "direction": "bullish",
+      "type": "T2",
+      "insideMother": false,
+      "patternHigh": 4050.55,
+      "patternLow": 4029.83,
+      "outcome": "tp",
+      "legs": [
+        {
+          "leg": 10,
+          "entry": 4047.4759999999997,
+          "stopLoss": 4026.83,
+          "takeProfit": 4066.83,
+          "outcome": "tp",
+          "filledUTC": "2026-11-06T15:00:00.000Z",
+          "resolvedUTC": "2026-11-06T16:15:00.000Z"
+        },
+        {
+          "leg": 25,
+          "entry": 4045.58,
+          "stopLoss": 4026.83,
+          "takeProfit": 4066.83,
+          "outcome": "tp",
+          "filledUTC": "2026-11-06T15:00:00.000Z",
+          "resolvedUTC": "2026-11-06T16:15:00.000Z"
+        }
+      ]
+    },
+    {
+      "signalUTC": "2026-11-06T15:45:00.000Z",
+      "direction": "bullish",
+      "type": "T3",
+      "insideMother": false,
+      "patternHigh": 4057.505,
+      "patternLow": 4044.565,
+      "outcome": "tp",
+      "legs": [
+        {
+          "leg": 10,
+          "entry": 4054.3134999999997,
+          "stopLoss": 4041.565,
+          "takeProfit": 4067.8849999999998,
+          "outcome": "tp",
+          "filledUTC": "2026-11-06T16:00:00.000Z",
+          "resolvedUTC": "2026-11-06T16:45:00.000Z"
+        },
+        {
+          "leg": 25,
+          "entry": 4053.69625,
+          "stopLoss": 4041.565,
+          "takeProfit": 4067.8849999999998,
+          "outcome": "not-filled"
+        }
+      ]
+    },
+    {
+      "signalUTC": "2026-11-06T16:45:00.000Z",
+      "direction": "bullish",
+      "type": "T1",
+      "insideMother": false,
+      "patternHigh": 4068.5,
+      "patternLow": 4056.325,
+      "outcome": "uncertain",
+      "legs": [
+        {
+          "leg": 10,
+          "entry": 4066.4145,
+          "stopLoss": 4053.325,
+          "takeProfit": 4081.035,
+          "outcome": "uncertain",
+          "filledUTC": "2026-11-06T17:00:00.000Z"
+        },
+        {
+          "leg": 25,
+          "entry": 4065.2662499999997,
+          "stopLoss": 4053.325,
+          "takeProfit": 4081.035,
+          "outcome": "uncertain",
+          "filledUTC": "2026-11-06T17:00:00.000Z"
+        }
+      ]
+    },
+    {
+      "signalUTC": "2026-11-09T01:30:00.000Z",
+      "direction": "bullish",
+      "type": "T1",
+      "insideMother": false,
+      "patternHigh": 4125.695,
+      "patternLow": 4102.84,
+      "outcome": "sl",
+      "legs": [
+        {
+          "leg": 10,
+          "entry": 4121.9725,
+          "stopLoss": 4099.84,
+          "takeProfit": 4139.84,
+          "outcome": "sl",
+          "filledUTC": "2026-11-09T01:45:00.000Z",
+          "resolvedUTC": "2026-11-09T07:15:00.000Z"
+        },
+        {
+          "leg": 25,
+          "entry": 4119.456249999999,
+          "stopLoss": 4099.84,
+          "takeProfit": 4139.84,
+          "outcome": "sl",
+          "filledUTC": "2026-11-09T01:45:00.000Z",
+          "resolvedUTC": "2026-11-09T07:15:00.000Z"
+        }
+      ]
+    },
+    {
+      "signalUTC": "2026-11-09T03:30:00.000Z",
+      "direction": "bullish",
+      "type": "T1",
+      "insideMother": false,
+      "patternHigh": 4122.145,
+      "patternLow": 4115.265,
+      "outcome": "tp",
+      "legs": [
+        {
+          "leg": 10,
+          "entry": 4120.664,
+          "stopLoss": 4112.265,
+          "takeProfit": 4129.874999999999,
+          "outcome": "tp",
+          "filledUTC": "2026-11-09T03:45:00.000Z",
+          "resolvedUTC": "2026-11-09T04:30:00.000Z"
+        },
+        {
+          "leg": 25,
+          "entry": 4120.054999999999,
+          "stopLoss": 4112.265,
+          "takeProfit": 4129.874999999999,
+          "outcome": "tp",
+          "filledUTC": "2026-11-09T03:45:00.000Z",
+          "resolvedUTC": "2026-11-09T04:30:00.000Z"
+        }
+      ]
+    },
+    {
+      "signalUTC": "2026-11-10T12:45:00.000Z",
+      "direction": "bullish",
+      "type": "T2",
+      "insideMother": false,
+      "patternHigh": 4079.82,
+      "patternLow": 4073.365,
+      "outcome": "sl",
+      "legs": [
+        {
+          "leg": 10,
+          "entry": 4078.933,
+          "stopLoss": 4070.365,
+          "takeProfit": 4087.7350000000006,
+          "outcome": "sl",
+          "filledUTC": "2026-11-10T13:00:00.000Z",
+          "resolvedUTC": "2026-11-10T13:15:00.000Z"
+        },
+        {
+          "leg": 25,
+          "entry": 4078.7575,
+          "stopLoss": 4070.365,
+          "takeProfit": 4087.7350000000006,
+          "outcome": "sl",
+          "filledUTC": "2026-11-10T13:00:00.000Z",
+          "resolvedUTC": "2026-11-10T13:15:00.000Z"
+        }
+      ]
+    },
+    {
+      "signalUTC": "2026-11-10T15:00:00.000Z",
+      "direction": "bullish",
+      "type": "T1",
+      "insideMother": false,
+      "patternHigh": 4051.445,
+      "patternLow": 4033.03,
+      "outcome": "sl",
+      "legs": [
+        {
+          "leg": 10,
+          "entry": 4050.2055,
+          "stopLoss": 4030.03,
+          "takeProfit": 4070.03,
+          "outcome": "sl",
+          "filledUTC": "2026-11-10T15:15:00.000Z",
+          "resolvedUTC": "2026-11-10T16:15:00.000Z"
+        },
+        {
+          "leg": 25,
+          "entry": 4048.39875,
+          "stopLoss": 4030.03,
+          "takeProfit": 4070.03,
+          "outcome": "sl",
+          "filledUTC": "2026-11-10T15:15:00.000Z",
+          "resolvedUTC": "2026-11-10T16:15:00.000Z"
+        }
+      ]
+    },
+    {
+      "signalUTC": "2026-11-11T04:45:00.000Z",
+      "direction": "bullish",
+      "type": "T1",
+      "insideMother": true,
+      "motherUTC": "2026-11-11T01:30:00.000Z",
+      "motherHigh": 4052.675,
+      "motherLow": 4036.165,
+      "patternHigh": 4046.82,
+      "patternLow": 4040.635,
+      "motherAgeBars": 13,
+      "outcome": "tp",
+      "legs": [
+        {
+          "leg": 10,
+          "entry": 4046.0480000000002,
+          "stopLoss": 4037.635,
+          "takeProfit": 4055.135,
+          "outcome": "tp",
+          "filledUTC": "2026-11-11T05:00:00.000Z",
+          "resolvedUTC": "2026-11-11T05:15:00.000Z"
+        },
+        {
+          "leg": 25,
+          "entry": 4045.5425000000005,
+          "stopLoss": 4037.635,
+          "takeProfit": 4055.135,
+          "outcome": "tp",
+          "filledUTC": "2026-11-11T05:00:00.000Z",
+          "resolvedUTC": "2026-11-11T05:15:00.000Z"
+        }
+      ]
+    },
+    {
+      "signalUTC": "2026-11-16T02:45:00.000Z",
+      "direction": "bearish",
+      "type": "T2",
+      "insideMother": true,
+      "motherUTC": "2026-11-16T01:00:00.000Z",
+      "motherHigh": 3889.475,
+      "motherLow": 3859.975,
+      "patternHigh": 3887.765,
+      "patternLow": 3871.86,
+      "motherAgeBars": 7,
+      "outcome": "tp",
+      "legs": [
+        {
+          "leg": 10,
+          "entry": 3875.058,
+          "stopLoss": 3890.765,
+          "takeProfit": 3858.475,
+          "outcome": "tp",
+          "filledUTC": "2026-11-16T03:00:00.000Z",
+          "resolvedUTC": "2026-11-16T05:45:00.000Z"
+        },
+        {
+          "leg": 25,
+          "entry": 3875.715,
+          "stopLoss": 3890.765,
+          "takeProfit": 3858.475,
+          "outcome": "tp",
+          "filledUTC": "2026-11-16T04:00:00.000Z",
+          "resolvedUTC": "2026-11-16T05:45:00.000Z"
+        }
+      ]
+    },
+    {
+      "signalUTC": "2026-11-16T06:30:00.000Z",
+      "direction": "bearish",
+      "type": "T1",
+      "insideMother": true,
+      "motherUTC": "2026-11-16T05:45:00.000Z",
+      "motherHigh": 3867.175,
+      "motherLow": 3832.46,
+      "patternHigh": 3864.79,
+      "patternLow": 3839.445,
+      "motherAgeBars": 3,
+      "outcome": "sl",
+      "legs": [
+        {
+          "leg": 10,
+          "entry": 3842.9375,
+          "stopLoss": 3867.79,
+          "takeProfit": 3827.79,
+          "outcome": "sl",
+          "filledUTC": "2026-11-16T06:45:00.000Z",
+          "resolvedUTC": "2026-11-16T10:30:00.000Z"
+        },
+        {
+          "leg": 25,
+          "entry": 3844.3137500000003,
+          "stopLoss": 3867.79,
+          "takeProfit": 3827.79,
+          "outcome": "sl",
+          "filledUTC": "2026-11-16T06:45:00.000Z",
+          "resolvedUTC": "2026-11-16T10:30:00.000Z"
+        }
+      ]
+    },
+    {
+      "signalUTC": "2026-11-16T11:30:00.000Z",
+      "direction": "bearish",
+      "type": "T1",
+      "insideMother": false,
+      "patternHigh": 3876.21,
+      "patternLow": 3872.57,
+      "outcome": "tp",
+      "legs": [
+        {
+          "leg": 10,
+          "entry": 3872.935,
+          "stopLoss": 3879.21,
+          "takeProfit": 3866.3199999999997,
+          "outcome": "tp",
+          "filledUTC": "2026-11-16T11:45:00.000Z",
+          "resolvedUTC": "2026-11-16T12:45:00.000Z"
+        },
+        {
+          "leg": 25,
+          "entry": 3873.1899999999996,
+          "stopLoss": 3879.21,
+          "takeProfit": 3866.3199999999997,
+          "outcome": "tp",
+          "filledUTC": "2026-11-16T11:45:00.000Z",
+          "resolvedUTC": "2026-11-16T12:45:00.000Z"
+        }
+      ]
+    },
+    {
+      "signalUTC": "2026-11-16T17:30:00.000Z",
+      "direction": "bearish",
+      "type": "T1",
+      "insideMother": false,
+      "patternHigh": 3871.16,
+      "patternLow": 3861.24,
+      "outcome": "not-filled",
+      "legs": [
+        {
+          "leg": 10,
+          "entry": 3862.0965,
+          "stopLoss": 3874.16,
+          "takeProfit": 3848.6500000000005,
+          "outcome": "not-filled"
+        },
+        {
+          "leg": 25,
+          "entry": 3863.1337500000004,
+          "stopLoss": 3874.16,
+          "takeProfit": 3848.6500000000005,
+          "outcome": "not-filled"
+        }
+      ]
+    },
+    {
+      "signalUTC": "2026-11-17T06:45:00.000Z",
+      "direction": "bearish",
+      "type": "T2",
+      "insideMother": false,
+      "patternHigh": 3877.405,
+      "patternLow": 3870.255,
+      "outcome": "tp",
+      "legs": [
+        {
+          "leg": 10,
+          "entry": 3871.548,
+          "stopLoss": 3880.405,
+          "takeProfit": 3862.0349999999994,
+          "outcome": "tp",
+          "filledUTC": "2026-11-17T07:00:00.000Z",
+          "resolvedUTC": "2026-11-17T08:15:00.000Z"
+        },
+        {
+          "leg": 25,
+          "entry": 3872.04,
+          "stopLoss": 3880.405,
+          "takeProfit": 3862.0349999999994,
+          "outcome": "tp",
+          "filledUTC": "2026-11-17T07:00:00.000Z",
+          "resolvedUTC": "2026-11-17T08:15:00.000Z"
+        }
+      ]
+    },
+    {
+      "signalUTC": "2026-11-17T19:30:00.000Z",
+      "direction": "bearish",
+      "type": "T2",
+      "insideMother": false,
+      "patternHigh": 3858.555,
+      "patternLow": 3847.88,
+      "outcome": "uncertain",
+      "legs": [
+        {
+          "leg": 10,
+          "entry": 3849.824,
+          "stopLoss": 3861.555,
+          "takeProfit": 3837.2150000000006,
+          "outcome": "uncertain",
+          "filledUTC": "2026-11-17T19:45:00.000Z"
+        },
+        {
+          "leg": 25,
+          "entry": 3850.4825,
+          "stopLoss": 3861.555,
+          "takeProfit": 3837.2150000000006,
+          "outcome": "uncertain",
+          "filledUTC": "2026-11-17T20:30:00.000Z"
+        }
+      ]
+    },
+    {
+      "signalUTC": "2026-11-17T21:45:00.000Z",
+      "direction": "bearish",
+      "type": "T3",
+      "insideMother": false,
+      "patternHigh": 3858.38,
+      "patternLow": 3849.075,
+      "outcome": "no-valid-entry",
+      "legs": []
+    },
+    {
+      "signalUTC": "2026-11-17T23:30:00.000Z",
+      "direction": "bearish",
+      "type": "T1",
+      "insideMother": false,
+      "patternHigh": 3857.61,
+      "patternLow": 3847.365,
+      "outcome": "tp",
+      "legs": [
+        {
+          "leg": 10,
+          "entry": 3849.945,
+          "stopLoss": 3860.61,
+          "takeProfit": 3838.19,
+          "outcome": "tp",
+          "filledUTC": "2026-11-17T23:45:00.000Z",
+          "resolvedUTC": "2026-11-18T00:15:00.000Z"
+        },
+        {
+          "leg": 25,
+          "entry": 3850.7625,
+          "stopLoss": 3860.61,
+          "takeProfit": 3838.19,
+          "outcome": "tp",
+          "filledUTC": "2026-11-17T23:45:00.000Z",
+          "resolvedUTC": "2026-11-18T00:15:00.000Z"
+        }
+      ]
+    }
+  ]
+}

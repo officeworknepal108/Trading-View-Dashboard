@@ -1,0 +1,58 @@
+[
+  {
+    "profile": "primary",
+    "id": "SCALP_1_1:M15:1794958200:SELL:3849.400:3860.610:3838.190:P25",
+    "ticket": 105138120,
+    "openedAt": 1794966594,
+    "closedAt": 1794968614
+  },
+  {
+    "profile": "primary",
+    "id": "SCALP_1_1:M15:1794958200:SELL:3849.400:3860.610:3838.190:P10",
+    "ticket": 105138119,
+    "openedAt": 1794966590,
+    "closedAt": 1794968614
+  },
+  {
+    "profile": "primary",
+    "id": "SCALP_1_1:M15:1794943800:SELL:3849.385:3861.555:3837.215:P25",
+    "ticket": 105112574,
+    "openedAt": 1794954636,
+    "closedAt": 1794968614
+  },
+  {
+    "profile": "primary",
+    "id": "SCALP_1_1:M15:1794943800:SELL:3849.385:3861.555:3837.215:P10",
+    "ticket": 105112573,
+    "openedAt": 1794951944,
+    "closedAt": 1794968614
+  },
+  {
+    "profile": "secondary",
+    "id": "SCALP_1_1:M15:1794958200:SELL:3849.400:3860.610:3838.190:P25:secondary",
+    "ticket": 52211804,
+    "openedAt": 1794966781,
+    "closedAt": 1794968614
+  },
+  {
+    "profile": "secondary",
+    "id": "SCALP_1_1:M15:1794958200:SELL:3849.400:3860.610:3838.190:P10:secondary",
+    "ticket": 52211801,
+    "openedAt": 1794966594,
+    "closedAt": 1794968614
+  },
+  {
+    "profile": "secondary",
+    "id": "SCALP_1_1:M15:1794943800:SELL:3849.385:3861.555:3837.215:P25:secondary",
+    "ticket": 52186420,
+    "openedAt": 1794954637,
+    "closedAt": 1794968614
+  },
+  {
+    "profile": "secondary",
+    "id": "SCALP_1_1:M15:1794943800:SELL:3849.385:3861.555:3837.215:P10:secondary",
+    "ticket": 52186410,
+    "openedAt": 1794954449,
+    "closedAt": 1794968614
+  }
+]

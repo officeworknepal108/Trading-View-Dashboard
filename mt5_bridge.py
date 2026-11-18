@@ -407,11 +407,11 @@ def same_intraday_setup(first: dict[str, Any], second: dict[str, Any]) -> bool:
 
 def signal_risk_percent(signal: dict[str, Any], config: dict[str, Any]) -> float:
     if signal.get("tradeStyle") == "SCALP_1_1":
-        value = float(config.get("scalpOneToOneRiskPercent", 0.25))
+        value = float(config.get("scalpOneToOneRiskPercent", 0.5))
         if value not in (0.25, 0.5, 0.75, 1.0, 1.5, 2.0):
             raise RuntimeError("Invalid Scalp 1:1 risk selection.")
     elif signal.get('tradeStyle') == 'INTRADAY':
-        value = float(config.get('intradayRiskPercent', config.get('riskPercent', .25)))
+        value = float(config.get('intradayRiskPercent', config.get('riskPercent', .5)))
     elif signal.get('tradeStyle') == 'SCALPING':
         value = float(config.get('scalpingRiskPercent', config.get('riskPercent', .25)))
     else:
@@ -1476,8 +1476,10 @@ def closed_trade_details(record: dict[str, Any], was_risk_free: bool) -> dict[st
             if total_volume > 0:
                 details['executionPrice'] = sum(float(deal.price) * float(deal.volume) for deal in entries) / total_volume
                 details['volume'] = total_volume
-                details['openedAt'] = int(min(deal.time for deal in entries))
-                details['closedAt'] = int(max(deal.time for deal in exits))
+                # Deal history uses the broker clock, just like position/candle
+                # timestamps. The dashboard compares these values against UTC.
+                details['openedAt'] = int(min(deal.time for deal in entries)) - BROKER_TIME_OFFSET
+                details['closedAt'] = int(max(deal.time for deal in exits)) - BROKER_TIME_OFFSET
     return details
 
 

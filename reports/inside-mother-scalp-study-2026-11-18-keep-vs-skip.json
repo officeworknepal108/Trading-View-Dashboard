@@ -1,0 +1,33 @@
+{
+  "method": "Fixed full-setup cash allowance, 60% to P10 and 40% to P25; each leg uses its actual entry-to-fixed-TP RR. Sum only unambiguous closed legs. Pending, open, uncertain and unfilled legs add no realized PnL. No compounding, fees, spread or slippage; no account balance assumed.",
+  "keep": {
+    "setups": 235,
+    "tp": 116,
+    "sl": 75,
+    "winRatePercent": 60.73298429319372,
+    "confirmedGrossR": 45.83474317349684,
+    "confirmedGrossUSDAt50Risk": 2291.737158674842,
+    "confirmedGrossUSDAt100Risk": 4583.474317349684
+  },
+  "skip": {
+    "setups": 213,
+    "tp": 106,
+    "sl": 66,
+    "winRatePercent": 61.627906976744185,
+    "confirmedGrossR": 43.27698397671484,
+    "confirmedGrossUSDAt50Risk": 2163.849198835742,
+    "confirmedGrossUSDAt100Risk": 4327.698397671484
+  },
+  "removed": {
+    "setups": 22,
+    "tp": 10,
+    "sl": 9,
+    "winRatePercent": 52.63157894736842,
+    "confirmedGrossR": 2.5577591967819937,
+    "confirmedGrossUSDAt50Risk": 127.88795983909968,
+    "confirmedGrossUSDAt100Risk": 255.77591967819936
+  },
+  "skipWinRateChangePercentagePoints": 0.8949226835504689,
+  "skipConfirmedGrossRChange": -2.5577591967820013,
+  "skipConfirmedProfitChangePercent": -5.580393866504707
+}

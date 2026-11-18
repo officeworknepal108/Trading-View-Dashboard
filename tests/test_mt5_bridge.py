@@ -24,6 +24,10 @@ class BridgeTestCase(unittest.TestCase):
 
 
 class StrategyRiskTests(BridgeTestCase):
+    def test_missing_risk_settings_use_the_dashboard_defaults(self):
+        for style, risk in [('INTRADAY', .5), ('SCALPING', .25), ('SCALP_1_1', .5)]:
+            self.assertEqual(bridge.signal_risk_percent({'tradeStyle': style}, {}), risk)
+
     def test_each_strategy_sizes_from_its_own_percentage_and_entry_risk(self):
         config = {'riskPercent': 2, 'intradayRiskPercent': .5, 'scalpingRiskPercent': 1, 'scalpOneToOneRiskPercent': .25}
         info = SimpleNamespace(name='XAUUSD', volume_step=.01, volume_min=.01, volume_max=100)
@@ -269,13 +273,40 @@ class ScalpOneToOneTests(BridgeTestCase):
         entered = SimpleNamespace(entry=bridge.mt5.DEAL_ENTRY_IN, price=98.9, volume=0.02, time=1805)
         exited = SimpleNamespace(entry=bridge.mt5.DEAL_ENTRY_OUT, reason=bridge.mt5.DEAL_REASON_TP,
                                  price=110, profit=22.2, swap=0, commission=-0.2, time=1810)
-        with patch.object(bridge.mt5, 'history_deals_get', return_value=[entered, exited]):
+        with patch.object(bridge.mt5, 'history_deals_get', return_value=[entered, exited]), \
+             patch.object(bridge, 'BROKER_TIME_OFFSET', 0):
             details = bridge.closed_trade_details(record, False)
         self.assertEqual(details['status'], 'TP')
         self.assertEqual(details['executionPrice'], 98.9)
         self.assertEqual(details['openedAt'], 1805)
         self.assertEqual(details['closedAt'], 1810)
         self.assertEqual(details['realizedProfit'], 22)
+
+    def test_closed_pullback_deal_times_use_utc_for_each_broker_offset(self):
+        # The dashboard must recognize these fills immediately after closure,
+        # even when the broker's history clock is ahead of the dashboard clock.
+        for entry_type in ['scalpEntry', 'intradayEntry']:
+            for offset in [7200, 10800, 0, -3600]:
+                with self.subTest(entry_type=entry_type, offset=offset):
+                    record = {**self.pullback(), 'brokerTicket': 123}
+                    if entry_type == 'intradayEntry':
+                        record[entry_type] = record.pop('scalpEntry')
+                        record['tradeStyle'] = 'INTRADAY'
+                    entered = SimpleNamespace(entry=bridge.mt5.DEAL_ENTRY_IN,
+                        price=98.9, volume=0.02, time=1805 + offset)
+                    exited = SimpleNamespace(entry=bridge.mt5.DEAL_ENTRY_OUT,
+                        reason=bridge.mt5.DEAL_REASON_TP, price=110, profit=22.2,
+                        swap=0, commission=-0.2, time=1810 + offset)
+                    with patch.object(bridge.mt5, 'history_deals_get', return_value=[entered, exited]), \
+                         patch.object(bridge, 'BROKER_TIME_OFFSET', offset), \
+                         patch.object(bridge.time, 'time', return_value=1811):
+                        details = bridge.closed_trade_details(record, False)
+                    self.assertEqual(details['openedAt'], 1805)
+                    self.assertEqual(details['closedAt'], 1810)
+                    self.assertLessEqual(details['openedAt'], 1811)
+                    self.assertEqual(details['status'], 'TP')
+                    self.assertEqual(details['executionPrice'], 98.9)
+                    self.assertEqual(details['realizedProfit'], 22)
 
     def test_broker_rounding_never_increases_a_leg_to_the_full_setup_risk(self):
         info = SimpleNamespace(name='XAUUSD', volume_step=0.01, volume_min=0.01, volume_max=100)
@@ -368,7 +399,7 @@ class ScalpOneToOneTests(BridgeTestCase):
         config = {"riskPercent": 2, "scalpOneToOneRiskPercent": 0.75}
         self.assertEqual(bridge.signal_risk_percent({"tradeStyle": "SCALP_1_1"}, config), 0.75)
         self.assertEqual(bridge.signal_risk_percent({"tradeStyle": "INTRADAY"}, config), 2)
-        self.assertEqual(bridge.signal_risk_percent({"tradeStyle": "SCALP_1_1"}, {"riskPercent": 2}), 0.25)
+        self.assertEqual(bridge.signal_risk_percent({"tradeStyle": "SCALP_1_1"}, {"riskPercent": 2}), 0.5)
         with self.assertRaisesRegex(RuntimeError, "Invalid Scalp"):
             bridge.signal_risk_percent({"tradeStyle": "SCALP_1_1"}, {**config, "scalpOneToOneRiskPercent": 5})
 

@@ -46,14 +46,18 @@ test('MT5 account handshake resets old candles and queues while preserving autom
       return originalFetch(input, init);
     };
   `)}`;
-  const child = spawn(process.execPath, ['--import', tsxPath, '--import', calendarFixture, serverPath], {
-    cwd: workspace, windowsHide: true,
-    env: { ...process.env, PORT: String(port), NODE_ENV: 'production', MT5_BRIDGE_TOKEN: 'isolated-test-token', AUTH_PUBLIC_URL: `http://127.0.0.1:${port}` },
-    stdio: ['ignore', 'pipe', 'pipe'],
-  });
   let output = '';
-  child.stdout.on('data', (chunk) => { output += chunk.toString(); });
-  child.stderr.on('data', (chunk) => { output += chunk.toString(); });
+  const launch = () => {
+    const launched = spawn(process.execPath, ['--import', tsxPath, '--import', calendarFixture, serverPath], {
+      cwd: workspace, windowsHide: true,
+      env: { ...process.env, PORT: String(port), NODE_ENV: 'production', MT5_BRIDGE_TOKEN: 'isolated-test-token', AUTH_PUBLIC_URL: `http://127.0.0.1:${port}` },
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+    launched.stdout.on('data', (chunk) => { output += chunk.toString(); });
+    launched.stderr.on('data', (chunk) => { output += chunk.toString(); });
+    return launched;
+  };
+  let child = launch();
   const base = `http://127.0.0.1:${port}`;
   const request = async (route: string, body?: unknown, method = 'POST') => fetch(`${base}${route}`, {
     method: body === undefined ? 'GET' : method,
@@ -69,6 +73,11 @@ test('MT5 account handshake resets old candles and queues while preserving autom
       await new Promise((resolve) => setTimeout(resolve, 100));
     }
     assert.ok(ready, output);
+    const freshDefaults = (await (await request('/api/mt5/status?terminal=secondary')).json()).config;
+    assert.equal(freshDefaults.scalpingRiskPercent, .25);
+    assert.equal(freshDefaults.intradayRiskPercent, .5);
+    assert.equal(freshDefaults.scalpOneToOneRiskPercent, .5);
+    assert.equal(freshDefaults.maximumDailyLossPercent, 2);
     const first = { bridgeId: 'test-bridge', account: '123', server: 'Broker-A', brokerSymbol: 'XAUUSD.x', balance: 12345, equity: 12400,
       terminalConnected: true, symbolResolved: true, symbolCandidates: ['XAUUSD.x'],
       positions: [{ ticket: 77, identifier: 77, openedAtMsc: 1700000000000, magic: 0, symbol: 'XAUUSD.x',
@@ -144,7 +153,7 @@ test('MT5 account handshake resets old candles and queues while preserving autom
     status = await (await request('/api/mt5/status')).json();
     assert.equal(status.config.maximumDailyLossPercent, 5, 'server caps the daily loss control at 5%');
     assert.equal(status.config.scalpOneToOneEnabled, false);
-    assert.equal(status.config.scalpOneToOneRiskPercent, 0.25);
+    assert.equal(status.config.scalpOneToOneRiskPercent, 0.5);
     assert.equal((await request('/api/mt5/config', { ...status.config, scalpOneToOneRiskPercent: 0.75 }, 'PUT')).status, 200);
     status = await (await request('/api/mt5/status')).json();
     assert.equal(status.config.scalpOneToOneRiskPercent, 0.75);
@@ -471,6 +480,32 @@ test('MT5 account handshake resets old candles and queues while preserving autom
     const persisted = JSON.parse(await readFile(path.join(dataPath, 'mt5-automation.json'), 'utf8'));
     assert.equal(persisted.intradayRiskPercent, 1.5); assert.equal(persisted.scalpingRiskPercent, 2);
     assert.equal(persisted.scalpOneToOneRiskPercent, .75);
+    // Daily-limit edits are partial too: neither account's strategy selections
+    // may be reset by the other settings, a refresh, or a server restart.
+    assert.equal((await request('/api/mt5/config', { maximumDailyLossPercent: 3 }, 'PUT')).status, 200);
+    assert.equal((await request(secondaryRoute('/api/mt5/config'), { scalpingRiskPercent: .75,
+      scalpOneToOneRiskPercent: 1.5, maximumDailyLossPercent: 4 }, 'PUT')).status, 200);
+    const expected = new Map<string, unknown>();
+    const fields = ['scalpingRiskPercent', 'intradayRiskPercent', 'scalpOneToOneRiskPercent', 'maximumDailyLossPercent'];
+    for (const terminal of ['primary', 'secondary']) {
+      const config = (await (await request(`/api/mt5/status?terminal=${terminal}`)).json()).config;
+      expected.set(terminal, Object.fromEntries(fields.map(field => [field, config[field]])));
+    }
+    const priorExit = new Promise<void>(resolve => child.once('exit', () => resolve()));
+    child.kill('SIGKILL'); await priorExit;
+    child = launch();
+    let restarted = false;
+    for (let attempt = 0; attempt < 100; attempt++) {
+      try { restarted = (await request('/api/mt5/status')).ok; } catch { /* Wait for restart. */ }
+      if (restarted) break;
+      if (child.exitCode !== null) throw new Error(output);
+      await new Promise(resolve => setTimeout(resolve, 100));
+    }
+    assert.ok(restarted, output);
+    for (const terminal of ['primary', 'secondary']) {
+      const config = (await (await request(`/api/mt5/status?terminal=${terminal}`)).json()).config;
+      assert.deepEqual(Object.fromEntries(fields.map(field => [field, config[field]])), expected.get(terminal));
+    }
   } finally {
     const exited = new Promise<void>((resolve) => {
       if (child.exitCode !== null) resolve(); else child.once('exit', () => resolve());

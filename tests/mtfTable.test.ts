@@ -19,7 +19,7 @@ import type { TradeLevels } from '../src/services/tradeLevels';
 
 const bar = (time: number, complete = true) => ({ time, open: 100, high: 102, low: 99, close: 101, volume: 1, complete });
 
-test('each tap resets table age and keeps its own inclusive 50-bar window', () => {
+test('Gold tap windows reset with 50 bars for Tap 1 and 10 bars for later taps', () => {
   const candles = Array.from({ length: 200 }, (_, i) => bar(i * 900));
   const zone: StructureZone = { id: 'repeat-taps', name: 'QML', category: 'mg', isBuy: true,
     active: true, status: 'valid', startTime: -900, endTime: 999999, bottom: 100, top: 102,
@@ -28,12 +28,17 @@ test('each tap resets table age and keeps its own inclusive 50-bar window', () =
   for (let tap = 1; tap <= 5; tap++) {
     const tapIndex = (tap - 1) * 20;
     const current = { ...zone, tapCount: tap, lastTapTime: candles[tapIndex].time };
-    for (const age of [0, 1, 12, 49, 50, 51]) {
+    for (const age of [0, 1, 9, 10, 11, 49, 50, 51]) {
       const visibleCandles = candles.slice(0, tapIndex + age + 1);
       const actualAge = latestZoneTapBarsAgo(current, visibleCandles);
       assert.equal(actualAge, age, `TAP ${tap} must count from its own touch`);
+      for (const trade of [undefined, { status: 'pending' as const }, { status: 'tp-hit' as const }]) {
+        const expired = zoneTableTradeExpired(trade, actualAge!, visibleCandles,
+          visibleCandles.at(-1)!.time, tap, 'XAUUSD');
+        if (tap > 1 || trade?.status === 'tp-hit') assert.equal(expired, age > (tap === 1 ? 50 : 10));
+      }
       assert.equal(zoneTableTradeExpired({ status: 'tp-hit' }, actualAge!, visibleCandles,
-        visibleCandles.at(-1)!.time), age > 50);
+        visibleCandles.at(-1)!.time, tap, 'EURUSD'), age > 50, 'Forex retains its 50-bar window');
     }
   }
   assert.deepEqual(zone, original, 'table age must not alter tap or trading data');

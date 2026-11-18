@@ -162,7 +162,14 @@ export function scalpOneToOneVolumePasses(type: string | undefined,
   const confirming = type === 'T1' ? v2! : v3!;
   return reference - confirming >= SCALP_ONE_TO_ONE_MINIMUM_VOLUME_GAP;
 }
-export function normalizeScalpOneToOneRisk(value: unknown, fallback = 0.25): number {
+export const MT5_DEFAULT_RISK_SETTINGS = {
+  scalpingRiskPercent: 0.25,
+  intradayRiskPercent: 0.5,
+  scalpOneToOneRiskPercent: 0.5,
+  maximumDailyLossPercent: 2,
+} as const;
+
+export function normalizeScalpOneToOneRisk(value: unknown, fallback: number = MT5_DEFAULT_RISK_SETTINGS.scalpOneToOneRiskPercent): number {
   return SCALP_ONE_TO_ONE_RISK_OPTIONS.includes(value as typeof SCALP_ONE_TO_ONE_RISK_OPTIONS[number])
     ? value as number : fallback;
 }
@@ -332,13 +339,15 @@ export interface Mt5AutomationConfig {
 }
 
 /** Legacy shared risk initializes each new strategy field independently. */
-export function mt5StrategyRiskPercent(config: Pick<Mt5AutomationConfig,
-  'riskPercent' | 'intradayRiskPercent' | 'scalpingRiskPercent' | 'scalpOneToOneRiskPercent'>,
+export function mt5StrategyRiskPercent(config: Partial<Pick<Mt5AutomationConfig,
+  'riskPercent' | 'intradayRiskPercent' | 'scalpingRiskPercent' | 'scalpOneToOneRiskPercent'>>,
   style?: Mt5SignalInput['tradeStyle']): number {
   if (style === 'SCALP_1_1') return normalizeScalpOneToOneRisk(config.scalpOneToOneRiskPercent);
   const value = style === 'INTRADAY' ? config.intradayRiskPercent
     : style === 'SCALPING' ? config.scalpingRiskPercent : config.riskPercent;
-  return normalizeMt5RiskPercent(value, normalizeMt5RiskPercent(config.riskPercent));
+  const fallback = style === 'INTRADAY' ? MT5_DEFAULT_RISK_SETTINGS.intradayRiskPercent
+    : MT5_DEFAULT_RISK_SETTINGS.scalpingRiskPercent;
+  return normalizeMt5RiskPercent(value, normalizeMt5RiskPercent(config.riskPercent, fallback));
 }
 
 export interface ScalpPullbackEntry {

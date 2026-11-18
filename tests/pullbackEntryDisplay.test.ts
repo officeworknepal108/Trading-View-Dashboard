@@ -20,6 +20,19 @@ const record: JournalTradeRecord = { id: 'chart10', source: 'ENGULFING', symbol:
   entry: 3009, stopLoss: 2990, takeProfit: 3050, riskPips: 190, rewardRisk: 41 / 19,
   openedAt: 1900, completedAt: 1900, result: 'open', tradeStyle: 'INTRADAY', intradayEntry: signal.intradayEntry };
 
+test('replay labels use simulated outcomes without suggesting a broker execution', () => {
+  for (const [chart, expected] of [
+    [{ status: 'waiting' }, 'REPLAY: Waiting'],
+    [{ status: 'filled', filledAt: 1800 }, 'REPLAY: Filled'],
+    [{ status: 'filled', outcome: { level: 'tp', at: 2700 } }, 'REPLAY: TP HIT'],
+    [{ status: 'filled', outcome: { level: 'sl', at: 2700 } }, 'REPLAY: SL HIT'],
+    [{ status: 'filled', outcome: { level: 'both', at: 2700 } }, 'REPLAY: SL/TP HIT'],
+  ] as const) {
+    assert.equal(chartExecutionStatus(chart, false, undefined, true), expected);
+    assert.match(chartExecutionStatus(chart, false), /MT5: Not executed$/);
+  }
+});
+
 test('a 75-minute deadline inside an M30 bar cannot prove a post-deadline dip filled in time', () => {
   const s = { ...signal, signalTimeframe: 'M30' as const, signalAt: 1800, calculatedAt: 3600,
     expiresAt: 8100, intradayEntry: { ...signal.intradayEntry!, version: 3 as const } };

@@ -26,6 +26,7 @@ import { formatTelegramTradeMessage, countDailyTrades, countTelegramSetups, form
   telegramDemoMessages, type TelegramTradeAlert } from './src/services/telegramMessages';
 import {
   MT5_DEFAULT_ENABLED_TIMEFRAMES,
+  MT5_DEFAULT_RISK_SETTINGS,
   MT5_ENTRY_TIMEFRAME_OPTIONS,
   isMt5EntryTimeframeEnabled,
   goldAutomationCountertrendBlocked,
@@ -133,16 +134,13 @@ const DEFAULT_MT5_CONFIG: Mt5AutomationConfig = {
   scalpingEnabled: true,
   intradayEnabled: true,
   scalpOneToOneEnabled: false,
-  scalpOneToOneRiskPercent: 0.25,
-  intradayRiskPercent: 0.25,
-  scalpingRiskPercent: 0.25,
+  ...MT5_DEFAULT_RISK_SETTINGS,
   mtfLtfFibRequired: false,
   symbol: 'XAUUSD',
   brokerSymbol: 'XAUUSDm',
   enabledTimeframes: [...MT5_DEFAULT_ENABLED_TIMEFRAMES],
   riskPercent: 0.25,
   maximumOpenTrades: 1,
-  maximumDailyLossPercent: 2,
   maximumSpreadPoints: 80,
   signalMaxAgeSeconds: 120,
   pendingExpiryMinutes: 240,
@@ -454,8 +452,8 @@ async function readMt5Config(): Promise<Mt5AutomationConfig> {
         DEFAULT_MT5_CONFIG.enabledTimeframes,
       ),
       riskPercent: normalizeMt5RiskPercent(parsed?.riskPercent, DEFAULT_MT5_CONFIG.riskPercent),
-      intradayRiskPercent: normalizeMt5RiskPercent(parsed?.intradayRiskPercent, normalizeMt5RiskPercent(parsed?.riskPercent, DEFAULT_MT5_CONFIG.riskPercent)),
-      scalpingRiskPercent: normalizeMt5RiskPercent(parsed?.scalpingRiskPercent, normalizeMt5RiskPercent(parsed?.riskPercent, DEFAULT_MT5_CONFIG.riskPercent)),
+      intradayRiskPercent: normalizeMt5RiskPercent(parsed?.intradayRiskPercent, normalizeMt5RiskPercent(parsed?.riskPercent, MT5_DEFAULT_RISK_SETTINGS.intradayRiskPercent)),
+      scalpingRiskPercent: normalizeMt5RiskPercent(parsed?.scalpingRiskPercent, normalizeMt5RiskPercent(parsed?.riskPercent, MT5_DEFAULT_RISK_SETTINGS.scalpingRiskPercent)),
       maximumDailyLossPercent: normalizeMt5DailyLossPercent(parsed?.maximumDailyLossPercent, DEFAULT_MT5_CONFIG.maximumDailyLossPercent),
     };
   } catch (error) {
@@ -608,7 +606,7 @@ function sanitizeMt5Config(candidate: any, current: Mt5AutomationConfig): Mt5Aut
     scalpOneToOneEnabled: candidate?.scalpOneToOneEnabled === undefined
       ? current.scalpOneToOneEnabled === true : candidate.scalpOneToOneEnabled === true,
     scalpOneToOneRiskPercent: normalizeScalpOneToOneRisk(candidate?.scalpOneToOneRiskPercent,
-      current.scalpOneToOneRiskPercent ?? 0.25),
+      current.scalpOneToOneRiskPercent ?? MT5_DEFAULT_RISK_SETTINGS.scalpOneToOneRiskPercent),
     mtfLtfFibRequired: candidate?.mtfLtfFibRequired === undefined
       ? current.mtfLtfFibRequired : candidate.mtfLtfFibRequired === true,
     brokerSymbol: typeof candidate?.brokerSymbol === 'string'

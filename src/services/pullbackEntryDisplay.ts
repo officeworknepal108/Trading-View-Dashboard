@@ -86,12 +86,14 @@ export function chartPullbackState(signal: Mt5SignalInput, candles: readonly Str
   return { status: asOf >= signal.expiresAt || exit ? 'expired' : 'waiting', beforeEntryExit: exit };
 }
 
-export function chartExecutionStatus(chart: ChartPullbackState, executed: boolean, brokerStatus?: Mt5StoredSignal['status']): string {
+export function chartExecutionStatus(chart: ChartPullbackState, executed: boolean,
+  brokerStatus?: Mt5StoredSignal['status'], replay = false): string {
   const level = chart.outcome?.level ?? chart.beforeEntryExit?.level;
   const name = level === 'tp' ? 'TP' : level === 'sl' ? 'SL' : 'SL/TP';
   const state = chart.outcome ? `${name} HIT` : chart.beforeEntryExit ? `${name} reached before entry`
     : chart.status === 'filled' ? 'Filled' : chart.status === 'waiting' ? 'Waiting'
       : chart.status === 'expired' ? 'Entry expired' : chart.status === 'ambiguous' ? 'Fill uncertain' : 'Waiting for candle data';
+  if (replay) return `REPLAY: ${state}`;
   const broker = executed ? brokerStatus === 'TP' || brokerStatus === 'SL' ? `${brokerStatus} HIT` : 'Executed' : 'Not executed';
   return `CHART: ${state} · MT5: ${broker}`;
 }

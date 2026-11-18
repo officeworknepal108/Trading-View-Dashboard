@@ -50,6 +50,9 @@ import {
 } from '../src/services/mt5Automation';
 
 test('each strategy selects its own risk and legacy shared risk initializes both new controls', () => {
+  assert.equal(mt5StrategyRiskPercent({}, 'SCALPING'), .25);
+  assert.equal(mt5StrategyRiskPercent({}, 'INTRADAY'), .5);
+  assert.equal(mt5StrategyRiskPercent({}, 'SCALP_1_1'), .5);
   const legacy = { riskPercent: 1, scalpOneToOneRiskPercent: .75 };
   assert.equal(mt5StrategyRiskPercent(legacy, 'INTRADAY'), 1);
   assert.equal(mt5StrategyRiskPercent(legacy, 'SCALPING'), 1);

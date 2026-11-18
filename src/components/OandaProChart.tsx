@@ -6,6 +6,7 @@ import type { ScalpOneToOneChartFill } from '../services/scalpOneToOne';
 import { buildPullbackChartSetups, chartSignalFromRecord, chartSignalFromHistoryFill, belongsToPullbackSetup, type PullbackChartSetup } from '../services/pullbackChartSetup';
 import { pullbackTelegramAlerts } from '../services/pullbackTelegram';
 import { chartExecutionStatus, chartPullbackState, confirmedPullbackFill, currentPullbackDisplay, filledPullbackLegs, groupPullbackTableSignals, scalpReplayTableSignals, type PullbackFillEvidence, type PullbackTableSignal } from '../services/pullbackEntryDisplay';
+import { LatestWorkerTask } from '../services/latestWorkerTask';
 export { detectAutoTrendlines } from '../services/autoTrendlines';
 import { TrendlineStudy } from './TrendlineStudy';
 import { VolumeEngulfingStudy } from './VolumeEngulfingStudy';
@@ -972,7 +973,8 @@ export const PullbackSetupRows: React.FC<{
   timeZone: ChartTimeZone;
   limit?: number;
   representedSetups?: readonly PullbackChartSetup[];
-}> = ({ signals, style, asOf, entryCandles, positions = [], connection = {}, timeZone, limit = 8, representedSetups = [] }) => {
+  replay?: boolean;
+}> = ({ signals, style, asOf, entryCandles, positions = [], connection = {}, timeZone, limit = 8, representedSetups = [], replay = false }) => {
   const groups = groupPullbackTableSignals(signals.filter(signal => signal.signalAt <= asOf)
     .map(signal => currentPullbackDisplay(signal, asOf, positions)), connection);
   return <>{groups.flatMap(group => {
@@ -984,6 +986,13 @@ export const PullbackSetupRows: React.FC<{
     const states = group.entries.map(entry => {
       const open = !entry.preview && positions.some(position => scalpPositionSignal(position, [entry], connection) !== undefined);
       const chart = chartPullbackState(entry, candles, asOf);
+      if (replay && entry.simulatedFill && (entry.openedAt ?? Infinity) <= asOf) {
+        chart.status = 'filled';
+        chart.filledAt = entry.openedAt;
+        chart.beforeEntryExit = undefined;
+        if ((entry.status === 'TP' || entry.status === 'SL') && (entry.closedAt ?? Infinity) <= asOf)
+          chart.outcome = { level: entry.status === 'TP' ? 'tp' : 'sl', at: entry.closedAt! };
+      }
       const chartExit = chart.outcome ?? chart.beforeEntryExit;
       const outcome = chartExit ? { ...chartExit, label: `${chartExit.level === 'both' ? 'SL/TP' : chartExit.level.toUpperCase()} ${chart.outcome ? 'HIT' : 'REACHED BEFORE ENTRY'}`,
         noFill: chart.outcome === undefined } : ['TP', 'SL'].includes(entry.status) ? scalpDisplayOutcome(entry, candles, asOf, open) : undefined;
@@ -997,7 +1006,8 @@ export const PullbackSetupRows: React.FC<{
     const entryName = (entry: PullbackTableSignal) => (entry.intradayEntry ?? entry.scalpEntry)?.leg === 25 ? '2nd' : '1st';
     const status = (state: typeof states[number]) => secondOnly && (state.signal.intradayEntry ?? state.signal.scalpEntry)?.leg === 10
       ? 'Skipped — split lot below minimum' : state.signal.displayPlan?.error
-      ? 'CHART: Entry outside limits · MT5: Not executed' : chartExecutionStatus(state.chart, state.executed, state.signal.status);
+      ? replay ? 'REPLAY: Entry outside limits' : 'CHART: Entry outside limits · MT5: Not executed'
+      : chartExecutionStatus(state.chart, state.executed, state.signal.status, replay);
     const labels = states.map(status);
     const summary = labels.every(label => label === labels[0]) ? labels[0]
       : states.map(state => `${entryName(state.signal)}: ${status(state)}`).join(' · ');
@@ -1269,7 +1279,10 @@ function zoneEntryStory(options: Parameters<typeof explainZoneEntry>[0],
     ? `The chart shows ${fib.join(' and ')} alignment, but this entry route has not yet confirmed the required numerical Fib conditions.`
     : `This zone has ${fib.join(' and ')} alignment. ${fib.length === 1 ? 'That alignment condition has' : 'Those alignment conditions have'} passed.`);
   if (options.barsAgo !== undefined && Number.isFinite(options.barsAgo) && zone.tapTime !== undefined && zone.tapTime <= now) {
-    narrative.push(`Price last touched this zone ${options.barsAgo} ${options.barsAgo === 1 ? 'bar' : 'bars'} ago. Each new tap restarts the table's 50-bar window. Touching the zone alone does not open a trade.`);
+    const windowRule = (options.symbol ?? 'XAUUSD') === 'XAUUSD'
+      ? 'Each new tap restarts the table window: 50 bars for Tap 1 and 10 bars for Tap 2 and later taps.'
+      : "Each new tap restarts the table's 50-bar window.";
+    narrative.push(`Price last touched this zone ${options.barsAgo} ${options.barsAgo === 1 ? 'bar' : 'bars'} ago. ${windowRule} Touching the zone alone does not open a trade.`);
   }
   const signal = options.evidence.signal;
   if (signal && signal.time + TIMEFRAME_SECONDS[signal.timeframe] <= now) {
@@ -2056,11 +2069,18 @@ export function tradeDisplayExpired(
 }
 
 /** Zone rows use tap age, independently of the five-candle drawing expiry. */
+export function zoneTableTapBarLimit(tapCount = 1, symbol = 'XAUUSD'): number {
+  return symbol === 'XAUUSD' && tapCount > 1 ? 10 : 50;
+}
+
 export function zoneTableTradeExpired(
   trade: TradeDisplayState | undefined, tapBarsAgo: number,
   candles: readonly OandaCandle[], asOf: number,
+  tapCount = 1, symbol = 'XAUUSD',
 ): boolean {
-  return isSlTpTradeDisplayFinished(trade) ? tapBarsAgo > 50 : tradeDisplayExpired(trade, candles, asOf);
+  const limit = zoneTableTapBarLimit(tapCount, symbol);
+  if (limit === 10 && tapBarsAgo > limit) return true;
+  return isSlTpTradeDisplayFinished(trade) ? tapBarsAgo > limit : tradeDisplayExpired(trade, candles, asOf);
 }
 
 /** Drawings stay through partial RF; count five candles only after the final exit. */
@@ -3008,6 +3028,7 @@ export const OandaProChart: React.FC<{
   useEffect(() => { setHoveredEntry(null); }, [tradeStyleEnabled]);
   const [mt5SettingsOpen, setMt5SettingsOpen] = useState(false);
   const [mt5BridgeControlError, setMt5BridgeControlError] = useState<string | null>(null);
+  const [mt5SettingsSaveError, setMt5SettingsSaveError] = useState<string | null>(null);
   const [showIndicatorControls, setShowIndicatorControls] = useState(false);
   const [showZoneComparison, setShowZoneComparison] = useState(false);
   const [showLtfChoch, setShowLtfChoch] = useState(false);
@@ -3279,15 +3300,18 @@ export const OandaProChart: React.FC<{
 
   const updateMt5Config = useCallback(async (changes: Record<string, unknown>) => {
     if (!canAdmin || !mt5Status) return;
-    const riskOnly = Object.keys(changes).every(key => ['intradayRiskPercent', 'scalpingRiskPercent', 'scalpOneToOneRiskPercent'].includes(key));
-    const response = await terminalFetch('/api/mt5/config', {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(riskOnly ? changes : { ...mt5Status.config, ...changes }),
-    });
-    const payload = await response.json() as { ok?: boolean; config?: Mt5AutomationStatus['config'] };
-    if (response.ok && payload.ok && payload.config) {
+    setMt5SettingsSaveError(null);
+    try {
+      const response = await terminalFetch('/api/mt5/config', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(changes),
+      });
+      const payload = await response.json() as { ok?: boolean; error?: string; config?: Mt5AutomationStatus['config'] };
+      if (!response.ok || !payload.ok || !payload.config) throw new Error(payload.error || 'Unable to save MT5 settings.');
       setMt5Status((current) => current ? { ...current, config: payload.config! } : current);
+    } catch (error) {
+      setMt5SettingsSaveError(error instanceof Error ? error.message : 'Unable to save MT5 settings.');
     }
   }, [canAdmin, mt5Status, terminalFetch]);
 
@@ -4067,8 +4091,9 @@ export const OandaProChart: React.FC<{
         displayCandles.filter(candle => candle.time > tapTime).length)
       : zone ? confluenceTapBarsAgo(zone) ?? Infinity : Infinity;
     return zoneTableTradeExpired(trade, tapBarsAgo,
-      timeframe ? tableTimeframeData[timeframe]?.candles ?? [] : [], tradeDisplayAsOf);
-  }, [displayCandles, tableTimeframeData, tradeDisplayAsOf]);
+      timeframe ? tableTimeframeData[timeframe]?.candles ?? [] : [], tradeDisplayAsOf,
+      zone ? displayedTapCount(zone) : undefined, marketSymbol);
+  }, [displayCandles, tableTimeframeData, tradeDisplayAsOf, displayedTapCount, marketSymbol]);
   const hasRetainedDirectTradeSource = useCallback((overlay: TradeOverlay) => {
     const sourceZoneId = directTradeOverlayZoneId(overlay);
     const sourceZone = overlay.id.startsWith('DIRECT:')
@@ -4655,6 +4680,10 @@ export const OandaProChart: React.FC<{
   const scalpOneToOneHistoryRequested = marketSymbol === 'XAUUSD'
     && (showScalpOneToOneArrows || showAccuracyTable || showJournal || scalpOneToOneEnabled);
   const scalpOneToOneScanTime = Math.floor(tradeDisplayAsOf / 900) * 900;
+  const scalpScanTimeRef = useRef(scalpOneToOneScanTime);
+  scalpScanTimeRef.current = scalpOneToOneScanTime;
+  const scalpHistoryQueueRef = useRef<LatestWorkerTask<unknown> | null>(null);
+  const scalpReplayActive = replayIndex !== null;
   // Use an unfinished bar's open only, keeping long scans alive as its wick changes.
   const scalpOneToOneHistoryInput = useMemo(() => !scalpOneToOneHistoryRequested ? '' : JSON.stringify({ candles: Object.fromEntries(
     (['M15', 'H1', 'H4'] as const).map(timeframe => [timeframe,
@@ -4667,14 +4696,21 @@ export const OandaProChart: React.FC<{
     pendingExpiryMinutes: mt5Status?.config.pendingExpiryMinutes ?? 240 }),
     [scalpOneToOneHistoryRequested, tableTimeframeData, scalpOneToOneScanTime, mt5Status?.config.pendingExpiryMinutes]);
   useEffect(() => {
+    setScalpOneToOnePreview([]); setScalpOneToOneChartRecords([]); setScalpOneToOneChartFills([]);
     if (!scalpOneToOneHistoryRequested) {
-      setScalpOneToOnePreview([]); setScalpOneToOneChartRecords([]); setScalpOneToOneChartFills([]);
       setScalpOneToOneHistoryStatus(''); return;
     }
     setScalpOneToOneHistoryStatus('Loading Scalp 1:1 chart results...');
     const task = new Worker(new URL('../services/scalpOneToOne.worker.ts', import.meta.url), { type: 'module' });
+    const queue = new LatestWorkerTask<unknown>(message => task.postMessage(message));
+    scalpHistoryQueueRef.current = queue;
     task.onmessage = (event: MessageEvent<{ signals?: Mt5SignalInput[]; records?: JournalTradeRecord[];
-      fills?: ScalpOneToOneChartFill[]; error?: string; progress?: number }>) => {
+      fills?: ScalpOneToOneChartFill[]; error?: string; progress?: number;
+      taskId: number; now: number; done?: boolean }>) => {
+      if (!queue.accepts(event.data.taskId)) return;
+      if (event.data.done) { queue.complete(event.data.taskId); return; }
+      // A scan may finish after rewind. Never publish its future evidence.
+      if (event.data.now > scalpScanTimeRef.current) return;
       if (event.data.signals) setScalpOneToOnePreview(event.data.signals);
       if (event.data.records) setScalpOneToOneChartRecords(event.data.records);
       if (event.data.fills) setScalpOneToOneChartFills(event.data.fills);
@@ -4683,9 +4719,14 @@ export const OandaProChart: React.FC<{
         : `Scalp 1:1: ${event.data.fills?.length ?? 0} confirmed historical entry fills. Results and MT5 executions are tracked separately.`));
     };
     task.onerror = () => setScalpOneToOneHistoryStatus('Scalp 1:1 history unavailable.');
-    task.postMessage(JSON.parse(scalpOneToOneHistoryInput));
-    return () => { task.onmessage = null; task.terminate(); };
-  }, [scalpOneToOneHistoryRequested, scalpOneToOneHistoryInput]);
+    return () => {
+      queue.dispose(); scalpHistoryQueueRef.current = null;
+      task.onmessage = null; task.terminate();
+    };
+  }, [scalpOneToOneHistoryRequested, liveChartDataSource, scalpReplayActive]);
+  useEffect(() => {
+    if (scalpOneToOneHistoryInput) scalpHistoryQueueRef.current?.submit(JSON.parse(scalpOneToOneHistoryInput));
+  }, [scalpOneToOneHistoryInput, liveChartDataSource, scalpReplayActive]);
 
   const openChartJournalTrades = useMemo<JournalTradeRecord[]>(() => {
     if (replayIndex !== null) return [];
@@ -5899,7 +5940,7 @@ export const OandaProChart: React.FC<{
         }))
       && (showInternal || zone.category !== 'internal')
       && zone.doubleChochStatus === undefined
-      && (confluenceTapBarsAgo(zone) ?? Infinity) <= 50)
+      && (confluenceTapBarsAgo(zone) ?? Infinity) <= zoneTableTapBarLimit(displayedTapCount(zone), marketSymbol))
     .sort((a, b) => (
       (confluenceLatestTap(b)?.time ?? b.startTime)
       - (confluenceLatestTap(a)?.time ?? a.startTime)
@@ -6113,7 +6154,8 @@ export const OandaProChart: React.FC<{
       const row = displayZones.find((zone) => zone.id === setup.zone.id) ?? setup.zone;
       if (hasZoneTableTradeExpired(trade, row)) continue;
       if ((!showInternal && row.category === 'internal')
-        || (isCompletedTrade(trade) && (confluenceTapBarsAgo(row) ?? Infinity) > 50)) continue;
+        || (isCompletedTrade(trade) && (confluenceTapBarsAgo(row) ?? Infinity)
+          > zoneTableTapBarLimit(displayedTapCount(row), marketSymbol))) continue;
       rows.set(
         setup.zone.id,
         row,
@@ -6127,6 +6169,8 @@ export const OandaProChart: React.FC<{
     return [...open, ...completed];
   }, [
     hasZoneTableTradeExpired,
+    displayedTapCount,
+    marketSymbol,
     directTradeStyleEnabled,
     directZoneTrades,
     displayZones,
@@ -6144,7 +6188,8 @@ export const OandaProChart: React.FC<{
       && zone.doubleChochStatus !== undefined
       && (showInternal || zone.category !== 'internal')
       && (zone.tapTime !== undefined
-        ? (zone.lastTapBarsAgo ?? zone.tapBarsAgo ?? Infinity) <= 50
+        ? (zone.lastTapBarsAgo ?? zone.tapBarsAgo ?? Infinity)
+          <= zoneTableTapBarLimit(displayedTapCount(zone), marketSymbol)
         : zone.doubleChochStatus === 'pending'
           ? ['SBR', 'RBS', 'Internal SBR', 'Internal RBS'].includes(zone.name)
           : (['SBR', 'RBS', 'Internal SBR', 'Internal RBS'].includes(zone.name))
@@ -6155,7 +6200,8 @@ export const OandaProChart: React.FC<{
     .sort((a, b) => (b.tapTime ?? b.doubleChochTime ?? b.startTime)
       - (a.tapTime ?? a.doubleChochTime ?? a.startTime)
       || b.startTime - a.startTime)
-    .slice(0, 8), [consolidatedDisplayZones, directTradeStyleEnabled, granularity, latestDisplayCandleTime, showInternal]);
+    .slice(0, 8), [consolidatedDisplayZones, directTradeStyleEnabled, granularity, latestDisplayCandleTime, showInternal,
+      displayedTapCount, marketSymbol]);
   const pendingConfirmationRows = useMemo(() => consolidatedDisplayZones
     .filter((zone) => directTradeStyleEnabled && (zone.name === 'TJL1' || zone.name === 'ISS L3' || zone.name === 'Internal TJL1')
       && zone.active && zone.status === 'pending'
@@ -9248,6 +9294,7 @@ export const OandaProChart: React.FC<{
       positions={mt5Status?.positions ?? []} connection={mt5Status?.bridge} timeZone={chartTimeZone} limit={12} />}
     {marketSymbol === 'XAUUSD' && scalpOneToOneEnabled && granularity === 'M15' && <PullbackSetupRows
       signals={scalpOneToOneTableSignals} style="SCALP_1_1" asOf={tradeDisplayAsOf} entryCandles={pullbackTableCandles}
+      replay={replayIndex !== null}
       positions={replayIndex === null ? mt5Status?.positions ?? [] : []}
       connection={mt5Status?.bridge} timeZone={chartTimeZone} />}
     {scalpEntryTableRows.map(({ id, zone, trade: sourceTrade, tradingTimeBlocked }) => {
@@ -9887,7 +9934,7 @@ export const OandaProChart: React.FC<{
             <option value="primary">ACCOUNT 1</option>
             <option value="secondary">ACCOUNT 2</option>
           </select>
-          <div>
+          <div className="relative">
             <button
               type="button"
               onClick={() => setMt5SettingsOpen((visible) => !visible)}
@@ -9911,7 +9958,7 @@ export const OandaProChart: React.FC<{
                 : 'OFF'}
             </button>
             {mt5SettingsOpen && mt5Status && (
-              <div className="dashboard-toolbar-menu absolute left-2 top-full z-[70] mt-1 w-64 max-w-[calc(100%_-_16px)] overflow-auto overscroll-contain rounded-lg border border-slate-200 bg-white p-3 text-[10px] shadow-xl">
+              <div className="dashboard-toolbar-menu absolute right-0 top-full z-[70] mt-1 w-64 max-w-[calc(100vw_-_16px)] overflow-auto overscroll-contain rounded-lg border border-slate-200 bg-white p-3 text-[10px] shadow-xl">
                 <div className="sticky top-0 z-10 mb-2 flex items-center justify-between border-b border-slate-100 bg-white pb-2">
                   <div>
                     <div className="font-black text-slate-800">MT5 AUTO EXECUTION ? ACCOUNT {terminalId === 'primary' ? '1' : '2'}</div>
@@ -9955,6 +10002,9 @@ export const OandaProChart: React.FC<{
                     STOP BRIDGE
                   </button>
                 </div>
+                {mt5SettingsSaveError && <div role="alert" className="mb-2 rounded border border-rose-200 bg-rose-50 p-1.5 text-rose-700">
+                  Settings were not saved: {mt5SettingsSaveError}
+                </div>}
                 {mt5BridgeControlError && (
                   <div className="mb-2 rounded border border-rose-200 bg-rose-50 p-1.5 text-rose-700">
                     {mt5BridgeControlError}
@@ -10941,7 +10991,7 @@ export const OandaProChart: React.FC<{
             )}
           </div>
 
-          <div className="flex items-center">
+          <div className="relative flex items-center">
             <button
               type="button"
               onClick={() => {
@@ -10961,7 +11011,7 @@ export const OandaProChart: React.FC<{
               TOOLS {activeDrawingTool ? '●' : showDrawingTools ? '▴' : '▾'}
             </button>
             {showDrawingTools && (
-              <div className="dashboard-toolbar-menu absolute left-2 top-full z-[65] mt-1 w-80 max-w-[calc(100%_-_16px)] overflow-auto rounded-lg border border-violet-100 bg-white p-2 shadow-xl ring-1 ring-slate-900/5">
+              <div className="dashboard-toolbar-menu absolute right-0 top-full z-[65] mt-1 w-80 max-w-[calc(100vw_-_16px)] overflow-auto rounded-lg border border-violet-100 bg-white p-2 shadow-xl ring-1 ring-slate-900/5">
                 <div className="relative mb-2 flex min-h-8 items-center justify-center border-b border-slate-100 pb-1.5 pr-8">
                   <div className="text-center">
                     <div className="text-[10px] font-black tracking-wide text-slate-700">CHART DRAWING TOOLS</div>

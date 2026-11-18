@@ -8,6 +8,8 @@ import { buildPullbackChartSetups } from '../src/services/pullbackChartSetup';
 import { tradeToMt5Signal } from '../src/services/mt5Automation';
 import { buildIntradayPullbackSignals } from '../src/services/intradayPullback';
 import type { TradeLevels } from '../src/services/tradeLevels';
+import { scalpReplayTableSignals } from '../src/services/pullbackEntryDisplay';
+import type { JournalTradeRecord } from '../src/components/TradeJournal';
 
 const trade: TradeLevels = {
   intradayReference: true, entry: 3888.385, stopLoss: 3903.370, takeProfit: 3858.415,
@@ -22,6 +24,30 @@ const candles = [
 const render = (props: Partial<React.ComponentProps<typeof TradeDetailsRow>> = {}) => renderToStaticMarkup(
   React.createElement(TradeDetailsRow, { trade, colSpan: 5, zoneTimeframe: 'M15', entryCandles: candles, ...props }));
 const text = (html: string) => html.replace(/<[^>]*>/g, '');
+
+test('replay scalp rows show Filled and TP/SL at their replay time, including after rewind', () => {
+  for (const result of ['tp', 'sl'] as const) {
+    const record: JournalTradeRecord = { id: 'replay-scalp', symbol: 'XAUUSD',
+      source: 'ENGULFING', tradeStyle: 'SCALP_1_1', zoneName: 'Scalp 1:1',
+      signalTimeframe: 'M15', zoneTimeframe: 'M15', signalAt: 900,
+      engulfingType: 'T1', direction: 'bearish', entry: trade.entry, stopLoss: trade.stopLoss,
+      takeProfit: trade.takeProfit, riskPips: trade.riskPips, rewardRisk: 1,
+      openedAt: 1800, completedAt: 3600, result };
+    const renderAt = (asOf: number) => renderToStaticMarkup(React.createElement(PullbackSetupRows, {
+      signals: scalpReplayTableSignals([record], asOf), replay: true, style: 'SCALP_1_1',
+      asOf, entryCandles: {}, timeZone: 'Asia/Kathmandu',
+    }));
+    assert.equal(renderAt(1799), '', 'a known future fill must stay hidden');
+    const filled = renderAt(2700);
+    assert.match(filled, /REPLAY: Filled/);
+    assert.match(filled, /ENTRY/);
+    const closed = renderAt(3600);
+    assert.match(closed, new RegExp(`REPLAY: ${result.toUpperCase()} HIT`));
+    assert.doesNotMatch(closed, /1st ENTRY/);
+    assert.match(renderAt(2700), /REPLAY: Filled/, 'rewind must hide the future outcome');
+    assert.doesNotMatch(filled + closed, /MT5:/);
+  }
+});
 
 function mergedZoneFixture() {
   const zoneId = 'TJL1-1794492000-3890.29265';

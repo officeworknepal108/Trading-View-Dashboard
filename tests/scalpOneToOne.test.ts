@@ -203,7 +203,7 @@ test('fill-history markers retain fill times and hide future outcomes in replay'
 test('Scalp 1:1 uses its own switch and approved risk choices', () => {
   assert.deepEqual(SCALP_ONE_TO_ONE_RISK_OPTIONS, [0.25, 0.5, 0.75, 1, 1.5, 2]);
   for (const value of SCALP_ONE_TO_ONE_RISK_OPTIONS) assert.equal(normalizeScalpOneToOneRisk(value), value);
-  assert.equal(normalizeScalpOneToOneRisk(5), 0.25);
+  assert.equal(normalizeScalpOneToOneRisk(5), 0.5);
   assert.equal(normalizeScalpOneToOneRisk(undefined, 0.75), 0.75);
   const config = { scalpingEnabled: false, intradayEnabled: false, scalpOneToOneEnabled: true,
     enabledTimeframes: ['M15' as const] };
