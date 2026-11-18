@@ -107,7 +107,15 @@ export function intradayPullbackChartRecords(reference: JournalTradeRecord,
     rewardRisk: reference.rewardRisk, riskPips: reference.riskPips, riskFree: reference.takeProfit,
     expiresAt: confirmedAt + seconds };
   const signals = buildIntradayPullbackSignals(base, sourceCandles);
+  return replayIntradayPullbackSignals(reference, signals, executionCandles, asOf);
+}
+
+/** Replay either newly calculated limits or a saved leg with its original prices and expiry. */
+export function replayIntradayPullbackSignals(reference: JournalTradeRecord,
+  signals: Mt5SignalInput[], executionCandles: readonly StructureCandle[], asOf: number): JournalTradeRecord[] {
   if (!signals.length) return [];
+  const seconds = entryTimeframeSeconds(reference.signalTimeframe);
+  const confirmedAt = (reference.signalAt ?? 0) + seconds;
   // The bar-state engine is direction-independent. Carry filled masks between
   // smaller execution bars until the entry-timeframe candle closes.
   type Scenario = { mask: number; exit: number; filledAt: number[]; resolvedAt?: number };
@@ -124,11 +132,11 @@ export function intradayPullbackChartRecords(reference: JournalTradeRecord,
       const allowFills = bar.time < signals[0].expiresAt;
       if (!allowFills && !previous.mask) { closed.push(previous); continue; }
       if (!allowFills) {
-        const buy = base.direction === 'BUY';
-        const target = buy ? bar.high >= base.takeProfit : bar.low <= base.takeProfit;
-        const stop = buy ? bar.low <= base.stopLoss : bar.high >= base.stopLoss;
-        const openingTarget = buy ? bar.open >= base.takeProfit : bar.open <= base.takeProfit;
-        const openingStop = buy ? bar.open <= base.stopLoss : bar.open >= base.stopLoss;
+        const buy = reference.direction === 'bullish';
+        const target = buy ? bar.high >= reference.takeProfit : bar.low <= reference.takeProfit;
+        const stop = buy ? bar.low <= reference.stopLoss : bar.high >= reference.stopLoss;
+        const openingTarget = buy ? bar.open >= reference.takeProfit : bar.open <= reference.takeProfit;
+        const openingStop = buy ? bar.open <= reference.stopLoss : bar.open >= reference.stopLoss;
         const exits = openingTarget ? [1] : openingStop ? [-1] : target && stop ? [1, -1] : target ? [1] : stop ? [-1] : [];
         if (!exits.length) next.push(previous);
         else for (const exit of exits) closed.push({ ...previous, exit, resolvedAt: bar.time });
@@ -150,7 +158,7 @@ export function intradayPullbackChartRecords(reference: JournalTradeRecord,
     const outcomes = new Set(scenarios.map(s => !(s.mask & (1 << i)) ? 'unfilled' : String(s.exit)));
     if (outcomes.size !== 1 || outcomes.has('unfilled')) return [];
     const state = scenarios[0], result = state.exit === 1 ? 'tp' as const : state.exit === -1 ? 'sl' as const : 'open' as const;
-    return [{ ...reference, id: `${reference.id}:INTRA:P${signal.intradayEntry!.leg}`,
+    return [{ ...reference, id: signal.id,
       setupId: signal.setupId, intradayEntry: signal.intradayEntry, result,
       entry: signal.entry, riskPips: signal.riskPips, rewardRisk: signal.rewardRisk,
       openedAt: state.filledAt[i], completedAt: state.resolvedAt ?? state.filledAt[i],

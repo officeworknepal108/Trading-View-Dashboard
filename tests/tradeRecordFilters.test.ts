@@ -199,7 +199,7 @@ test('M15 accuracy includes its M1/M5 scalps and intraday results, with matching
   assert.deepEqual(filterAccuracyTradeRecords(history, { ...filters, timeframes: ['M15'], source: 'ENGULFING' },
     'Asia/Kathmandu', 'XAUUSD'), [intraday]);
   assert.deepEqual(filterAccuracyTradeRecords(history, { ...filters, timeframes: ['H1'] },
-    'Asia/Kathmandu', 'XAUUSD'), [hourlyScalp]);
+    'Asia/Kathmandu', 'XAUUSD'), [intraday, hourlyScalp], 'H1 includes projected Intraday entries');
   assert.deepEqual(filterAccuracyTradeRecords(history, { ...filters, timeframes: ['M1'] },
     'Asia/Kathmandu', 'XAUUSD'), [scalp, hourlyScalp]);
   assert.deepEqual(filterAccuracyTradeRecords(history, { ...filters, timeframes: ['M15', 'M1', 'M5'] },
@@ -213,6 +213,24 @@ test('M15 accuracy includes its M1/M5 scalps and intraday results, with matching
   assert.deepEqual(filterTradeRecords(history, { ...filters, timeframes: ['M15'] },
     'Asia/Kathmandu'), [intraday], 'journal filtering remains unchanged');
   assert.equal(JSON.stringify(history), before);
+});
+
+test('Gold Intraday history includes supported setup timeframes and H1 projections without duplicates', () => {
+  const { intraday } = synchronizedFixture();
+  const rows = [
+    { ...intraday, id: 'm15-m30', signalTimeframe: 'M30' as const },
+    { ...intraday, id: 'h1-m30', zoneTimeframe: 'H1' as const, signalTimeframe: 'M30' as const },
+    { ...intraday, id: 'h4-m15', source: 'MTF' as const, zoneTimeframe: 'H4' as const },
+  ];
+  const select = (timeframes: TradeRecordFilters['timeframes'], marketSymbol = 'XAUUSD') =>
+    filterAccuracyTradeRecords(rows, { ...DEFAULT_TRADE_RECORD_FILTERS, timeframes, tradeStyle: ['INTRADAY'] },
+      'Asia/Kathmandu', marketSymbol).map(row => row.id);
+  assert.deepEqual(select(['M15']), ['m15-m30', 'h4-m15']);
+  assert.deepEqual(select(['M30']), ['m15-m30', 'h1-m30']);
+  assert.deepEqual(select(['H1']), rows.map(row => row.id));
+  assert.deepEqual(select(['H4']), ['h4-m15']);
+  assert.deepEqual(select(['M15', 'M30', 'H1', 'H4']), rows.map(row => row.id));
+  assert.deepEqual(select(['H1'], 'EURUSD'), [], 'Forex retains entry-timeframe filtering');
 });
 
 test('M15 can display completed M1/M5 scalps on their filled-entry candles without adding trades', () => {

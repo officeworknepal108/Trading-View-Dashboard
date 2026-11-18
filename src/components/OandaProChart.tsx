@@ -4807,11 +4807,12 @@ export const OandaProChart: React.FC<{
   }, [marketSymbol, intradayEnabled, tradeDisplayAsOf, tableTimeframeData,
     directZoneEntryDecisions, displayZones, granularity, allMtfTradeRows]);
   const canonicalTradeRecords = useMemo(() => buildCanonicalTradeRecords(
-    reconciledMtfJournalTrades, [...accuracyTradeRecords, ...scalpOneToOneChartRecords], {
+    reconciledMtfJournalTrades, [...openChartJournalTrades.filter(record => record.intradayEntry),
+      ...accuracyTradeRecords, ...scalpOneToOneChartRecords], {
       marketSymbol, pipSize: marketConfig.pipSize, requireLtfFib: mtfLtfFibRequired,
       timeframeData: tableTimeframeData, qualifyMtf: savedChartMtfEntryQualification,
     },
-  ), [accuracyTradeRecords, scalpOneToOneChartRecords, marketConfig.pipSize, marketSymbol, mtfLtfFibRequired,
+  ), [accuracyTradeRecords, openChartJournalTrades, scalpOneToOneChartRecords, marketConfig.pipSize, marketSymbol, mtfLtfFibRequired,
     savedChartMtfEntryQualification, reconciledMtfJournalTrades, tableTimeframeData]);
   const visibleCanonicalTradeRecords = useMemo(() => canonicalTradeRecords.filter((record) => (
     tradeStyleEnabled(record) && !blockedGoldHistoricalTrade(record)

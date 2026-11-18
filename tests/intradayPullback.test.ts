@@ -6,8 +6,10 @@ import { applySignalOppositePositionTarget, priorGoldMt5ZoneExecution, mt5Signal
   type Mt5SignalInput, type Mt5SignalStatus } from '../src/services/mt5Automation';
 import type { StructureCandle } from '../src/services/marketStructure';
 import { calculateJournalPerformance, type JournalTradeRecord } from '../src/components/TradeJournal';
-import { buildCanonicalTradeRecords } from '../src/services/tradeRecordFilters';
-import { deduplicateTradeRecords } from '../src/services/tradeRecordDeduplication';
+import { buildCanonicalTradeRecords, DEFAULT_TRADE_RECORD_FILTERS, filterAccuracyTradeRecords,
+  selectTradeChartRecords, selectTwoMonthAccuracyRecords, selectTwoMonthJournalRecords,
+  type TradeRecordVerification } from '../src/services/tradeRecordFilters';
+import { deduplicateTradeRecords, mergeTradeRecordAnnotations } from '../src/services/tradeRecordDeduplication';
 import { isGoldTradeRecordRoute } from '../src/services/goldScalping';
 
 const base: Mt5SignalInput = { id: 'ENGULFING:M15:900:BUY:3010', setupId: 'DIRECT:M15:zone-one', zoneId: 'zone-one',
@@ -129,7 +131,155 @@ test('two filled winners share fixed exits and contribute setup-weighted dollar/
   const options = { marketSymbol: 'XAUUSD', pipSize: 0.1, requireLtfFib: false,
     timeframeData: {}, qualifyMtf: () => undefined };
   assert.equal(buildCanonicalTradeRecords([], rows, options).length, 2);
-  assert.equal(buildCanonicalTradeRecords(rows, [], options).length, 0);
+  assert.equal(buildCanonicalTradeRecords(rows, [], options).length, 2,
+    'saved completed entries survive a refresh before candle feeds load');
+});
+
+test('saved Intraday legs survive missing and shifted feeds in monthly totals, journal and arrows', () => {
+  const rows = intradayPullbackChartRecords(reference, candles, candles, 3600);
+  const snapshot = JSON.stringify(rows);
+  const options: TradeRecordVerification = { marketSymbol: 'XAUUSD', pipSize: 0.1,
+    requireLtfFib: false, timeframeData: {}, qualifyMtf: () => undefined };
+  for (const version of [1, 2, 3] as const) {
+    const saved = rows.map(row => ({ ...row, intradayEntry: { ...row.intradayEntry!, version } }));
+    for (const loaded of [undefined, candles.map(c => ({ ...c, time: c.time + 10000 })), candles.slice(0, 2)]) {
+      const canonical = buildCanonicalTradeRecords(saved, [], { ...options,
+        timeframeData: loaded ? { M15: { candles: loaded, structure: { zones: [] } } } : {} });
+      assert.deepEqual(canonical, saved);
+      const monthly = filterAccuracyTradeRecords(selectTwoMonthAccuracyRecords(canonical, 3600), {
+        ...DEFAULT_TRADE_RECORD_FILTERS, datePeriod: 'MONTH', date: '1970-01-01', tradeStyle: ['INTRADAY'],
+      }, 'UTC', 'XAUUSD');
+      const journal = selectTwoMonthJournalRecords(mergeTradeRecordAnnotations(canonical, saved), 3600);
+      assert.deepEqual(new Set(monthly.map(r => r.id)), new Set(journal.map(r => r.id)));
+      assert.equal(monthly.length, 2);
+      assert.equal(filterAccuracyTradeRecords(monthly, { ...DEFAULT_TRADE_RECORD_FILTERS,
+        timeframes: ['H1'] }, 'UTC', 'XAUUSD').length, 2, 'H1 totals include the Intraday arrows projected onto H1');
+      assert.equal(selectTradeChartRecords(canonical, 'M15', candles).length, 2);
+      assert.equal(selectTradeChartRecords(canonical, 'M15', candles.map(c => ({ ...c, time: c.time + 10000 }))).length, 0);
+      assert.equal(calculateJournalPerformance(journal).totalR, calculateJournalPerformance(rows).totalR);
+    }
+  }
+  assert.equal(JSON.stringify(rows), snapshot, 'display reconciliation never rewrites stored history');
+});
+
+test('saved history validates actual fills and outcomes without requiring a regenerated zone', () => {
+  const rows = intradayPullbackChartRecords(reference, candles, candles, 3600);
+  const options: TradeRecordVerification = { marketSymbol: 'XAUUSD', pipSize: 0.1,
+    requireLtfFib: false, timeframeData: {}, qualifyMtf: () => undefined };
+  for (const row of [
+    { ...rows[0], intradayEntry: { ...rows[0].intradayEntry!, riskShare: 1 } },
+    { ...rows[0], entry: 3010 }, { ...rows[0], riskPips: 1 },
+    { ...rows[0], openedAt: 900 }, { ...rows[0], result: 'rf' as const },
+    { ...rows[0], result: 'open' as const },
+  ]) assert.deepEqual(buildCanonicalTradeRecords([row], [], options), []);
+  const fullOptions = { ...options, timeframeData: { M15: { candles, structure: { zones: [] } } } };
+  assert.deepEqual(buildCanonicalTradeRecords(rows, [], fullOptions), rows,
+    'full replay proves saved entries even though the original zone is absent');
+  for (const version of [1, 2, 3] as const) {
+    const saved = rows.map(row => ({ ...row, intradayEntry: { ...row.intradayEntry!, version } }));
+    assert.deepEqual(buildCanonicalTradeRecords(saved, [], fullOptions), saved);
+  }
+  for (const row of [{ ...rows[0], result: 'sl' as const },
+    { ...rows[0], openedAt: 2700 }, { ...rows[0], completedAt: 1800 }]) {
+    assert.deepEqual(buildCanonicalTradeRecords([row], [], fullOptions), [], 'reject disproven fill/result timing');
+  }
+  for (const changed of [
+    candles.map(c => c.time === 1800 ? { ...c, high: 3051 } : c),
+    candles.map(c => c.time === 1800 ? { ...c, low: 2980 } : c),
+    candles.map(c => c.time === 1800 ? { ...c, low: 3010 } : c),
+    candles.map(c => c.time === 900 ? { ...c, close: 3010.1 } : c),
+  ]) {
+    assert.deepEqual(buildCanonicalTradeRecords(rows, [], { ...options,
+      timeframeData: { M15: { candles: changed, structure: { zones: [] } } } }), [],
+      'reject ambiguous, stopped-first, unfilled or changed confirmations');
+  }
+  const corrected = { ...rows[0], result: 'sl' as const };
+  const canonical = buildCanonicalTradeRecords(rows, [corrected], options);
+  assert.equal(canonical.length, 2);
+  assert.equal(canonical.find(r => r.id === corrected.id)?.result, 'sl');
+  const broker = { ...rows[0], id: 'MT5:history-first-leg', brokerTicket: 55, mt5Managed: true };
+  assert.deepEqual(new Set(buildCanonicalTradeRecords([...rows, broker], [], options).map(r => r.id)),
+    new Set([broker.id, rows[1].id]), 'broker execution replaces only its matching leg');
+});
+
+test('saved legacy Intraday versions retain their shorter expiry when candle history is loaded', () => {
+  const quiet = [1800, 2700, 3600, 4500, 5400].map(time => ({ time,
+    open: 3010, high: 3012, low: 3009.5, close: 3010, complete: true }));
+  const late = [candles[0], ...quiet.map(c => c.time === 5400 ? { ...c, low: 3007 } : c),
+    { time: 6300, open: 3010, high: 3051, low: 3009.5, close: 3050, complete: true }];
+  const rows = intradayPullbackChartRecords(reference, late, late, 7200);
+  const options: TradeRecordVerification = { marketSymbol: 'XAUUSD', pipSize: 0.1,
+    requireLtfFib: false, qualifyMtf: () => undefined,
+    timeframeData: { M15: { candles: late, structure: { zones: [] } } } };
+  assert.equal(buildCanonicalTradeRecords(rows, [], options).length, 2);
+  for (const version of [1, 2] as const) {
+    const saved = rows.map(row => ({ ...row, intradayEntry: { ...row.intradayEntry!, version } }));
+    assert.deepEqual(buildCanonicalTradeRecords(saved, [], options), [], 'a newer deadline cannot validate a legacy fill');
+  }
+});
+
+test('November 16 08:30 Nepal SELL stays in accuracy and journal after its zone disappears', () => {
+  const history: StructureCandle[] = [
+    [1794796200, 3885.425, 3887.765, 3877.525, 3878.935],
+    [1794797100, 3879.05, 3880.02, 3871.86, 3874.67],
+    [1794798000, 3874.62, 3875.675, 3867.68, 3871.38],
+    [1794798900, 3871.33, 3873.125, 3866.185, 3870.675],
+    [1794799800, 3870.61, 3873.065, 3862.775, 3872.355],
+    [1794800700, 3872.345, 3875.345, 3870.205, 3874.33],
+    [1794801600, 3874.28, 3877.45, 3869.765, 3872.93],
+    [1794802500, 3872.92, 3874.92, 3868.67, 3873.88],
+    [1794803400, 3873.875, 3874.615, 3871.37, 3872.675],
+    [1794804300, 3872.68, 3874.16, 3866.645, 3867.78],
+    [1794805200, 3867.73, 3870.64, 3863.72, 3868.375],
+    [1794806100, 3868.42, 3878.635, 3868.325, 3873.32],
+    [1794807000, 3873.37, 3873.73, 3862.3, 3867.03],
+    [1794807900, 3867.015, 3867.175, 3832.46, 3837.215],
+  ].map(([time, open, high, low, close]) => ({ time, open, high, low, close, complete: true }));
+  const saved: JournalTradeRecord = { ...reference,
+    id: 'DIRECT:Internal TJL1-1794569400-3886.58:1794796200:3879.05:INTRA:P10',
+    zoneId: undefined, zoneName: 'Internal QML A+', direction: 'bearish',
+    signalAt: 1794796200, openedAt: 1794797100, completedAt: 1794807900,
+    entry: 3879.699, stopLoss: 3889.765, takeProfit: 3857.620000000001,
+    rewardRisk: 2.193423405523515, riskPips: 100.65999999999804,
+    outsideTradingTime: true, volumeLogicStatus: 'failed',
+    intradayEntry: { version: 3, leg: 10, riskShare: 0.6, referenceEntry: 3879.05,
+      nextOpen: 3879.05, confirmationBody: 6.4900000000002365,
+      setupKey: 'DIRECT:M15:DIRECT:Internal TJL1-1794569400-3886.58:1794796200:3879.05:M15:1794796200:SELL' } };
+  const before = JSON.stringify(saved);
+  const canonical = buildCanonicalTradeRecords([saved], [], { marketSymbol: 'XAUUSD', pipSize: 0.1,
+    requireLtfFib: false, qualifyMtf: () => undefined,
+    timeframeData: { M15: { candles: history, structure: { zones: [] } } } });
+  assert.deepEqual(canonical, [saved]);
+  const asOf = Date.parse('2026-11-18T12:00:00Z') / 1000;
+  const filters = { ...DEFAULT_TRADE_RECORD_FILTERS, datePeriod: 'MONTH' as const,
+    date: '2026-11-01', tradeStyle: ['INTRADAY'] as ['INTRADAY'] };
+  for (const timeframe of ['M15', 'H1'] as const) {
+    const accuracy = filterAccuracyTradeRecords(selectTwoMonthAccuracyRecords(canonical, asOf),
+      { ...filters, timeframes: [timeframe] }, 'Asia/Kathmandu', 'XAUUSD');
+    const journal = filterAccuracyTradeRecords(selectTwoMonthJournalRecords(
+      mergeTradeRecordAnnotations(canonical, [saved]), asOf), { ...filters, timeframes: [timeframe] },
+      'Asia/Kathmandu', 'XAUUSD');
+    assert.deepEqual(accuracy.map(row => row.id), [saved.id]);
+    assert.deepEqual(journal, accuracy);
+    assert.equal(calculateJournalPerformance(journal).completed, 1);
+  }
+  assert.deepEqual(selectTradeChartRecords(canonical, 'M15', history), [saved]);
+  assert.equal(JSON.stringify(saved), before, 'the saved trade is not rewritten');
+});
+
+test('filled active Intraday legs appear in the journal and arrows without counting as completed outcomes', () => {
+  const rows = intradayPullbackChartRecords(reference, candles, candles, 2700);
+  assert.equal(rows.length, 2);
+  assert.ok(rows.every(row => row.result === 'open'));
+  const options: TradeRecordVerification = { marketSymbol: 'XAUUSD', pipSize: 0.1,
+    requireLtfFib: false, timeframeData: {}, qualifyMtf: () => undefined };
+  const canonical = buildCanonicalTradeRecords(rows, rows, options);
+  assert.equal(canonical.length, 2);
+  assert.equal(selectTwoMonthJournalRecords(canonical, 2700).length, 2);
+  assert.equal(selectTradeChartRecords(canonical, 'M15', candles, false, { includeActive: true }).length, 2);
+  assert.equal(selectTwoMonthAccuracyRecords(canonical, 2700).length, 0);
+  assert.equal(calculateJournalPerformance(canonical).completed, 0);
+  assert.deepEqual(buildCanonicalTradeRecords(rows, [], options), [], 'stale open simulations require current fill evidence');
 });
 
 test('original TP before any fill prevents later pullback entries; ambiguous fill ordering is excluded', () => {
@@ -151,6 +301,11 @@ test('M30 replay tracks each M15 fill and excludes a sibling with ambiguous fill
   const rows = intradayPullbackChartRecords(original, source, execution, 6300);
   assert.deepEqual(rows.map(r => r.openedAt), [3600, 4500]);
   assert.ok(rows.every(r => r.result === 'tp' && r.completedAt === 5400));
+  assert.deepEqual(buildCanonicalTradeRecords(rows, [], { marketSymbol: 'XAUUSD', pipSize: 0.1,
+    requireLtfFib: false, qualifyMtf: () => undefined, timeframeData: {
+      M30: { candles: source, structure: { zones: [] } },
+      M15: { candles: execution, structure: { zones: [] } },
+    } }), rows, 'saved M30 legs keep their separate M15 fill times without their zone');
   const lateDip = execution.map(c => c.time === 4500 ? { ...c, low: 3008.5 } : c.time === 5400 ? { ...c, low: 3007 } : c);
   const expired = intradayPullbackChartRecords(original, source, lateDip, 6300);
   assert.equal(expired.length, 1);

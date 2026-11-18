@@ -2,8 +2,12 @@ import type { ChartTimeZone } from './chartTime';
 import type { TradeResult, TradeTimeframe } from './tradeLevels';
 import { detectEngulfingPatternAt, type StructureCandle, type StructureZone } from './marketStructure';
 import { reconcileTradeRecords } from './tradeRecordDeduplication';
-import { isGoldTradeRecordRoute, savedGoldScalpMatchesReversal } from './goldScalping';
+import { goldIntradayMtfTradeRule, isGoldIntradayCandleRoute,
+  isGoldTradeRecordRoute, savedGoldScalpMatchesReversal } from './goldScalping';
 import { isNepalTradingTime } from './tradingTime';
+import { intradayPullbackSignalError, replayIntradayPullbackSignals } from './intradayPullback';
+import type { Mt5SignalInput } from './mt5Automation';
+import { pullbackExpirySeconds } from './pullbackExpiry';
 
 function tradeTimeframeSeconds(timeframe: TradeTimeframe): number {
   return timeframe === 'D' ? 86400 : Number(timeframe.slice(1)) * (timeframe.startsWith('H') ? 3600 : 60);
@@ -190,7 +194,7 @@ export function tradeRecordOutsideTradingTime(record: FilterableTradeRecord): bo
     || (record.openedAt !== undefined && !isNepalTradingTime(record.openedAt));
 }
 
-/** Accuracy groups Gold scalps with their setup timeframe as well as their entry timeframe. */
+/** Gold history includes setup timeframes and Intraday entries projected onto H1 arrows. */
 export function filterAccuracyTradeRecords<T extends FilterableTradeRecord & { zoneTimeframe: TradeTimeframe }>(
   records: T[], filters: TradeRecordFilters, timeZone: ChartTimeZone, marketSymbol: string,
 ): T[] {
@@ -201,6 +205,12 @@ export function filterAccuracyTradeRecords<T extends FilterableTradeRecord & { z
       && (record.signalTimeframe === 'M1' || record.signalTimeframe === 'M5')
       && (record.zoneTimeframe === 'M15' || record.zoneTimeframe === 'H1')
       && filters.timeframes.includes(record.zoneTimeframe))
+    || (marketSymbol === 'XAUUSD' && (record.tradeStyle ?? 'INTRADAY') === 'INTRADAY'
+      && (record.source === 'ENGULFING'
+        ? isGoldIntradayCandleRoute(record.zoneTimeframe, record.signalTimeframe)
+        : goldIntradayMtfTradeRule(record.zoneTimeframe, record.signalTimeframe) !== undefined)
+      && (filters.timeframes.includes(record.zoneTimeframe)
+        || (filters.timeframes.includes('H1') && record.signalTimeframe !== 'H1')))
   ));
 }
 
@@ -457,13 +467,15 @@ export function buildCanonicalTradeRecords<T extends CanonicalTradeRecord>(
   const brokerRecord = (record: T) => (
     record.mt5Managed === true || record.brokerTicket !== undefined
   );
+  const currentIntradayIds = new Set(current.filter(record => record.intradayEntry).map(record => record.id));
   const candidates = reconcileTradeRecords(saved, current, (record) => {
     if (!belongsToSelectedMarket(record)
       || ![record.entry, record.stopLoss, record.takeProfit, record.completedAt, record.signalAt,
         record.openedAt].every((value) => typeof value === 'number' && Number.isFinite(value))
       || record.openedAt! < record.signalAt!) return false;
     if (brokerRecord(record)) return ['open', 'risk-free', 'tp', 'sl', 'rf'].includes(record.result);
-    if (!['tp', 'sl', 'rf'].includes(record.result) || record.completedAt < record.openedAt!
+    const filledIntraday = record.intradayEntry && record.result === 'open' && currentIntradayIds.has(record.id);
+    if ((!['tp', 'sl', 'rf'].includes(record.result) && !filledIntraday) || record.completedAt < record.openedAt!
       || record.openedAt! < record.signalAt! + tradeTimeframeSeconds(record.signalTimeframe)
       || (record.direction === 'bullish'
         ? record.stopLoss >= record.entry || record.takeProfit <= record.entry
@@ -474,11 +486,47 @@ export function buildCanonicalTradeRecords<T extends CanonicalTradeRecord>(
   return candidates.flatMap((record): T[] => {
     // Broker executions are facts; another feed must not rewrite their fill or result.
     if (brokerRecord(record)) return [record];
+    if (record.intradayEntry) {
+      if (currentIntradayIds.has(record.id)) return [record];
+      const leg = record.intradayEntry;
+      const seconds = tradeTimeframeSeconds(record.signalTimeframe);
+      const confirmedAt = record.signalAt! + seconds;
+      // Saved completed entries remain history when their replay candles have
+      // fallen outside the loaded window. Validate the original version's prices
+      // and risk split; never turn an old unverified open entry into a position.
+      const signal: Mt5SignalInput = {
+        ...record, symbol: record.symbol ?? marketSymbol, tradeStyle: 'INTRADAY',
+        direction: record.direction === 'bullish' ? 'BUY' : 'SELL', orderType: 'LIMIT',
+        signalAt: record.signalAt!, calculatedAt: confirmedAt, riskFree: record.takeProfit,
+        expiresAt: confirmedAt + pullbackExpirySeconds(leg.version, seconds),
+      };
+      if (!['tp', 'sl'].includes(record.result) || intradayPullbackSignalError(signal)) return [];
+      const source = timeframeData[record.signalTimeframe]?.candles;
+      const executionTimeframe = tradeTimeframeSeconds(record.zoneTimeframe) < seconds
+        ? record.zoneTimeframe : record.signalTimeframe;
+      const execution = timeframeData[executionTimeframe]?.candles;
+      const executionSeconds = tradeTimeframeSeconds(executionTimeframe);
+      if (!source || candleIndexAtTime(source, record.signalAt!) < 0
+        || candleIndexAtTime(source, confirmedAt) < 0 || !execution) return [record];
+      for (let time = confirmedAt; time <= record.completedAt; time += executionSeconds) {
+        const index = candleIndexAtTime(execution, time);
+        if (index < 0 || execution[index].complete === false) return [record];
+      }
+      const confirmation = source[candleIndexAtTime(source, record.signalAt!)];
+      const next = source[candleIndexAtTime(source, confirmedAt)];
+      if (confirmation.complete === false
+        || Math.abs(Math.abs(confirmation.close - confirmation.open) - leg.confirmationBody) > 1e-6
+        || Math.abs(next.open - leg.nextOpen) > 1e-6) return [];
+      // A vanished/reclassified zone is not evidence against an execution.
+      // Replay this saved leg with its own version, deadline and fixed exits;
+      // retain it only if the candles prove the same fill and first outcome.
+      const replayed = replayIntradayPullbackSignals({ ...record, symbol: 'XAUUSD', tradeStyle: 'INTRADAY' },
+        [signal], execution, record.completedAt + executionSeconds)[0];
+      return replayed && replayed.result === record.result && replayed.openedAt === record.openedAt
+        && replayed.completedAt === record.completedAt ? [record] : [];
+    }
     // The dedicated volume study verifies this strategy's bias, EMA, H1 support
     // and fixed exits. Generic zone/Fib validation describes another strategy.
-    if (record.intradayEntry) {
-      return current.some(candidate => candidate.id === record.id && candidate.intradayEntry) ? [record] : [];
-    }
     if (record.tradeStyle === 'SCALP_1_1') {
       return current.some(candidate => candidate.id === record.id
         && candidate.tradeStyle === 'SCALP_1_1') ? [record] : [];
