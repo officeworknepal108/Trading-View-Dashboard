@@ -410,6 +410,10 @@ def signal_risk_percent(signal: dict[str, Any], config: dict[str, Any]) -> float
         value = float(config.get("scalpOneToOneRiskPercent", 0.5))
         if value not in (0.25, 0.5, 0.75, 1.0, 1.5, 2.0):
             raise RuntimeError("Invalid Scalp 1:1 risk selection.")
+        multiplier = signal.get('scalpSetupRiskMultiplier', 1)
+        if isinstance(multiplier, bool) or multiplier not in (1, 0.5):
+            raise RuntimeError('Invalid Scalp 1:1 setup risk multiplier.')
+        value *= multiplier
     elif signal.get('tradeStyle') == 'INTRADAY':
         value = float(config.get('intradayRiskPercent', config.get('riskPercent', .5)))
     elif signal.get('tradeStyle') == 'SCALPING':

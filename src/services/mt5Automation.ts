@@ -403,6 +403,9 @@ export interface Mt5SignalInput {
   scalpEntry?: ScalpPullbackEntry;
   /** Frozen full-setup cash allowance, shared by both broker entries. */
   scalpSetupRiskBudget?: number;
+  /** Frozen at setup creation; overlapping setups use half the selected risk. */
+  scalpSetupRiskMultiplier?: 1 | 0.5;
+  scalpOverlapSignalId?: string;
   intradayEntry?: import('./intradayPullback').IntradayPullbackEntry;
   intradaySetupRiskBudget?: number;
   zoneName: string;
@@ -774,6 +777,37 @@ export function mt5ConnectionMatches(
   return !!expected?.account && !!expected.server && !!expected.brokerSymbol
     && expected.account === candidate.account && expected.server === candidate.server
     && expected.brokerSymbol === candidate.brokerSymbol;
+}
+
+/** Count broker-confirmed open positions, never the other pullback leg or a pending order. */
+export function scalpSetupRiskAllocation(
+  candidate: Mt5SignalInput, signals: readonly Mt5StoredSignal[],
+  connection: { account?: string; server?: string; brokerSymbol?: string; equity?: number;
+    positions?: readonly { ticket: number; identifier?: number; symbol: string }[] } | undefined,
+  riskPercent: number,
+): Pick<Mt5SignalInput, 'scalpSetupRiskBudget' | 'scalpSetupRiskMultiplier' | 'scalpOverlapSignalId'> {
+  if (candidate.tradeStyle !== 'SCALP_1_1' || !candidate.scalpEntry) return {};
+  const sibling = signals.find(signal => signal.tradeStyle === 'SCALP_1_1' && signal.scalpEntry
+    && signal.symbol === candidate.symbol && signal.signalAt === candidate.signalAt
+    && signal.direction === candidate.direction && mt5ConnectionMatches(connection, signal));
+  if (sibling?.scalpSetupRiskBudget !== undefined) return {
+    scalpSetupRiskBudget: sibling.scalpSetupRiskBudget,
+    scalpSetupRiskMultiplier: sibling.scalpSetupRiskMultiplier ?? 1,
+    scalpOverlapSignalId: sibling.scalpOverlapSignalId,
+  };
+  const earlier = signals.find(signal => signal.tradeStyle === 'SCALP_1_1'
+    && signal.symbol === candidate.symbol && signal.signalAt < candidate.signalAt
+    && ['PLACED', 'ACTIVE', 'RISK_FREE'].includes(signal.status)
+    && mt5ConnectionMatches(connection, signal)
+    && connection?.positions?.some(position => position.symbol === connection.brokerSymbol
+      && [position.ticket, position.identifier].some(ticket => Number.isSafeInteger(ticket) && ticket! > 0
+        && (signal.brokerTicket === ticket || signal.brokerPosition === ticket))));
+  const multiplier = earlier ? 0.5 : 1;
+  return {
+    scalpSetupRiskBudget: Number(connection?.equity) * riskPercent / 100 * multiplier,
+    scalpSetupRiskMultiplier: multiplier,
+    scalpOverlapSignalId: earlier?.id,
+  };
 }
 
 export type Mt5DailyRisk = { available: false; error: string } | {

@@ -207,6 +207,37 @@ class PendingExpiryTests(BridgeTestCase):
 
 
 class ScalpOneToOneTests(BridgeTestCase):
+    def test_overlapping_setup_halves_both_entries_and_keeps_frozen_cash_cap(self):
+        config = {'scalpOneToOneRiskPercent': 1}
+        for leg, expected in [(10, 15), (25, 10)]:
+            signal = {**self.pullback(leg), 'scalpSetupRiskMultiplier': .5, 'scalpSetupRiskBudget': 25}
+            bridge.validate_scalp_pullback(signal)
+            self.assertEqual(bridge.signal_risk_money(signal, config, 5000), expected)
+            self.assertEqual(bridge.signal_risk_money(signal, config, 10000), expected)
+            self.assertEqual(bridge.signal_risk_money(signal, {'scalpOneToOneRiskPercent': 2}, 10000), expected)
+            self.assertEqual(bridge.signal_risk_money(signal, config, 4000), expected * .8)
+        for bad in [0, .25, 2, True, None, float('nan')]:
+            with self.assertRaisesRegex(RuntimeError, 'risk multiplier'):
+                bridge.signal_risk_money({**self.pullback(), 'scalpSetupRiskMultiplier': bad}, config, 5000)
+
+    def test_half_risk_stays_halved_in_second_only_mode_and_does_not_change_other_styles(self):
+        signal = {**self.pullback(25), 'scalpSetupRiskMultiplier': .5,
+                  'scalpSetupRiskBudget': 25, 'pullbackFallback': 'SECOND_ONLY'}
+        self.assertEqual(bridge.signal_risk_money(signal, {'scalpOneToOneRiskPercent': 1}, 5000), 25)
+        self.assertEqual(bridge.signal_risk_percent({'tradeStyle': 'INTRADAY', 'scalpSetupRiskMultiplier': .5},
+                                                 {'intradayRiskPercent': 1}), 1)
+
+    def test_half_risk_sizes_real_order_volume_from_each_entry_stop_distance(self):
+        info = SimpleNamespace(name='XAUUSD', volume_step=.01, volume_min=.01, volume_max=100)
+        with patch.object(bridge.mt5, 'account_info', return_value=SimpleNamespace(equity=5000)), \
+             patch.object(bridge.mt5, 'order_calc_profit', side_effect=lambda side, symbol, volume, entry, stop: -abs(entry-stop)*100*volume):
+            for leg in [10, 25]:
+                signal = {**self.pullback(leg), 'scalpSetupRiskMultiplier': .5, 'scalpSetupRiskBudget': 25}
+                volume = bridge.calculate_volume(signal, {'scalpOneToOneRiskPercent': 1}, info)
+                self.assertEqual(volume, .01)
+                actual_loss = abs(signal['entry']-signal['stopLoss'])*100*volume
+                self.assertLessEqual(actual_loss, 15 if leg == 10 else 10)
+
     def pullback(self, leg=10):
         entry = 99 if leg == 10 else 97.5
         return {"id": f"SCALP_1_1:900:P{leg}", "direction": "BUY", "orderType": "LIMIT",

@@ -37,6 +37,7 @@ import {
   mt5SignalDisabledReason,
   opposingFibProfitZones,
   mt5ConnectionMatches,
+  scalpSetupRiskAllocation,
   manualTradeTimeframeKey,
   positionFibExitTimeframe,
   normalizeMt5DailyLossPercent,
@@ -48,6 +49,61 @@ import {
   shouldRemoveOpenMt5JournalRecord,
   tradeToMt5Signal,
 } from '../src/services/mt5Automation';
+
+function scalpRiskFixture() {
+  const connection = { account: '123', server: 'Broker', brokerSymbol: 'XAUUSDm', equity: 10000,
+    positions: [{ ticket: 71, identifier: 70, symbol: 'XAUUSDm' }] };
+  const candidate = { id: 'later-P10', symbol: 'XAUUSD', direction: 'SELL', signalAt: 1800,
+    tradeStyle: 'SCALP_1_1', scalpEntry: { version: 3, leg: 10, riskShare: .6,
+      referenceEntry: 4000, nextOpen: 4000, confirmationBody: 10 } } as Mt5SignalInput;
+  const earlier = { ...candidate, ...connection, id: 'earlier-P10', signalAt: 900,
+    status: 'ACTIVE', brokerTicket: 71, createdAt: 900, updatedAt: 900 } as Mt5StoredSignal;
+  return { connection, candidate, earlier };
+}
+
+test('Scalp overlapping setup uses half risk only for a broker-confirmed earlier scalp position', () => {
+  const { candidate, earlier, connection } = scalpRiskFixture();
+  assert.deepEqual(scalpSetupRiskAllocation(candidate, [earlier], connection, .5), {
+    scalpSetupRiskBudget: 25, scalpSetupRiskMultiplier: .5, scalpOverlapSignalId: earlier.id,
+  });
+  for (const changed of [
+    { account: 'other' }, { server: 'other' }, { brokerSymbol: 'other' }, { symbol: 'EURUSD' },
+    { status: 'QUEUED' }, { status: 'TP' }, { tradeStyle: 'INTRADAY' },
+    { brokerTicket: 99 }, { signalAt: candidate.signalAt },
+  ]) {
+    const result = scalpSetupRiskAllocation(candidate, [{ ...earlier, ...changed } as Mt5StoredSignal], connection, .5);
+    assert.equal(result.scalpSetupRiskMultiplier, 1, JSON.stringify(changed));
+    assert.equal(result.scalpSetupRiskBudget, 50);
+  }
+  assert.equal(scalpSetupRiskAllocation(candidate, [earlier], { ...connection, positions: [] }, .5).scalpSetupRiskBudget, 50);
+  assert.equal(scalpSetupRiskAllocation(candidate, [earlier], {
+    ...connection, positions: [{ ...connection.positions[0], symbol: 'EURUSD' }],
+  }, .5).scalpSetupRiskBudget, 50);
+});
+
+test('Scalp allocation recognizes position identifiers and does not halve each additional open setup again', () => {
+  const { candidate, earlier, connection } = scalpRiskFixture();
+  for (const status of ['PLACED', 'ACTIVE', 'RISK_FREE'] as const) {
+    const previous = { ...earlier, brokerTicket: 99, brokerPosition: 70, status };
+    assert.equal(scalpSetupRiskAllocation(candidate, [previous, { ...previous, id: 'another' }], connection, .5).scalpSetupRiskBudget, 25);
+  }
+  assert.deepEqual(scalpSetupRiskAllocation({ ...candidate, tradeStyle: 'INTRADAY' }, [earlier], connection, .5), {});
+  assert.deepEqual(scalpSetupRiskAllocation({ ...candidate, scalpEntry: undefined }, [earlier], connection, .5), {});
+  assert.equal(scalpSetupRiskAllocation({ ...candidate, scalpSetupRiskMultiplier: .5,
+    scalpSetupRiskBudget: 999 }, [], connection, .5).scalpSetupRiskBudget, 50, 'untrusted candidate allocation is ignored');
+});
+
+test('Scalp sibling retains frozen half risk after the earlier trade closes and equity or risk grows', () => {
+  const { candidate, earlier, connection } = scalpRiskFixture();
+  const allocation = scalpSetupRiskAllocation(candidate, [earlier], connection, .5);
+  const sibling = { ...candidate, ...connection, ...allocation, status: 'ACTIVE', brokerTicket: 81,
+    createdAt: 1800, updatedAt: 1800 } as Mt5StoredSignal;
+  const second = { ...candidate, id: 'later-P25', scalpEntry: { ...candidate.scalpEntry!, leg: 25 as const, riskShare: .4 } };
+  assert.deepEqual(scalpSetupRiskAllocation(second, [sibling], { ...connection, equity: 20000, positions: [] }, 2), allocation);
+  const legacy = { ...sibling, scalpSetupRiskBudget: 50, scalpSetupRiskMultiplier: undefined, scalpOverlapSignalId: undefined };
+  assert.equal(scalpSetupRiskAllocation(second, [earlier, legacy], connection, .5).scalpSetupRiskBudget, 50);
+  assert.equal(scalpSetupRiskAllocation(second, [earlier, legacy], connection, .5).scalpSetupRiskMultiplier, 1);
+});
 
 test('each strategy selects its own risk and legacy shared risk initializes both new controls', () => {
   assert.equal(mt5StrategyRiskPercent({}, 'SCALPING'), .25);

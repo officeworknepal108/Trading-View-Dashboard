@@ -274,7 +274,7 @@ test('MT5 account handshake resets old candles and queues while preserving autom
         signalAt: now - 900, calculatedAt: now, expiresAt: now + 900,
         entry, stopLoss: 3990, takeProfit: 4010, riskFree: 4010,
         riskPips: (entry - 3990) * 10, rewardRisk: (4010 - entry) / (entry - 3990),
-        scalpSetupRiskBudget: 50,
+        scalpSetupRiskBudget: 25, scalpSetupRiskMultiplier: 0.5, scalpOverlapSignalId: 'earlier-filled-scalp',
         scalpEntry: { version: 1, leg, riskShare: leg === 10 ? 0.6 : 0.4,
           referenceEntry: 4000, nextOpen: 4000, confirmationBody: 10 },
         journalContext: { volume1: 1000, volume2: 750, volumeLogicStatus: 'valid',
@@ -287,6 +287,10 @@ test('MT5 account handshake resets old candles and queues while preserving autom
     assert.equal(firstLayer.signal?.scalpEntry.leg, 10);
     assert.equal(secondLayer.signal?.scalpEntry.leg, 25, JSON.stringify(secondLayer));
     assert.equal(firstLayer.signal.scalpSetupRiskBudget, secondLayer.signal.scalpSetupRiskBudget);
+    assert.equal(firstLayer.signal.scalpSetupRiskBudget, 25, 'claim preserves the reduced frozen cash budget');
+    assert.equal(firstLayer.signal.scalpSetupRiskMultiplier, 0.5);
+    assert.equal(secondLayer.signal.scalpSetupRiskMultiplier, 0.5, 'claim does not halve the sibling again');
+    assert.equal(secondLayer.signal.scalpOverlapSignalId, 'earlier-filled-scalp');
     for (const [index, layer] of layers.entries()) {
       assert.equal((await request(`/api/mt5/signals/${encodeURIComponent(layer.id)}/status`, {
         ...second, status: 'PLACED', brokerTicket: 10010 + index, executionPrice: layer.entry,
@@ -463,7 +467,8 @@ test('MT5 account handshake resets old candles and queues while preserving autom
     const secondaryBeforeRisk = (await (await request(secondaryRoute('/api/mt5/status'))).json()).config;
     for (const [field, value] of [['intradayRiskPercent', 1.5], ['scalpingRiskPercent', 2], ['scalpOneToOneRiskPercent', .75]] as const) {
       const prior = (await (await request('/api/mt5/status')).json()).config;
-      assert.equal((await request('/api/mt5/config', { [field]: value }, 'PUT')).status, 200);
+      const riskResponse = await request('/api/mt5/config', { [field]: value }, 'PUT');
+      assert.equal(riskResponse.status, 200, await riskResponse.text());
       const next = (await (await request('/api/mt5/status')).json()).config;
       assert.equal(next[field], value);
       for (const untouched of ['intradayRiskPercent', 'scalpingRiskPercent', 'scalpOneToOneRiskPercent',

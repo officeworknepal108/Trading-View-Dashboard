@@ -1,0 +1,1113 @@
+{
+  "method": {
+    "period": {
+      "source": "TradingView OANDA:XAUUSD, archived OHLC merged with latest fetched completed candles",
+      "firstCandleUTC": "2026-08-02T22:00:00.000Z",
+      "throughUTC": "2026-11-18T02:00:00.000Z",
+      "computedAtUTC": "2026-11-18T02:14:17.000Z",
+      "definition": "Entire T1/T2/T3 pattern and all intervening M15 candles fit within an earlier candle high/low including wicks; mother precedes the entire pattern; stop at any missing M15 candle. Inclusive edges with at least one strictly inside edge. Nearest enclosing mother recorded.",
+      "strategy": "Current Scalp 1:1 functions: H4 structure and EMA20/50, H1 continuation/Far, volume decrease >=250, 10/25% pullback legs, original fixed exits, 75-minute entry expiry, 300-pip per-leg limit.",
+      "counting": "One signal is one setup; 10% and 25% entries additionally counted as separate legs. TP/SL setup requires at least one confirmed filled leg and no uncertain or conflicting leg outcome.",
+      "scope": "Chart simulations, not MT5 executions. OHLC ordering ambiguity and missing candles remain uncertain. No spread, commission, slippage or live operational/session restrictions applied. Trading code/settings unchanged."
+    },
+    "reference": "100% = absolute body of the later setup final engulfing confirmation candle. Pullback starts at next M15 open; SELL uses upward movement, BUY downward movement. Values can exceed 100%.",
+    "overlap": "A separate earlier setup has at least one confirmed filled leg strictly before the later confirmation and a known exit candle strictly after it. Both intrabar boundary equality cases and unresolved earlier exits are excluded. This is temporal overlap, not containment inside the earlier trade price range. All qualifying later signals are counted, including third or subsequent signals.",
+    "entryWindow": "Maximum adverse depth from next open over the first 75 minutes, stopping at existing setup exit if earlier.",
+    "beforeExit": "Maximum adverse depth from next open through the existing common TP/SL. Does not imply an unfilled order remains eligible beyond 75 minutes.",
+    "bounds": "All complete candles before the exit candle are observed. On a TP candle, opening price and established fills provide guaranteed depth; the adverse wick provides possible depth because OHLC cannot place it before/after TP. On SL candles, depth stops at SL (or gap open).",
+    "limitations": "Offline chart simulations. Existing 10/25 entries and original exits define outcomes. Not a backtest of alternative entries; deeper entries would alter fills and risk/reward. No fees, spread, slippage or broker executions. Two unfilled setups remain in the overlap census but are not assigned trade-life depth. Earlier uncertain exits may hide additional overlaps."
+  },
+  "counts": {
+    "total": 34,
+    "sameDirection": 34,
+    "tp": 23,
+    "sl": 9,
+    "unfilled": 2
+  },
+  "summary": {
+    "entryWindow": {
+      "tp": {
+        "setups": 23,
+        "measured": 23,
+        "exact": 23,
+        "medianMinimumPercent": 109.70948012232755,
+        "medianMaximumPercent": 109.70948012232755,
+        "minimumPercent": 10.449574726605384,
+        "maximumPercent": 493.25626204234777,
+        "thresholds": [
+          {
+            "percent": 10,
+            "definitelyReached": 23,
+            "possiblyReached": 23
+          },
+          {
+            "percent": 25,
+            "definitelyReached": 20,
+            "possiblyReached": 20
+          },
+          {
+            "percent": 40,
+            "definitelyReached": 15,
+            "possiblyReached": 15
+          },
+          {
+            "percent": 50,
+            "definitelyReached": 15,
+            "possiblyReached": 15
+          },
+          {
+            "percent": 60,
+            "definitelyReached": 15,
+            "possiblyReached": 15
+          },
+          {
+            "percent": 75,
+            "definitelyReached": 15,
+            "possiblyReached": 15
+          },
+          {
+            "percent": 100,
+            "definitelyReached": 13,
+            "possiblyReached": 13
+          },
+          {
+            "percent": 150,
+            "definitelyReached": 7,
+            "possiblyReached": 7
+          },
+          {
+            "percent": 200,
+            "definitelyReached": 5,
+            "possiblyReached": 5
+          }
+        ]
+      },
+      "sl": {
+        "setups": 9,
+        "measured": 9,
+        "exact": 9,
+        "medianMinimumPercent": 198.93742621017316,
+        "medianMaximumPercent": 198.93742621017316,
+        "minimumPercent": 156.76589986467556,
+        "maximumPercent": 273.2888146911753,
+        "thresholds": [
+          {
+            "percent": 10,
+            "definitelyReached": 9,
+            "possiblyReached": 9
+          },
+          {
+            "percent": 25,
+            "definitelyReached": 9,
+            "possiblyReached": 9
+          },
+          {
+            "percent": 40,
+            "definitelyReached": 9,
+            "possiblyReached": 9
+          },
+          {
+            "percent": 50,
+            "definitelyReached": 9,
+            "possiblyReached": 9
+          },
+          {
+            "percent": 60,
+            "definitelyReached": 9,
+            "possiblyReached": 9
+          },
+          {
+            "percent": 75,
+            "definitelyReached": 9,
+            "possiblyReached": 9
+          },
+          {
+            "percent": 100,
+            "definitelyReached": 9,
+            "possiblyReached": 9
+          },
+          {
+            "percent": 150,
+            "definitelyReached": 9,
+            "possiblyReached": 9
+          },
+          {
+            "percent": 200,
+            "definitelyReached": 4,
+            "possiblyReached": 4
+          }
+        ]
+      }
+    },
+    "beforeExit": {
+      "tp": {
+        "setups": 23,
+        "measured": 23,
+        "exact": 23,
+        "medianMinimumPercent": 123.64924712134895,
+        "medianMaximumPercent": 123.64924712134895,
+        "minimumPercent": 10.449574726605384,
+        "maximumPercent": 493.25626204234777,
+        "thresholds": [
+          {
+            "percent": 10,
+            "definitelyReached": 23,
+            "possiblyReached": 23
+          },
+          {
+            "percent": 25,
+            "definitelyReached": 20,
+            "possiblyReached": 20
+          },
+          {
+            "percent": 40,
+            "definitelyReached": 16,
+            "possiblyReached": 16
+          },
+          {
+            "percent": 50,
+            "definitelyReached": 16,
+            "possiblyReached": 16
+          },
+          {
+            "percent": 60,
+            "definitelyReached": 15,
+            "possiblyReached": 15
+          },
+          {
+            "percent": 75,
+            "definitelyReached": 15,
+            "possiblyReached": 15
+          },
+          {
+            "percent": 100,
+            "definitelyReached": 14,
+            "possiblyReached": 14
+          },
+          {
+            "percent": 150,
+            "definitelyReached": 8,
+            "possiblyReached": 8
+          },
+          {
+            "percent": 200,
+            "definitelyReached": 5,
+            "possiblyReached": 5
+          }
+        ]
+      },
+      "sl": {
+        "setups": 9,
+        "measured": 9,
+        "exact": 9,
+        "medianMinimumPercent": 218.29652996845152,
+        "medianMaximumPercent": 218.29652996845152,
+        "minimumPercent": 156.76589986467556,
+        "maximumPercent": 273.2888146911753,
+        "thresholds": [
+          {
+            "percent": 10,
+            "definitelyReached": 9,
+            "possiblyReached": 9
+          },
+          {
+            "percent": 25,
+            "definitelyReached": 9,
+            "possiblyReached": 9
+          },
+          {
+            "percent": 40,
+            "definitelyReached": 9,
+            "possiblyReached": 9
+          },
+          {
+            "percent": 50,
+            "definitelyReached": 9,
+            "possiblyReached": 9
+          },
+          {
+            "percent": 60,
+            "definitelyReached": 9,
+            "possiblyReached": 9
+          },
+          {
+            "percent": 75,
+            "definitelyReached": 9,
+            "possiblyReached": 9
+          },
+          {
+            "percent": 100,
+            "definitelyReached": 9,
+            "possiblyReached": 9
+          },
+          {
+            "percent": 150,
+            "definitelyReached": 9,
+            "possiblyReached": 9
+          },
+          {
+            "percent": 200,
+            "definitelyReached": 6,
+            "possiblyReached": 6
+          }
+        ]
+      }
+    }
+  },
+  "rows": [
+    {
+      "signalUTC": "2026-08-25T06:00:00.000Z",
+      "signalNepal": "2026-08-25 11:45",
+      "direction": "bullish",
+      "outcome": "sl",
+      "parents": [
+        "2026-08-25T05:15:00.000Z"
+      ],
+      "sameDirectionParent": true,
+      "confirmationBody": 6.515000000000327,
+      "nextOpen": 4649.595,
+      "stopLoss": 4632.875,
+      "takeProfit": 4666.3150000000005,
+      "stopDepthPercent": 256.638526477351,
+      "exitUTC": "2026-08-25T07:45:00.000Z",
+      "entryWindow": {
+        "minimumPercent": 236.60782808901288,
+        "maximumPercent": 236.60782808901288,
+        "exact": true
+      },
+      "beforeExit": {
+        "minimumPercent": 256.638526477351,
+        "maximumPercent": 256.638526477351,
+        "exact": true
+      }
+    },
+    {
+      "signalUTC": "2026-08-28T04:15:00.000Z",
+      "signalNepal": "2026-08-28 10:00",
+      "direction": "bullish",
+      "outcome": "sl",
+      "parents": [
+        "2026-08-28T02:15:00.000Z"
+      ],
+      "sameDirectionParent": true,
+      "confirmationBody": 5.315000000000509,
+      "nextOpen": 4584.855,
+      "stopLoss": 4575.05,
+      "takeProfit": 4594.659999999999,
+      "stopDepthPercent": 184.47789275632064,
+      "exitUTC": "2026-08-28T05:30:00.000Z",
+      "entryWindow": {
+        "minimumPercent": 184.47789275632064,
+        "maximumPercent": 184.47789275632064,
+        "exact": true
+      },
+      "beforeExit": {
+        "minimumPercent": 184.47789275632064,
+        "maximumPercent": 184.47789275632064,
+        "exact": true
+      }
+    },
+    {
+      "signalUTC": "2026-08-31T07:30:00.000Z",
+      "signalNepal": "2026-08-31 13:15",
+      "direction": "bullish",
+      "outcome": "tp",
+      "parents": [
+        "2026-08-31T05:45:00.000Z"
+      ],
+      "sameDirectionParent": true,
+      "confirmationBody": 2.5950000000002547,
+      "nextOpen": 4446.615,
+      "stopLoss": 4432.23,
+      "takeProfit": 4461,
+      "stopDepthPercent": 554.3352601155609,
+      "exitUTC": "2026-08-31T11:15:00.000Z",
+      "entryWindow": {
+        "minimumPercent": 493.25626204234777,
+        "maximumPercent": 493.25626204234777,
+        "exact": true
+      },
+      "beforeExit": {
+        "minimumPercent": 493.25626204234777,
+        "maximumPercent": 493.25626204234777,
+        "exact": true
+      }
+    },
+    {
+      "signalUTC": "2026-09-01T06:00:00.000Z",
+      "signalNepal": "2026-09-01 11:45",
+      "direction": "bearish",
+      "outcome": "tp",
+      "parents": [
+        "2026-09-01T03:15:00.000Z"
+      ],
+      "sameDirectionParent": true,
+      "confirmationBody": 7.045000000000073,
+      "nextOpen": 4433.105,
+      "stopLoss": 4449.105,
+      "takeProfit": 4417.105,
+      "stopDepthPercent": 227.11142654364562,
+      "exitUTC": "2026-09-01T07:30:00.000Z",
+      "entryWindow": {
+        "minimumPercent": 32.86018452804096,
+        "maximumPercent": 32.86018452804096,
+        "exact": true
+      },
+      "beforeExit": {
+        "minimumPercent": 32.86018452804096,
+        "maximumPercent": 32.86018452804096,
+        "exact": true
+      }
+    },
+    {
+      "signalUTC": "2026-09-04T02:15:00.000Z",
+      "signalNepal": "2026-09-04 08:00",
+      "direction": "bearish",
+      "outcome": "tp",
+      "parents": [
+        "2026-09-04T01:15:00.000Z"
+      ],
+      "sameDirectionParent": true,
+      "confirmationBody": 5.324999999999818,
+      "nextOpen": 4474.11,
+      "stopLoss": 4485.605,
+      "takeProfit": 4462.615,
+      "stopDepthPercent": 215.8685446009443,
+      "exitUTC": "2026-09-04T06:45:00.000Z",
+      "entryWindow": {
+        "minimumPercent": 129.10798122066169,
+        "maximumPercent": 129.10798122066169,
+        "exact": true
+      },
+      "beforeExit": {
+        "minimumPercent": 129.10798122066169,
+        "maximumPercent": 129.10798122066169,
+        "exact": true
+      }
+    },
+    {
+      "signalUTC": "2026-09-07T03:30:00.000Z",
+      "signalNepal": "2026-09-07 09:15",
+      "direction": "bearish",
+      "outcome": "tp",
+      "parents": [
+        "2026-09-07T02:00:00.000Z"
+      ],
+      "sameDirectionParent": true,
+      "confirmationBody": 6.770000000000437,
+      "nextOpen": 4401.94,
+      "stopLoss": 4413.335,
+      "takeProfit": 4390.544999999999,
+      "stopDepthPercent": 168.31610044312706,
+      "exitUTC": "2026-09-07T06:00:00.000Z",
+      "entryWindow": {
+        "minimumPercent": 81.46233382570121,
+        "maximumPercent": 81.46233382570121,
+        "exact": true
+      },
+      "beforeExit": {
+        "minimumPercent": 168.0206794682314,
+        "maximumPercent": 168.0206794682314,
+        "exact": true
+      }
+    },
+    {
+      "signalUTC": "2026-09-08T04:15:00.000Z",
+      "signalNepal": "2026-09-08 10:00",
+      "direction": "bearish",
+      "outcome": "tp",
+      "parents": [
+        "2026-09-08T02:00:00.000Z"
+      ],
+      "sameDirectionParent": true,
+      "confirmationBody": 6.539999999999964,
+      "nextOpen": 4432.8,
+      "stopLoss": 4445.98,
+      "takeProfit": 4419.620000000001,
+      "stopDepthPercent": 201.52905198775923,
+      "exitUTC": "2026-09-08T05:30:00.000Z",
+      "entryWindow": {
+        "minimumPercent": 109.70948012232755,
+        "maximumPercent": 109.70948012232755,
+        "exact": true
+      },
+      "beforeExit": {
+        "minimumPercent": 109.70948012232755,
+        "maximumPercent": 109.70948012232755,
+        "exact": true
+      }
+    },
+    {
+      "signalUTC": "2026-09-11T08:45:00.000Z",
+      "signalNepal": "2026-09-11 14:30",
+      "direction": "bearish",
+      "outcome": "tp",
+      "parents": [
+        "2026-09-11T07:15:00.000Z"
+      ],
+      "sameDirectionParent": true,
+      "confirmationBody": 5.644999999999527,
+      "nextOpen": 4347.055,
+      "stopLoss": 4359.825,
+      "takeProfit": 4334.285000000001,
+      "stopDepthPercent": 226.2178919397803,
+      "exitUTC": "2026-09-11T11:30:00.000Z",
+      "entryWindow": {
+        "minimumPercent": 123.64924712134895,
+        "maximumPercent": 123.64924712134895,
+        "exact": true
+      },
+      "beforeExit": {
+        "minimumPercent": 123.64924712134895,
+        "maximumPercent": 123.64924712134895,
+        "exact": true
+      }
+    },
+    {
+      "signalUTC": "2026-09-11T10:30:00.000Z",
+      "signalNepal": "2026-09-11 16:15",
+      "direction": "bearish",
+      "outcome": "not-filled",
+      "parents": [
+        "2026-09-11T07:15:00.000Z",
+        "2026-09-11T08:45:00.000Z"
+      ],
+      "sameDirectionParent": true
+    },
+    {
+      "signalUTC": "2026-09-14T05:15:00.000Z",
+      "signalNepal": "2026-09-14 11:00",
+      "direction": "bearish",
+      "outcome": "sl",
+      "parents": [
+        "2026-09-14T02:45:00.000Z"
+      ],
+      "sameDirectionParent": true,
+      "confirmationBody": 4.434999999999491,
+      "nextOpen": 4326.58,
+      "stopLoss": 4335.855,
+      "takeProfit": 4317.305,
+      "stopDepthPercent": 209.13190529877568,
+      "exitUTC": "2026-09-14T05:30:00.000Z",
+      "entryWindow": {
+        "minimumPercent": 209.13190529877568,
+        "maximumPercent": 209.13190529877568,
+        "exact": true
+      },
+      "beforeExit": {
+        "minimumPercent": 209.13190529877568,
+        "maximumPercent": 209.13190529877568,
+        "exact": true
+      }
+    },
+    {
+      "signalUTC": "2026-09-14T08:15:00.000Z",
+      "signalNepal": "2026-09-14 14:00",
+      "direction": "bearish",
+      "outcome": "tp",
+      "parents": [
+        "2026-09-14T07:15:00.000Z"
+      ],
+      "sameDirectionParent": true,
+      "confirmationBody": 2.6400000000003274,
+      "nextOpen": 4310.69,
+      "stopLoss": 4321.36,
+      "takeProfit": 4300.0199999999995,
+      "stopDepthPercent": 404.1666666666193,
+      "exitUTC": "2026-09-14T09:15:00.000Z",
+      "entryWindow": {
+        "minimumPercent": 211.36363636364183,
+        "maximumPercent": 211.36363636364183,
+        "exact": true
+      },
+      "beforeExit": {
+        "minimumPercent": 211.36363636364183,
+        "maximumPercent": 211.36363636364183,
+        "exact": true
+      }
+    },
+    {
+      "signalUTC": "2026-09-21T02:45:00.000Z",
+      "signalNepal": "2026-09-21 08:30",
+      "direction": "bearish",
+      "outcome": "tp",
+      "parents": [
+        "2026-09-21T02:00:00.000Z"
+      ],
+      "sameDirectionParent": true,
+      "confirmationBody": 2.7150000000001455,
+      "nextOpen": 4363.815,
+      "stopLoss": 4375.64,
+      "takeProfit": 4351.989999999999,
+      "stopDepthPercent": 435.543278084718,
+      "exitUTC": "2026-09-21T05:45:00.000Z",
+      "entryWindow": {
+        "minimumPercent": 164.08839779007727,
+        "maximumPercent": 164.08839779007727,
+        "exact": true
+      },
+      "beforeExit": {
+        "minimumPercent": 164.08839779007727,
+        "maximumPercent": 164.08839779007727,
+        "exact": true
+      }
+    },
+    {
+      "signalUTC": "2026-09-21T04:45:00.000Z",
+      "signalNepal": "2026-09-21 10:30",
+      "direction": "bearish",
+      "outcome": "tp",
+      "parents": [
+        "2026-09-21T02:00:00.000Z",
+        "2026-09-21T02:45:00.000Z"
+      ],
+      "sameDirectionParent": true,
+      "confirmationBody": 5.994999999999891,
+      "nextOpen": 4355.955,
+      "stopLoss": 4366.385,
+      "takeProfit": 4345.525,
+      "stopDepthPercent": 173.97831526272697,
+      "exitUTC": "2026-09-21T07:30:00.000Z",
+      "entryWindow": {
+        "minimumPercent": 103.25271059217052,
+        "maximumPercent": 103.25271059217052,
+        "exact": true
+      },
+      "beforeExit": {
+        "minimumPercent": 103.25271059217052,
+        "maximumPercent": 103.25271059217052,
+        "exact": true
+      }
+    },
+    {
+      "signalUTC": "2026-09-22T16:00:00.000Z",
+      "signalNepal": "2026-09-22 21:45",
+      "direction": "bearish",
+      "outcome": "sl",
+      "parents": [
+        "2026-09-22T15:30:00.000Z"
+      ],
+      "sameDirectionParent": true,
+      "confirmationBody": 7.390000000000327,
+      "nextOpen": 4323.92,
+      "stopLoss": 4335.505,
+      "takeProfit": 4312.335,
+      "stopDepthPercent": 156.76589986467556,
+      "exitUTC": "2026-09-22T16:45:00.000Z",
+      "entryWindow": {
+        "minimumPercent": 156.76589986467556,
+        "maximumPercent": 156.76589986467556,
+        "exact": true
+      },
+      "beforeExit": {
+        "minimumPercent": 156.76589986467556,
+        "maximumPercent": 156.76589986467556,
+        "exact": true
+      }
+    },
+    {
+      "signalUTC": "2026-09-23T04:30:00.000Z",
+      "signalNepal": "2026-09-23 10:15",
+      "direction": "bearish",
+      "outcome": "tp",
+      "parents": [
+        "2026-09-23T02:00:00.000Z"
+      ],
+      "sameDirectionParent": true,
+      "confirmationBody": 1.125,
+      "nextOpen": 4344.51,
+      "stopLoss": 4350.39,
+      "takeProfit": 4338.63,
+      "stopDepthPercent": 522.6666666666763,
+      "exitUTC": "2026-09-23T05:30:00.000Z",
+      "entryWindow": {
+        "minimumPercent": 207.11111111110463,
+        "maximumPercent": 207.11111111110463,
+        "exact": true
+      },
+      "beforeExit": {
+        "minimumPercent": 207.11111111110463,
+        "maximumPercent": 207.11111111110463,
+        "exact": true
+      }
+    },
+    {
+      "signalUTC": "2026-09-28T14:00:00.000Z",
+      "signalNepal": "2026-09-28 19:45",
+      "direction": "bearish",
+      "outcome": "tp",
+      "parents": [
+        "2026-09-28T12:30:00.000Z"
+      ],
+      "sameDirectionParent": true,
+      "confirmationBody": 18.18000000000029,
+      "nextOpen": 4138.82,
+      "stopLoss": 4163.65,
+      "takeProfit": 4123.65,
+      "stopDepthPercent": 136.57865786578398,
+      "exitUTC": "2026-09-28T14:30:00.000Z",
+      "entryWindow": {
+        "minimumPercent": 31.133113311329836,
+        "maximumPercent": 31.133113311329836,
+        "exact": true
+      },
+      "beforeExit": {
+        "minimumPercent": 31.133113311329836,
+        "maximumPercent": 31.133113311329836,
+        "exact": true
+      }
+    },
+    {
+      "signalUTC": "2026-09-28T19:30:00.000Z",
+      "signalNepal": "2026-09-29 01:15",
+      "direction": "bearish",
+      "outcome": "not-filled",
+      "parents": [
+        "2026-09-28T19:00:00.000Z"
+      ],
+      "sameDirectionParent": true
+    },
+    {
+      "signalUTC": "2026-09-29T17:30:00.000Z",
+      "signalNepal": "2026-09-29 23:15",
+      "direction": "bearish",
+      "outcome": "sl",
+      "parents": [
+        "2026-09-29T16:00:00.000Z"
+      ],
+      "sameDirectionParent": true,
+      "confirmationBody": 3.1700000000000728,
+      "nextOpen": 4145.16,
+      "stopLoss": 4152.08,
+      "takeProfit": 4138.24,
+      "stopDepthPercent": 218.29652996845152,
+      "exitUTC": "2026-09-29T18:00:00.000Z",
+      "entryWindow": {
+        "minimumPercent": 218.29652996845152,
+        "maximumPercent": 218.29652996845152,
+        "exact": true
+      },
+      "beforeExit": {
+        "minimumPercent": 218.29652996845152,
+        "maximumPercent": 218.29652996845152,
+        "exact": true
+      }
+    },
+    {
+      "signalUTC": "2026-09-30T10:30:00.000Z",
+      "signalNepal": "2026-09-30 16:15",
+      "direction": "bearish",
+      "outcome": "sl",
+      "parents": [
+        "2026-09-30T08:45:00.000Z"
+      ],
+      "sameDirectionParent": true,
+      "confirmationBody": 4.234999999999673,
+      "nextOpen": 4184,
+      "stopLoss": 4193.515,
+      "takeProfit": 4174.485,
+      "stopDepthPercent": 224.67532467534977,
+      "exitUTC": "2026-09-30T12:00:00.000Z",
+      "entryWindow": {
+        "minimumPercent": 198.93742621017316,
+        "maximumPercent": 198.93742621017316,
+        "exact": true
+      },
+      "beforeExit": {
+        "minimumPercent": 224.67532467534977,
+        "maximumPercent": 224.67532467534977,
+        "exact": true
+      }
+    },
+    {
+      "signalUTC": "2026-10-07T03:00:00.000Z",
+      "signalNepal": "2026-10-07 08:45",
+      "direction": "bearish",
+      "outcome": "tp",
+      "parents": [
+        "2026-10-07T01:45:00.000Z"
+      ],
+      "sameDirectionParent": true,
+      "confirmationBody": 2.7849999999998545,
+      "nextOpen": 4139.815,
+      "stopLoss": 4152.31,
+      "takeProfit": 4127.319999999999,
+      "stopDepthPercent": 448.65350089771823,
+      "exitUTC": "2026-10-07T06:00:00.000Z",
+      "entryWindow": {
+        "minimumPercent": 307.89946140040126,
+        "maximumPercent": 307.89946140040126,
+        "exact": true
+      },
+      "beforeExit": {
+        "minimumPercent": 307.89946140040126,
+        "maximumPercent": 307.89946140040126,
+        "exact": true
+      }
+    },
+    {
+      "signalUTC": "2026-10-08T05:15:00.000Z",
+      "signalNepal": "2026-10-08 11:00",
+      "direction": "bearish",
+      "outcome": "tp",
+      "parents": [
+        "2026-10-08T02:45:00.000Z"
+      ],
+      "sameDirectionParent": true,
+      "confirmationBody": 3.9749999999994543,
+      "nextOpen": 4128.365,
+      "stopLoss": 4138.745,
+      "takeProfit": 4117.985,
+      "stopDepthPercent": 261.1320754717367,
+      "exitUTC": "2026-10-08T05:45:00.000Z",
+      "entryWindow": {
+        "minimumPercent": 146.666666666685,
+        "maximumPercent": 146.666666666685,
+        "exact": true
+      },
+      "beforeExit": {
+        "minimumPercent": 146.666666666685,
+        "maximumPercent": 146.666666666685,
+        "exact": true
+      }
+    },
+    {
+      "signalUTC": "2026-10-13T08:30:00.000Z",
+      "signalNepal": "2026-10-13 14:15",
+      "direction": "bearish",
+      "outcome": "tp",
+      "parents": [
+        "2026-10-13T07:30:00.000Z"
+      ],
+      "sameDirectionParent": true,
+      "confirmationBody": 5.164999999999964,
+      "nextOpen": 4187.955,
+      "stopLoss": 4196.82,
+      "takeProfit": 4179.09,
+      "stopDepthPercent": 171.63601161664752,
+      "exitUTC": "2026-10-13T12:45:00.000Z",
+      "entryWindow": {
+        "minimumPercent": 36.59244917716052,
+        "maximumPercent": 36.59244917716052,
+        "exact": true
+      },
+      "beforeExit": {
+        "minimumPercent": 56.63117134559927,
+        "maximumPercent": 56.63117134559927,
+        "exact": true
+      }
+    },
+    {
+      "signalUTC": "2026-10-13T12:45:00.000Z",
+      "signalNepal": "2026-10-13 18:30",
+      "direction": "bearish",
+      "outcome": "tp",
+      "parents": [
+        "2026-10-13T07:30:00.000Z"
+      ],
+      "sameDirectionParent": true,
+      "confirmationBody": 4.789999999999964,
+      "nextOpen": 4179.765,
+      "stopLoss": 4193.88,
+      "takeProfit": 4165.650000000001,
+      "stopDepthPercent": 294.67640918580145,
+      "exitUTC": "2026-10-13T14:00:00.000Z",
+      "entryWindow": {
+        "minimumPercent": 207.41127348642098,
+        "maximumPercent": 207.41127348642098,
+        "exact": true
+      },
+      "beforeExit": {
+        "minimumPercent": 207.41127348642098,
+        "maximumPercent": 207.41127348642098,
+        "exact": true
+      }
+    },
+    {
+      "signalUTC": "2026-10-15T03:45:00.000Z",
+      "signalNepal": "2026-10-15 09:30",
+      "direction": "bearish",
+      "outcome": "tp",
+      "parents": [
+        "2026-10-15T03:15:00.000Z"
+      ],
+      "sameDirectionParent": true,
+      "confirmationBody": 5.565000000000509,
+      "nextOpen": 4145.825,
+      "stopLoss": 4155.695,
+      "takeProfit": 4135.955,
+      "stopDepthPercent": 177.35849056601953,
+      "exitUTC": "2026-10-15T06:00:00.000Z",
+      "entryWindow": {
+        "minimumPercent": 37.55615453728579,
+        "maximumPercent": 37.55615453728579,
+        "exact": true
+      },
+      "beforeExit": {
+        "minimumPercent": 37.55615453728579,
+        "maximumPercent": 37.55615453728579,
+        "exact": true
+      }
+    },
+    {
+      "signalUTC": "2026-10-21T04:15:00.000Z",
+      "signalNepal": "2026-10-21 10:00",
+      "direction": "bearish",
+      "outcome": "sl",
+      "parents": [
+        "2026-10-21T03:45:00.000Z"
+      ],
+      "sameDirectionParent": true,
+      "confirmationBody": 8.215000000000146,
+      "nextOpen": 4115.035,
+      "stopLoss": 4129.225,
+      "takeProfit": 4100.844999999999,
+      "stopDepthPercent": 172.73280584297333,
+      "exitUTC": "2026-10-21T05:30:00.000Z",
+      "entryWindow": {
+        "minimumPercent": 172.73280584297333,
+        "maximumPercent": 172.73280584297333,
+        "exact": true
+      },
+      "beforeExit": {
+        "minimumPercent": 172.73280584297333,
+        "maximumPercent": 172.73280584297333,
+        "exact": true
+      }
+    },
+    {
+      "signalUTC": "2026-10-21T15:00:00.000Z",
+      "signalNepal": "2026-10-21 20:45",
+      "direction": "bearish",
+      "outcome": "sl",
+      "parents": [
+        "2026-10-21T13:45:00.000Z"
+      ],
+      "sameDirectionParent": true,
+      "confirmationBody": 2.994999999999891,
+      "nextOpen": 4127.4,
+      "stopLoss": 4135.585,
+      "takeProfit": 4119.214999999999,
+      "stopDepthPercent": 273.2888146911753,
+      "exitUTC": "2026-10-21T15:15:00.000Z",
+      "entryWindow": {
+        "minimumPercent": 273.2888146911753,
+        "maximumPercent": 273.2888146911753,
+        "exact": true
+      },
+      "beforeExit": {
+        "minimumPercent": 273.2888146911753,
+        "maximumPercent": 273.2888146911753,
+        "exact": true
+      }
+    },
+    {
+      "signalUTC": "2026-10-22T08:45:00.000Z",
+      "signalNepal": "2026-10-22 14:30",
+      "direction": "bearish",
+      "outcome": "tp",
+      "parents": [
+        "2026-10-22T07:30:00.000Z"
+      ],
+      "sameDirectionParent": true,
+      "confirmationBody": 9.504999999999654,
+      "nextOpen": 4083.14,
+      "stopLoss": 4097.02,
+      "takeProfit": 4069.2599999999993,
+      "stopDepthPercent": 146.0284061020628,
+      "exitUTC": "2026-10-22T11:15:00.000Z",
+      "entryWindow": {
+        "minimumPercent": 80.06312467122993,
+        "maximumPercent": 80.06312467122993,
+        "exact": true
+      },
+      "beforeExit": {
+        "minimumPercent": 99.05312993161816,
+        "maximumPercent": 99.05312993161816,
+        "exact": true
+      }
+    },
+    {
+      "signalUTC": "2026-10-28T13:15:00.000Z",
+      "signalNepal": "2026-10-28 19:00",
+      "direction": "bearish",
+      "outcome": "tp",
+      "parents": [
+        "2026-10-28T09:00:00.000Z"
+      ],
+      "sameDirectionParent": true,
+      "confirmationBody": 2.650000000000091,
+      "nextOpen": 4051.785,
+      "stopLoss": 4060.94,
+      "takeProfit": 4042.6299999999997,
+      "stopDepthPercent": 345.4716981132032,
+      "exitUTC": "2026-10-28T14:15:00.000Z",
+      "entryWindow": {
+        "minimumPercent": 37.358490566045376,
+        "maximumPercent": 37.358490566045376,
+        "exact": true
+      },
+      "beforeExit": {
+        "minimumPercent": 37.358490566045376,
+        "maximumPercent": 37.358490566045376,
+        "exact": true
+      }
+    },
+    {
+      "signalUTC": "2026-10-30T02:15:00.000Z",
+      "signalNepal": "2026-10-30 08:00",
+      "direction": "bearish",
+      "outcome": "tp",
+      "parents": [
+        "2026-10-30T00:45:00.000Z"
+      ],
+      "sameDirectionParent": true,
+      "confirmationBody": 6.815000000000055,
+      "nextOpen": 4004.935,
+      "stopLoss": 4016.95,
+      "takeProfit": 3992.92,
+      "stopDepthPercent": 176.30227439471426,
+      "exitUTC": "2026-10-30T03:00:00.000Z",
+      "entryWindow": {
+        "minimumPercent": 14.159941305944795,
+        "maximumPercent": 14.159941305944795,
+        "exact": true
+      },
+      "beforeExit": {
+        "minimumPercent": 14.159941305944795,
+        "maximumPercent": 14.159941305944795,
+        "exact": true
+      }
+    },
+    {
+      "signalUTC": "2026-10-30T06:45:00.000Z",
+      "signalNepal": "2026-10-30 12:30",
+      "direction": "bearish",
+      "outcome": "tp",
+      "parents": [
+        "2026-10-30T05:45:00.000Z"
+      ],
+      "sameDirectionParent": true,
+      "confirmationBody": 3.6900000000000546,
+      "nextOpen": 3983.005,
+      "stopLoss": 3997.105,
+      "takeProfit": 3968.905,
+      "stopDepthPercent": 382.11382113820326,
+      "exitUTC": "2026-10-30T07:45:00.000Z",
+      "entryWindow": {
+        "minimumPercent": 143.36043360433294,
+        "maximumPercent": 143.36043360433294,
+        "exact": true
+      },
+      "beforeExit": {
+        "minimumPercent": 143.36043360433294,
+        "maximumPercent": 143.36043360433294,
+        "exact": true
+      }
+    },
+    {
+      "signalUTC": "2026-10-30T17:30:00.000Z",
+      "signalNepal": "2026-10-30 23:15",
+      "direction": "bearish",
+      "outcome": "tp",
+      "parents": [
+        "2026-10-30T17:00:00.000Z"
+      ],
+      "sameDirectionParent": true,
+      "confirmationBody": 5.679999999999836,
+      "nextOpen": 3883.955,
+      "stopLoss": 3897.035,
+      "takeProfit": 3870.875,
+      "stopDepthPercent": 230.28169014085043,
+      "exitUTC": "2026-10-30T19:30:00.000Z",
+      "entryWindow": {
+        "minimumPercent": 16.637323943665333,
+        "maximumPercent": 16.637323943665333,
+        "exact": true
+      },
+      "beforeExit": {
+        "minimumPercent": 16.637323943665333,
+        "maximumPercent": 16.637323943665333,
+        "exact": true
+      }
+    },
+    {
+      "signalUTC": "2026-11-04T10:30:00.000Z",
+      "signalNepal": "2026-11-04 16:15",
+      "direction": "bearish",
+      "outcome": "sl",
+      "parents": [
+        "2026-11-04T09:30:00.000Z"
+      ],
+      "sameDirectionParent": true,
+      "confirmationBody": 5.3400000000001455,
+      "nextOpen": 4040.05,
+      "stopLoss": 4052.52,
+      "takeProfit": 4027.5800000000004,
+      "stopDepthPercent": 233.5205992509262,
+      "exitUTC": "2026-11-04T16:30:00.000Z",
+      "entryWindow": {
+        "minimumPercent": 162.1722846441876,
+        "maximumPercent": 162.1722846441876,
+        "exact": true
+      },
+      "beforeExit": {
+        "minimumPercent": 233.5205992509262,
+        "maximumPercent": 233.5205992509262,
+        "exact": true
+      }
+    },
+    {
+      "signalUTC": "2026-11-06T15:45:00.000Z",
+      "signalNepal": "2026-11-06 21:30",
+      "direction": "bullish",
+      "outcome": "tp",
+      "parents": [
+        "2026-11-06T14:45:00.000Z"
+      ],
+      "sameDirectionParent": true,
+      "confirmationBody": 4.1150000000002365,
+      "nextOpen": 4054.725,
+      "stopLoss": 4041.565,
+      "takeProfit": 4067.8849999999998,
+      "stopDepthPercent": 319.80558930739,
+      "exitUTC": "2026-11-06T16:45:00.000Z",
+      "entryWindow": {
+        "minimumPercent": 10.449574726605384,
+        "maximumPercent": 10.449574726605384,
+        "exact": true
+      },
+      "beforeExit": {
+        "minimumPercent": 10.449574726605384,
+        "maximumPercent": 10.449574726605384,
+        "exact": true
+      }
+    },
+    {
+      "signalUTC": "2026-11-09T03:30:00.000Z",
+      "signalNepal": "2026-11-09 09:15",
+      "direction": "bullish",
+      "outcome": "tp",
+      "parents": [
+        "2026-11-09T01:30:00.000Z"
+      ],
+      "sameDirectionParent": true,
+      "confirmationBody": 4.0600000000004,
+      "nextOpen": 4121.07,
+      "stopLoss": 4112.265,
+      "takeProfit": 4129.874999999999,
+      "stopDepthPercent": 216.8719211822294,
+      "exitUTC": "2026-11-09T04:30:00.000Z",
+      "entryWindow": {
+        "minimumPercent": 162.0689655172236,
+        "maximumPercent": 162.0689655172236,
+        "exact": true
+      },
+      "beforeExit": {
+        "minimumPercent": 162.0689655172236,
+        "maximumPercent": 162.0689655172236,
+        "exact": true
+      }
+    }
+  ]
+}

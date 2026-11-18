@@ -1,0 +1,3020 @@
+{
+  "method": {
+    "period": {
+      "source": "TradingView OANDA:XAUUSD, archived OHLC merged with latest fetched completed candles",
+      "firstCandleUTC": "2026-08-02T22:00:00.000Z",
+      "throughUTC": "2026-11-18T02:00:00.000Z",
+      "computedAtUTC": "2026-11-18T02:14:17.000Z",
+      "definition": "Entire T1/T2/T3 pattern and all intervening M15 candles fit within an earlier candle high/low including wicks; mother precedes the entire pattern; stop at any missing M15 candle. Inclusive edges with at least one strictly inside edge. Nearest enclosing mother recorded.",
+      "strategy": "Current Scalp 1:1 functions: H4 structure and EMA20/50, H1 continuation/Far, volume decrease >=250, 10/25% pullback legs, original fixed exits, 75-minute entry expiry, 300-pip per-leg limit.",
+      "counting": "One signal is one setup; 10% and 25% entries additionally counted as separate legs. TP/SL setup requires at least one confirmed filled leg and no uncertain or conflicting leg outcome.",
+      "scope": "Chart simulations, not MT5 executions. OHLC ordering ambiguity and missing candles remain uncertain. No spread, commission, slippage or live operational/session restrictions applied. Trading code/settings unchanged."
+    },
+    "scope": "Paired counterfactual on the same 34 baseline-identified overlapping later setups, including 2 originally unfilled setups. All 34 had a same-direction earlier trade open by the strict known-fill/known-exit rule. All other setups are outside this paired comparison.",
+    "entries": "Baseline 10%/25%, candidate 20% / 40% of later setup final confirmation body, measured from immediate next M15 open. Risk weights stay 60% first leg / 40% second; unused allocation is not transferred.",
+    "exits": "Original common stop and target remain fixed. 75-minute limit-entry window, cancellation at original exit, maximum entry-to-stop 30 price units. Outcome paths replayed with production scalpPullbackBarStates over continuous completed M15 candles.",
+    "accounting": "1R is one fixed full-setup cash-risk allowance. Filled positions sized to their own entry-to-stop distance; TP earns risk share times actual entry-to-fixed-target RR, SL loses its risk share. No compounding, fees, spread, slippage, lot rounding, margin or daily risk restrictions.",
+    "selection": "Overlap membership is held fixed from the baseline study, not dynamically recomputed under the candidate. A complete conditional portfolio replay must check whether altered fill times change which future signals count as overlapping. Same-exit-bar timing and uncertain earlier trades were excluded from the original cohort.",
+    "uncertainty": "Enumerates OHLC-consistent paths; reports min/max gross R when fill order is ambiguous. No assumption that high or low happened first.",
+    "interpretation": "In-sample comparison selected after observing these data; not evidence of future or cost-adjusted profitability. Trading code/settings remain unchanged."
+  },
+  "baseline": {
+    "setups": 34,
+    "setupOutcomes": {
+      "tp": 23,
+      "sl": 9,
+      "not-filled": 2,
+      "uncertain": 0,
+      "active": 0,
+      "no-valid-entry": 0
+    },
+    "legs": 68,
+    "legOutcomes": {
+      "tp": 43,
+      "sl": 18,
+      "not-filled": 7,
+      "uncertain": 0,
+      "active": 0
+    },
+    "minimumR": 15.490622102434815,
+    "maximumR": 15.490622102434815,
+    "fullRiskStopLossSetups": 9
+  },
+  "candidate": {
+    "setups": 34,
+    "setupOutcomes": {
+      "tp": 20,
+      "sl": 9,
+      "not-filled": 5,
+      "uncertain": 0,
+      "active": 0,
+      "no-valid-entry": 0
+    },
+    "legs": 68,
+    "legOutcomes": {
+      "tp": 35,
+      "sl": 18,
+      "not-filled": 15,
+      "uncertain": 0,
+      "active": 0
+    },
+    "minimumR": 13.218363176726058,
+    "maximumR": 13.218363176726058,
+    "fullRiskStopLossSetups": 9
+  },
+  "delta": {
+    "minimumR": -2.2722589257087566,
+    "maximumR": -2.2722589257087566,
+    "improved": 15,
+    "worse": 8,
+    "unchanged": 11,
+    "missedBaselineTp": 3
+  },
+  "rrAudit": {
+    "auditGroups": [
+      {
+        "name": "Both proposed entries filled and won",
+        "setups": 15,
+        "baselineR": 17.027550626659885,
+        "candidateR": 18.78555669899519,
+        "deltaR": 1.7580060723353057,
+        "baselineUSD50": 851.3775313329942,
+        "candidateUSD50": 939.2778349497595,
+        "deltaUSD50": 87.90030361676529
+      },
+      {
+        "name": "Only proposed 20% entry filled and won",
+        "setups": 5,
+        "baselineR": 5.4977040413620255,
+        "candidateR": 3.4328064777308622,
+        "deltaR": -2.0648975636311633,
+        "baselineUSD50": 274.88520206810125,
+        "candidateUSD50": 171.64032388654311,
+        "deltaUSD50": -103.24487818155816
+      },
+      {
+        "name": "Original winner entirely missed",
+        "setups": 3,
+        "baselineR": 1.96536743441291,
+        "candidateR": 0,
+        "deltaR": -1.96536743441291,
+        "baselineUSD50": 98.2683717206455,
+        "candidateUSD50": 0,
+        "deltaUSD50": -98.2683717206455
+      },
+      {
+        "name": "Both variants stopped out",
+        "setups": 9,
+        "baselineR": -9,
+        "candidateR": -9,
+        "deltaR": 0,
+        "baselineUSD50": -450,
+        "candidateUSD50": -450,
+        "deltaUSD50": 0
+      },
+      {
+        "name": "Both variants unfilled",
+        "setups": 2,
+        "baselineR": 0,
+        "candidateR": 0,
+        "deltaR": 0,
+        "baselineUSD50": 0,
+        "candidateUSD50": 0,
+        "deltaUSD50": 0
+      }
+    ],
+    "rrExample": {
+      "signalNepal": "2026-10-22 14:30",
+      "variants": {
+        "baseline": [
+          {
+            "percent": 10,
+            "entry": 4084.0905,
+            "stopLoss": 4097.02,
+            "takeProfit": 4069.2599999999993,
+            "direction": "SELL",
+            "riskShare": 0.6,
+            "outcome": "tp",
+            "possibilities": [
+              "tp"
+            ],
+            "actualRR": 1.147028114002842,
+            "cashRiskUSD50": 30,
+            "tpProfitUSD50": 34.41084342008526
+          },
+          {
+            "percent": 25,
+            "entry": 4085.5162499999997,
+            "stopLoss": 4097.02,
+            "takeProfit": 4069.2599999999993,
+            "direction": "SELL",
+            "riskShare": 0.4,
+            "outcome": "tp",
+            "possibilities": [
+              "tp"
+            ],
+            "actualRR": 1.41312615451477,
+            "cashRiskUSD50": 20,
+            "tpProfitUSD50": 28.2625230902954
+          }
+        ],
+        "candidate": [
+          {
+            "percent": 20,
+            "entry": 4085.0409999999997,
+            "stopLoss": 4097.02,
+            "takeProfit": 4069.2599999999993,
+            "direction": "SELL",
+            "riskShare": 0.6,
+            "outcome": "tp",
+            "possibilities": [
+              "tp"
+            ],
+            "actualRR": 1.3173887636697095,
+            "cashRiskUSD50": 30,
+            "tpProfitUSD50": 39.52166291009129
+          },
+          {
+            "percent": 40,
+            "entry": 4086.9419999999996,
+            "stopLoss": 4097.02,
+            "takeProfit": 4069.2599999999993,
+            "direction": "SELL",
+            "riskShare": 0.4,
+            "outcome": "tp",
+            "possibilities": [
+              "tp"
+            ],
+            "actualRR": 1.7545147846793703,
+            "cashRiskUSD50": 20,
+            "tpProfitUSD50": 35.0902956935874
+          }
+        ]
+      }
+    }
+  },
+  "rows": [
+    {
+      "signalUTC": "2026-08-25T06:00:00.000Z",
+      "signalNepal": "2026-08-25 11:45",
+      "direction": "bullish",
+      "confirmationBody": 6.515000000000327,
+      "nextOpen": 4649.595,
+      "baseline": {
+        "outcome": "sl",
+        "minimumR": -1,
+        "maximumR": -1,
+        "legs": [
+          {
+            "percent": 10,
+            "entry": 4648.9435,
+            "stopLoss": 4632.875,
+            "takeProfit": 4666.3150000000005,
+            "direction": "BUY",
+            "riskShare": 0.6,
+            "outcome": "sl",
+            "possibilities": [
+              "sl"
+            ]
+          },
+          {
+            "percent": 25,
+            "entry": 4647.96625,
+            "stopLoss": 4632.875,
+            "takeProfit": 4666.3150000000005,
+            "direction": "BUY",
+            "riskShare": 0.4,
+            "outcome": "sl",
+            "possibilities": [
+              "sl"
+            ]
+          }
+        ],
+        "scenarios": [
+          {
+            "mask": 3,
+            "exit": -1
+          }
+        ]
+      },
+      "candidate": {
+        "outcome": "sl",
+        "minimumR": -1,
+        "maximumR": -1,
+        "legs": [
+          {
+            "percent": 20,
+            "entry": 4648.292,
+            "stopLoss": 4632.875,
+            "takeProfit": 4666.3150000000005,
+            "direction": "BUY",
+            "riskShare": 0.6,
+            "outcome": "sl",
+            "possibilities": [
+              "sl"
+            ]
+          },
+          {
+            "percent": 40,
+            "entry": 4646.9890000000005,
+            "stopLoss": 4632.875,
+            "takeProfit": 4666.3150000000005,
+            "direction": "BUY",
+            "riskShare": 0.4,
+            "outcome": "sl",
+            "possibilities": [
+              "sl"
+            ]
+          }
+        ],
+        "scenarios": [
+          {
+            "mask": 3,
+            "exit": -1
+          }
+        ]
+      },
+      "minimumDeltaR": 0,
+      "maximumDeltaR": 0
+    },
+    {
+      "signalUTC": "2026-08-28T04:15:00.000Z",
+      "signalNepal": "2026-08-28 10:00",
+      "direction": "bullish",
+      "confirmationBody": 5.315000000000509,
+      "nextOpen": 4584.855,
+      "baseline": {
+        "outcome": "sl",
+        "minimumR": -1,
+        "maximumR": -1,
+        "legs": [
+          {
+            "percent": 10,
+            "entry": 4584.3234999999995,
+            "stopLoss": 4575.05,
+            "takeProfit": 4594.659999999999,
+            "direction": "BUY",
+            "riskShare": 0.6,
+            "outcome": "sl",
+            "possibilities": [
+              "sl"
+            ]
+          },
+          {
+            "percent": 25,
+            "entry": 4583.526249999999,
+            "stopLoss": 4575.05,
+            "takeProfit": 4594.659999999999,
+            "direction": "BUY",
+            "riskShare": 0.4,
+            "outcome": "sl",
+            "possibilities": [
+              "sl"
+            ]
+          }
+        ],
+        "scenarios": [
+          {
+            "mask": 3,
+            "exit": -1
+          }
+        ]
+      },
+      "candidate": {
+        "outcome": "sl",
+        "minimumR": -1,
+        "maximumR": -1,
+        "legs": [
+          {
+            "percent": 20,
+            "entry": 4583.7919999999995,
+            "stopLoss": 4575.05,
+            "takeProfit": 4594.659999999999,
+            "direction": "BUY",
+            "riskShare": 0.6,
+            "outcome": "sl",
+            "possibilities": [
+              "sl"
+            ]
+          },
+          {
+            "percent": 40,
+            "entry": 4582.728999999999,
+            "stopLoss": 4575.05,
+            "takeProfit": 4594.659999999999,
+            "direction": "BUY",
+            "riskShare": 0.4,
+            "outcome": "sl",
+            "possibilities": [
+              "sl"
+            ]
+          }
+        ],
+        "scenarios": [
+          {
+            "mask": 3,
+            "exit": -1
+          }
+        ]
+      },
+      "minimumDeltaR": 0,
+      "maximumDeltaR": 0
+    },
+    {
+      "signalUTC": "2026-08-31T07:30:00.000Z",
+      "signalNepal": "2026-08-31 13:15",
+      "direction": "bullish",
+      "confirmationBody": 2.5950000000002547,
+      "nextOpen": 4446.615,
+      "baseline": {
+        "outcome": "tp",
+        "minimumR": 1.0598284751199962,
+        "maximumR": 1.0598284751199962,
+        "legs": [
+          {
+            "percent": 10,
+            "entry": 4446.3555,
+            "stopLoss": 4432.23,
+            "takeProfit": 4461,
+            "direction": "BUY",
+            "riskShare": 0.6,
+            "outcome": "tp",
+            "possibilities": [
+              "tp"
+            ]
+          },
+          {
+            "percent": 25,
+            "entry": 4445.9662499999995,
+            "stopLoss": 4432.23,
+            "takeProfit": 4461,
+            "direction": "BUY",
+            "riskShare": 0.4,
+            "outcome": "tp",
+            "possibilities": [
+              "tp"
+            ]
+          }
+        ],
+        "scenarios": [
+          {
+            "mask": 3,
+            "exit": 1
+          }
+        ]
+      },
+      "candidate": {
+        "outcome": "tp",
+        "minimumR": 1.1071318493092888,
+        "maximumR": 1.1071318493092888,
+        "legs": [
+          {
+            "percent": 20,
+            "entry": 4446.096,
+            "stopLoss": 4432.23,
+            "takeProfit": 4461,
+            "direction": "BUY",
+            "riskShare": 0.6,
+            "outcome": "tp",
+            "possibilities": [
+              "tp"
+            ]
+          },
+          {
+            "percent": 40,
+            "entry": 4445.576999999999,
+            "stopLoss": 4432.23,
+            "takeProfit": 4461,
+            "direction": "BUY",
+            "riskShare": 0.4,
+            "outcome": "tp",
+            "possibilities": [
+              "tp"
+            ]
+          }
+        ],
+        "scenarios": [
+          {
+            "mask": 3,
+            "exit": 1
+          }
+        ]
+      },
+      "minimumDeltaR": 0.047303374189292535,
+      "maximumDeltaR": 0.047303374189292535
+    },
+    {
+      "signalUTC": "2026-09-01T06:00:00.000Z",
+      "signalNepal": "2026-09-01 11:45",
+      "direction": "bearish",
+      "confirmationBody": 7.045000000000073,
+      "nextOpen": 4433.105,
+      "baseline": {
+        "outcome": "tp",
+        "minimumR": 1.1542264737837729,
+        "maximumR": 1.1542264737837729,
+        "legs": [
+          {
+            "percent": 10,
+            "entry": 4433.809499999999,
+            "stopLoss": 4449.105,
+            "takeProfit": 4417.105,
+            "direction": "SELL",
+            "riskShare": 0.6,
+            "outcome": "tp",
+            "possibilities": [
+              "tp"
+            ]
+          },
+          {
+            "percent": 25,
+            "entry": 4434.866249999999,
+            "stopLoss": 4449.105,
+            "takeProfit": 4417.105,
+            "direction": "SELL",
+            "riskShare": 0.4,
+            "outcome": "tp",
+            "possibilities": [
+              "tp"
+            ]
+          }
+        ],
+        "scenarios": [
+          {
+            "mask": 3,
+            "exit": 1
+          }
+        ]
+      },
+      "candidate": {
+        "outcome": "tp",
+        "minimumR": 0.715879651840144,
+        "maximumR": 0.715879651840144,
+        "legs": [
+          {
+            "percent": 20,
+            "entry": 4434.513999999999,
+            "stopLoss": 4449.105,
+            "takeProfit": 4417.105,
+            "direction": "SELL",
+            "riskShare": 0.6,
+            "outcome": "tp",
+            "possibilities": [
+              "tp"
+            ]
+          },
+          {
+            "percent": 40,
+            "entry": 4435.923,
+            "stopLoss": 4449.105,
+            "takeProfit": 4417.105,
+            "direction": "SELL",
+            "riskShare": 0.4,
+            "outcome": "not-filled",
+            "possibilities": [
+              "not-filled"
+            ]
+          }
+        ],
+        "scenarios": [
+          {
+            "mask": 1,
+            "exit": 1
+          }
+        ]
+      },
+      "minimumDeltaR": -0.43834682194362884,
+      "maximumDeltaR": -0.43834682194362884
+    },
+    {
+      "signalUTC": "2026-09-04T02:15:00.000Z",
+      "signalNepal": "2026-09-04 08:00",
+      "direction": "bearish",
+      "confirmationBody": 5.324999999999818,
+      "nextOpen": 4474.11,
+      "baseline": {
+        "outcome": "tp",
+        "minimumR": 1.163073783107254,
+        "maximumR": 1.163073783107254,
+        "legs": [
+          {
+            "percent": 10,
+            "entry": 4474.6425,
+            "stopLoss": 4485.605,
+            "takeProfit": 4462.615,
+            "direction": "SELL",
+            "riskShare": 0.6,
+            "outcome": "tp",
+            "possibilities": [
+              "tp"
+            ]
+          },
+          {
+            "percent": 25,
+            "entry": 4475.44125,
+            "stopLoss": 4485.605,
+            "takeProfit": 4462.615,
+            "direction": "SELL",
+            "riskShare": 0.4,
+            "outcome": "tp",
+            "possibilities": [
+              "tp"
+            ]
+          }
+        ],
+        "scenarios": [
+          {
+            "mask": 3,
+            "exit": 1
+          }
+        ]
+      },
+      "candidate": {
+        "outcome": "tp",
+        "minimumR": 1.304485244471664,
+        "maximumR": 1.304485244471664,
+        "legs": [
+          {
+            "percent": 20,
+            "entry": 4475.174999999999,
+            "stopLoss": 4485.605,
+            "takeProfit": 4462.615,
+            "direction": "SELL",
+            "riskShare": 0.6,
+            "outcome": "tp",
+            "possibilities": [
+              "tp"
+            ]
+          },
+          {
+            "percent": 40,
+            "entry": 4476.24,
+            "stopLoss": 4485.605,
+            "takeProfit": 4462.615,
+            "direction": "SELL",
+            "riskShare": 0.4,
+            "outcome": "tp",
+            "possibilities": [
+              "tp"
+            ]
+          }
+        ],
+        "scenarios": [
+          {
+            "mask": 3,
+            "exit": 1
+          }
+        ]
+      },
+      "minimumDeltaR": 0.14141146136440996,
+      "maximumDeltaR": 0.14141146136440996
+    },
+    {
+      "signalUTC": "2026-09-07T03:30:00.000Z",
+      "signalNepal": "2026-09-07 09:15",
+      "direction": "bearish",
+      "confirmationBody": 6.770000000000437,
+      "nextOpen": 4401.94,
+      "baseline": {
+        "outcome": "tp",
+        "minimumR": 1.21534938539863,
+        "maximumR": 1.21534938539863,
+        "legs": [
+          {
+            "percent": 10,
+            "entry": 4402.616999999999,
+            "stopLoss": 4413.335,
+            "takeProfit": 4390.544999999999,
+            "direction": "SELL",
+            "riskShare": 0.6,
+            "outcome": "tp",
+            "possibilities": [
+              "tp"
+            ]
+          },
+          {
+            "percent": 25,
+            "entry": 4403.6325,
+            "stopLoss": 4413.335,
+            "takeProfit": 4390.544999999999,
+            "direction": "SELL",
+            "riskShare": 0.4,
+            "outcome": "tp",
+            "possibilities": [
+              "tp"
+            ]
+          }
+        ],
+        "scenarios": [
+          {
+            "mask": 3,
+            "exit": 1
+          }
+        ]
+      },
+      "candidate": {
+        "outcome": "tp",
+        "minimumR": 1.411200689352854,
+        "maximumR": 1.411200689352854,
+        "legs": [
+          {
+            "percent": 20,
+            "entry": 4403.294,
+            "stopLoss": 4413.335,
+            "takeProfit": 4390.544999999999,
+            "direction": "SELL",
+            "riskShare": 0.6,
+            "outcome": "tp",
+            "possibilities": [
+              "tp"
+            ]
+          },
+          {
+            "percent": 40,
+            "entry": 4404.648,
+            "stopLoss": 4413.335,
+            "takeProfit": 4390.544999999999,
+            "direction": "SELL",
+            "riskShare": 0.4,
+            "outcome": "tp",
+            "possibilities": [
+              "tp"
+            ]
+          }
+        ],
+        "scenarios": [
+          {
+            "mask": 3,
+            "exit": 1
+          }
+        ]
+      },
+      "minimumDeltaR": 0.195851303954224,
+      "maximumDeltaR": 0.195851303954224
+    },
+    {
+      "signalUTC": "2026-09-08T04:15:00.000Z",
+      "signalNepal": "2026-09-08 10:00",
+      "direction": "bearish",
+      "confirmationBody": 6.539999999999964,
+      "nextOpen": 4432.8,
+      "baseline": {
+        "outcome": "tp",
+        "minimumR": 1.1759494793920693,
+        "maximumR": 1.1759494793920693,
+        "legs": [
+          {
+            "percent": 10,
+            "entry": 4433.454,
+            "stopLoss": 4445.98,
+            "takeProfit": 4419.620000000001,
+            "direction": "SELL",
+            "riskShare": 0.6,
+            "outcome": "tp",
+            "possibilities": [
+              "tp"
+            ]
+          },
+          {
+            "percent": 25,
+            "entry": 4434.435,
+            "stopLoss": 4445.98,
+            "takeProfit": 4419.620000000001,
+            "direction": "SELL",
+            "riskShare": 0.4,
+            "outcome": "tp",
+            "possibilities": [
+              "tp"
+            ]
+          }
+        ],
+        "scenarios": [
+          {
+            "mask": 3,
+            "exit": 1
+          }
+        ]
+      },
+      "candidate": {
+        "outcome": "tp",
+        "minimumR": 1.3303170203233234,
+        "maximumR": 1.3303170203233234,
+        "legs": [
+          {
+            "percent": 20,
+            "entry": 4434.108,
+            "stopLoss": 4445.98,
+            "takeProfit": 4419.620000000001,
+            "direction": "SELL",
+            "riskShare": 0.6,
+            "outcome": "tp",
+            "possibilities": [
+              "tp"
+            ]
+          },
+          {
+            "percent": 40,
+            "entry": 4435.416,
+            "stopLoss": 4445.98,
+            "takeProfit": 4419.620000000001,
+            "direction": "SELL",
+            "riskShare": 0.4,
+            "outcome": "tp",
+            "possibilities": [
+              "tp"
+            ]
+          }
+        ],
+        "scenarios": [
+          {
+            "mask": 3,
+            "exit": 1
+          }
+        ]
+      },
+      "minimumDeltaR": 0.15436754093125415,
+      "maximumDeltaR": 0.15436754093125415
+    },
+    {
+      "signalUTC": "2026-09-11T08:45:00.000Z",
+      "signalNepal": "2026-09-11 14:30",
+      "direction": "bearish",
+      "confirmationBody": 5.644999999999527,
+      "nextOpen": 4347.055,
+      "baseline": {
+        "outcome": "tp",
+        "minimumR": 1.1548943096041882,
+        "maximumR": 1.1548943096041882,
+        "legs": [
+          {
+            "percent": 10,
+            "entry": 4347.619500000001,
+            "stopLoss": 4359.825,
+            "takeProfit": 4334.285000000001,
+            "direction": "SELL",
+            "riskShare": 0.6,
+            "outcome": "tp",
+            "possibilities": [
+              "tp"
+            ]
+          },
+          {
+            "percent": 25,
+            "entry": 4348.46625,
+            "stopLoss": 4359.825,
+            "takeProfit": 4334.285000000001,
+            "direction": "SELL",
+            "riskShare": 0.4,
+            "outcome": "tp",
+            "possibilities": [
+              "tp"
+            ]
+          }
+        ],
+        "scenarios": [
+          {
+            "mask": 3,
+            "exit": 1
+          }
+        ]
+      },
+      "candidate": {
+        "outcome": "tp",
+        "minimumR": 1.2882234588632344,
+        "maximumR": 1.2882234588632344,
+        "legs": [
+          {
+            "percent": 20,
+            "entry": 4348.184,
+            "stopLoss": 4359.825,
+            "takeProfit": 4334.285000000001,
+            "direction": "SELL",
+            "riskShare": 0.6,
+            "outcome": "tp",
+            "possibilities": [
+              "tp"
+            ]
+          },
+          {
+            "percent": 40,
+            "entry": 4349.313,
+            "stopLoss": 4359.825,
+            "takeProfit": 4334.285000000001,
+            "direction": "SELL",
+            "riskShare": 0.4,
+            "outcome": "tp",
+            "possibilities": [
+              "tp"
+            ]
+          }
+        ],
+        "scenarios": [
+          {
+            "mask": 3,
+            "exit": 1
+          }
+        ]
+      },
+      "minimumDeltaR": 0.13332914925904626,
+      "maximumDeltaR": 0.13332914925904626
+    },
+    {
+      "signalUTC": "2026-09-11T10:30:00.000Z",
+      "signalNepal": "2026-09-11 16:15",
+      "direction": "bearish",
+      "confirmationBody": 4.190000000000509,
+      "nextOpen": 4345.305,
+      "baseline": {
+        "outcome": "not-filled",
+        "minimumR": 0,
+        "maximumR": 0,
+        "legs": [
+          {
+            "percent": 10,
+            "entry": 4345.724,
+            "stopLoss": 4352.975,
+            "takeProfit": 4337.635,
+            "direction": "SELL",
+            "riskShare": 0.6,
+            "outcome": "not-filled",
+            "possibilities": [
+              "not-filled"
+            ]
+          },
+          {
+            "percent": 25,
+            "entry": 4346.352500000001,
+            "stopLoss": 4352.975,
+            "takeProfit": 4337.635,
+            "direction": "SELL",
+            "riskShare": 0.4,
+            "outcome": "not-filled",
+            "possibilities": [
+              "not-filled"
+            ]
+          }
+        ],
+        "scenarios": [
+          {
+            "mask": 0,
+            "exit": 1
+          }
+        ]
+      },
+      "candidate": {
+        "outcome": "not-filled",
+        "minimumR": 0,
+        "maximumR": 0,
+        "legs": [
+          {
+            "percent": 20,
+            "entry": 4346.143,
+            "stopLoss": 4352.975,
+            "takeProfit": 4337.635,
+            "direction": "SELL",
+            "riskShare": 0.6,
+            "outcome": "not-filled",
+            "possibilities": [
+              "not-filled"
+            ]
+          },
+          {
+            "percent": 40,
+            "entry": 4346.981000000001,
+            "stopLoss": 4352.975,
+            "takeProfit": 4337.635,
+            "direction": "SELL",
+            "riskShare": 0.4,
+            "outcome": "not-filled",
+            "possibilities": [
+              "not-filled"
+            ]
+          }
+        ],
+        "scenarios": [
+          {
+            "mask": 0,
+            "exit": 1
+          }
+        ]
+      },
+      "minimumDeltaR": 0,
+      "maximumDeltaR": 0
+    },
+    {
+      "signalUTC": "2026-09-14T05:15:00.000Z",
+      "signalNepal": "2026-09-14 11:00",
+      "direction": "bearish",
+      "confirmationBody": 4.434999999999491,
+      "nextOpen": 4326.58,
+      "baseline": {
+        "outcome": "sl",
+        "minimumR": -1,
+        "maximumR": -1,
+        "legs": [
+          {
+            "percent": 10,
+            "entry": 4327.0235,
+            "stopLoss": 4335.855,
+            "takeProfit": 4317.305,
+            "direction": "SELL",
+            "riskShare": 0.6,
+            "outcome": "sl",
+            "possibilities": [
+              "sl"
+            ]
+          },
+          {
+            "percent": 25,
+            "entry": 4327.688749999999,
+            "stopLoss": 4335.855,
+            "takeProfit": 4317.305,
+            "direction": "SELL",
+            "riskShare": 0.4,
+            "outcome": "sl",
+            "possibilities": [
+              "sl"
+            ]
+          }
+        ],
+        "scenarios": [
+          {
+            "mask": 3,
+            "exit": -1
+          }
+        ]
+      },
+      "candidate": {
+        "outcome": "sl",
+        "minimumR": -1,
+        "maximumR": -1,
+        "legs": [
+          {
+            "percent": 20,
+            "entry": 4327.467,
+            "stopLoss": 4335.855,
+            "takeProfit": 4317.305,
+            "direction": "SELL",
+            "riskShare": 0.6,
+            "outcome": "sl",
+            "possibilities": [
+              "sl"
+            ]
+          },
+          {
+            "percent": 40,
+            "entry": 4328.353999999999,
+            "stopLoss": 4335.855,
+            "takeProfit": 4317.305,
+            "direction": "SELL",
+            "riskShare": 0.4,
+            "outcome": "sl",
+            "possibilities": [
+              "sl"
+            ]
+          }
+        ],
+        "scenarios": [
+          {
+            "mask": 3,
+            "exit": -1
+          }
+        ]
+      },
+      "minimumDeltaR": 0,
+      "maximumDeltaR": 0
+    },
+    {
+      "signalUTC": "2026-09-14T08:15:00.000Z",
+      "signalNepal": "2026-09-14 14:00",
+      "direction": "bearish",
+      "confirmationBody": 2.6400000000003274,
+      "nextOpen": 4310.69,
+      "baseline": {
+        "outcome": "tp",
+        "minimumR": 1.0831912273772755,
+        "maximumR": 1.0831912273772755,
+        "legs": [
+          {
+            "percent": 10,
+            "entry": 4310.954,
+            "stopLoss": 4321.36,
+            "takeProfit": 4300.0199999999995,
+            "direction": "SELL",
+            "riskShare": 0.6,
+            "outcome": "tp",
+            "possibilities": [
+              "tp"
+            ]
+          },
+          {
+            "percent": 25,
+            "entry": 4311.349999999999,
+            "stopLoss": 4321.36,
+            "takeProfit": 4300.0199999999995,
+            "direction": "SELL",
+            "riskShare": 0.4,
+            "outcome": "tp",
+            "possibilities": [
+              "tp"
+            ]
+          }
+        ],
+        "scenarios": [
+          {
+            "mask": 3,
+            "exit": 1
+          }
+        ]
+      },
+      "candidate": {
+        "outcome": "tp",
+        "minimumR": 1.150344738579524,
+        "maximumR": 1.150344738579524,
+        "legs": [
+          {
+            "percent": 20,
+            "entry": 4311.218,
+            "stopLoss": 4321.36,
+            "takeProfit": 4300.0199999999995,
+            "direction": "SELL",
+            "riskShare": 0.6,
+            "outcome": "tp",
+            "possibilities": [
+              "tp"
+            ]
+          },
+          {
+            "percent": 40,
+            "entry": 4311.746,
+            "stopLoss": 4321.36,
+            "takeProfit": 4300.0199999999995,
+            "direction": "SELL",
+            "riskShare": 0.4,
+            "outcome": "tp",
+            "possibilities": [
+              "tp"
+            ]
+          }
+        ],
+        "scenarios": [
+          {
+            "mask": 3,
+            "exit": 1
+          }
+        ]
+      },
+      "minimumDeltaR": 0.06715351120224855,
+      "maximumDeltaR": 0.06715351120224855
+    },
+    {
+      "signalUTC": "2026-09-21T02:45:00.000Z",
+      "signalNepal": "2026-09-21 08:30",
+      "direction": "bearish",
+      "confirmationBody": 2.7150000000001455,
+      "nextOpen": 4363.815,
+      "baseline": {
+        "outcome": "tp",
+        "minimumR": 1.0769151828342796,
+        "maximumR": 1.0769151828342796,
+        "legs": [
+          {
+            "percent": 10,
+            "entry": 4364.086499999999,
+            "stopLoss": 4375.64,
+            "takeProfit": 4351.989999999999,
+            "direction": "SELL",
+            "riskShare": 0.6,
+            "outcome": "tp",
+            "possibilities": [
+              "tp"
+            ]
+          },
+          {
+            "percent": 25,
+            "entry": 4364.49375,
+            "stopLoss": 4375.64,
+            "takeProfit": 4351.989999999999,
+            "direction": "SELL",
+            "riskShare": 0.4,
+            "outcome": "tp",
+            "possibilities": [
+              "tp"
+            ]
+          }
+        ],
+        "scenarios": [
+          {
+            "mask": 3,
+            "exit": 1
+          }
+        ]
+      },
+      "candidate": {
+        "outcome": "tp",
+        "minimumR": 1.138657104537659,
+        "maximumR": 1.138657104537659,
+        "legs": [
+          {
+            "percent": 20,
+            "entry": 4364.357999999999,
+            "stopLoss": 4375.64,
+            "takeProfit": 4351.989999999999,
+            "direction": "SELL",
+            "riskShare": 0.6,
+            "outcome": "tp",
+            "possibilities": [
+              "tp"
+            ]
+          },
+          {
+            "percent": 40,
+            "entry": 4364.901,
+            "stopLoss": 4375.64,
+            "takeProfit": 4351.989999999999,
+            "direction": "SELL",
+            "riskShare": 0.4,
+            "outcome": "tp",
+            "possibilities": [
+              "tp"
+            ]
+          }
+        ],
+        "scenarios": [
+          {
+            "mask": 3,
+            "exit": 1
+          }
+        ]
+      },
+      "minimumDeltaR": 0.06174192170337944,
+      "maximumDeltaR": 0.06174192170337944
+    },
+    {
+      "signalUTC": "2026-09-21T04:45:00.000Z",
+      "signalNepal": "2026-09-21 10:30",
+      "direction": "bearish",
+      "confirmationBody": 5.994999999999891,
+      "nextOpen": 4355.955,
+      "baseline": {
+        "outcome": "tp",
+        "minimumR": 1.2074281335964407,
+        "maximumR": 1.2074281335964407,
+        "legs": [
+          {
+            "percent": 10,
+            "entry": 4356.5545,
+            "stopLoss": 4366.385,
+            "takeProfit": 4345.525,
+            "direction": "SELL",
+            "riskShare": 0.6,
+            "outcome": "tp",
+            "possibilities": [
+              "tp"
+            ]
+          },
+          {
+            "percent": 25,
+            "entry": 4357.45375,
+            "stopLoss": 4366.385,
+            "takeProfit": 4345.525,
+            "direction": "SELL",
+            "riskShare": 0.4,
+            "outcome": "tp",
+            "possibilities": [
+              "tp"
+            ]
+          }
+        ],
+        "scenarios": [
+          {
+            "mask": 3,
+            "exit": 1
+          }
+        ]
+      },
+      "candidate": {
+        "outcome": "tp",
+        "minimumR": 1.3947107248613082,
+        "maximumR": 1.3947107248613082,
+        "legs": [
+          {
+            "percent": 20,
+            "entry": 4357.1539999999995,
+            "stopLoss": 4366.385,
+            "takeProfit": 4345.525,
+            "direction": "SELL",
+            "riskShare": 0.6,
+            "outcome": "tp",
+            "possibilities": [
+              "tp"
+            ]
+          },
+          {
+            "percent": 40,
+            "entry": 4358.353,
+            "stopLoss": 4366.385,
+            "takeProfit": 4345.525,
+            "direction": "SELL",
+            "riskShare": 0.4,
+            "outcome": "tp",
+            "possibilities": [
+              "tp"
+            ]
+          }
+        ],
+        "scenarios": [
+          {
+            "mask": 3,
+            "exit": 1
+          }
+        ]
+      },
+      "minimumDeltaR": 0.18728259126486746,
+      "maximumDeltaR": 0.18728259126486746
+    },
+    {
+      "signalUTC": "2026-09-22T16:00:00.000Z",
+      "signalNepal": "2026-09-22 21:45",
+      "direction": "bearish",
+      "confirmationBody": 7.390000000000327,
+      "nextOpen": 4323.92,
+      "baseline": {
+        "outcome": "sl",
+        "minimumR": -1,
+        "maximumR": -1,
+        "legs": [
+          {
+            "percent": 10,
+            "entry": 4324.659,
+            "stopLoss": 4335.505,
+            "takeProfit": 4312.335,
+            "direction": "SELL",
+            "riskShare": 0.6,
+            "outcome": "sl",
+            "possibilities": [
+              "sl"
+            ]
+          },
+          {
+            "percent": 25,
+            "entry": 4325.7675,
+            "stopLoss": 4335.505,
+            "takeProfit": 4312.335,
+            "direction": "SELL",
+            "riskShare": 0.4,
+            "outcome": "sl",
+            "possibilities": [
+              "sl"
+            ]
+          }
+        ],
+        "scenarios": [
+          {
+            "mask": 3,
+            "exit": -1
+          }
+        ]
+      },
+      "candidate": {
+        "outcome": "sl",
+        "minimumR": -1,
+        "maximumR": -1,
+        "legs": [
+          {
+            "percent": 20,
+            "entry": 4325.398,
+            "stopLoss": 4335.505,
+            "takeProfit": 4312.335,
+            "direction": "SELL",
+            "riskShare": 0.6,
+            "outcome": "sl",
+            "possibilities": [
+              "sl"
+            ]
+          },
+          {
+            "percent": 40,
+            "entry": 4326.876,
+            "stopLoss": 4335.505,
+            "takeProfit": 4312.335,
+            "direction": "SELL",
+            "riskShare": 0.4,
+            "outcome": "sl",
+            "possibilities": [
+              "sl"
+            ]
+          }
+        ],
+        "scenarios": [
+          {
+            "mask": 3,
+            "exit": -1
+          }
+        ]
+      },
+      "minimumDeltaR": 0,
+      "maximumDeltaR": 0
+    },
+    {
+      "signalUTC": "2026-09-23T04:30:00.000Z",
+      "signalNepal": "2026-09-23 10:15",
+      "direction": "bearish",
+      "confirmationBody": 1.125,
+      "nextOpen": 4344.51,
+      "baseline": {
+        "outcome": "tp",
+        "minimumR": 1.0635945639686921,
+        "maximumR": 1.0635945639686921,
+        "legs": [
+          {
+            "percent": 10,
+            "entry": 4344.6225,
+            "stopLoss": 4350.39,
+            "takeProfit": 4338.63,
+            "direction": "SELL",
+            "riskShare": 0.6,
+            "outcome": "tp",
+            "possibilities": [
+              "tp"
+            ]
+          },
+          {
+            "percent": 25,
+            "entry": 4344.79125,
+            "stopLoss": 4350.39,
+            "takeProfit": 4338.63,
+            "direction": "SELL",
+            "riskShare": 0.4,
+            "outcome": "tp",
+            "possibilities": [
+              "tp"
+            ]
+          }
+        ],
+        "scenarios": [
+          {
+            "mask": 3,
+            "exit": 1
+          }
+        ]
+      },
+      "candidate": {
+        "outcome": "tp",
+        "minimumR": 1.114043700631671,
+        "maximumR": 1.114043700631671,
+        "legs": [
+          {
+            "percent": 20,
+            "entry": 4344.735000000001,
+            "stopLoss": 4350.39,
+            "takeProfit": 4338.63,
+            "direction": "SELL",
+            "riskShare": 0.6,
+            "outcome": "tp",
+            "possibilities": [
+              "tp"
+            ]
+          },
+          {
+            "percent": 40,
+            "entry": 4344.96,
+            "stopLoss": 4350.39,
+            "takeProfit": 4338.63,
+            "direction": "SELL",
+            "riskShare": 0.4,
+            "outcome": "tp",
+            "possibilities": [
+              "tp"
+            ]
+          }
+        ],
+        "scenarios": [
+          {
+            "mask": 3,
+            "exit": 1
+          }
+        ]
+      },
+      "minimumDeltaR": 0.0504491366629789,
+      "maximumDeltaR": 0.0504491366629789
+    },
+    {
+      "signalUTC": "2026-09-28T14:00:00.000Z",
+      "signalNepal": "2026-09-28 19:45",
+      "direction": "bearish",
+      "confirmationBody": 18.18000000000029,
+      "nextOpen": 4138.82,
+      "baseline": {
+        "outcome": "tp",
+        "minimumR": 0.8316942889395569,
+        "maximumR": 0.8316942889395569,
+        "legs": [
+          {
+            "percent": 10,
+            "entry": 4140.638,
+            "stopLoss": 4163.65,
+            "takeProfit": 4123.65,
+            "direction": "SELL",
+            "riskShare": 0.6,
+            "outcome": "tp",
+            "possibilities": [
+              "tp"
+            ]
+          },
+          {
+            "percent": 25,
+            "entry": 4143.365,
+            "stopLoss": 4163.65,
+            "takeProfit": 4123.65,
+            "direction": "SELL",
+            "riskShare": 0.4,
+            "outcome": "tp",
+            "possibilities": [
+              "tp"
+            ]
+          }
+        ],
+        "scenarios": [
+          {
+            "mask": 3,
+            "exit": 1
+          }
+        ]
+      },
+      "candidate": {
+        "outcome": "tp",
+        "minimumR": 0.5323959611210984,
+        "maximumR": 0.5323959611210984,
+        "legs": [
+          {
+            "percent": 20,
+            "entry": 4142.456,
+            "stopLoss": 4163.65,
+            "takeProfit": 4123.65,
+            "direction": "SELL",
+            "riskShare": 0.6,
+            "outcome": "tp",
+            "possibilities": [
+              "tp"
+            ]
+          },
+          {
+            "percent": 40,
+            "entry": 4146.092,
+            "stopLoss": 4163.65,
+            "takeProfit": 4123.65,
+            "direction": "SELL",
+            "riskShare": 0.4,
+            "outcome": "not-filled",
+            "possibilities": [
+              "not-filled"
+            ]
+          }
+        ],
+        "scenarios": [
+          {
+            "mask": 1,
+            "exit": 1
+          }
+        ]
+      },
+      "minimumDeltaR": -0.29929832781845844,
+      "maximumDeltaR": -0.29929832781845844
+    },
+    {
+      "signalUTC": "2026-09-28T19:30:00.000Z",
+      "signalNepal": "2026-09-29 01:15",
+      "direction": "bearish",
+      "confirmationBody": 4.279999999999745,
+      "nextOpen": 4129.44,
+      "baseline": {
+        "outcome": "not-filled",
+        "minimumR": 0,
+        "maximumR": 0,
+        "legs": [
+          {
+            "percent": 10,
+            "entry": 4129.8679999999995,
+            "stopLoss": 4139.52,
+            "takeProfit": 4119.359999999999,
+            "direction": "SELL",
+            "riskShare": 0.6,
+            "outcome": "not-filled",
+            "possibilities": [
+              "not-filled"
+            ]
+          },
+          {
+            "percent": 25,
+            "entry": 4130.509999999999,
+            "stopLoss": 4139.52,
+            "takeProfit": 4119.359999999999,
+            "direction": "SELL",
+            "riskShare": 0.4,
+            "outcome": "not-filled",
+            "possibilities": [
+              "not-filled"
+            ]
+          }
+        ],
+        "scenarios": [
+          {
+            "mask": 0,
+            "exit": 1
+          }
+        ]
+      },
+      "candidate": {
+        "outcome": "not-filled",
+        "minimumR": 0,
+        "maximumR": 0,
+        "legs": [
+          {
+            "percent": 20,
+            "entry": 4130.295999999999,
+            "stopLoss": 4139.52,
+            "takeProfit": 4119.359999999999,
+            "direction": "SELL",
+            "riskShare": 0.6,
+            "outcome": "not-filled",
+            "possibilities": [
+              "not-filled"
+            ]
+          },
+          {
+            "percent": 40,
+            "entry": 4131.151999999999,
+            "stopLoss": 4139.52,
+            "takeProfit": 4119.359999999999,
+            "direction": "SELL",
+            "riskShare": 0.4,
+            "outcome": "not-filled",
+            "possibilities": [
+              "not-filled"
+            ]
+          }
+        ],
+        "scenarios": [
+          {
+            "mask": 0,
+            "exit": 1
+          }
+        ]
+      },
+      "minimumDeltaR": 0,
+      "maximumDeltaR": 0
+    },
+    {
+      "signalUTC": "2026-09-29T17:30:00.000Z",
+      "signalNepal": "2026-09-29 23:15",
+      "direction": "bearish",
+      "confirmationBody": 3.1700000000000728,
+      "nextOpen": 4145.16,
+      "baseline": {
+        "outcome": "sl",
+        "minimumR": -1,
+        "maximumR": -1,
+        "legs": [
+          {
+            "percent": 10,
+            "entry": 4145.477,
+            "stopLoss": 4152.08,
+            "takeProfit": 4138.24,
+            "direction": "SELL",
+            "riskShare": 0.6,
+            "outcome": "sl",
+            "possibilities": [
+              "sl"
+            ]
+          },
+          {
+            "percent": 25,
+            "entry": 4145.952499999999,
+            "stopLoss": 4152.08,
+            "takeProfit": 4138.24,
+            "direction": "SELL",
+            "riskShare": 0.4,
+            "outcome": "sl",
+            "possibilities": [
+              "sl"
+            ]
+          }
+        ],
+        "scenarios": [
+          {
+            "mask": 3,
+            "exit": -1
+          }
+        ]
+      },
+      "candidate": {
+        "outcome": "sl",
+        "minimumR": -1,
+        "maximumR": -1,
+        "legs": [
+          {
+            "percent": 20,
+            "entry": 4145.794,
+            "stopLoss": 4152.08,
+            "takeProfit": 4138.24,
+            "direction": "SELL",
+            "riskShare": 0.6,
+            "outcome": "sl",
+            "possibilities": [
+              "sl"
+            ]
+          },
+          {
+            "percent": 40,
+            "entry": 4146.428,
+            "stopLoss": 4152.08,
+            "takeProfit": 4138.24,
+            "direction": "SELL",
+            "riskShare": 0.4,
+            "outcome": "sl",
+            "possibilities": [
+              "sl"
+            ]
+          }
+        ],
+        "scenarios": [
+          {
+            "mask": 3,
+            "exit": -1
+          }
+        ]
+      },
+      "minimumDeltaR": 0,
+      "maximumDeltaR": 0
+    },
+    {
+      "signalUTC": "2026-09-30T10:30:00.000Z",
+      "signalNepal": "2026-09-30 16:15",
+      "direction": "bearish",
+      "confirmationBody": 4.234999999999673,
+      "nextOpen": 4184,
+      "baseline": {
+        "outcome": "sl",
+        "minimumR": -1,
+        "maximumR": -1,
+        "legs": [
+          {
+            "percent": 10,
+            "entry": 4184.4235,
+            "stopLoss": 4193.515,
+            "takeProfit": 4174.485,
+            "direction": "SELL",
+            "riskShare": 0.6,
+            "outcome": "sl",
+            "possibilities": [
+              "sl"
+            ]
+          },
+          {
+            "percent": 25,
+            "entry": 4185.05875,
+            "stopLoss": 4193.515,
+            "takeProfit": 4174.485,
+            "direction": "SELL",
+            "riskShare": 0.4,
+            "outcome": "sl",
+            "possibilities": [
+              "sl"
+            ]
+          }
+        ],
+        "scenarios": [
+          {
+            "mask": 3,
+            "exit": -1
+          }
+        ]
+      },
+      "candidate": {
+        "outcome": "sl",
+        "minimumR": -1,
+        "maximumR": -1,
+        "legs": [
+          {
+            "percent": 20,
+            "entry": 4184.847,
+            "stopLoss": 4193.515,
+            "takeProfit": 4174.485,
+            "direction": "SELL",
+            "riskShare": 0.6,
+            "outcome": "sl",
+            "possibilities": [
+              "sl"
+            ]
+          },
+          {
+            "percent": 40,
+            "entry": 4185.6939999999995,
+            "stopLoss": 4193.515,
+            "takeProfit": 4174.485,
+            "direction": "SELL",
+            "riskShare": 0.4,
+            "outcome": "sl",
+            "possibilities": [
+              "sl"
+            ]
+          }
+        ],
+        "scenarios": [
+          {
+            "mask": 3,
+            "exit": -1
+          }
+        ]
+      },
+      "minimumDeltaR": 0,
+      "maximumDeltaR": 0
+    },
+    {
+      "signalUTC": "2026-10-07T03:00:00.000Z",
+      "signalNepal": "2026-10-07 08:45",
+      "direction": "bearish",
+      "confirmationBody": 2.7849999999998545,
+      "nextOpen": 4139.815,
+      "baseline": {
+        "outcome": "tp",
+        "minimumR": 1.0745648348727823,
+        "maximumR": 1.0745648348727823,
+        "legs": [
+          {
+            "percent": 10,
+            "entry": 4140.0935,
+            "stopLoss": 4152.31,
+            "takeProfit": 4127.319999999999,
+            "direction": "SELL",
+            "riskShare": 0.6,
+            "outcome": "tp",
+            "possibilities": [
+              "tp"
+            ]
+          },
+          {
+            "percent": 25,
+            "entry": 4140.51125,
+            "stopLoss": 4152.31,
+            "takeProfit": 4127.319999999999,
+            "direction": "SELL",
+            "riskShare": 0.4,
+            "outcome": "tp",
+            "possibilities": [
+              "tp"
+            ]
+          }
+        ],
+        "scenarios": [
+          {
+            "mask": 3,
+            "exit": 1
+          }
+        ]
+      },
+      "candidate": {
+        "outcome": "tp",
+        "minimumR": 1.1342952264466144,
+        "maximumR": 1.1342952264466144,
+        "legs": [
+          {
+            "percent": 20,
+            "entry": 4140.371999999999,
+            "stopLoss": 4152.31,
+            "takeProfit": 4127.319999999999,
+            "direction": "SELL",
+            "riskShare": 0.6,
+            "outcome": "tp",
+            "possibilities": [
+              "tp"
+            ]
+          },
+          {
+            "percent": 40,
+            "entry": 4140.928999999999,
+            "stopLoss": 4152.31,
+            "takeProfit": 4127.319999999999,
+            "direction": "SELL",
+            "riskShare": 0.4,
+            "outcome": "tp",
+            "possibilities": [
+              "tp"
+            ]
+          }
+        ],
+        "scenarios": [
+          {
+            "mask": 3,
+            "exit": 1
+          }
+        ]
+      },
+      "minimumDeltaR": 0.05973039157383209,
+      "maximumDeltaR": 0.05973039157383209
+    },
+    {
+      "signalUTC": "2026-10-08T05:15:00.000Z",
+      "signalNepal": "2026-10-08 11:00",
+      "direction": "bearish",
+      "confirmationBody": 3.9749999999994543,
+      "nextOpen": 4128.365,
+      "baseline": {
+        "outcome": "tp",
+        "minimumR": 1.1324819833029505,
+        "maximumR": 1.1324819833029505,
+        "legs": [
+          {
+            "percent": 10,
+            "entry": 4128.7625,
+            "stopLoss": 4138.745,
+            "takeProfit": 4117.985,
+            "direction": "SELL",
+            "riskShare": 0.6,
+            "outcome": "tp",
+            "possibilities": [
+              "tp"
+            ]
+          },
+          {
+            "percent": 25,
+            "entry": 4129.358749999999,
+            "stopLoss": 4138.745,
+            "takeProfit": 4117.985,
+            "direction": "SELL",
+            "riskShare": 0.4,
+            "outcome": "tp",
+            "possibilities": [
+              "tp"
+            ]
+          }
+        ],
+        "scenarios": [
+          {
+            "mask": 3,
+            "exit": 1
+          }
+        ]
+      },
+      "candidate": {
+        "outcome": "tp",
+        "minimumR": 1.244240414042869,
+        "maximumR": 1.244240414042869,
+        "legs": [
+          {
+            "percent": 20,
+            "entry": 4129.16,
+            "stopLoss": 4138.745,
+            "takeProfit": 4117.985,
+            "direction": "SELL",
+            "riskShare": 0.6,
+            "outcome": "tp",
+            "possibilities": [
+              "tp"
+            ]
+          },
+          {
+            "percent": 40,
+            "entry": 4129.955,
+            "stopLoss": 4138.745,
+            "takeProfit": 4117.985,
+            "direction": "SELL",
+            "riskShare": 0.4,
+            "outcome": "tp",
+            "possibilities": [
+              "tp"
+            ]
+          }
+        ],
+        "scenarios": [
+          {
+            "mask": 3,
+            "exit": 1
+          }
+        ]
+      },
+      "minimumDeltaR": 0.11175843073991842,
+      "maximumDeltaR": 0.11175843073991842
+    },
+    {
+      "signalUTC": "2026-10-13T08:30:00.000Z",
+      "signalNepal": "2026-10-13 14:15",
+      "direction": "bearish",
+      "confirmationBody": 5.164999999999964,
+      "nextOpen": 4187.955,
+      "baseline": {
+        "outcome": "tp",
+        "minimumR": 1.210633025513625,
+        "maximumR": 1.210633025513625,
+        "legs": [
+          {
+            "percent": 10,
+            "entry": 4188.4715,
+            "stopLoss": 4196.82,
+            "takeProfit": 4179.09,
+            "direction": "SELL",
+            "riskShare": 0.6,
+            "outcome": "tp",
+            "possibilities": [
+              "tp"
+            ]
+          },
+          {
+            "percent": 25,
+            "entry": 4189.24625,
+            "stopLoss": 4196.82,
+            "takeProfit": 4179.09,
+            "direction": "SELL",
+            "riskShare": 0.4,
+            "outcome": "tp",
+            "possibilities": [
+              "tp"
+            ]
+          }
+        ],
+        "scenarios": [
+          {
+            "mask": 3,
+            "exit": 1
+          }
+        ]
+      },
+      "candidate": {
+        "outcome": "tp",
+        "minimumR": 0.758273748723253,
+        "maximumR": 0.758273748723253,
+        "legs": [
+          {
+            "percent": 20,
+            "entry": 4188.988,
+            "stopLoss": 4196.82,
+            "takeProfit": 4179.09,
+            "direction": "SELL",
+            "riskShare": 0.6,
+            "outcome": "tp",
+            "possibilities": [
+              "tp"
+            ]
+          },
+          {
+            "percent": 40,
+            "entry": 4190.021,
+            "stopLoss": 4196.82,
+            "takeProfit": 4179.09,
+            "direction": "SELL",
+            "riskShare": 0.4,
+            "outcome": "not-filled",
+            "possibilities": [
+              "not-filled"
+            ]
+          }
+        ],
+        "scenarios": [
+          {
+            "mask": 1,
+            "exit": 1
+          }
+        ]
+      },
+      "minimumDeltaR": -0.452359276790372,
+      "maximumDeltaR": -0.452359276790372
+    },
+    {
+      "signalUTC": "2026-10-13T12:45:00.000Z",
+      "signalNepal": "2026-10-13 18:30",
+      "direction": "bearish",
+      "confirmationBody": 4.789999999999964,
+      "nextOpen": 4179.765,
+      "baseline": {
+        "outcome": "tp",
+        "minimumR": 1.1163160813119162,
+        "maximumR": 1.1163160813119162,
+        "legs": [
+          {
+            "percent": 10,
+            "entry": 4180.244000000001,
+            "stopLoss": 4193.88,
+            "takeProfit": 4165.650000000001,
+            "direction": "SELL",
+            "riskShare": 0.6,
+            "outcome": "tp",
+            "possibilities": [
+              "tp"
+            ]
+          },
+          {
+            "percent": 25,
+            "entry": 4180.962500000001,
+            "stopLoss": 4193.88,
+            "takeProfit": 4165.650000000001,
+            "direction": "SELL",
+            "riskShare": 0.4,
+            "outcome": "tp",
+            "possibilities": [
+              "tp"
+            ]
+          }
+        ],
+        "scenarios": [
+          {
+            "mask": 3,
+            "exit": 1
+          }
+        ]
+      },
+      "candidate": {
+        "outcome": "tp",
+        "minimumR": 1.2130251849501992,
+        "maximumR": 1.2130251849501992,
+        "legs": [
+          {
+            "percent": 20,
+            "entry": 4180.723,
+            "stopLoss": 4193.88,
+            "takeProfit": 4165.650000000001,
+            "direction": "SELL",
+            "riskShare": 0.6,
+            "outcome": "tp",
+            "possibilities": [
+              "tp"
+            ]
+          },
+          {
+            "percent": 40,
+            "entry": 4181.6810000000005,
+            "stopLoss": 4193.88,
+            "takeProfit": 4165.650000000001,
+            "direction": "SELL",
+            "riskShare": 0.4,
+            "outcome": "tp",
+            "possibilities": [
+              "tp"
+            ]
+          }
+        ],
+        "scenarios": [
+          {
+            "mask": 3,
+            "exit": 1
+          }
+        ]
+      },
+      "minimumDeltaR": 0.096709103638283,
+      "maximumDeltaR": 0.096709103638283
+    },
+    {
+      "signalUTC": "2026-10-15T03:45:00.000Z",
+      "signalNepal": "2026-10-15 09:30",
+      "direction": "bearish",
+      "confirmationBody": 5.565000000000509,
+      "nextOpen": 4145.825,
+      "baseline": {
+        "outcome": "tp",
+        "minimumR": 1.2029717173761285,
+        "maximumR": 1.2029717173761285,
+        "legs": [
+          {
+            "percent": 10,
+            "entry": 4146.3814999999995,
+            "stopLoss": 4155.695,
+            "takeProfit": 4135.955,
+            "direction": "SELL",
+            "riskShare": 0.6,
+            "outcome": "tp",
+            "possibilities": [
+              "tp"
+            ]
+          },
+          {
+            "percent": 25,
+            "entry": 4147.2162499999995,
+            "stopLoss": 4155.695,
+            "takeProfit": 4135.955,
+            "direction": "SELL",
+            "riskShare": 0.4,
+            "outcome": "tp",
+            "possibilities": [
+              "tp"
+            ]
+          }
+        ],
+        "scenarios": [
+          {
+            "mask": 3,
+            "exit": 1
+          }
+        ]
+      },
+      "candidate": {
+        "outcome": "tp",
+        "minimumR": 0.7525179856115565,
+        "maximumR": 0.7525179856115565,
+        "legs": [
+          {
+            "percent": 20,
+            "entry": 4146.938,
+            "stopLoss": 4155.695,
+            "takeProfit": 4135.955,
+            "direction": "SELL",
+            "riskShare": 0.6,
+            "outcome": "tp",
+            "possibilities": [
+              "tp"
+            ]
+          },
+          {
+            "percent": 40,
+            "entry": 4148.051,
+            "stopLoss": 4155.695,
+            "takeProfit": 4135.955,
+            "direction": "SELL",
+            "riskShare": 0.4,
+            "outcome": "not-filled",
+            "possibilities": [
+              "not-filled"
+            ]
+          }
+        ],
+        "scenarios": [
+          {
+            "mask": 1,
+            "exit": 1
+          }
+        ]
+      },
+      "minimumDeltaR": -0.45045373176457204,
+      "maximumDeltaR": -0.45045373176457204
+    },
+    {
+      "signalUTC": "2026-10-21T04:15:00.000Z",
+      "signalNepal": "2026-10-21 10:00",
+      "direction": "bearish",
+      "confirmationBody": 8.215000000000146,
+      "nextOpen": 4115.035,
+      "baseline": {
+        "outcome": "sl",
+        "minimumR": -1,
+        "maximumR": -1,
+        "legs": [
+          {
+            "percent": 10,
+            "entry": 4115.8565,
+            "stopLoss": 4129.225,
+            "takeProfit": 4100.844999999999,
+            "direction": "SELL",
+            "riskShare": 0.6,
+            "outcome": "sl",
+            "possibilities": [
+              "sl"
+            ]
+          },
+          {
+            "percent": 25,
+            "entry": 4117.08875,
+            "stopLoss": 4129.225,
+            "takeProfit": 4100.844999999999,
+            "direction": "SELL",
+            "riskShare": 0.4,
+            "outcome": "sl",
+            "possibilities": [
+              "sl"
+            ]
+          }
+        ],
+        "scenarios": [
+          {
+            "mask": 3,
+            "exit": -1
+          }
+        ]
+      },
+      "candidate": {
+        "outcome": "sl",
+        "minimumR": -1,
+        "maximumR": -1,
+        "legs": [
+          {
+            "percent": 20,
+            "entry": 4116.678,
+            "stopLoss": 4129.225,
+            "takeProfit": 4100.844999999999,
+            "direction": "SELL",
+            "riskShare": 0.6,
+            "outcome": "sl",
+            "possibilities": [
+              "sl"
+            ]
+          },
+          {
+            "percent": 40,
+            "entry": 4118.321,
+            "stopLoss": 4129.225,
+            "takeProfit": 4100.844999999999,
+            "direction": "SELL",
+            "riskShare": 0.4,
+            "outcome": "sl",
+            "possibilities": [
+              "sl"
+            ]
+          }
+        ],
+        "scenarios": [
+          {
+            "mask": 3,
+            "exit": -1
+          }
+        ]
+      },
+      "minimumDeltaR": 0,
+      "maximumDeltaR": 0
+    },
+    {
+      "signalUTC": "2026-10-21T15:00:00.000Z",
+      "signalNepal": "2026-10-21 20:45",
+      "direction": "bearish",
+      "confirmationBody": 2.994999999999891,
+      "nextOpen": 4127.4,
+      "baseline": {
+        "outcome": "sl",
+        "minimumR": -1,
+        "maximumR": -1,
+        "legs": [
+          {
+            "percent": 10,
+            "entry": 4127.6995,
+            "stopLoss": 4135.585,
+            "takeProfit": 4119.214999999999,
+            "direction": "SELL",
+            "riskShare": 0.6,
+            "outcome": "sl",
+            "possibilities": [
+              "sl"
+            ]
+          },
+          {
+            "percent": 25,
+            "entry": 4128.148749999999,
+            "stopLoss": 4135.585,
+            "takeProfit": 4119.214999999999,
+            "direction": "SELL",
+            "riskShare": 0.4,
+            "outcome": "sl",
+            "possibilities": [
+              "sl"
+            ]
+          }
+        ],
+        "scenarios": [
+          {
+            "mask": 3,
+            "exit": -1
+          }
+        ]
+      },
+      "candidate": {
+        "outcome": "sl",
+        "minimumR": -1,
+        "maximumR": -1,
+        "legs": [
+          {
+            "percent": 20,
+            "entry": 4127.999,
+            "stopLoss": 4135.585,
+            "takeProfit": 4119.214999999999,
+            "direction": "SELL",
+            "riskShare": 0.6,
+            "outcome": "sl",
+            "possibilities": [
+              "sl"
+            ]
+          },
+          {
+            "percent": 40,
+            "entry": 4128.598,
+            "stopLoss": 4135.585,
+            "takeProfit": 4119.214999999999,
+            "direction": "SELL",
+            "riskShare": 0.4,
+            "outcome": "sl",
+            "possibilities": [
+              "sl"
+            ]
+          }
+        ],
+        "scenarios": [
+          {
+            "mask": 3,
+            "exit": -1
+          }
+        ]
+      },
+      "minimumDeltaR": 0,
+      "maximumDeltaR": 0
+    },
+    {
+      "signalUTC": "2026-10-22T08:45:00.000Z",
+      "signalNepal": "2026-10-22 14:30",
+      "direction": "bearish",
+      "confirmationBody": 9.504999999999654,
+      "nextOpen": 4083.14,
+      "baseline": {
+        "outcome": "tp",
+        "minimumR": 1.2534673302076131,
+        "maximumR": 1.2534673302076131,
+        "legs": [
+          {
+            "percent": 10,
+            "entry": 4084.0905,
+            "stopLoss": 4097.02,
+            "takeProfit": 4069.2599999999993,
+            "direction": "SELL",
+            "riskShare": 0.6,
+            "outcome": "tp",
+            "possibilities": [
+              "tp"
+            ]
+          },
+          {
+            "percent": 25,
+            "entry": 4085.5162499999997,
+            "stopLoss": 4097.02,
+            "takeProfit": 4069.2599999999993,
+            "direction": "SELL",
+            "riskShare": 0.4,
+            "outcome": "tp",
+            "possibilities": [
+              "tp"
+            ]
+          }
+        ],
+        "scenarios": [
+          {
+            "mask": 3,
+            "exit": 1
+          }
+        ]
+      },
+      "candidate": {
+        "outcome": "tp",
+        "minimumR": 1.4922391720735737,
+        "maximumR": 1.4922391720735737,
+        "legs": [
+          {
+            "percent": 20,
+            "entry": 4085.0409999999997,
+            "stopLoss": 4097.02,
+            "takeProfit": 4069.2599999999993,
+            "direction": "SELL",
+            "riskShare": 0.6,
+            "outcome": "tp",
+            "possibilities": [
+              "tp"
+            ]
+          },
+          {
+            "percent": 40,
+            "entry": 4086.9419999999996,
+            "stopLoss": 4097.02,
+            "takeProfit": 4069.2599999999993,
+            "direction": "SELL",
+            "riskShare": 0.4,
+            "outcome": "tp",
+            "possibilities": [
+              "tp"
+            ]
+          }
+        ],
+        "scenarios": [
+          {
+            "mask": 3,
+            "exit": 1
+          }
+        ]
+      },
+      "minimumDeltaR": 0.23877184186596057,
+      "maximumDeltaR": 0.23877184186596057
+    },
+    {
+      "signalUTC": "2026-10-28T13:15:00.000Z",
+      "signalNepal": "2026-10-28 19:00",
+      "direction": "bearish",
+      "confirmationBody": 2.650000000000091,
+      "nextOpen": 4051.785,
+      "baseline": {
+        "outcome": "tp",
+        "minimumR": 1.0981785357489426,
+        "maximumR": 1.0981785357489426,
+        "legs": [
+          {
+            "percent": 10,
+            "entry": 4052.0499999999997,
+            "stopLoss": 4060.94,
+            "takeProfit": 4042.6299999999997,
+            "direction": "SELL",
+            "riskShare": 0.6,
+            "outcome": "tp",
+            "possibilities": [
+              "tp"
+            ]
+          },
+          {
+            "percent": 25,
+            "entry": 4052.4474999999998,
+            "stopLoss": 4060.94,
+            "takeProfit": 4042.6299999999997,
+            "direction": "SELL",
+            "riskShare": 0.4,
+            "outcome": "tp",
+            "possibilities": [
+              "tp"
+            ]
+          }
+        ],
+        "scenarios": [
+          {
+            "mask": 3,
+            "exit": 1
+          }
+        ]
+      },
+      "candidate": {
+        "outcome": "tp",
+        "minimumR": 0.6737391304348104,
+        "maximumR": 0.6737391304348104,
+        "legs": [
+          {
+            "percent": 20,
+            "entry": 4052.315,
+            "stopLoss": 4060.94,
+            "takeProfit": 4042.6299999999997,
+            "direction": "SELL",
+            "riskShare": 0.6,
+            "outcome": "tp",
+            "possibilities": [
+              "tp"
+            ]
+          },
+          {
+            "percent": 40,
+            "entry": 4052.845,
+            "stopLoss": 4060.94,
+            "takeProfit": 4042.6299999999997,
+            "direction": "SELL",
+            "riskShare": 0.4,
+            "outcome": "not-filled",
+            "possibilities": [
+              "not-filled"
+            ]
+          }
+        ],
+        "scenarios": [
+          {
+            "mask": 1,
+            "exit": 1
+          }
+        ]
+      },
+      "minimumDeltaR": -0.42443940531413227,
+      "maximumDeltaR": -0.42443940531413227
+    },
+    {
+      "signalUTC": "2026-10-30T02:15:00.000Z",
+      "signalNepal": "2026-10-30 08:00",
+      "direction": "bearish",
+      "confirmationBody": 6.815000000000055,
+      "nextOpen": 4004.935,
+      "baseline": {
+        "outcome": "tp",
+        "minimumR": 0.672157762385864,
+        "maximumR": 0.672157762385864,
+        "legs": [
+          {
+            "percent": 10,
+            "entry": 4005.6165,
+            "stopLoss": 4016.95,
+            "takeProfit": 3992.92,
+            "direction": "SELL",
+            "riskShare": 0.6,
+            "outcome": "tp",
+            "possibilities": [
+              "tp"
+            ]
+          },
+          {
+            "percent": 25,
+            "entry": 4006.63875,
+            "stopLoss": 4016.95,
+            "takeProfit": 3992.92,
+            "direction": "SELL",
+            "riskShare": 0.4,
+            "outcome": "not-filled",
+            "possibilities": [
+              "not-filled"
+            ]
+          }
+        ],
+        "scenarios": [
+          {
+            "mask": 1,
+            "exit": 1
+          }
+        ]
+      },
+      "candidate": {
+        "outcome": "not-filled",
+        "minimumR": 0,
+        "maximumR": 0,
+        "legs": [
+          {
+            "percent": 20,
+            "entry": 4006.298,
+            "stopLoss": 4016.95,
+            "takeProfit": 3992.92,
+            "direction": "SELL",
+            "riskShare": 0.6,
+            "outcome": "not-filled",
+            "possibilities": [
+              "not-filled"
+            ]
+          },
+          {
+            "percent": 40,
+            "entry": 4007.661,
+            "stopLoss": 4016.95,
+            "takeProfit": 3992.92,
+            "direction": "SELL",
+            "riskShare": 0.4,
+            "outcome": "not-filled",
+            "possibilities": [
+              "not-filled"
+            ]
+          }
+        ],
+        "scenarios": [
+          {
+            "mask": 0,
+            "exit": 1
+          }
+        ]
+      },
+      "minimumDeltaR": -0.672157762385864,
+      "maximumDeltaR": -0.672157762385864
+    },
+    {
+      "signalUTC": "2026-10-30T06:45:00.000Z",
+      "signalNepal": "2026-10-30 12:30",
+      "direction": "bearish",
+      "confirmationBody": 3.6900000000000546,
+      "nextOpen": 3983.005,
+      "baseline": {
+        "outcome": "tp",
+        "minimumR": 1.0882527507250157,
+        "maximumR": 1.0882527507250157,
+        "legs": [
+          {
+            "percent": 10,
+            "entry": 3983.3740000000003,
+            "stopLoss": 3997.105,
+            "takeProfit": 3968.905,
+            "direction": "SELL",
+            "riskShare": 0.6,
+            "outcome": "tp",
+            "possibilities": [
+              "tp"
+            ]
+          },
+          {
+            "percent": 25,
+            "entry": 3983.9275000000002,
+            "stopLoss": 3997.105,
+            "takeProfit": 3968.905,
+            "direction": "SELL",
+            "riskShare": 0.4,
+            "outcome": "tp",
+            "possibilities": [
+              "tp"
+            ]
+          }
+        ],
+        "scenarios": [
+          {
+            "mask": 3,
+            "exit": 1
+          }
+        ]
+      },
+      "candidate": {
+        "outcome": "tp",
+        "minimumR": 1.1598136250407562,
+        "maximumR": 1.1598136250407562,
+        "legs": [
+          {
+            "percent": 20,
+            "entry": 3983.743,
+            "stopLoss": 3997.105,
+            "takeProfit": 3968.905,
+            "direction": "SELL",
+            "riskShare": 0.6,
+            "outcome": "tp",
+            "possibilities": [
+              "tp"
+            ]
+          },
+          {
+            "percent": 40,
+            "entry": 3984.481,
+            "stopLoss": 3997.105,
+            "takeProfit": 3968.905,
+            "direction": "SELL",
+            "riskShare": 0.4,
+            "outcome": "tp",
+            "possibilities": [
+              "tp"
+            ]
+          }
+        ],
+        "scenarios": [
+          {
+            "mask": 3,
+            "exit": 1
+          }
+        ]
+      },
+      "minimumDeltaR": 0.07156087431574054,
+      "maximumDeltaR": 0.07156087431574054
+    },
+    {
+      "signalUTC": "2026-10-30T17:30:00.000Z",
+      "signalNepal": "2026-10-30 23:15",
+      "direction": "bearish",
+      "confirmationBody": 5.679999999999836,
+      "nextOpen": 3883.955,
+      "baseline": {
+        "outcome": "tp",
+        "minimumR": 0.6544757033248296,
+        "maximumR": 0.6544757033248296,
+        "legs": [
+          {
+            "percent": 10,
+            "entry": 3884.523,
+            "stopLoss": 3897.035,
+            "takeProfit": 3870.875,
+            "direction": "SELL",
+            "riskShare": 0.6,
+            "outcome": "tp",
+            "possibilities": [
+              "tp"
+            ]
+          },
+          {
+            "percent": 25,
+            "entry": 3885.375,
+            "stopLoss": 3897.035,
+            "takeProfit": 3870.875,
+            "direction": "SELL",
+            "riskShare": 0.4,
+            "outcome": "not-filled",
+            "possibilities": [
+              "not-filled"
+            ]
+          }
+        ],
+        "scenarios": [
+          {
+            "mask": 1,
+            "exit": 1
+          }
+        ]
+      },
+      "candidate": {
+        "outcome": "not-filled",
+        "minimumR": 0,
+        "maximumR": 0,
+        "legs": [
+          {
+            "percent": 20,
+            "entry": 3885.091,
+            "stopLoss": 3897.035,
+            "takeProfit": 3870.875,
+            "direction": "SELL",
+            "riskShare": 0.6,
+            "outcome": "not-filled",
+            "possibilities": [
+              "not-filled"
+            ]
+          },
+          {
+            "percent": 40,
+            "entry": 3886.227,
+            "stopLoss": 3897.035,
+            "takeProfit": 3870.875,
+            "direction": "SELL",
+            "riskShare": 0.4,
+            "outcome": "not-filled",
+            "possibilities": [
+              "not-filled"
+            ]
+          }
+        ],
+        "scenarios": [
+          {
+            "mask": 0,
+            "exit": 0
+          }
+        ]
+      },
+      "minimumDeltaR": -0.6544757033248296,
+      "maximumDeltaR": -0.6544757033248296
+    },
+    {
+      "signalUTC": "2026-11-04T10:30:00.000Z",
+      "signalNepal": "2026-11-04 16:15",
+      "direction": "bearish",
+      "confirmationBody": 5.3400000000001455,
+      "nextOpen": 4040.05,
+      "baseline": {
+        "outcome": "sl",
+        "minimumR": -1,
+        "maximumR": -1,
+        "legs": [
+          {
+            "percent": 10,
+            "entry": 4040.5840000000003,
+            "stopLoss": 4052.52,
+            "takeProfit": 4027.5800000000004,
+            "direction": "SELL",
+            "riskShare": 0.6,
+            "outcome": "sl",
+            "possibilities": [
+              "sl"
+            ]
+          },
+          {
+            "percent": 25,
+            "entry": 4041.385,
+            "stopLoss": 4052.52,
+            "takeProfit": 4027.5800000000004,
+            "direction": "SELL",
+            "riskShare": 0.4,
+            "outcome": "sl",
+            "possibilities": [
+              "sl"
+            ]
+          }
+        ],
+        "scenarios": [
+          {
+            "mask": 3,
+            "exit": -1
+          }
+        ]
+      },
+      "candidate": {
+        "outcome": "sl",
+        "minimumR": -1,
+        "maximumR": -1,
+        "legs": [
+          {
+            "percent": 20,
+            "entry": 4041.1180000000004,
+            "stopLoss": 4052.52,
+            "takeProfit": 4027.5800000000004,
+            "direction": "SELL",
+            "riskShare": 0.6,
+            "outcome": "sl",
+            "possibilities": [
+              "sl"
+            ]
+          },
+          {
+            "percent": 40,
+            "entry": 4042.186,
+            "stopLoss": 4052.52,
+            "takeProfit": 4027.5800000000004,
+            "direction": "SELL",
+            "riskShare": 0.4,
+            "outcome": "sl",
+            "possibilities": [
+              "sl"
+            ]
+          }
+        ],
+        "scenarios": [
+          {
+            "mask": 3,
+            "exit": -1
+          }
+        ]
+      },
+      "minimumDeltaR": 0,
+      "maximumDeltaR": 0
+    },
+    {
+      "signalUTC": "2026-11-06T15:45:00.000Z",
+      "signalNepal": "2026-11-06 21:30",
+      "direction": "bullish",
+      "confirmationBody": 4.1150000000002365,
+      "nextOpen": 4054.725,
+      "baseline": {
+        "outcome": "tp",
+        "minimumR": 0.6387339687022162,
+        "maximumR": 0.6387339687022162,
+        "legs": [
+          {
+            "percent": 10,
+            "entry": 4054.3134999999997,
+            "stopLoss": 4041.565,
+            "takeProfit": 4067.8849999999998,
+            "direction": "BUY",
+            "riskShare": 0.6,
+            "outcome": "tp",
+            "possibilities": [
+              "tp"
+            ]
+          },
+          {
+            "percent": 25,
+            "entry": 4053.69625,
+            "stopLoss": 4041.565,
+            "takeProfit": 4067.8849999999998,
+            "direction": "BUY",
+            "riskShare": 0.4,
+            "outcome": "not-filled",
+            "possibilities": [
+              "not-filled"
+            ]
+          }
+        ],
+        "scenarios": [
+          {
+            "mask": 1,
+            "exit": 1
+          }
+        ]
+      },
+      "candidate": {
+        "outcome": "not-filled",
+        "minimumR": 0,
+        "maximumR": 0,
+        "legs": [
+          {
+            "percent": 20,
+            "entry": 4053.902,
+            "stopLoss": 4041.565,
+            "takeProfit": 4067.8849999999998,
+            "direction": "BUY",
+            "riskShare": 0.6,
+            "outcome": "not-filled",
+            "possibilities": [
+              "not-filled"
+            ]
+          },
+          {
+            "percent": 40,
+            "entry": 4053.0789999999997,
+            "stopLoss": 4041.565,
+            "takeProfit": 4067.8849999999998,
+            "direction": "BUY",
+            "riskShare": 0.4,
+            "outcome": "not-filled",
+            "possibilities": [
+              "not-filled"
+            ]
+          }
+        ],
+        "scenarios": [
+          {
+            "mask": 0,
+            "exit": 1
+          }
+        ]
+      },
+      "minimumDeltaR": -0.6387339687022162,
+      "maximumDeltaR": -0.6387339687022162
+    },
+    {
+      "signalUTC": "2026-11-09T03:30:00.000Z",
+      "signalNepal": "2026-11-09 09:15",
+      "direction": "bullish",
+      "confirmationBody": 4.0600000000004,
+      "nextOpen": 4121.07,
+      "baseline": {
+        "outcome": "tp",
+        "minimumR": 1.1622431058407805,
+        "maximumR": 1.1622431058407805,
+        "legs": [
+          {
+            "percent": 10,
+            "entry": 4120.664,
+            "stopLoss": 4112.265,
+            "takeProfit": 4129.874999999999,
+            "direction": "BUY",
+            "riskShare": 0.6,
+            "outcome": "tp",
+            "possibilities": [
+              "tp"
+            ]
+          },
+          {
+            "percent": 25,
+            "entry": 4120.054999999999,
+            "stopLoss": 4112.265,
+            "takeProfit": 4129.874999999999,
+            "direction": "BUY",
+            "riskShare": 0.4,
+            "outcome": "tp",
+            "possibilities": [
+              "tp"
+            ]
+          }
+        ],
+        "scenarios": [
+          {
+            "mask": 3,
+            "exit": 1
+          }
+        ]
+      },
+      "candidate": {
+        "outcome": "tp",
+        "minimumR": 1.3028285455106543,
+        "maximumR": 1.3028285455106543,
+        "legs": [
+          {
+            "percent": 20,
+            "entry": 4120.258,
+            "stopLoss": 4112.265,
+            "takeProfit": 4129.874999999999,
+            "direction": "BUY",
+            "riskShare": 0.6,
+            "outcome": "tp",
+            "possibilities": [
+              "tp"
+            ]
+          },
+          {
+            "percent": 40,
+            "entry": 4119.446,
+            "stopLoss": 4112.265,
+            "takeProfit": 4129.874999999999,
+            "direction": "BUY",
+            "riskShare": 0.4,
+            "outcome": "tp",
+            "possibilities": [
+              "tp"
+            ]
+          }
+        ],
+        "scenarios": [
+          {
+            "mask": 3,
+            "exit": 1
+          }
+        ]
+      },
+      "minimumDeltaR": 0.1405854396698738,
+      "maximumDeltaR": 0.1405854396698738
+    }
+  ]
+}

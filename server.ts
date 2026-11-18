@@ -44,6 +44,7 @@ import {
   findMissedZoneEntry,
   mt5SignalDisabledReason,
   scalpPullbackSignalError,
+  scalpSetupRiskAllocation,
   mt5ConnectionMatches,
   manualTradeTimeframeKey,
   positionFibExitTimeframe,
@@ -694,8 +695,9 @@ async function enqueueMt5Signal(
       && ['TP', 'SL', 'RF'].includes(signal.status) && mt5ConnectionMatches(executionConnection, signal))) {
       throw new Error('Original Scalp 1:1 SL/TP has already been reached; remaining entries are cancelled.');
     }
-    const scalpSetupRiskBudget = candidate.scalpEntry ? sibling?.scalpSetupRiskBudget
-      ?? Number(mt5Context().mt5BridgeHeartbeat?.equity) * (config.scalpOneToOneRiskPercent ?? 0.25) / 100 : undefined;
+    const scalpRisk = scalpSetupRiskAllocation(candidate, signals, mt5Context().mt5BridgeHeartbeat,
+      mt5StrategyRiskPercent(config, 'SCALP_1_1'));
+    const { scalpSetupRiskBudget } = scalpRisk;
     if (candidate.scalpEntry && !(Number.isFinite(scalpSetupRiskBudget) && scalpSetupRiskBudget! > 0)) {
       throw new Error('Unable to freeze the Scalp 1:1 setup risk budget.');
     }
@@ -742,8 +744,15 @@ async function enqueueMt5Signal(
     }
     const signal: Mt5StoredSignal = {
       ...candidate,
+      // Server owns this allocation; browser/scanner metadata cannot enlarge it.
+      scalpSetupRiskMultiplier: scalpRisk.scalpSetupRiskMultiplier,
+      scalpOverlapSignalId: scalpRisk.scalpOverlapSignalId,
       scalpSetupRiskBudget,
       intradaySetupRiskBudget,
+      journalContext: candidate.journalContext && scalpRisk.scalpSetupRiskMultiplier === 0.5 ? {
+        ...candidate.journalContext,
+        autoReason: `${candidate.journalContext.autoReason} Overlapping Scalp 1:1: 50% of selected setup risk; frozen 60/40 allocation.`,
+      } : candidate.journalContext,
       id: candidate.id.trim(),
       setupId: candidate.setupId?.trim().slice(0, 300) || undefined,
       zoneName: String(candidate.zoneName || 'Unknown').slice(0, 100),
