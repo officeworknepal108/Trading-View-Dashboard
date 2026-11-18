@@ -1,0 +1,26 @@
+{
+  "checkedLegVariantRecords": 3518,
+  "baselineArrowParity": true,
+  "baselineGrossParity": true,
+  "deferredFillTiming": "passed",
+  "originalLimitPreservation": "passed",
+  "marketEntryNextOpenAndRiskCap": "passed",
+  "unknownZoneEntriesRetained": "passed",
+  "monthlyReturnReconciliation": "passed",
+  "sourceTradingCodeChanged": false,
+  "marketAnyTop3PositiveDeltas": [
+    {
+      "signalUTC": "2026-11-17T06:45:00.000Z",
+      "deltaR": 4.731616189083855
+    },
+    {
+      "signalUTC": "2026-08-31T05:45:00.000Z",
+      "deltaR": 4.690986798406192
+    },
+    {
+      "signalUTC": "2026-08-28T12:15:00.000Z",
+      "deltaR": 4.450532271576935
+    }
+  ],
+  "marketAnyDeltaWithoutTop3": -6.711393422253677
+}

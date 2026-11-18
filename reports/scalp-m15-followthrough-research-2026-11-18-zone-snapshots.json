@@ -1,0 +1,3913 @@
+{
+  "2026-08-03T13:15:00.000Z": {
+    "at": "2026-08-03T13:30:00.000Z",
+    "m15Bars": 62,
+    "coverage": "unknown-under-500-bars",
+    "obstacles": [],
+    "plain": false,
+    "fib": false,
+    "confirmed": false,
+    "fibConfirmed": false
+  },
+  "2026-08-04T06:15:00.000Z": {
+    "at": "2026-08-04T06:30:00.000Z",
+    "m15Bars": 126,
+    "coverage": "unknown-under-500-bars",
+    "obstacles": [],
+    "plain": false,
+    "fib": false,
+    "confirmed": false,
+    "fibConfirmed": false
+  },
+  "2026-08-04T08:15:00.000Z": {
+    "at": "2026-08-04T08:30:00.000Z",
+    "m15Bars": 134,
+    "coverage": "unknown-under-500-bars",
+    "obstacles": [],
+    "plain": false,
+    "fib": false,
+    "confirmed": false,
+    "fibConfirmed": false
+  },
+  "2026-08-04T12:00:00.000Z": {
+    "at": "2026-08-04T12:15:00.000Z",
+    "m15Bars": 149,
+    "coverage": "unknown-under-500-bars",
+    "obstacles": [],
+    "plain": false,
+    "fib": false,
+    "confirmed": false,
+    "fibConfirmed": false
+  },
+  "2026-08-11T01:15:00.000Z": {
+    "at": "2026-08-11T01:30:00.000Z",
+    "m15Bars": 566,
+    "coverage": "assessed",
+    "obstacles": [],
+    "plain": false,
+    "fib": false,
+    "confirmed": false,
+    "fibConfirmed": false
+  },
+  "2026-08-11T02:00:00.000Z": {
+    "at": "2026-08-11T02:15:00.000Z",
+    "m15Bars": 569,
+    "coverage": "assessed",
+    "obstacles": [],
+    "plain": false,
+    "fib": false,
+    "confirmed": false,
+    "fibConfirmed": false
+  },
+  "2026-08-11T16:30:00.000Z": {
+    "at": "2026-08-11T16:45:00.000Z",
+    "m15Bars": 627,
+    "coverage": "assessed",
+    "obstacles": [],
+    "plain": false,
+    "fib": false,
+    "confirmed": false,
+    "fibConfirmed": false
+  },
+  "2026-08-11T23:15:00.000Z": {
+    "at": "2026-08-11T23:30:00.000Z",
+    "m15Bars": 650,
+    "coverage": "assessed",
+    "obstacles": [],
+    "plain": false,
+    "fib": false,
+    "confirmed": false,
+    "fibConfirmed": false
+  },
+  "2026-08-12T04:30:00.000Z": {
+    "at": "2026-08-12T04:45:00.000Z",
+    "m15Bars": 671,
+    "coverage": "assessed",
+    "obstacles": [],
+    "plain": false,
+    "fib": false,
+    "confirmed": false,
+    "fibConfirmed": false
+  },
+  "2026-08-12T13:45:00.000Z": {
+    "at": "2026-08-12T14:00:00.000Z",
+    "m15Bars": 708,
+    "coverage": "assessed",
+    "obstacles": [],
+    "plain": false,
+    "fib": false,
+    "confirmed": false,
+    "fibConfirmed": false
+  },
+  "2026-08-13T06:45:00.000Z": {
+    "at": "2026-08-13T07:00:00.000Z",
+    "m15Bars": 772,
+    "coverage": "assessed",
+    "obstacles": [
+      {
+        "id": "Internal TJL1-1786593600-4391.615",
+        "name": "Internal TJL1",
+        "bottom": 4391.615,
+        "top": 4394.64645,
+        "tradeable": true,
+        "fibAligned": true,
+        "confirmed": false
+      }
+    ],
+    "plain": true,
+    "fib": true,
+    "confirmed": false,
+    "fibConfirmed": false
+  },
+  "2026-08-13T08:15:00.000Z": {
+    "at": "2026-08-13T08:30:00.000Z",
+    "m15Bars": 778,
+    "coverage": "assessed",
+    "obstacles": [],
+    "plain": false,
+    "fib": false,
+    "confirmed": false,
+    "fibConfirmed": false
+  },
+  "2026-08-13T16:30:00.000Z": {
+    "at": "2026-08-13T16:45:00.000Z",
+    "m15Bars": 811,
+    "coverage": "assessed",
+    "obstacles": [],
+    "plain": false,
+    "fib": false,
+    "confirmed": false,
+    "fibConfirmed": false
+  },
+  "2026-08-13T20:15:00.000Z": {
+    "at": "2026-08-13T20:30:00.000Z",
+    "m15Bars": 826,
+    "coverage": "assessed",
+    "obstacles": [],
+    "plain": false,
+    "fib": false,
+    "confirmed": false,
+    "fibConfirmed": false
+  },
+  "2026-08-19T18:45:00.000Z": {
+    "at": "2026-08-19T19:00:00.000Z",
+    "m15Bars": 1188,
+    "coverage": "assessed",
+    "obstacles": [],
+    "plain": false,
+    "fib": false,
+    "confirmed": false,
+    "fibConfirmed": false
+  },
+  "2026-08-19T20:15:00.000Z": {
+    "at": "2026-08-19T20:30:00.000Z",
+    "m15Bars": 1194,
+    "coverage": "assessed",
+    "obstacles": [],
+    "plain": false,
+    "fib": false,
+    "confirmed": false,
+    "fibConfirmed": false
+  },
+  "2026-08-20T10:15:00.000Z": {
+    "at": "2026-08-20T10:30:00.000Z",
+    "m15Bars": 1246,
+    "coverage": "assessed",
+    "obstacles": [],
+    "plain": false,
+    "fib": false,
+    "confirmed": false,
+    "fibConfirmed": false
+  },
+  "2026-08-20T12:45:00.000Z": {
+    "at": "2026-08-20T13:00:00.000Z",
+    "m15Bars": 1256,
+    "coverage": "assessed",
+    "obstacles": [
+      {
+        "id": "TJL2-1787164200-4475.755349999999",
+        "name": "SBR",
+        "bottom": 4472.18,
+        "top": 4475.755349999999,
+        "tradeable": false,
+        "fibAligned": true,
+        "confirmed": false
+      }
+    ],
+    "plain": true,
+    "fib": true,
+    "confirmed": false,
+    "fibConfirmed": false
+  },
+  "2026-08-21T01:15:00.000Z": {
+    "at": "2026-08-21T01:30:00.000Z",
+    "m15Bars": 1302,
+    "coverage": "assessed",
+    "obstacles": [],
+    "plain": false,
+    "fib": false,
+    "confirmed": false,
+    "fibConfirmed": false
+  },
+  "2026-08-21T16:30:00.000Z": {
+    "at": "2026-08-21T16:45:00.000Z",
+    "m15Bars": 1363,
+    "coverage": "assessed",
+    "obstacles": [],
+    "plain": false,
+    "fib": false,
+    "confirmed": false,
+    "fibConfirmed": false
+  },
+  "2026-08-23T22:00:00.000Z": {
+    "at": "2026-08-23T22:15:00.000Z",
+    "m15Bars": 1381,
+    "coverage": "assessed",
+    "obstacles": [],
+    "plain": false,
+    "fib": false,
+    "confirmed": false,
+    "fibConfirmed": false
+  },
+  "2026-08-24T01:45:00.000Z": {
+    "at": "2026-08-24T02:00:00.000Z",
+    "m15Bars": 1396,
+    "coverage": "assessed",
+    "obstacles": [],
+    "plain": false,
+    "fib": false,
+    "confirmed": false,
+    "fibConfirmed": false
+  },
+  "2026-08-24T05:45:00.000Z": {
+    "at": "2026-08-24T06:00:00.000Z",
+    "m15Bars": 1412,
+    "coverage": "assessed",
+    "obstacles": [],
+    "plain": false,
+    "fib": false,
+    "confirmed": false,
+    "fibConfirmed": false
+  },
+  "2026-08-24T09:45:00.000Z": {
+    "at": "2026-08-24T10:00:00.000Z",
+    "m15Bars": 1428,
+    "coverage": "assessed",
+    "obstacles": [],
+    "plain": false,
+    "fib": false,
+    "confirmed": false,
+    "fibConfirmed": false
+  },
+  "2026-08-24T19:15:00.000Z": {
+    "at": "2026-08-24T19:30:00.000Z",
+    "m15Bars": 1466,
+    "coverage": "assessed",
+    "obstacles": [],
+    "plain": false,
+    "fib": false,
+    "confirmed": false,
+    "fibConfirmed": false
+  },
+  "2026-08-24T22:00:00.000Z": {
+    "at": "2026-08-24T22:15:00.000Z",
+    "m15Bars": 1473,
+    "coverage": "assessed",
+    "obstacles": [],
+    "plain": false,
+    "fib": false,
+    "confirmed": false,
+    "fibConfirmed": false
+  },
+  "2026-08-25T05:15:00.000Z": {
+    "at": "2026-08-25T05:30:00.000Z",
+    "m15Bars": 1502,
+    "coverage": "assessed",
+    "obstacles": [],
+    "plain": false,
+    "fib": false,
+    "confirmed": false,
+    "fibConfirmed": false
+  },
+  "2026-08-25T06:00:00.000Z": {
+    "at": "2026-08-25T06:15:00.000Z",
+    "m15Bars": 1505,
+    "coverage": "assessed",
+    "obstacles": [],
+    "plain": false,
+    "fib": false,
+    "confirmed": false,
+    "fibConfirmed": false
+  },
+  "2026-08-25T22:00:00.000Z": {
+    "at": "2026-08-25T22:15:00.000Z",
+    "m15Bars": 1565,
+    "coverage": "assessed",
+    "obstacles": [],
+    "plain": false,
+    "fib": false,
+    "confirmed": false,
+    "fibConfirmed": false
+  },
+  "2026-08-26T01:45:00.000Z": {
+    "at": "2026-08-26T02:00:00.000Z",
+    "m15Bars": 1580,
+    "coverage": "assessed",
+    "obstacles": [
+      {
+        "id": "Internal TJL1-1787688000-4669.115",
+        "name": "Internal QML",
+        "bottom": 4666.98865,
+        "top": 4669.115,
+        "tradeable": false,
+        "fibAligned": true,
+        "confirmed": false
+      },
+      {
+        "id": "Internal TJL2-1787690700-4657.75",
+        "name": "Internal SBR",
+        "bottom": 4657.75,
+        "top": 4659.0802,
+        "tradeable": false,
+        "fibAligned": false,
+        "confirmed": false
+      },
+      {
+        "id": "Internal DT-1787697900-4673.765",
+        "name": "Internal DT",
+        "bottom": 4672.6428,
+        "top": 4673.765,
+        "tradeable": false,
+        "fibAligned": true,
+        "confirmed": false
+      }
+    ],
+    "plain": true,
+    "fib": true,
+    "confirmed": false,
+    "fibConfirmed": false
+  },
+  "2026-08-26T15:30:00.000Z": {
+    "at": "2026-08-26T15:45:00.000Z",
+    "m15Bars": 1635,
+    "coverage": "assessed",
+    "obstacles": [
+      {
+        "id": "TJL1-1787665500-4612.94965",
+        "name": "TJL1",
+        "bottom": 4605.29,
+        "top": 4612.94965,
+        "tradeable": true,
+        "fibAligned": false,
+        "confirmed": false
+      }
+    ],
+    "plain": true,
+    "fib": false,
+    "confirmed": false,
+    "fibConfirmed": false
+  },
+  "2026-08-26T19:15:00.000Z": {
+    "at": "2026-08-26T19:30:00.000Z",
+    "m15Bars": 1650,
+    "coverage": "assessed",
+    "obstacles": [
+      {
+        "id": "TJL1-1787665500-4612.94965",
+        "name": "TJL1",
+        "bottom": 4605.29,
+        "top": 4612.94965,
+        "tradeable": true,
+        "fibAligned": false,
+        "confirmed": false
+      },
+      {
+        "id": "Internal TJL1-1787750100-4598.1",
+        "name": "Internal TJL1",
+        "bottom": 4598.1,
+        "top": 4611.2660000000005,
+        "tradeable": true,
+        "fibAligned": true,
+        "confirmedAt": 1787762700,
+        "confirmed": true
+      }
+    ],
+    "plain": true,
+    "fib": true,
+    "confirmed": true,
+    "fibConfirmed": true
+  },
+  "2026-08-27T06:15:00.000Z": {
+    "at": "2026-08-27T06:30:00.000Z",
+    "m15Bars": 1690,
+    "coverage": "assessed",
+    "obstacles": [],
+    "plain": false,
+    "fib": false,
+    "confirmed": false,
+    "fibConfirmed": false
+  },
+  "2026-08-27T10:45:00.000Z": {
+    "at": "2026-08-27T11:00:00.000Z",
+    "m15Bars": 1708,
+    "coverage": "assessed",
+    "obstacles": [
+      {
+        "id": "Internal TJL1-1787750100-4598.1",
+        "name": "Internal QML A+",
+        "bottom": 4598.1,
+        "top": 4611.2660000000005,
+        "tradeable": true,
+        "fibAligned": true,
+        "confirmed": false
+      },
+      {
+        "id": "TJL1-1787757300-4589.2171499999995",
+        "name": "TJL1",
+        "bottom": 4583.065,
+        "top": 4589.2171499999995,
+        "tradeable": true,
+        "fibAligned": false,
+        "confirmed": false
+      },
+      {
+        "id": "Internal DB-1787757300-4583.065",
+        "name": "Internal SBR",
+        "bottom": 4583.065,
+        "top": 4589.2171499999995,
+        "tradeable": false,
+        "fibAligned": false,
+        "confirmed": false
+      },
+      {
+        "id": "Internal TJL2-1787791500-4600.735",
+        "name": "Internal SBR",
+        "bottom": 4600.735,
+        "top": 4605.2103,
+        "tradeable": true,
+        "fibAligned": false,
+        "confirmedAt": 1787820300,
+        "confirmed": true
+      },
+      {
+        "id": "Internal TJL1-1787814900-4593.705",
+        "name": "Internal TJL1",
+        "bottom": 4593.705,
+        "top": 4599.52495,
+        "tradeable": true,
+        "fibAligned": false,
+        "confirmed": false
+      },
+      {
+        "id": "Internal TJL2-1787817600-4606.96",
+        "name": "Internal TJL2",
+        "bottom": 4603.37975,
+        "top": 4606.96,
+        "tradeable": true,
+        "fibAligned": true,
+        "confirmed": false
+      }
+    ],
+    "plain": true,
+    "fib": true,
+    "confirmed": true,
+    "fibConfirmed": false
+  },
+  "2026-08-28T02:15:00.000Z": {
+    "at": "2026-08-28T02:30:00.000Z",
+    "m15Bars": 1766,
+    "coverage": "assessed",
+    "obstacles": [],
+    "plain": false,
+    "fib": false,
+    "confirmed": false,
+    "fibConfirmed": false
+  },
+  "2026-08-28T04:15:00.000Z": {
+    "at": "2026-08-28T04:30:00.000Z",
+    "m15Bars": 1774,
+    "coverage": "assessed",
+    "obstacles": [],
+    "plain": false,
+    "fib": false,
+    "confirmed": false,
+    "fibConfirmed": false
+  },
+  "2026-08-28T12:15:00.000Z": {
+    "at": "2026-08-28T12:30:00.000Z",
+    "m15Bars": 1806,
+    "coverage": "assessed",
+    "obstacles": [],
+    "plain": false,
+    "fib": false,
+    "confirmed": false,
+    "fibConfirmed": false
+  },
+  "2026-08-31T04:45:00.000Z": {
+    "at": "2026-08-31T05:00:00.000Z",
+    "m15Bars": 1868,
+    "coverage": "assessed",
+    "obstacles": [],
+    "plain": false,
+    "fib": false,
+    "confirmed": false,
+    "fibConfirmed": false
+  },
+  "2026-08-31T05:45:00.000Z": {
+    "at": "2026-08-31T06:00:00.000Z",
+    "m15Bars": 1872,
+    "coverage": "assessed",
+    "obstacles": [
+      {
+        "id": "TJL1-1787941800-4451.3833",
+        "name": "TJL1",
+        "bottom": 4445.455,
+        "top": 4451.3833,
+        "tradeable": true,
+        "fibAligned": true,
+        "confirmed": false
+      }
+    ],
+    "plain": true,
+    "fib": true,
+    "confirmed": false,
+    "fibConfirmed": false
+  },
+  "2026-08-31T07:30:00.000Z": {
+    "at": "2026-08-31T07:45:00.000Z",
+    "m15Bars": 1879,
+    "coverage": "assessed",
+    "obstacles": [
+      {
+        "id": "TJL1-1787941800-4451.3833",
+        "name": "TJL1",
+        "bottom": 4445.455,
+        "top": 4451.3833,
+        "tradeable": true,
+        "fibAligned": true,
+        "confirmed": false
+      }
+    ],
+    "plain": true,
+    "fib": true,
+    "confirmed": false,
+    "fibConfirmed": false
+  },
+  "2026-08-31T16:45:00.000Z": {
+    "at": "2026-08-31T17:00:00.000Z",
+    "m15Bars": 1916,
+    "coverage": "assessed",
+    "obstacles": [],
+    "plain": false,
+    "fib": false,
+    "confirmed": false,
+    "fibConfirmed": false
+  },
+  "2026-08-31T20:15:00.000Z": {
+    "at": "2026-08-31T20:30:00.000Z",
+    "m15Bars": 1930,
+    "coverage": "assessed",
+    "obstacles": [],
+    "plain": false,
+    "fib": false,
+    "confirmed": false,
+    "fibConfirmed": false
+  },
+  "2026-09-01T02:15:00.000Z": {
+    "at": "2026-09-01T02:30:00.000Z",
+    "m15Bars": 1950,
+    "coverage": "assessed",
+    "obstacles": [],
+    "plain": false,
+    "fib": false,
+    "confirmed": false,
+    "fibConfirmed": false
+  },
+  "2026-09-01T03:15:00.000Z": {
+    "at": "2026-09-01T03:30:00.000Z",
+    "m15Bars": 1954,
+    "coverage": "assessed",
+    "obstacles": [],
+    "plain": false,
+    "fib": false,
+    "confirmed": false,
+    "fibConfirmed": false
+  },
+  "2026-09-01T06:00:00.000Z": {
+    "at": "2026-09-01T06:15:00.000Z",
+    "m15Bars": 1965,
+    "coverage": "assessed",
+    "obstacles": [],
+    "plain": false,
+    "fib": false,
+    "confirmed": false,
+    "fibConfirmed": false
+  },
+  "2026-09-01T14:45:00.000Z": {
+    "at": "2026-09-01T15:00:00.000Z",
+    "m15Bars": 2000,
+    "coverage": "assessed",
+    "obstacles": [],
+    "plain": false,
+    "fib": false,
+    "confirmed": false,
+    "fibConfirmed": false
+  },
+  "2026-09-02T00:45:00.000Z": {
+    "at": "2026-09-02T01:00:00.000Z",
+    "m15Bars": 2036,
+    "coverage": "assessed",
+    "obstacles": [
+      {
+        "id": "TJL1-1786085100-4298.945",
+        "name": "TJL1",
+        "bottom": 4297.2243,
+        "top": 4298.945,
+        "tradeable": true,
+        "fibAligned": false,
+        "confirmed": false
+      },
+      {
+        "id": "TJL2-1786096800-4308.36785",
+        "name": "TJL2",
+        "bottom": 4308.09,
+        "top": 4308.36785,
+        "tradeable": true,
+        "fibAligned": false,
+        "confirmedAt": 1786106700,
+        "confirmed": true
+      },
+      {
+        "id": "TJL2-1786104900-4309.9326",
+        "name": "TJL2",
+        "bottom": 4301.015,
+        "top": 4309.9326,
+        "tradeable": false,
+        "fibAligned": false,
+        "confirmed": false
+      },
+      {
+        "id": "DB-1786672800-4312.5972",
+        "name": "DB",
+        "bottom": 4311.27,
+        "top": 4312.5972,
+        "tradeable": true,
+        "fibAligned": true,
+        "confirmed": false
+      }
+    ],
+    "plain": true,
+    "fib": true,
+    "confirmed": true,
+    "fibConfirmed": false
+  },
+  "2026-09-02T07:30:00.000Z": {
+    "at": "2026-09-02T07:45:00.000Z",
+    "m15Bars": 2063,
+    "coverage": "assessed",
+    "obstacles": [],
+    "plain": false,
+    "fib": false,
+    "confirmed": false,
+    "fibConfirmed": false
+  },
+  "2026-09-02T09:15:00.000Z": {
+    "at": "2026-09-02T09:30:00.000Z",
+    "m15Bars": 2070,
+    "coverage": "assessed",
+    "obstacles": [],
+    "plain": false,
+    "fib": false,
+    "confirmed": false,
+    "fibConfirmed": false
+  },
+  "2026-09-02T16:15:00.000Z": {
+    "at": "2026-09-02T16:30:00.000Z",
+    "m15Bars": 2098,
+    "coverage": "assessed",
+    "obstacles": [],
+    "plain": false,
+    "fib": false,
+    "confirmed": false,
+    "fibConfirmed": false
+  },
+  "2026-09-02T18:00:00.000Z": {
+    "at": "2026-09-02T18:15:00.000Z",
+    "m15Bars": 2105,
+    "coverage": "assessed",
+    "obstacles": [],
+    "plain": false,
+    "fib": false,
+    "confirmed": false,
+    "fibConfirmed": false
+  },
+  "2026-09-03T13:15:00.000Z": {
+    "at": "2026-09-03T13:30:00.000Z",
+    "m15Bars": 2178,
+    "coverage": "assessed",
+    "obstacles": [],
+    "plain": false,
+    "fib": false,
+    "confirmed": false,
+    "fibConfirmed": false
+  },
+  "2026-09-03T15:30:00.000Z": {
+    "at": "2026-09-03T15:45:00.000Z",
+    "m15Bars": 2187,
+    "coverage": "assessed",
+    "obstacles": [],
+    "plain": false,
+    "fib": false,
+    "confirmed": false,
+    "fibConfirmed": false
+  },
+  "2026-09-03T20:00:00.000Z": {
+    "at": "2026-09-03T20:15:00.000Z",
+    "m15Bars": 2205,
+    "coverage": "assessed",
+    "obstacles": [
+      {
+        "id": "TJL2-1788443100-4470.07715",
+        "name": "TJL2",
+        "bottom": 4456.925,
+        "top": 4470.07715,
+        "tradeable": true,
+        "fibAligned": true,
+        "confirmed": false
+      }
+    ],
+    "plain": true,
+    "fib": true,
+    "confirmed": false,
+    "fibConfirmed": false
+  },
+  "2026-09-04T00:15:00.000Z": {
+    "at": "2026-09-04T00:30:00.000Z",
+    "m15Bars": 2218,
+    "coverage": "assessed",
+    "obstacles": [
+      {
+        "id": "TJL2-1788443100-4470.07715",
+        "name": "TJL2",
+        "bottom": 4456.925,
+        "top": 4470.07715,
+        "tradeable": true,
+        "fibAligned": true,
+        "confirmed": false
+      }
+    ],
+    "plain": true,
+    "fib": true,
+    "confirmed": false,
+    "fibConfirmed": false
+  },
+  "2026-09-04T01:15:00.000Z": {
+    "at": "2026-09-04T01:30:00.000Z",
+    "m15Bars": 2222,
+    "coverage": "assessed",
+    "obstacles": [
+      {
+        "id": "TJL2-1788443100-4470.07715",
+        "name": "TJL2",
+        "bottom": 4456.925,
+        "top": 4470.07715,
+        "tradeable": true,
+        "fibAligned": true,
+        "confirmed": false
+      },
+      {
+        "id": "Internal DB-1788466500-4470.55",
+        "name": "Internal DB",
+        "bottom": 4470.55,
+        "top": 4471.7711500000005,
+        "tradeable": true,
+        "fibAligned": true,
+        "confirmed": false
+      }
+    ],
+    "plain": true,
+    "fib": true,
+    "confirmed": false,
+    "fibConfirmed": false
+  },
+  "2026-09-04T02:15:00.000Z": {
+    "at": "2026-09-04T02:30:00.000Z",
+    "m15Bars": 2226,
+    "coverage": "assessed",
+    "obstacles": [
+      {
+        "id": "TJL2-1788443100-4470.07715",
+        "name": "TJL2",
+        "bottom": 4456.925,
+        "top": 4470.07715,
+        "tradeable": true,
+        "fibAligned": true,
+        "confirmed": false
+      },
+      {
+        "id": "Internal TJL1-1788462900-4472.65",
+        "name": "Internal QML",
+        "bottom": 4472.65,
+        "top": 4474.40445,
+        "tradeable": true,
+        "fibAligned": true,
+        "confirmed": false
+      },
+      {
+        "id": "Internal DB-1788466500-4470.55",
+        "name": "Internal DB",
+        "bottom": 4470.55,
+        "top": 4471.7711500000005,
+        "tradeable": true,
+        "fibAligned": true,
+        "confirmed": false
+      }
+    ],
+    "plain": true,
+    "fib": true,
+    "confirmed": false,
+    "fibConfirmed": false
+  },
+  "2026-09-07T02:00:00.000Z": {
+    "at": "2026-09-07T02:15:00.000Z",
+    "m15Bars": 2317,
+    "coverage": "assessed",
+    "obstacles": [
+      {
+        "id": "TJL1-1788357600-4397.75",
+        "name": "TJL1",
+        "bottom": 4387.84235,
+        "top": 4397.75,
+        "tradeable": true,
+        "fibAligned": true,
+        "confirmedAt": 1788528600,
+        "confirmed": true
+      }
+    ],
+    "plain": true,
+    "fib": true,
+    "confirmed": true,
+    "fibConfirmed": true
+  },
+  "2026-09-07T03:30:00.000Z": {
+    "at": "2026-09-07T03:45:00.000Z",
+    "m15Bars": 2323,
+    "coverage": "assessed",
+    "obstacles": [
+      {
+        "id": "TJL1-1788357600-4397.75",
+        "name": "TJL1",
+        "bottom": 4387.84235,
+        "top": 4397.75,
+        "tradeable": true,
+        "fibAligned": true,
+        "confirmedAt": 1788528600,
+        "confirmed": true
+      }
+    ],
+    "plain": true,
+    "fib": true,
+    "confirmed": true,
+    "fibConfirmed": true
+  },
+  "2026-09-07T05:45:00.000Z": {
+    "at": "2026-09-07T06:00:00.000Z",
+    "m15Bars": 2332,
+    "coverage": "assessed",
+    "obstacles": [
+      {
+        "id": "TJL1-1788357600-4397.75",
+        "name": "TJL1",
+        "bottom": 4387.84235,
+        "top": 4397.75,
+        "tradeable": true,
+        "fibAligned": true,
+        "confirmedAt": 1788528600,
+        "confirmed": true
+      }
+    ],
+    "plain": true,
+    "fib": true,
+    "confirmed": true,
+    "fibConfirmed": true
+  },
+  "2026-09-07T08:45:00.000Z": {
+    "at": "2026-09-07T09:00:00.000Z",
+    "m15Bars": 2344,
+    "coverage": "assessed",
+    "obstacles": [
+      {
+        "id": "TJL1-1788357600-4397.75",
+        "name": "TJL1",
+        "bottom": 4387.84235,
+        "top": 4397.75,
+        "tradeable": true,
+        "fibAligned": true,
+        "confirmedAt": 1788528600,
+        "confirmed": true
+      }
+    ],
+    "plain": true,
+    "fib": true,
+    "confirmed": true,
+    "fibConfirmed": true
+  },
+  "2026-09-08T02:00:00.000Z": {
+    "at": "2026-09-08T02:15:00.000Z",
+    "m15Bars": 2399,
+    "coverage": "assessed",
+    "obstacles": [],
+    "plain": false,
+    "fib": false,
+    "confirmed": false,
+    "fibConfirmed": false
+  },
+  "2026-09-08T04:15:00.000Z": {
+    "at": "2026-09-08T04:30:00.000Z",
+    "m15Bars": 2408,
+    "coverage": "assessed",
+    "obstacles": [],
+    "plain": false,
+    "fib": false,
+    "confirmed": false,
+    "fibConfirmed": false
+  },
+  "2026-09-08T07:00:00.000Z": {
+    "at": "2026-09-08T07:15:00.000Z",
+    "m15Bars": 2419,
+    "coverage": "assessed",
+    "obstacles": [],
+    "plain": false,
+    "fib": false,
+    "confirmed": false,
+    "fibConfirmed": false
+  },
+  "2026-09-08T13:15:00.000Z": {
+    "at": "2026-09-08T13:30:00.000Z",
+    "m15Bars": 2444,
+    "coverage": "assessed",
+    "obstacles": [],
+    "plain": false,
+    "fib": false,
+    "confirmed": false,
+    "fibConfirmed": false
+  },
+  "2026-09-09T12:00:00.000Z": {
+    "at": "2026-09-09T12:15:00.000Z",
+    "m15Bars": 2531,
+    "coverage": "assessed",
+    "obstacles": [
+      {
+        "id": "iss-l3-1788921900",
+        "name": "ISS L3",
+        "bottom": 4382.29385,
+        "top": 4384.58,
+        "tradeable": true,
+        "fibAligned": false,
+        "confirmed": false
+      }
+    ],
+    "plain": true,
+    "fib": false,
+    "confirmed": false,
+    "fibConfirmed": false
+  },
+  "2026-09-10T03:15:00.000Z": {
+    "at": "2026-09-10T03:30:00.000Z",
+    "m15Bars": 2588,
+    "coverage": "assessed",
+    "obstacles": [],
+    "plain": false,
+    "fib": false,
+    "confirmed": false,
+    "fibConfirmed": false
+  },
+  "2026-09-10T07:00:00.000Z": {
+    "at": "2026-09-10T07:15:00.000Z",
+    "m15Bars": 2603,
+    "coverage": "assessed",
+    "obstacles": [],
+    "plain": false,
+    "fib": false,
+    "confirmed": false,
+    "fibConfirmed": false
+  },
+  "2026-09-11T02:15:00.000Z": {
+    "at": "2026-09-11T02:30:00.000Z",
+    "m15Bars": 2676,
+    "coverage": "assessed",
+    "obstacles": [],
+    "plain": false,
+    "fib": false,
+    "confirmed": false,
+    "fibConfirmed": false
+  },
+  "2026-09-11T07:15:00.000Z": {
+    "at": "2026-09-11T07:30:00.000Z",
+    "m15Bars": 2696,
+    "coverage": "assessed",
+    "obstacles": [
+      {
+        "id": "TJL2-1789088400-4340.6",
+        "name": "RBS",
+        "bottom": 4333.2604,
+        "top": 4340.6,
+        "tradeable": true,
+        "fibAligned": false,
+        "confirmed": false
+      }
+    ],
+    "plain": true,
+    "fib": false,
+    "confirmed": false,
+    "fibConfirmed": false
+  },
+  "2026-09-11T08:45:00.000Z": {
+    "at": "2026-09-11T09:00:00.000Z",
+    "m15Bars": 2702,
+    "coverage": "assessed",
+    "obstacles": [
+      {
+        "id": "TJL2-1789088400-4340.6",
+        "name": "RBS",
+        "bottom": 4333.2604,
+        "top": 4340.6,
+        "tradeable": true,
+        "fibAligned": false,
+        "confirmed": false
+      }
+    ],
+    "plain": true,
+    "fib": false,
+    "confirmed": false,
+    "fibConfirmed": false
+  },
+  "2026-09-11T10:30:00.000Z": {
+    "at": "2026-09-11T10:45:00.000Z",
+    "m15Bars": 2709,
+    "coverage": "assessed",
+    "obstacles": [
+      {
+        "id": "TJL2-1789088400-4340.6",
+        "name": "RBS",
+        "bottom": 4333.2604,
+        "top": 4340.6,
+        "tradeable": true,
+        "fibAligned": false,
+        "confirmed": false
+      }
+    ],
+    "plain": true,
+    "fib": false,
+    "confirmed": false,
+    "fibConfirmed": false
+  },
+  "2026-09-11T15:45:00.000Z": {
+    "at": "2026-09-11T16:00:00.000Z",
+    "m15Bars": 2730,
+    "coverage": "assessed",
+    "obstacles": [
+      {
+        "id": "TJL1-1789106400-4361.15",
+        "name": "TJL1",
+        "bottom": 4359.134550000001,
+        "top": 4361.15,
+        "tradeable": true,
+        "fibAligned": false,
+        "confirmed": false
+      }
+    ],
+    "plain": true,
+    "fib": false,
+    "confirmed": false,
+    "fibConfirmed": false
+  },
+  "2026-09-11T17:30:00.000Z": {
+    "at": "2026-09-11T17:45:00.000Z",
+    "m15Bars": 2737,
+    "coverage": "assessed",
+    "obstacles": [
+      {
+        "id": "TJL1-1789106400-4361.15",
+        "name": "TJL1",
+        "bottom": 4359.134550000001,
+        "top": 4361.15,
+        "tradeable": true,
+        "fibAligned": false,
+        "confirmedAt": 1789146900,
+        "confirmed": true
+      }
+    ],
+    "plain": true,
+    "fib": false,
+    "confirmed": true,
+    "fibConfirmed": false
+  },
+  "2026-09-11T17:45:00.000Z": {
+    "at": "2026-09-11T18:00:00.000Z",
+    "m15Bars": 2738,
+    "coverage": "assessed",
+    "obstacles": [
+      {
+        "id": "TJL1-1789106400-4361.15",
+        "name": "TJL1",
+        "bottom": 4359.134550000001,
+        "top": 4361.15,
+        "tradeable": true,
+        "fibAligned": false,
+        "confirmedAt": 1789146900,
+        "confirmed": true
+      }
+    ],
+    "plain": true,
+    "fib": false,
+    "confirmed": true,
+    "fibConfirmed": false
+  },
+  "2026-09-14T02:45:00.000Z": {
+    "at": "2026-09-14T03:00:00.000Z",
+    "m15Bars": 2770,
+    "coverage": "assessed",
+    "obstacles": [
+      {
+        "id": "TJL2-1789088400-4340.6",
+        "name": "RBS",
+        "bottom": 4333.2604,
+        "top": 4340.6,
+        "tradeable": true,
+        "fibAligned": true,
+        "confirmedAt": 1789129800,
+        "confirmed": true
+      },
+      {
+        "id": "TJL2-1789129800-4341.47245",
+        "name": "TJL2",
+        "bottom": 4292.11,
+        "top": 4341.47245,
+        "tradeable": true,
+        "fibAligned": true,
+        "confirmedAt": 1789344900,
+        "confirmed": true
+      }
+    ],
+    "plain": true,
+    "fib": true,
+    "confirmed": true,
+    "fibConfirmed": true
+  },
+  "2026-09-14T05:15:00.000Z": {
+    "at": "2026-09-14T05:30:00.000Z",
+    "m15Bars": 2780,
+    "coverage": "assessed",
+    "obstacles": [
+      {
+        "id": "TJL2-1789129800-4341.47245",
+        "name": "TJL2",
+        "bottom": 4292.11,
+        "top": 4341.47245,
+        "tradeable": true,
+        "fibAligned": true,
+        "confirmedAt": 1789344900,
+        "confirmed": true
+      }
+    ],
+    "plain": true,
+    "fib": true,
+    "confirmed": true,
+    "fibConfirmed": true
+  },
+  "2026-09-14T07:15:00.000Z": {
+    "at": "2026-09-14T07:30:00.000Z",
+    "m15Bars": 2788,
+    "coverage": "assessed",
+    "obstacles": [
+      {
+        "id": "TJL1-1789079400-4316.30655",
+        "name": "QML",
+        "bottom": 4313.765,
+        "top": 4316.30655,
+        "tradeable": true,
+        "fibAligned": true,
+        "confirmedAt": 1789131600,
+        "confirmed": true
+      },
+      {
+        "id": "TJL2-1789129800-4341.47245",
+        "name": "TJL2",
+        "bottom": 4292.11,
+        "top": 4341.47245,
+        "tradeable": true,
+        "fibAligned": true,
+        "confirmedAt": 1789344900,
+        "confirmed": true
+      }
+    ],
+    "plain": true,
+    "fib": true,
+    "confirmed": true,
+    "fibConfirmed": true
+  },
+  "2026-09-14T08:15:00.000Z": {
+    "at": "2026-09-14T08:30:00.000Z",
+    "m15Bars": 2792,
+    "coverage": "assessed",
+    "obstacles": [
+      {
+        "id": "DB-1789098300-4304.232849999999",
+        "name": "DB",
+        "bottom": 4300.795,
+        "top": 4304.232849999999,
+        "tradeable": true,
+        "fibAligned": true,
+        "confirmedAt": 1789131600,
+        "confirmed": true
+      },
+      {
+        "id": "TJL2-1789129800-4341.47245",
+        "name": "TJL2",
+        "bottom": 4292.11,
+        "top": 4341.47245,
+        "tradeable": true,
+        "fibAligned": true,
+        "confirmedAt": 1789344900,
+        "confirmed": true
+      }
+    ],
+    "plain": true,
+    "fib": true,
+    "confirmed": true,
+    "fibConfirmed": true
+  },
+  "2026-09-15T03:00:00.000Z": {
+    "at": "2026-09-15T03:15:00.000Z",
+    "m15Bars": 2863,
+    "coverage": "assessed",
+    "obstacles": [],
+    "plain": false,
+    "fib": false,
+    "confirmed": false,
+    "fibConfirmed": false
+  },
+  "2026-09-15T14:15:00.000Z": {
+    "at": "2026-09-15T14:30:00.000Z",
+    "m15Bars": 2908,
+    "coverage": "assessed",
+    "obstacles": [
+      {
+        "id": "DB-1789390800-4266.5723499999995",
+        "name": "DB",
+        "bottom": 4253.635,
+        "top": 4266.5723499999995,
+        "tradeable": true,
+        "fibAligned": true,
+        "confirmed": false
+      }
+    ],
+    "plain": true,
+    "fib": true,
+    "confirmed": false,
+    "fibConfirmed": false
+  },
+  "2026-09-15T19:00:00.000Z": {
+    "at": "2026-09-15T19:15:00.000Z",
+    "m15Bars": 2927,
+    "coverage": "assessed",
+    "obstacles": [],
+    "plain": false,
+    "fib": false,
+    "confirmed": false,
+    "fibConfirmed": false
+  },
+  "2026-09-15T19:30:00.000Z": {
+    "at": "2026-09-15T19:45:00.000Z",
+    "m15Bars": 2929,
+    "coverage": "assessed",
+    "obstacles": [],
+    "plain": false,
+    "fib": false,
+    "confirmed": false,
+    "fibConfirmed": false
+  },
+  "2026-09-16T03:30:00.000Z": {
+    "at": "2026-09-16T03:45:00.000Z",
+    "m15Bars": 2957,
+    "coverage": "assessed",
+    "obstacles": [
+      {
+        "id": "TJL1-1789404300-4317.83",
+        "name": "TJL1",
+        "bottom": 4315.6192,
+        "top": 4317.83,
+        "tradeable": true,
+        "fibAligned": false,
+        "confirmed": false
+      }
+    ],
+    "plain": true,
+    "fib": false,
+    "confirmed": false,
+    "fibConfirmed": false
+  },
+  "2026-09-16T15:15:00.000Z": {
+    "at": "2026-09-16T15:30:00.000Z",
+    "m15Bars": 3004,
+    "coverage": "assessed",
+    "obstacles": [
+      {
+        "id": "TJL1-1789528500-4341.135",
+        "name": "TJL1",
+        "bottom": 4337.11825,
+        "top": 4341.135,
+        "tradeable": true,
+        "fibAligned": true,
+        "confirmedAt": 1789563600,
+        "confirmed": true
+      },
+      {
+        "id": "TJL2-1789561800-4340.0085",
+        "name": "TJL2",
+        "bottom": 4334.775,
+        "top": 4340.0085,
+        "tradeable": true,
+        "fibAligned": true,
+        "confirmedAt": 1789569900,
+        "confirmed": true
+      }
+    ],
+    "plain": true,
+    "fib": true,
+    "confirmed": true,
+    "fibConfirmed": true
+  },
+  "2026-09-17T01:45:00.000Z": {
+    "at": "2026-09-17T02:00:00.000Z",
+    "m15Bars": 3042,
+    "coverage": "assessed",
+    "obstacles": [],
+    "plain": false,
+    "fib": false,
+    "confirmed": false,
+    "fibConfirmed": false
+  },
+  "2026-09-17T07:45:00.000Z": {
+    "at": "2026-09-17T08:00:00.000Z",
+    "m15Bars": 3066,
+    "coverage": "assessed",
+    "obstacles": [],
+    "plain": false,
+    "fib": false,
+    "confirmed": false,
+    "fibConfirmed": false
+  },
+  "2026-09-17T18:15:00.000Z": {
+    "at": "2026-09-17T18:30:00.000Z",
+    "m15Bars": 3108,
+    "coverage": "assessed",
+    "obstacles": [
+      {
+        "id": "TJL1-1789557300-4353.78",
+        "name": "QML A+",
+        "bottom": 4350.67755,
+        "top": 4353.78,
+        "tradeable": true,
+        "fibAligned": false,
+        "confirmedAt": 1789660800,
+        "confirmed": true
+      },
+      {
+        "id": "DT-1789564500-4360.5",
+        "name": "RBS",
+        "bottom": 4356.59415,
+        "top": 4360.5,
+        "tradeable": true,
+        "fibAligned": false,
+        "confirmedAt": 1789659900,
+        "confirmed": true
+      }
+    ],
+    "plain": true,
+    "fib": false,
+    "confirmed": true,
+    "fibConfirmed": false
+  },
+  "2026-09-17T20:00:00.000Z": {
+    "at": "2026-09-17T20:15:00.000Z",
+    "m15Bars": 3115,
+    "coverage": "assessed",
+    "obstacles": [
+      {
+        "id": "TJL2-1789561800-4340.0085",
+        "name": "QML A++",
+        "bottom": 4334.775,
+        "top": 4340.0085,
+        "tradeable": true,
+        "fibAligned": false,
+        "confirmed": false
+      },
+      {
+        "id": "Internal TJL1-1789631100-4335.45",
+        "name": "Internal TJL1",
+        "bottom": 4331.5368,
+        "top": 4335.45,
+        "tradeable": true,
+        "fibAligned": true,
+        "confirmed": false
+      }
+    ],
+    "plain": true,
+    "fib": true,
+    "confirmed": false,
+    "fibConfirmed": false
+  },
+  "2026-09-21T02:00:00.000Z": {
+    "at": "2026-09-21T02:15:00.000Z",
+    "m15Bars": 3227,
+    "coverage": "assessed",
+    "obstacles": [
+      {
+        "id": "Internal TJL1-1789657200-4351.365",
+        "name": "Internal QML",
+        "bottom": 4351.365,
+        "top": 4354.3468,
+        "tradeable": true,
+        "fibAligned": true,
+        "confirmedAt": 1789749000,
+        "confirmed": true
+      }
+    ],
+    "plain": true,
+    "fib": true,
+    "confirmed": true,
+    "fibConfirmed": true
+  },
+  "2026-09-21T02:45:00.000Z": {
+    "at": "2026-09-21T03:00:00.000Z",
+    "m15Bars": 3230,
+    "coverage": "assessed",
+    "obstacles": [
+      {
+        "id": "Internal TJL1-1789657200-4351.365",
+        "name": "Internal QML",
+        "bottom": 4351.365,
+        "top": 4354.3468,
+        "tradeable": true,
+        "fibAligned": true,
+        "confirmedAt": 1789749000,
+        "confirmed": true
+      }
+    ],
+    "plain": true,
+    "fib": true,
+    "confirmed": true,
+    "fibConfirmed": true
+  },
+  "2026-09-21T04:45:00.000Z": {
+    "at": "2026-09-21T05:00:00.000Z",
+    "m15Bars": 3238,
+    "coverage": "assessed",
+    "obstacles": [
+      {
+        "id": "Internal TJL1-1789657200-4351.365",
+        "name": "Internal QML",
+        "bottom": 4351.365,
+        "top": 4354.3468,
+        "tradeable": true,
+        "fibAligned": true,
+        "confirmedAt": 1789749000,
+        "confirmed": true
+      }
+    ],
+    "plain": true,
+    "fib": true,
+    "confirmed": true,
+    "fibConfirmed": true
+  },
+  "2026-09-21T10:30:00.000Z": {
+    "at": "2026-09-21T10:45:00.000Z",
+    "m15Bars": 3261,
+    "coverage": "assessed",
+    "obstacles": [
+      {
+        "id": "TJL2-1789561800-4340.0085",
+        "name": "QML A++",
+        "bottom": 4334.775,
+        "top": 4340.0085,
+        "tradeable": true,
+        "fibAligned": true,
+        "confirmedAt": 1789703100,
+        "confirmed": true
+      },
+      {
+        "id": "Internal DB-1789677000-4340.655",
+        "name": "Internal DB",
+        "bottom": 4340.655,
+        "top": 4341.17635,
+        "tradeable": true,
+        "fibAligned": false,
+        "confirmed": false
+      },
+      {
+        "id": "TJL2-1789701300-4341.142599999999",
+        "name": "TJL2",
+        "bottom": 4334.295,
+        "top": 4341.142599999999,
+        "tradeable": true,
+        "fibAligned": true,
+        "confirmed": false
+      },
+      {
+        "id": "Internal DB-1789741800-4342.725",
+        "name": "Internal DB",
+        "bottom": 4342.725,
+        "top": 4343.166200000001,
+        "tradeable": true,
+        "fibAligned": false,
+        "confirmed": false
+      }
+    ],
+    "plain": true,
+    "fib": true,
+    "confirmed": true,
+    "fibConfirmed": true
+  },
+  "2026-09-21T16:30:00.000Z": {
+    "at": "2026-09-21T16:45:00.000Z",
+    "m15Bars": 3285,
+    "coverage": "assessed",
+    "obstacles": [
+      {
+        "id": "TJL2-1789561800-4340.0085",
+        "name": "QML A++",
+        "bottom": 4334.775,
+        "top": 4340.0085,
+        "tradeable": true,
+        "fibAligned": true,
+        "confirmedAt": 1789703100,
+        "confirmed": true
+      },
+      {
+        "id": "Internal TJL1-1789631100-4335.45",
+        "name": "Internal TJL1",
+        "bottom": 4331.5368,
+        "top": 4335.45,
+        "tradeable": true,
+        "fibAligned": true,
+        "confirmedAt": 1789703100,
+        "confirmed": true
+      },
+      {
+        "id": "TJL2-1789701300-4341.142599999999",
+        "name": "TJL2",
+        "bottom": 4334.295,
+        "top": 4341.142599999999,
+        "tradeable": true,
+        "fibAligned": true,
+        "confirmedAt": 1790003700,
+        "confirmed": true
+      }
+    ],
+    "plain": true,
+    "fib": true,
+    "confirmed": true,
+    "fibConfirmed": true
+  },
+  "2026-09-22T01:30:00.000Z": {
+    "at": "2026-09-22T01:45:00.000Z",
+    "m15Bars": 3317,
+    "coverage": "assessed",
+    "obstacles": [
+      {
+        "id": "TJL2-1789561800-4340.0085",
+        "name": "QML A++",
+        "bottom": 4334.775,
+        "top": 4340.0085,
+        "tradeable": true,
+        "fibAligned": true,
+        "confirmedAt": 1789703100,
+        "confirmed": true
+      },
+      {
+        "id": "TJL2-1789701300-4341.142599999999",
+        "name": "TJL2",
+        "bottom": 4334.295,
+        "top": 4341.142599999999,
+        "tradeable": true,
+        "fibAligned": true,
+        "confirmedAt": 1790003700,
+        "confirmed": true
+      }
+    ],
+    "plain": true,
+    "fib": true,
+    "confirmed": true,
+    "fibConfirmed": true
+  },
+  "2026-09-22T07:30:00.000Z": {
+    "at": "2026-09-22T07:45:00.000Z",
+    "m15Bars": 3341,
+    "coverage": "assessed",
+    "obstacles": [
+      {
+        "id": "Internal TJL2-1789637400-4305.15",
+        "name": "Internal TJL2",
+        "bottom": 4305.15,
+        "top": 4306.57125,
+        "tradeable": true,
+        "fibAligned": false,
+        "confirmed": false
+      }
+    ],
+    "plain": true,
+    "fib": false,
+    "confirmed": false,
+    "fibConfirmed": false
+  },
+  "2026-09-22T15:30:00.000Z": {
+    "at": "2026-09-22T15:45:00.000Z",
+    "m15Bars": 3373,
+    "coverage": "assessed",
+    "obstacles": [
+      {
+        "id": "iss-l4-1790074800",
+        "name": "ISS L4",
+        "bottom": 4308.985,
+        "top": 4315.35065,
+        "tradeable": true,
+        "fibAligned": true,
+        "confirmedAt": 1790090100,
+        "confirmed": true
+      }
+    ],
+    "plain": true,
+    "fib": true,
+    "confirmed": true,
+    "fibConfirmed": true
+  },
+  "2026-09-22T16:00:00.000Z": {
+    "at": "2026-09-22T16:15:00.000Z",
+    "m15Bars": 3375,
+    "coverage": "assessed",
+    "obstacles": [
+      {
+        "id": "iss-l4-1790074800",
+        "name": "ISS L4",
+        "bottom": 4308.985,
+        "top": 4315.35065,
+        "tradeable": true,
+        "fibAligned": true,
+        "confirmedAt": 1790090100,
+        "confirmed": true
+      }
+    ],
+    "plain": true,
+    "fib": true,
+    "confirmed": true,
+    "fibConfirmed": true
+  },
+  "2026-09-22T18:30:00.000Z": {
+    "at": "2026-09-22T18:45:00.000Z",
+    "m15Bars": 3385,
+    "coverage": "assessed",
+    "obstacles": [
+      {
+        "id": "Internal TJL1-1790084700-4344.285",
+        "name": "Internal TJL1",
+        "bottom": 4341.2035,
+        "top": 4344.285,
+        "tradeable": true,
+        "fibAligned": false,
+        "confirmed": false
+      }
+    ],
+    "plain": true,
+    "fib": false,
+    "confirmed": false,
+    "fibConfirmed": false
+  },
+  "2026-09-23T00:15:00.000Z": {
+    "at": "2026-09-23T00:30:00.000Z",
+    "m15Bars": 3404,
+    "coverage": "assessed",
+    "obstacles": [
+      {
+        "id": "Internal TJL1-1790100900-4360.665",
+        "name": "Internal TJL1",
+        "bottom": 4358.365,
+        "top": 4360.665,
+        "tradeable": true,
+        "fibAligned": true,
+        "confirmedAt": 1790115300,
+        "confirmed": true
+      },
+      {
+        "id": "Internal TJL2-1790101800-4348.77",
+        "name": "Internal TJL2",
+        "bottom": 4348.77,
+        "top": 4350.4551,
+        "tradeable": true,
+        "fibAligned": false,
+        "confirmed": false
+      }
+    ],
+    "plain": true,
+    "fib": true,
+    "confirmed": true,
+    "fibConfirmed": true
+  },
+  "2026-09-23T02:00:00.000Z": {
+    "at": "2026-09-23T02:15:00.000Z",
+    "m15Bars": 3411,
+    "coverage": "assessed",
+    "obstacles": [],
+    "plain": false,
+    "fib": false,
+    "confirmed": false,
+    "fibConfirmed": false
+  },
+  "2026-09-23T04:30:00.000Z": {
+    "at": "2026-09-23T04:45:00.000Z",
+    "m15Bars": 3421,
+    "coverage": "assessed",
+    "obstacles": [],
+    "plain": false,
+    "fib": false,
+    "confirmed": false,
+    "fibConfirmed": false
+  },
+  "2026-09-23T08:30:00.000Z": {
+    "at": "2026-09-23T08:45:00.000Z",
+    "m15Bars": 3437,
+    "coverage": "assessed",
+    "obstacles": [
+      {
+        "id": "iss-l4-1790074800",
+        "name": "ISS L4",
+        "bottom": 4308.985,
+        "top": 4315.35065,
+        "tradeable": true,
+        "fibAligned": true,
+        "confirmedAt": 1790090100,
+        "confirmed": true
+      },
+      {
+        "id": "Internal TJL2-1790087400-4315.015",
+        "name": "Internal TJL2",
+        "bottom": 4315.015,
+        "top": 4320.2384999999995,
+        "tradeable": true,
+        "fibAligned": false,
+        "confirmed": false
+      }
+    ],
+    "plain": true,
+    "fib": true,
+    "confirmed": true,
+    "fibConfirmed": true
+  },
+  "2026-09-23T19:30:00.000Z": {
+    "at": "2026-09-23T19:45:00.000Z",
+    "m15Bars": 3481,
+    "coverage": "assessed",
+    "obstacles": [
+      {
+        "id": "iss-l4-1789613100",
+        "name": "ISS L4",
+        "bottom": 4274.135,
+        "top": 4277.4839,
+        "tradeable": true,
+        "fibAligned": true,
+        "confirmedAt": 1790185500,
+        "confirmed": true
+      }
+    ],
+    "plain": true,
+    "fib": true,
+    "confirmed": true,
+    "fibConfirmed": true
+  },
+  "2026-09-24T10:15:00.000Z": {
+    "at": "2026-09-24T10:30:00.000Z",
+    "m15Bars": 3536,
+    "coverage": "assessed",
+    "obstacles": [
+      {
+        "id": "TJL2-1785945600-4233.0445",
+        "name": "TJL2",
+        "bottom": 4224.89,
+        "top": 4233.0445,
+        "tradeable": true,
+        "fibAligned": false,
+        "confirmedAt": 1786023900,
+        "confirmed": true
+      },
+      {
+        "id": "TJL1-1786021200-4238.721299999999",
+        "name": "QML",
+        "bottom": 4230.46,
+        "top": 4238.721299999999,
+        "tradeable": false,
+        "fibAligned": false,
+        "confirmed": false
+      },
+      {
+        "id": "DB-1786032900-4230.2571499999995",
+        "name": "DB",
+        "bottom": 4223.505,
+        "top": 4230.2571499999995,
+        "tradeable": true,
+        "fibAligned": true,
+        "confirmed": false
+      },
+      {
+        "id": "DB-1789585200-4253.1679",
+        "name": "DBD",
+        "bottom": 4235.165,
+        "top": 4253.1679,
+        "tradeable": false,
+        "fibAligned": false,
+        "confirmed": false
+      }
+    ],
+    "plain": true,
+    "fib": true,
+    "confirmed": true,
+    "fibConfirmed": false
+  },
+  "2026-09-24T13:15:00.000Z": {
+    "at": "2026-09-24T13:30:00.000Z",
+    "m15Bars": 3548,
+    "coverage": "assessed",
+    "obstacles": [],
+    "plain": false,
+    "fib": false,
+    "confirmed": false,
+    "fibConfirmed": false
+  },
+  "2026-09-24T20:00:00.000Z": {
+    "at": "2026-09-24T20:15:00.000Z",
+    "m15Bars": 3575,
+    "coverage": "assessed",
+    "obstacles": [],
+    "plain": false,
+    "fib": false,
+    "confirmed": false,
+    "fibConfirmed": false
+  },
+  "2026-09-24T23:15:00.000Z": {
+    "at": "2026-09-24T23:30:00.000Z",
+    "m15Bars": 3584,
+    "coverage": "assessed",
+    "obstacles": [],
+    "plain": false,
+    "fib": false,
+    "confirmed": false,
+    "fibConfirmed": false
+  },
+  "2026-09-25T01:45:00.000Z": {
+    "at": "2026-09-25T02:00:00.000Z",
+    "m15Bars": 3594,
+    "coverage": "assessed",
+    "obstacles": [],
+    "plain": false,
+    "fib": false,
+    "confirmed": false,
+    "fibConfirmed": false
+  },
+  "2026-09-25T11:15:00.000Z": {
+    "at": "2026-09-25T11:30:00.000Z",
+    "m15Bars": 3632,
+    "coverage": "assessed",
+    "obstacles": [
+      {
+        "id": "TJL2-1790212500-4303.395",
+        "name": "RBS",
+        "bottom": 4303.098550000001,
+        "top": 4303.395,
+        "tradeable": true,
+        "fibAligned": false,
+        "confirmedAt": 1790334000,
+        "confirmed": true
+      }
+    ],
+    "plain": true,
+    "fib": false,
+    "confirmed": true,
+    "fibConfirmed": false
+  },
+  "2026-09-28T06:45:00.000Z": {
+    "at": "2026-09-28T07:00:00.000Z",
+    "m15Bars": 3706,
+    "coverage": "assessed",
+    "obstacles": [
+      {
+        "id": "TJL2-1785924900-4151.28125",
+        "name": "TJL2",
+        "bottom": 4150.28,
+        "top": 4151.28125,
+        "tradeable": true,
+        "fibAligned": false,
+        "confirmed": false
+      }
+    ],
+    "plain": true,
+    "fib": false,
+    "confirmed": false,
+    "fibConfirmed": false
+  },
+  "2026-09-28T12:30:00.000Z": {
+    "at": "2026-09-28T12:45:00.000Z",
+    "m15Bars": 3729,
+    "coverage": "assessed",
+    "obstacles": [],
+    "plain": false,
+    "fib": false,
+    "confirmed": false,
+    "fibConfirmed": false
+  },
+  "2026-09-28T14:00:00.000Z": {
+    "at": "2026-09-28T14:15:00.000Z",
+    "m15Bars": 3735,
+    "coverage": "assessed",
+    "obstacles": [
+      {
+        "id": "TJL2-1785900600-4128.76315",
+        "name": "TJL2",
+        "bottom": 4127.51,
+        "top": 4128.76315,
+        "tradeable": true,
+        "fibAligned": false,
+        "confirmed": false
+      }
+    ],
+    "plain": true,
+    "fib": false,
+    "confirmed": false,
+    "fibConfirmed": false
+  },
+  "2026-09-28T19:00:00.000Z": {
+    "at": "2026-09-28T19:15:00.000Z",
+    "m15Bars": 3755,
+    "coverage": "assessed",
+    "obstacles": [],
+    "plain": false,
+    "fib": false,
+    "confirmed": false,
+    "fibConfirmed": false
+  },
+  "2026-09-28T19:30:00.000Z": {
+    "at": "2026-09-28T19:45:00.000Z",
+    "m15Bars": 3757,
+    "coverage": "assessed",
+    "obstacles": [],
+    "plain": false,
+    "fib": false,
+    "confirmed": false,
+    "fibConfirmed": false
+  },
+  "2026-09-29T11:30:00.000Z": {
+    "at": "2026-09-29T11:45:00.000Z",
+    "m15Bars": 3817,
+    "coverage": "assessed",
+    "obstacles": [],
+    "plain": false,
+    "fib": false,
+    "confirmed": false,
+    "fibConfirmed": false
+  },
+  "2026-09-29T16:00:00.000Z": {
+    "at": "2026-09-29T16:15:00.000Z",
+    "m15Bars": 3835,
+    "coverage": "assessed",
+    "obstacles": [],
+    "plain": false,
+    "fib": false,
+    "confirmed": false,
+    "fibConfirmed": false
+  },
+  "2026-09-29T17:30:00.000Z": {
+    "at": "2026-09-29T17:45:00.000Z",
+    "m15Bars": 3841,
+    "coverage": "assessed",
+    "obstacles": [],
+    "plain": false,
+    "fib": false,
+    "confirmed": false,
+    "fibConfirmed": false
+  },
+  "2026-09-30T03:30:00.000Z": {
+    "at": "2026-09-30T03:45:00.000Z",
+    "m15Bars": 3877,
+    "coverage": "assessed",
+    "obstacles": [
+      {
+        "id": "TJL2-1790597700-4171.42",
+        "name": "RBS",
+        "bottom": 4165.6454,
+        "top": 4171.42,
+        "tradeable": true,
+        "fibAligned": false,
+        "confirmedAt": 1790734500,
+        "confirmed": true
+      }
+    ],
+    "plain": true,
+    "fib": false,
+    "confirmed": true,
+    "fibConfirmed": false
+  },
+  "2026-09-30T03:45:00.000Z": {
+    "at": "2026-09-30T04:00:00.000Z",
+    "m15Bars": 3878,
+    "coverage": "assessed",
+    "obstacles": [
+      {
+        "id": "TJL2-1790597700-4171.42",
+        "name": "RBS",
+        "bottom": 4165.6454,
+        "top": 4171.42,
+        "tradeable": true,
+        "fibAligned": false,
+        "confirmedAt": 1790734500,
+        "confirmed": true
+      }
+    ],
+    "plain": true,
+    "fib": false,
+    "confirmed": true,
+    "fibConfirmed": false
+  },
+  "2026-09-30T08:45:00.000Z": {
+    "at": "2026-09-30T09:00:00.000Z",
+    "m15Bars": 3898,
+    "coverage": "assessed",
+    "obstacles": [
+      {
+        "id": "TJL1-1790714700-4185.39",
+        "name": "TJL1",
+        "bottom": 4184.93025,
+        "top": 4185.39,
+        "tradeable": true,
+        "fibAligned": false,
+        "confirmed": false
+      }
+    ],
+    "plain": true,
+    "fib": false,
+    "confirmed": false,
+    "fibConfirmed": false
+  },
+  "2026-09-30T10:30:00.000Z": {
+    "at": "2026-09-30T10:45:00.000Z",
+    "m15Bars": 3905,
+    "coverage": "assessed",
+    "obstacles": [
+      {
+        "id": "TJL1-1790714700-4185.39",
+        "name": "TJL1",
+        "bottom": 4184.93025,
+        "top": 4185.39,
+        "tradeable": true,
+        "fibAligned": false,
+        "confirmed": false
+      }
+    ],
+    "plain": true,
+    "fib": false,
+    "confirmed": false,
+    "fibConfirmed": false
+  },
+  "2026-09-30T14:15:00.000Z": {
+    "at": "2026-09-30T14:30:00.000Z",
+    "m15Bars": 3920,
+    "coverage": "assessed",
+    "obstacles": [
+      {
+        "id": "TJL2-1790597700-4171.42",
+        "name": "RBS",
+        "bottom": 4165.6454,
+        "top": 4171.42,
+        "tradeable": true,
+        "fibAligned": false,
+        "confirmedAt": 1790734500,
+        "confirmed": true
+      },
+      {
+        "id": "TJL2-1790745300-4172.7180499999995",
+        "name": "TJL2",
+        "bottom": 4165.69,
+        "top": 4172.7180499999995,
+        "tradeable": true,
+        "fibAligned": false,
+        "confirmed": false
+      }
+    ],
+    "plain": true,
+    "fib": false,
+    "confirmed": true,
+    "fibConfirmed": false
+  },
+  "2026-10-01T13:00:00.000Z": {
+    "at": "2026-10-01T13:15:00.000Z",
+    "m15Bars": 4007,
+    "coverage": "assessed",
+    "obstacles": [],
+    "plain": false,
+    "fib": false,
+    "confirmed": false,
+    "fibConfirmed": false
+  },
+  "2026-10-01T17:45:00.000Z": {
+    "at": "2026-10-01T18:00:00.000Z",
+    "m15Bars": 4026,
+    "coverage": "assessed",
+    "obstacles": [],
+    "plain": false,
+    "fib": false,
+    "confirmed": false,
+    "fibConfirmed": false
+  },
+  "2026-10-01T20:15:00.000Z": {
+    "at": "2026-10-01T20:30:00.000Z",
+    "m15Bars": 4036,
+    "coverage": "assessed",
+    "obstacles": [],
+    "plain": false,
+    "fib": false,
+    "confirmed": false,
+    "fibConfirmed": false
+  },
+  "2026-10-02T07:30:00.000Z": {
+    "at": "2026-10-02T07:45:00.000Z",
+    "m15Bars": 4077,
+    "coverage": "assessed",
+    "obstacles": [],
+    "plain": false,
+    "fib": false,
+    "confirmed": false,
+    "fibConfirmed": false
+  },
+  "2026-10-02T11:15:00.000Z": {
+    "at": "2026-10-02T11:30:00.000Z",
+    "m15Bars": 4092,
+    "coverage": "assessed",
+    "obstacles": [],
+    "plain": false,
+    "fib": false,
+    "confirmed": false,
+    "fibConfirmed": false
+  },
+  "2026-10-02T14:15:00.000Z": {
+    "at": "2026-10-02T14:30:00.000Z",
+    "m15Bars": 4104,
+    "coverage": "assessed",
+    "obstacles": [],
+    "plain": false,
+    "fib": false,
+    "confirmed": false,
+    "fibConfirmed": false
+  },
+  "2026-10-05T12:45:00.000Z": {
+    "at": "2026-10-05T13:00:00.000Z",
+    "m15Bars": 4190,
+    "coverage": "assessed",
+    "obstacles": [],
+    "plain": false,
+    "fib": false,
+    "confirmed": false,
+    "fibConfirmed": false
+  },
+  "2026-10-05T23:30:00.000Z": {
+    "at": "2026-10-05T23:45:00.000Z",
+    "m15Bars": 4229,
+    "coverage": "assessed",
+    "obstacles": [],
+    "plain": false,
+    "fib": false,
+    "confirmed": false,
+    "fibConfirmed": false
+  },
+  "2026-10-06T01:15:00.000Z": {
+    "at": "2026-10-06T01:30:00.000Z",
+    "m15Bars": 4236,
+    "coverage": "assessed",
+    "obstacles": [
+      {
+        "id": "DB-1790606700-4118.42015",
+        "name": "DB",
+        "bottom": 4110.87,
+        "top": 4118.42015,
+        "tradeable": true,
+        "fibAligned": true,
+        "confirmed": false
+      }
+    ],
+    "plain": true,
+    "fib": true,
+    "confirmed": false,
+    "fibConfirmed": false
+  },
+  "2026-10-06T02:15:00.000Z": {
+    "at": "2026-10-06T02:30:00.000Z",
+    "m15Bars": 4240,
+    "coverage": "assessed",
+    "obstacles": [],
+    "plain": false,
+    "fib": false,
+    "confirmed": false,
+    "fibConfirmed": false
+  },
+  "2026-10-06T13:15:00.000Z": {
+    "at": "2026-10-06T13:30:00.000Z",
+    "m15Bars": 4284,
+    "coverage": "assessed",
+    "obstacles": [],
+    "plain": false,
+    "fib": false,
+    "confirmed": false,
+    "fibConfirmed": false
+  },
+  "2026-10-06T14:15:00.000Z": {
+    "at": "2026-10-06T14:30:00.000Z",
+    "m15Bars": 4288,
+    "coverage": "assessed",
+    "obstacles": [],
+    "plain": false,
+    "fib": false,
+    "confirmed": false,
+    "fibConfirmed": false
+  },
+  "2026-10-06T20:15:00.000Z": {
+    "at": "2026-10-06T20:30:00.000Z",
+    "m15Bars": 4312,
+    "coverage": "assessed",
+    "obstacles": [],
+    "plain": false,
+    "fib": false,
+    "confirmed": false,
+    "fibConfirmed": false
+  },
+  "2026-10-07T00:15:00.000Z": {
+    "at": "2026-10-07T00:30:00.000Z",
+    "m15Bars": 4324,
+    "coverage": "assessed",
+    "obstacles": [],
+    "plain": false,
+    "fib": false,
+    "confirmed": false,
+    "fibConfirmed": false
+  },
+  "2026-10-07T01:45:00.000Z": {
+    "at": "2026-10-07T02:00:00.000Z",
+    "m15Bars": 4330,
+    "coverage": "assessed",
+    "obstacles": [],
+    "plain": false,
+    "fib": false,
+    "confirmed": false,
+    "fibConfirmed": false
+  },
+  "2026-10-07T03:00:00.000Z": {
+    "at": "2026-10-07T03:15:00.000Z",
+    "m15Bars": 4335,
+    "coverage": "assessed",
+    "obstacles": [],
+    "plain": false,
+    "fib": false,
+    "confirmed": false,
+    "fibConfirmed": false
+  },
+  "2026-10-08T02:45:00.000Z": {
+    "at": "2026-10-08T03:00:00.000Z",
+    "m15Bars": 4426,
+    "coverage": "assessed",
+    "obstacles": [],
+    "plain": false,
+    "fib": false,
+    "confirmed": false,
+    "fibConfirmed": false
+  },
+  "2026-10-08T05:15:00.000Z": {
+    "at": "2026-10-08T05:30:00.000Z",
+    "m15Bars": 4436,
+    "coverage": "assessed",
+    "obstacles": [],
+    "plain": false,
+    "fib": false,
+    "confirmed": false,
+    "fibConfirmed": false
+  },
+  "2026-10-08T14:00:00.000Z": {
+    "at": "2026-10-08T14:15:00.000Z",
+    "m15Bars": 4471,
+    "coverage": "assessed",
+    "obstacles": [],
+    "plain": false,
+    "fib": false,
+    "confirmed": false,
+    "fibConfirmed": false
+  },
+  "2026-10-08T15:45:00.000Z": {
+    "at": "2026-10-08T16:00:00.000Z",
+    "m15Bars": 4478,
+    "coverage": "assessed",
+    "obstacles": [],
+    "plain": false,
+    "fib": false,
+    "confirmed": false,
+    "fibConfirmed": false
+  },
+  "2026-10-08T18:15:00.000Z": {
+    "at": "2026-10-08T18:30:00.000Z",
+    "m15Bars": 4488,
+    "coverage": "assessed",
+    "obstacles": [],
+    "plain": false,
+    "fib": false,
+    "confirmed": false,
+    "fibConfirmed": false
+  },
+  "2026-10-08T20:30:00.000Z": {
+    "at": "2026-10-08T20:45:00.000Z",
+    "m15Bars": 4497,
+    "coverage": "assessed",
+    "obstacles": [],
+    "plain": false,
+    "fib": false,
+    "confirmed": false,
+    "fibConfirmed": false
+  },
+  "2026-10-09T08:30:00.000Z": {
+    "at": "2026-10-09T08:45:00.000Z",
+    "m15Bars": 4541,
+    "coverage": "assessed",
+    "obstacles": [],
+    "plain": false,
+    "fib": false,
+    "confirmed": false,
+    "fibConfirmed": false
+  },
+  "2026-10-12T06:15:00.000Z": {
+    "at": "2026-10-12T06:30:00.000Z",
+    "m15Bars": 4624,
+    "coverage": "assessed",
+    "obstacles": [
+      {
+        "id": "TJL2-1791549900-4175.64365",
+        "name": "TJL2",
+        "bottom": 4168.57,
+        "top": 4175.64365,
+        "tradeable": true,
+        "fibAligned": false,
+        "confirmed": false
+      }
+    ],
+    "plain": true,
+    "fib": false,
+    "confirmed": false,
+    "fibConfirmed": false
+  },
+  "2026-10-12T11:45:00.000Z": {
+    "at": "2026-10-12T12:00:00.000Z",
+    "m15Bars": 4646,
+    "coverage": "assessed",
+    "obstacles": [
+      {
+        "id": "TJL2-1791549900-4175.64365",
+        "name": "TJL2",
+        "bottom": 4168.57,
+        "top": 4175.64365,
+        "tradeable": true,
+        "fibAligned": false,
+        "confirmedAt": 1791796500,
+        "confirmed": true
+      }
+    ],
+    "plain": true,
+    "fib": false,
+    "confirmed": true,
+    "fibConfirmed": false
+  },
+  "2026-10-12T14:45:00.000Z": {
+    "at": "2026-10-12T15:00:00.000Z",
+    "m15Bars": 4658,
+    "coverage": "assessed",
+    "obstacles": [],
+    "plain": false,
+    "fib": false,
+    "confirmed": false,
+    "fibConfirmed": false
+  },
+  "2026-10-13T05:15:00.000Z": {
+    "at": "2026-10-13T05:30:00.000Z",
+    "m15Bars": 4712,
+    "coverage": "assessed",
+    "obstacles": [],
+    "plain": false,
+    "fib": false,
+    "confirmed": false,
+    "fibConfirmed": false
+  },
+  "2026-10-13T07:30:00.000Z": {
+    "at": "2026-10-13T07:45:00.000Z",
+    "m15Bars": 4721,
+    "coverage": "assessed",
+    "obstacles": [],
+    "plain": false,
+    "fib": false,
+    "confirmed": false,
+    "fibConfirmed": false
+  },
+  "2026-10-13T08:30:00.000Z": {
+    "at": "2026-10-13T08:45:00.000Z",
+    "m15Bars": 4725,
+    "coverage": "assessed",
+    "obstacles": [],
+    "plain": false,
+    "fib": false,
+    "confirmed": false,
+    "fibConfirmed": false
+  },
+  "2026-10-13T12:45:00.000Z": {
+    "at": "2026-10-13T13:00:00.000Z",
+    "m15Bars": 4742,
+    "coverage": "assessed",
+    "obstacles": [],
+    "plain": false,
+    "fib": false,
+    "confirmed": false,
+    "fibConfirmed": false
+  },
+  "2026-10-14T13:45:00.000Z": {
+    "at": "2026-10-14T14:00:00.000Z",
+    "m15Bars": 4838,
+    "coverage": "assessed",
+    "obstacles": [
+      {
+        "id": "TJL2-1785853800-4079.8007500000003",
+        "name": "QML A++",
+        "bottom": 4074.55,
+        "top": 4079.8007500000003,
+        "tradeable": true,
+        "fibAligned": false,
+        "confirmedAt": 1791378900,
+        "confirmed": true
+      },
+      {
+        "id": "DB-1791377100-4072.2152499999997",
+        "name": "DB",
+        "bottom": 4066.535,
+        "top": 4072.2152499999997,
+        "tradeable": false,
+        "fibAligned": true,
+        "confirmed": false
+      }
+    ],
+    "plain": true,
+    "fib": true,
+    "confirmed": true,
+    "fibConfirmed": false
+  },
+  "2026-10-14T15:30:00.000Z": {
+    "at": "2026-10-14T15:45:00.000Z",
+    "m15Bars": 4845,
+    "coverage": "assessed",
+    "obstacles": [
+      {
+        "id": "TJL2-1785853800-4079.8007500000003",
+        "name": "QML A++",
+        "bottom": 4074.55,
+        "top": 4079.8007500000003,
+        "tradeable": true,
+        "fibAligned": false,
+        "confirmedAt": 1791378900,
+        "confirmed": true
+      }
+    ],
+    "plain": true,
+    "fib": false,
+    "confirmed": true,
+    "fibConfirmed": false
+  },
+  "2026-10-15T03:15:00.000Z": {
+    "at": "2026-10-15T03:30:00.000Z",
+    "m15Bars": 4888,
+    "coverage": "assessed",
+    "obstacles": [
+      {
+        "id": "TJL1-1792026000-4151.54",
+        "name": "TJL1",
+        "bottom": 4145.7489000000005,
+        "top": 4151.54,
+        "tradeable": true,
+        "fibAligned": true,
+        "confirmed": false
+      },
+      {
+        "id": "TJL2-1792029600-4138.972",
+        "name": "TJL2",
+        "bottom": 4136.205,
+        "top": 4138.972,
+        "tradeable": true,
+        "fibAligned": false,
+        "confirmed": false
+      }
+    ],
+    "plain": true,
+    "fib": true,
+    "confirmed": false,
+    "fibConfirmed": false
+  },
+  "2026-10-15T03:45:00.000Z": {
+    "at": "2026-10-15T04:00:00.000Z",
+    "m15Bars": 4890,
+    "coverage": "assessed",
+    "obstacles": [
+      {
+        "id": "TJL1-1792026000-4151.54",
+        "name": "TJL1",
+        "bottom": 4145.7489000000005,
+        "top": 4151.54,
+        "tradeable": true,
+        "fibAligned": true,
+        "confirmed": false
+      },
+      {
+        "id": "TJL2-1792029600-4138.972",
+        "name": "TJL2",
+        "bottom": 4136.205,
+        "top": 4138.972,
+        "tradeable": true,
+        "fibAligned": false,
+        "confirmed": false
+      }
+    ],
+    "plain": true,
+    "fib": true,
+    "confirmed": false,
+    "fibConfirmed": false
+  },
+  "2026-10-15T15:30:00.000Z": {
+    "at": "2026-10-15T15:45:00.000Z",
+    "m15Bars": 4937,
+    "coverage": "assessed",
+    "obstacles": [],
+    "plain": false,
+    "fib": false,
+    "confirmed": false,
+    "fibConfirmed": false
+  },
+  "2026-10-15T20:15:00.000Z": {
+    "at": "2026-10-15T20:30:00.000Z",
+    "m15Bars": 4956,
+    "coverage": "assessed",
+    "obstacles": [
+      {
+        "id": "DT-1792033200-4161.77",
+        "name": "RBS",
+        "bottom": 4159.63645,
+        "top": 4161.77,
+        "tradeable": true,
+        "fibAligned": false,
+        "confirmed": false
+      }
+    ],
+    "plain": true,
+    "fib": false,
+    "confirmed": false,
+    "fibConfirmed": false
+  },
+  "2026-10-16T01:15:00.000Z": {
+    "at": "2026-10-16T01:30:00.000Z",
+    "m15Bars": 4972,
+    "coverage": "assessed",
+    "obstacles": [
+      {
+        "id": "TJL1-1792026000-4151.54",
+        "name": "QML A+",
+        "bottom": 4145.7489000000005,
+        "top": 4151.54,
+        "tradeable": true,
+        "fibAligned": true,
+        "confirmed": false
+      },
+      {
+        "id": "TJL2-1792029600-4138.972",
+        "name": "QML A++",
+        "bottom": 4136.205,
+        "top": 4138.972,
+        "tradeable": true,
+        "fibAligned": true,
+        "confirmed": false
+      },
+      {
+        "id": "DB-1792067400-4146.33135",
+        "name": "DBD",
+        "bottom": 4130.245,
+        "top": 4146.33135,
+        "tradeable": false,
+        "fibAligned": true,
+        "confirmed": false
+      }
+    ],
+    "plain": true,
+    "fib": true,
+    "confirmed": false,
+    "fibConfirmed": false
+  },
+  "2026-10-16T09:15:00.000Z": {
+    "at": "2026-10-16T09:30:00.000Z",
+    "m15Bars": 5000,
+    "coverage": "assessed",
+    "obstacles": [],
+    "plain": false,
+    "fib": false,
+    "confirmed": false,
+    "fibConfirmed": false
+  },
+  "2026-10-16T18:15:00.000Z": {
+    "at": "2026-10-16T18:30:00.000Z",
+    "m15Bars": 5000,
+    "coverage": "assessed",
+    "obstacles": [
+      {
+        "id": "TJL1-1792026000-4151.54",
+        "name": "QML A+",
+        "bottom": 4145.7489000000005,
+        "top": 4151.54,
+        "tradeable": true,
+        "fibAligned": true,
+        "confirmedAt": 1792116000,
+        "confirmed": true
+      },
+      {
+        "id": "TJL2-1792114200-4150.23295",
+        "name": "TJL2",
+        "bottom": 4147.16,
+        "top": 4150.23295,
+        "tradeable": true,
+        "fibAligned": false,
+        "confirmed": false
+      },
+      {
+        "id": "TJL2-1792156500-4160.49125",
+        "name": "TJL2",
+        "bottom": 4154.82,
+        "top": 4160.49125,
+        "tradeable": true,
+        "fibAligned": true,
+        "confirmedAt": 1792172700,
+        "confirmed": true
+      },
+      {
+        "id": "Internal DB-1792156500-4154.82",
+        "name": "Internal DB",
+        "bottom": 4154.82,
+        "top": 4160.49125,
+        "tradeable": true,
+        "fibAligned": false,
+        "confirmedAt": 1792172700,
+        "confirmed": true
+      }
+    ],
+    "plain": true,
+    "fib": true,
+    "confirmed": true,
+    "fibConfirmed": true
+  },
+  "2026-10-19T01:15:00.000Z": {
+    "at": "2026-10-19T01:30:00.000Z",
+    "m15Bars": 5000,
+    "coverage": "assessed",
+    "obstacles": [
+      {
+        "id": "TJL2-1792156500-4160.49125",
+        "name": "TJL2",
+        "bottom": 4154.82,
+        "top": 4160.49125,
+        "tradeable": true,
+        "fibAligned": true,
+        "confirmedAt": 1792172700,
+        "confirmed": true
+      },
+      {
+        "id": "Internal DB-1792156500-4154.82",
+        "name": "Internal DB",
+        "bottom": 4154.82,
+        "top": 4160.49125,
+        "tradeable": true,
+        "fibAligned": false,
+        "confirmedAt": 1792172700,
+        "confirmed": true
+      }
+    ],
+    "plain": true,
+    "fib": true,
+    "confirmed": true,
+    "fibConfirmed": true
+  },
+  "2026-10-19T02:15:00.000Z": {
+    "at": "2026-10-19T02:30:00.000Z",
+    "m15Bars": 5000,
+    "coverage": "assessed",
+    "obstacles": [
+      {
+        "id": "TJL2-1792156500-4160.49125",
+        "name": "TJL2",
+        "bottom": 4154.82,
+        "top": 4160.49125,
+        "tradeable": true,
+        "fibAligned": true,
+        "confirmedAt": 1792172700,
+        "confirmed": true
+      },
+      {
+        "id": "Internal DB-1792156500-4154.82",
+        "name": "Internal DB",
+        "bottom": 4154.82,
+        "top": 4160.49125,
+        "tradeable": true,
+        "fibAligned": false,
+        "confirmedAt": 1792172700,
+        "confirmed": true
+      }
+    ],
+    "plain": true,
+    "fib": true,
+    "confirmed": true,
+    "fibConfirmed": true
+  },
+  "2026-10-19T07:30:00.000Z": {
+    "at": "2026-10-19T07:45:00.000Z",
+    "m15Bars": 5000,
+    "coverage": "assessed",
+    "obstacles": [],
+    "plain": false,
+    "fib": false,
+    "confirmed": false,
+    "fibConfirmed": false
+  },
+  "2026-10-19T20:00:00.000Z": {
+    "at": "2026-10-19T20:15:00.000Z",
+    "m15Bars": 5000,
+    "coverage": "assessed",
+    "obstacles": [
+      {
+        "id": "TJL2-1792029600-4138.972",
+        "name": "QML A++",
+        "bottom": 4136.205,
+        "top": 4138.972,
+        "tradeable": true,
+        "fibAligned": true,
+        "confirmedAt": 1792431900,
+        "confirmed": true
+      },
+      {
+        "id": "DB-1792067400-4146.33135",
+        "name": "DBD",
+        "bottom": 4130.245,
+        "top": 4146.33135,
+        "tradeable": true,
+        "fibAligned": true,
+        "confirmedAt": 1792423800,
+        "confirmed": true
+      }
+    ],
+    "plain": true,
+    "fib": true,
+    "confirmed": true,
+    "fibConfirmed": true
+  },
+  "2026-10-20T04:30:00.000Z": {
+    "at": "2026-10-20T04:45:00.000Z",
+    "m15Bars": 5000,
+    "coverage": "assessed",
+    "obstacles": [],
+    "plain": false,
+    "fib": false,
+    "confirmed": false,
+    "fibConfirmed": false
+  },
+  "2026-10-20T14:45:00.000Z": {
+    "at": "2026-10-20T15:00:00.000Z",
+    "m15Bars": 5000,
+    "coverage": "assessed",
+    "obstacles": [
+      {
+        "id": "TJL2-1792469700-4147.415",
+        "name": "RBS",
+        "bottom": 4144.56095,
+        "top": 4147.415,
+        "tradeable": false,
+        "fibAligned": false,
+        "confirmed": false
+      }
+    ],
+    "plain": true,
+    "fib": false,
+    "confirmed": false,
+    "fibConfirmed": false
+  },
+  "2026-10-20T16:45:00.000Z": {
+    "at": "2026-10-20T17:00:00.000Z",
+    "m15Bars": 5000,
+    "coverage": "assessed",
+    "obstacles": [
+      {
+        "id": "TJL1-1792017900-4111.905",
+        "name": "TJL1",
+        "bottom": 4110.0359,
+        "top": 4111.905,
+        "tradeable": true,
+        "fibAligned": true,
+        "confirmedAt": 1792492200,
+        "confirmed": true
+      },
+      {
+        "id": "TJL1-1792458900-4119.37425",
+        "name": "QML",
+        "bottom": 4115.575,
+        "top": 4119.37425,
+        "tradeable": false,
+        "fibAligned": true,
+        "confirmed": false
+      },
+      {
+        "id": "DB-1792490400-4112.7163",
+        "name": "DB",
+        "bottom": 4111.68,
+        "top": 4112.7163,
+        "tradeable": false,
+        "fibAligned": true,
+        "confirmed": false
+      }
+    ],
+    "plain": true,
+    "fib": true,
+    "confirmed": true,
+    "fibConfirmed": true
+  },
+  "2026-10-21T03:45:00.000Z": {
+    "at": "2026-10-21T04:00:00.000Z",
+    "m15Bars": 5000,
+    "coverage": "assessed",
+    "obstacles": [
+      {
+        "id": "TJL2-1791984600-4107.37",
+        "name": "RBS",
+        "bottom": 4103.9883,
+        "top": 4107.37,
+        "tradeable": true,
+        "fibAligned": true,
+        "confirmedAt": 1792022400,
+        "confirmed": true
+      },
+      {
+        "id": "TJL1-1792017900-4111.905",
+        "name": "TJL1",
+        "bottom": 4110.0359,
+        "top": 4111.905,
+        "tradeable": true,
+        "fibAligned": false,
+        "confirmedAt": 1792492200,
+        "confirmed": true
+      }
+    ],
+    "plain": true,
+    "fib": true,
+    "confirmed": true,
+    "fibConfirmed": true
+  },
+  "2026-10-21T04:15:00.000Z": {
+    "at": "2026-10-21T04:30:00.000Z",
+    "m15Bars": 5000,
+    "coverage": "assessed",
+    "obstacles": [
+      {
+        "id": "TJL2-1791984600-4107.37",
+        "name": "RBS",
+        "bottom": 4103.9883,
+        "top": 4107.37,
+        "tradeable": true,
+        "fibAligned": true,
+        "confirmedAt": 1792022400,
+        "confirmed": true
+      },
+      {
+        "id": "TJL1-1792017900-4111.905",
+        "name": "TJL1",
+        "bottom": 4110.0359,
+        "top": 4111.905,
+        "tradeable": true,
+        "fibAligned": false,
+        "confirmedAt": 1792492200,
+        "confirmed": true
+      },
+      {
+        "id": "TJL2-1792018800-4104.8543",
+        "name": "TJL2",
+        "bottom": 4099.89,
+        "top": 4104.8543,
+        "tradeable": true,
+        "fibAligned": false,
+        "confirmed": false
+      }
+    ],
+    "plain": true,
+    "fib": true,
+    "confirmed": true,
+    "fibConfirmed": true
+  },
+  "2026-10-21T13:45:00.000Z": {
+    "at": "2026-10-21T14:00:00.000Z",
+    "m15Bars": 5000,
+    "coverage": "assessed",
+    "obstacles": [],
+    "plain": false,
+    "fib": false,
+    "confirmed": false,
+    "fibConfirmed": false
+  },
+  "2026-10-21T15:00:00.000Z": {
+    "at": "2026-10-21T15:15:00.000Z",
+    "m15Bars": 5000,
+    "coverage": "assessed",
+    "obstacles": [
+      {
+        "id": "iss-l3-1792560600",
+        "name": "ISS L3",
+        "bottom": 4128.04175,
+        "top": 4129.645,
+        "tradeable": true,
+        "fibAligned": true,
+        "confirmed": false
+      }
+    ],
+    "plain": true,
+    "fib": true,
+    "confirmed": false,
+    "fibConfirmed": false
+  },
+  "2026-10-22T07:30:00.000Z": {
+    "at": "2026-10-22T07:45:00.000Z",
+    "m15Bars": 5000,
+    "coverage": "assessed",
+    "obstacles": [
+      {
+        "id": "TJL1-1791983700-4089.2070000000003",
+        "name": "QML",
+        "bottom": 4079.73,
+        "top": 4089.2070000000003,
+        "tradeable": true,
+        "fibAligned": false,
+        "confirmedAt": 1792648800,
+        "confirmed": true
+      },
+      {
+        "id": "DB-1791993600-4077.12905",
+        "name": "DB",
+        "bottom": 4073.545,
+        "top": 4077.12905,
+        "tradeable": true,
+        "fibAligned": true,
+        "confirmedAt": 1792648800,
+        "confirmed": true
+      }
+    ],
+    "plain": true,
+    "fib": true,
+    "confirmed": true,
+    "fibConfirmed": true
+  },
+  "2026-10-22T08:45:00.000Z": {
+    "at": "2026-10-22T09:00:00.000Z",
+    "m15Bars": 5000,
+    "coverage": "assessed",
+    "obstacles": [
+      {
+        "id": "DB-1791377100-4072.2152499999997",
+        "name": "DB",
+        "bottom": 4066.535,
+        "top": 4072.2152499999997,
+        "tradeable": false,
+        "fibAligned": true,
+        "confirmed": false
+      },
+      {
+        "id": "TJL1-1791983700-4089.2070000000003",
+        "name": "QML",
+        "bottom": 4079.73,
+        "top": 4089.2070000000003,
+        "tradeable": true,
+        "fibAligned": false,
+        "confirmedAt": 1792648800,
+        "confirmed": true
+      },
+      {
+        "id": "DB-1791993600-4077.12905",
+        "name": "DB",
+        "bottom": 4073.545,
+        "top": 4077.12905,
+        "tradeable": true,
+        "fibAligned": true,
+        "confirmedAt": 1792648800,
+        "confirmed": true
+      }
+    ],
+    "plain": true,
+    "fib": true,
+    "confirmed": true,
+    "fibConfirmed": true
+  },
+  "2026-10-22T15:00:00.000Z": {
+    "at": "2026-10-22T15:15:00.000Z",
+    "m15Bars": 5000,
+    "coverage": "assessed",
+    "obstacles": [],
+    "plain": false,
+    "fib": false,
+    "confirmed": false,
+    "fibConfirmed": false
+  },
+  "2026-10-23T01:30:00.000Z": {
+    "at": "2026-10-23T01:45:00.000Z",
+    "m15Bars": 5000,
+    "coverage": "assessed",
+    "obstacles": [],
+    "plain": false,
+    "fib": false,
+    "confirmed": false,
+    "fibConfirmed": false
+  },
+  "2026-10-23T07:45:00.000Z": {
+    "at": "2026-10-23T08:00:00.000Z",
+    "m15Bars": 5000,
+    "coverage": "assessed",
+    "obstacles": [],
+    "plain": false,
+    "fib": false,
+    "confirmed": false,
+    "fibConfirmed": false
+  },
+  "2026-10-23T16:15:00.000Z": {
+    "at": "2026-10-23T16:30:00.000Z",
+    "m15Bars": 5000,
+    "coverage": "assessed",
+    "obstacles": [],
+    "plain": false,
+    "fib": false,
+    "confirmed": false,
+    "fibConfirmed": false
+  },
+  "2026-10-23T17:00:00.000Z": {
+    "at": "2026-10-23T17:15:00.000Z",
+    "m15Bars": 5000,
+    "coverage": "assessed",
+    "obstacles": [],
+    "plain": false,
+    "fib": false,
+    "confirmed": false,
+    "fibConfirmed": false
+  },
+  "2026-10-23T20:00:00.000Z": {
+    "at": "2026-10-23T20:15:00.000Z",
+    "m15Bars": 5000,
+    "coverage": "assessed",
+    "obstacles": [],
+    "plain": false,
+    "fib": false,
+    "confirmed": false,
+    "fibConfirmed": false
+  },
+  "2026-10-26T07:00:00.000Z": {
+    "at": "2026-10-26T07:15:00.000Z",
+    "m15Bars": 5000,
+    "coverage": "assessed",
+    "obstacles": [],
+    "plain": false,
+    "fib": false,
+    "confirmed": false,
+    "fibConfirmed": false
+  },
+  "2026-10-26T12:45:00.000Z": {
+    "at": "2026-10-26T13:00:00.000Z",
+    "m15Bars": 5000,
+    "coverage": "assessed",
+    "obstacles": [
+      {
+        "id": "iss-l4-1792998900",
+        "name": "ISS L4",
+        "bottom": 4003.37,
+        "top": 4005.51235,
+        "tradeable": true,
+        "fibAligned": false,
+        "confirmed": false
+      }
+    ],
+    "plain": true,
+    "fib": false,
+    "confirmed": false,
+    "fibConfirmed": false
+  },
+  "2026-10-26T18:15:00.000Z": {
+    "at": "2026-10-26T18:30:00.000Z",
+    "m15Bars": 5000,
+    "coverage": "assessed",
+    "obstacles": [
+      {
+        "id": "Internal TJL1-1792984500-4016.69",
+        "name": "Internal QML A+",
+        "bottom": 4012.4505,
+        "top": 4016.69,
+        "tradeable": true,
+        "fibAligned": false,
+        "confirmed": false
+      },
+      {
+        "id": "Internal DT-1793004300-4022.37",
+        "name": "Internal RBS",
+        "bottom": 4016.8821,
+        "top": 4022.37,
+        "tradeable": true,
+        "fibAligned": false,
+        "confirmed": false
+      }
+    ],
+    "plain": true,
+    "fib": false,
+    "confirmed": false,
+    "fibConfirmed": false
+  },
+  "2026-10-27T04:30:00.000Z": {
+    "at": "2026-10-27T04:45:00.000Z",
+    "m15Bars": 5000,
+    "coverage": "assessed",
+    "obstacles": [
+      {
+        "id": "Internal TJL2-1792998900-4003.37",
+        "name": "Internal QML A++",
+        "bottom": 4003.37,
+        "top": 4005.51235,
+        "tradeable": true,
+        "fibAligned": true,
+        "confirmedAt": 1793060100,
+        "confirmed": true
+      }
+    ],
+    "plain": true,
+    "fib": true,
+    "confirmed": true,
+    "fibConfirmed": true
+  },
+  "2026-10-27T06:15:00.000Z": {
+    "at": "2026-10-27T06:30:00.000Z",
+    "m15Bars": 5000,
+    "coverage": "assessed",
+    "obstacles": [
+      {
+        "id": "Internal TJL2-1792998900-4003.37",
+        "name": "Internal QML A++",
+        "bottom": 4003.37,
+        "top": 4005.51235,
+        "tradeable": true,
+        "fibAligned": true,
+        "confirmedAt": 1793060100,
+        "confirmed": true
+      },
+      {
+        "id": "Internal DB-1793022300-3988.825",
+        "name": "Internal DBD",
+        "bottom": 3988.825,
+        "top": 3993.25185,
+        "tradeable": false,
+        "fibAligned": true,
+        "confirmed": false
+      }
+    ],
+    "plain": true,
+    "fib": true,
+    "confirmed": true,
+    "fibConfirmed": true
+  },
+  "2026-10-27T17:45:00.000Z": {
+    "at": "2026-10-27T18:00:00.000Z",
+    "m15Bars": 5000,
+    "coverage": "assessed",
+    "obstacles": [],
+    "plain": false,
+    "fib": false,
+    "confirmed": false,
+    "fibConfirmed": false
+  },
+  "2026-10-28T05:15:00.000Z": {
+    "at": "2026-10-28T05:30:00.000Z",
+    "m15Bars": 5000,
+    "coverage": "assessed",
+    "obstacles": [
+      {
+        "id": "TJL2-1792761300-4034.085",
+        "name": "RBS",
+        "bottom": 4032.53175,
+        "top": 4034.085,
+        "tradeable": true,
+        "fibAligned": false,
+        "confirmed": false
+      }
+    ],
+    "plain": true,
+    "fib": false,
+    "confirmed": false,
+    "fibConfirmed": false
+  },
+  "2026-10-28T09:00:00.000Z": {
+    "at": "2026-10-28T09:15:00.000Z",
+    "m15Bars": 5000,
+    "coverage": "assessed",
+    "obstacles": [],
+    "plain": false,
+    "fib": false,
+    "confirmed": false,
+    "fibConfirmed": false
+  },
+  "2026-10-28T13:15:00.000Z": {
+    "at": "2026-10-28T13:30:00.000Z",
+    "m15Bars": 5000,
+    "coverage": "assessed",
+    "obstacles": [],
+    "plain": false,
+    "fib": false,
+    "confirmed": false,
+    "fibConfirmed": false
+  },
+  "2026-10-28T20:15:00.000Z": {
+    "at": "2026-10-28T20:30:00.000Z",
+    "m15Bars": 5000,
+    "coverage": "assessed",
+    "obstacles": [
+      {
+        "id": "TJL2-1793125800-4055.3822",
+        "name": "QML A++",
+        "bottom": 4054.365,
+        "top": 4055.3822,
+        "tradeable": true,
+        "fibAligned": false,
+        "confirmed": false
+      }
+    ],
+    "plain": true,
+    "fib": false,
+    "confirmed": false,
+    "fibConfirmed": false
+  },
+  "2026-10-28T22:00:00.000Z": {
+    "at": "2026-10-28T22:15:00.000Z",
+    "m15Bars": 5000,
+    "coverage": "assessed",
+    "obstacles": [
+      {
+        "id": "TJL1-1793116800-4064.86",
+        "name": "QML A+",
+        "bottom": 4063.48415,
+        "top": 4064.86,
+        "tradeable": true,
+        "fibAligned": false,
+        "confirmed": false
+      },
+      {
+        "id": "TJL2-1793125800-4055.3822",
+        "name": "QML A++",
+        "bottom": 4054.365,
+        "top": 4055.3822,
+        "tradeable": true,
+        "fibAligned": false,
+        "confirmed": false
+      }
+    ],
+    "plain": true,
+    "fib": false,
+    "confirmed": false,
+    "fibConfirmed": false
+  },
+  "2026-10-29T03:45:00.000Z": {
+    "at": "2026-10-29T04:00:00.000Z",
+    "m15Bars": 5000,
+    "coverage": "assessed",
+    "obstacles": [
+      {
+        "id": "DB-1793212200-4036.50015",
+        "name": "DBD",
+        "bottom": 4024.665,
+        "top": 4036.50015,
+        "tradeable": true,
+        "fibAligned": true,
+        "confirmedAt": 1793236500,
+        "confirmed": true
+      }
+    ],
+    "plain": true,
+    "fib": true,
+    "confirmed": true,
+    "fibConfirmed": true
+  },
+  "2026-10-29T10:15:00.000Z": {
+    "at": "2026-10-29T10:30:00.000Z",
+    "m15Bars": 5000,
+    "coverage": "assessed",
+    "obstacles": [
+      {
+        "id": "Internal TJL1-1793025900-4026.75",
+        "name": "Internal TJL1",
+        "bottom": 4023.2297,
+        "top": 4026.75,
+        "tradeable": true,
+        "fibAligned": true,
+        "confirmedAt": 1793213100,
+        "confirmed": true
+      }
+    ],
+    "plain": true,
+    "fib": true,
+    "confirmed": true,
+    "fibConfirmed": true
+  },
+  "2026-10-29T12:45:00.000Z": {
+    "at": "2026-10-29T13:00:00.000Z",
+    "m15Bars": 5000,
+    "coverage": "assessed",
+    "obstacles": [],
+    "plain": false,
+    "fib": false,
+    "confirmed": false,
+    "fibConfirmed": false
+  },
+  "2026-10-29T14:45:00.000Z": {
+    "at": "2026-10-29T15:00:00.000Z",
+    "m15Bars": 5000,
+    "coverage": "assessed",
+    "obstacles": [
+      {
+        "id": "Internal TJL1-1793025900-4026.75",
+        "name": "Internal TJL1",
+        "bottom": 4023.2297,
+        "top": 4026.75,
+        "tradeable": true,
+        "fibAligned": true,
+        "confirmedAt": 1793213100,
+        "confirmed": true
+      }
+    ],
+    "plain": true,
+    "fib": true,
+    "confirmed": true,
+    "fibConfirmed": true
+  },
+  "2026-10-30T00:45:00.000Z": {
+    "at": "2026-10-30T01:00:00.000Z",
+    "m15Bars": 5000,
+    "coverage": "assessed",
+    "obstacles": [
+      {
+        "id": "TJL1-1792720800-3992.36515",
+        "name": "QML",
+        "bottom": 3986.73,
+        "top": 3992.36515,
+        "tradeable": true,
+        "fibAligned": true,
+        "confirmed": false
+      },
+      {
+        "id": "Internal DB-1793022300-3988.825",
+        "name": "Internal DBD",
+        "bottom": 3988.825,
+        "top": 3993.25185,
+        "tradeable": false,
+        "fibAligned": true,
+        "confirmed": false
+      },
+      {
+        "id": "Internal TJL2-1793090700-3989.16",
+        "name": "Internal TJL2",
+        "bottom": 3989.16,
+        "top": 3992.51935,
+        "tradeable": true,
+        "fibAligned": false,
+        "confirmed": false
+      }
+    ],
+    "plain": true,
+    "fib": true,
+    "confirmed": false,
+    "fibConfirmed": false
+  },
+  "2026-10-30T02:15:00.000Z": {
+    "at": "2026-10-30T02:30:00.000Z",
+    "m15Bars": 5000,
+    "coverage": "assessed",
+    "obstacles": [
+      {
+        "id": "Internal DB-1793022300-3988.825",
+        "name": "Internal DBD",
+        "bottom": 3988.825,
+        "top": 3993.25185,
+        "tradeable": false,
+        "fibAligned": false,
+        "confirmed": false
+      }
+    ],
+    "plain": true,
+    "fib": false,
+    "confirmed": false,
+    "fibConfirmed": false
+  },
+  "2026-10-30T05:45:00.000Z": {
+    "at": "2026-10-30T06:00:00.000Z",
+    "m15Bars": 5000,
+    "coverage": "assessed",
+    "obstacles": [
+      {
+        "id": "TJL1-1792720800-3992.36515",
+        "name": "QML",
+        "bottom": 3986.73,
+        "top": 3992.36515,
+        "tradeable": true,
+        "fibAligned": false,
+        "confirmedAt": 1793331000,
+        "confirmed": true
+      },
+      {
+        "id": "DB-1792765800-3978.11",
+        "name": "DB",
+        "bottom": 3975.65,
+        "top": 3978.11,
+        "tradeable": true,
+        "fibAligned": true,
+        "confirmed": false
+      },
+      {
+        "id": "Internal DB-1793022300-3988.825",
+        "name": "Internal DBD",
+        "bottom": 3988.825,
+        "top": 3993.25185,
+        "tradeable": true,
+        "fibAligned": false,
+        "confirmedAt": 1793331000,
+        "confirmed": true
+      },
+      {
+        "id": "Internal TJL2-1793090700-3989.16",
+        "name": "Internal TJL2",
+        "bottom": 3989.16,
+        "top": 3992.51935,
+        "tradeable": true,
+        "fibAligned": false,
+        "confirmedAt": 1793331000,
+        "confirmed": true
+      }
+    ],
+    "plain": true,
+    "fib": true,
+    "confirmed": true,
+    "fibConfirmed": false
+  },
+  "2026-10-30T06:45:00.000Z": {
+    "at": "2026-10-30T07:00:00.000Z",
+    "m15Bars": 5000,
+    "coverage": "assessed",
+    "obstacles": [
+      {
+        "id": "DB-1792765800-3978.11",
+        "name": "DB",
+        "bottom": 3975.65,
+        "top": 3978.11,
+        "tradeable": true,
+        "fibAligned": true,
+        "confirmed": false
+      }
+    ],
+    "plain": true,
+    "fib": true,
+    "confirmed": false,
+    "fibConfirmed": false
+  },
+  "2026-10-30T12:30:00.000Z": {
+    "at": "2026-10-30T12:45:00.000Z",
+    "m15Bars": 5000,
+    "coverage": "assessed",
+    "obstacles": [],
+    "plain": false,
+    "fib": false,
+    "confirmed": false,
+    "fibConfirmed": false
+  },
+  "2026-10-30T12:45:00.000Z": {
+    "at": "2026-10-30T13:00:00.000Z",
+    "m15Bars": 5000,
+    "coverage": "assessed",
+    "obstacles": [],
+    "plain": false,
+    "fib": false,
+    "confirmed": false,
+    "fibConfirmed": false
+  },
+  "2026-10-30T15:15:00.000Z": {
+    "at": "2026-10-30T15:30:00.000Z",
+    "m15Bars": 5000,
+    "coverage": "assessed",
+    "obstacles": [],
+    "plain": false,
+    "fib": false,
+    "confirmed": false,
+    "fibConfirmed": false
+  },
+  "2026-10-30T17:00:00.000Z": {
+    "at": "2026-10-30T17:15:00.000Z",
+    "m15Bars": 5000,
+    "coverage": "assessed",
+    "obstacles": [],
+    "plain": false,
+    "fib": false,
+    "confirmed": false,
+    "fibConfirmed": false
+  },
+  "2026-10-30T17:30:00.000Z": {
+    "at": "2026-10-30T17:45:00.000Z",
+    "m15Bars": 5000,
+    "coverage": "assessed",
+    "obstacles": [],
+    "plain": false,
+    "fib": false,
+    "confirmed": false,
+    "fibConfirmed": false
+  },
+  "2026-11-02T10:15:00.000Z": {
+    "at": "2026-11-02T10:30:00.000Z",
+    "m15Bars": 5000,
+    "coverage": "assessed",
+    "obstacles": [
+      {
+        "id": "iss-l4-1793581200",
+        "name": "ISS L4",
+        "bottom": 3892.735,
+        "top": 3902.2655,
+        "tradeable": true,
+        "fibAligned": true,
+        "confirmedAt": 1793596500,
+        "confirmed": true
+      },
+      {
+        "id": "Internal TJL2-1793587500-3892.91",
+        "name": "Internal TJL2",
+        "bottom": 3892.91,
+        "top": 3895.01995,
+        "tradeable": true,
+        "fibAligned": false,
+        "confirmedAt": 1793609100,
+        "confirmed": true
+      }
+    ],
+    "plain": true,
+    "fib": true,
+    "confirmed": true,
+    "fibConfirmed": true
+  },
+  "2026-11-02T11:45:00.000Z": {
+    "at": "2026-11-02T12:00:00.000Z",
+    "m15Bars": 5000,
+    "coverage": "assessed",
+    "obstacles": [
+      {
+        "id": "iss-l4-1793581200",
+        "name": "ISS L4",
+        "bottom": 3892.735,
+        "top": 3902.2655,
+        "tradeable": true,
+        "fibAligned": true,
+        "confirmedAt": 1793596500,
+        "confirmed": true
+      },
+      {
+        "id": "Internal TJL2-1793587500-3892.91",
+        "name": "Internal TJL2",
+        "bottom": 3892.91,
+        "top": 3895.01995,
+        "tradeable": true,
+        "fibAligned": true,
+        "confirmedAt": 1793609100,
+        "confirmed": true
+      }
+    ],
+    "plain": true,
+    "fib": true,
+    "confirmed": true,
+    "fibConfirmed": true
+  },
+  "2026-11-02T23:00:00.000Z": {
+    "at": "2026-11-02T23:15:00.000Z",
+    "m15Bars": 5000,
+    "coverage": "assessed",
+    "obstacles": [],
+    "plain": false,
+    "fib": false,
+    "confirmed": false,
+    "fibConfirmed": false
+  },
+  "2026-11-03T01:30:00.000Z": {
+    "at": "2026-11-03T01:45:00.000Z",
+    "m15Bars": 5000,
+    "coverage": "assessed",
+    "obstacles": [],
+    "plain": false,
+    "fib": false,
+    "confirmed": false,
+    "fibConfirmed": false
+  },
+  "2026-11-03T03:00:00.000Z": {
+    "at": "2026-11-03T03:15:00.000Z",
+    "m15Bars": 5000,
+    "coverage": "assessed",
+    "obstacles": [],
+    "plain": false,
+    "fib": false,
+    "confirmed": false,
+    "fibConfirmed": false
+  },
+  "2026-11-03T14:00:00.000Z": {
+    "at": "2026-11-03T14:15:00.000Z",
+    "m15Bars": 5000,
+    "coverage": "assessed",
+    "obstacles": [],
+    "plain": false,
+    "fib": false,
+    "confirmed": false,
+    "fibConfirmed": false
+  },
+  "2026-11-03T18:15:00.000Z": {
+    "at": "2026-11-03T18:30:00.000Z",
+    "m15Bars": 5000,
+    "coverage": "assessed",
+    "obstacles": [
+      {
+        "id": "TJL1-1793680200-3922.7808",
+        "name": "QML",
+        "bottom": 3921.395,
+        "top": 3922.7808,
+        "tradeable": true,
+        "fibAligned": false,
+        "confirmed": false
+      },
+      {
+        "id": "TJL2-1793682900-3929.78",
+        "name": "RBS",
+        "bottom": 3928.11345,
+        "top": 3929.78,
+        "tradeable": true,
+        "fibAligned": true,
+        "confirmedAt": 1793728800,
+        "confirmed": true
+      }
+    ],
+    "plain": true,
+    "fib": true,
+    "confirmed": true,
+    "fibConfirmed": true
+  },
+  "2026-11-04T01:45:00.000Z": {
+    "at": "2026-11-04T02:00:00.000Z",
+    "m15Bars": 5000,
+    "coverage": "assessed",
+    "obstacles": [],
+    "plain": false,
+    "fib": false,
+    "confirmed": false,
+    "fibConfirmed": false
+  },
+  "2026-11-04T09:30:00.000Z": {
+    "at": "2026-11-04T09:45:00.000Z",
+    "m15Bars": 5000,
+    "coverage": "assessed",
+    "obstacles": [],
+    "plain": false,
+    "fib": false,
+    "confirmed": false,
+    "fibConfirmed": false
+  },
+  "2026-11-04T10:30:00.000Z": {
+    "at": "2026-11-04T10:45:00.000Z",
+    "m15Bars": 5000,
+    "coverage": "assessed",
+    "obstacles": [],
+    "plain": false,
+    "fib": false,
+    "confirmed": false,
+    "fibConfirmed": false
+  },
+  "2026-11-04T16:15:00.000Z": {
+    "at": "2026-11-04T16:30:00.000Z",
+    "m15Bars": 5000,
+    "coverage": "assessed",
+    "obstacles": [],
+    "plain": false,
+    "fib": false,
+    "confirmed": false,
+    "fibConfirmed": false
+  },
+  "2026-11-04T21:15:00.000Z": {
+    "at": "2026-11-04T21:30:00.000Z",
+    "m15Bars": 5000,
+    "coverage": "assessed",
+    "obstacles": [],
+    "plain": false,
+    "fib": false,
+    "confirmed": false,
+    "fibConfirmed": false
+  },
+  "2026-11-06T12:15:00.000Z": {
+    "at": "2026-11-06T12:30:00.000Z",
+    "m15Bars": 5000,
+    "coverage": "assessed",
+    "obstacles": [],
+    "plain": false,
+    "fib": false,
+    "confirmed": false,
+    "fibConfirmed": false
+  },
+  "2026-11-06T14:45:00.000Z": {
+    "at": "2026-11-06T15:00:00.000Z",
+    "m15Bars": 5000,
+    "coverage": "assessed",
+    "obstacles": [],
+    "plain": false,
+    "fib": false,
+    "confirmed": false,
+    "fibConfirmed": false
+  },
+  "2026-11-06T15:45:00.000Z": {
+    "at": "2026-11-06T16:00:00.000Z",
+    "m15Bars": 5000,
+    "coverage": "assessed",
+    "obstacles": [],
+    "plain": false,
+    "fib": false,
+    "confirmed": false,
+    "fibConfirmed": false
+  },
+  "2026-11-06T16:45:00.000Z": {
+    "at": "2026-11-06T17:00:00.000Z",
+    "m15Bars": 5000,
+    "coverage": "assessed",
+    "obstacles": [
+      {
+        "id": "TJL2-1793956500-4081.215",
+        "name": "TJL2",
+        "bottom": 4078.26345,
+        "top": 4081.215,
+        "tradeable": true,
+        "fibAligned": false,
+        "confirmed": false
+      }
+    ],
+    "plain": true,
+    "fib": false,
+    "confirmed": false,
+    "fibConfirmed": false
+  },
+  "2026-11-09T01:30:00.000Z": {
+    "at": "2026-11-09T01:45:00.000Z",
+    "m15Bars": 5000,
+    "coverage": "assessed",
+    "obstacles": [],
+    "plain": false,
+    "fib": false,
+    "confirmed": false,
+    "fibConfirmed": false
+  },
+  "2026-11-09T03:30:00.000Z": {
+    "at": "2026-11-09T03:45:00.000Z",
+    "m15Bars": 5000,
+    "coverage": "assessed",
+    "obstacles": [],
+    "plain": false,
+    "fib": false,
+    "confirmed": false,
+    "fibConfirmed": false
+  },
+  "2026-11-10T12:45:00.000Z": {
+    "at": "2026-11-10T13:00:00.000Z",
+    "m15Bars": 5000,
+    "coverage": "assessed",
+    "obstacles": [
+      {
+        "id": "TJL2-1794210300-4086.7322",
+        "name": "SBR",
+        "bottom": 4084.485,
+        "top": 4086.7322,
+        "tradeable": true,
+        "fibAligned": false,
+        "confirmed": false
+      }
+    ],
+    "plain": true,
+    "fib": false,
+    "confirmed": false,
+    "fibConfirmed": false
+  },
+  "2026-11-10T15:00:00.000Z": {
+    "at": "2026-11-10T15:15:00.000Z",
+    "m15Bars": 5000,
+    "coverage": "assessed",
+    "obstacles": [
+      {
+        "id": "TJL1-1794308400-4075.05515",
+        "name": "TJL1",
+        "bottom": 4068.715,
+        "top": 4075.05515,
+        "tradeable": true,
+        "fibAligned": true,
+        "confirmed": false
+      }
+    ],
+    "plain": true,
+    "fib": true,
+    "confirmed": false,
+    "fibConfirmed": false
+  },
+  "2026-11-11T04:45:00.000Z": {
+    "at": "2026-11-11T05:00:00.000Z",
+    "m15Bars": 5000,
+    "coverage": "assessed",
+    "obstacles": [],
+    "plain": false,
+    "fib": false,
+    "confirmed": false,
+    "fibConfirmed": false
+  },
+  "2026-11-16T02:45:00.000Z": {
+    "at": "2026-11-16T03:00:00.000Z",
+    "m15Bars": 5000,
+    "coverage": "assessed",
+    "obstacles": [],
+    "plain": false,
+    "fib": false,
+    "confirmed": false,
+    "fibConfirmed": false
+  },
+  "2026-11-16T06:30:00.000Z": {
+    "at": "2026-11-16T06:45:00.000Z",
+    "m15Bars": 5000,
+    "coverage": "assessed",
+    "obstacles": [],
+    "plain": false,
+    "fib": false,
+    "confirmed": false,
+    "fibConfirmed": false
+  },
+  "2026-11-16T11:30:00.000Z": {
+    "at": "2026-11-16T11:45:00.000Z",
+    "m15Bars": 5000,
+    "coverage": "assessed",
+    "obstacles": [],
+    "plain": false,
+    "fib": false,
+    "confirmed": false,
+    "fibConfirmed": false
+  },
+  "2026-11-16T17:30:00.000Z": {
+    "at": "2026-11-16T17:45:00.000Z",
+    "m15Bars": 5000,
+    "coverage": "assessed",
+    "obstacles": [],
+    "plain": false,
+    "fib": false,
+    "confirmed": false,
+    "fibConfirmed": false
+  },
+  "2026-11-17T06:45:00.000Z": {
+    "at": "2026-11-17T07:00:00.000Z",
+    "m15Bars": 5000,
+    "coverage": "assessed",
+    "obstacles": [],
+    "plain": false,
+    "fib": false,
+    "confirmed": false,
+    "fibConfirmed": false
+  },
+  "2026-11-17T19:30:00.000Z": {
+    "at": "2026-11-17T19:45:00.000Z",
+    "m15Bars": 5000,
+    "coverage": "assessed",
+    "obstacles": [],
+    "plain": false,
+    "fib": false,
+    "confirmed": false,
+    "fibConfirmed": false
+  },
+  "2026-11-17T23:30:00.000Z": {
+    "at": "2026-11-17T23:45:00.000Z",
+    "m15Bars": 5000,
+    "coverage": "assessed",
+    "obstacles": [],
+    "plain": false,
+    "fib": false,
+    "confirmed": false,
+    "fibConfirmed": false
+  }
+}

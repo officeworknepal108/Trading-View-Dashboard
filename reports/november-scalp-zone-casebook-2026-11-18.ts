@@ -1,0 +1,37 @@
+import fs from 'node:fs';
+import { build } from 'esbuild';
+const root=new URL('./',import.meta.url),stem='november-scalp-zone-review-2026-11-18';
+const read=(name:string)=>JSON.parse(fs.readFileSync(new URL(name,root),'utf8'));
+const audit=read(`${stem}.json`),previous=read('november-scalp-sl-review-2026-11-18.json');
+const candles=read('november-scalp-sl-review-2026-11-18-candles.json').M15;
+const data=audit.rows.filter((r:any)=>r.outcome==='sl').map((r:any)=>{
+  const detail=previous.rows.find((p:any)=>p.signalUTC===r.signalUTC);
+  const from=Date.parse(r.signalUTC)/1000-24*900,to=Date.parse(detail.resolvedUTC)/1000+8*900;
+  return {...r,detail,candles:candles.filter((c:any)=>c.time>=from&&c.time<=to&&c.complete!==false)};
+});
+const js=`import { createChart, CandlestickSeries, createSeriesMarkers, LineStyle } from 'lightweight-charts';
+const rows=${JSON.stringify(data)};
+const chart=createChart(document.getElementById('chart'),{height:540,autoSize:true,layout:{background:{color:'#ffffff'},textColor:'#334155'},rightPriceScale:{borderColor:'#cbd5e1'},timeScale:{timeVisible:true,borderColor:'#cbd5e1'},localization:{timeFormatter:t=>new Date((t+20700)*1000).toISOString().slice(0,16).replace('T',' ')}});
+const series=chart.addSeries(CandlestickSeries,{upColor:'#0d9488',downColor:'#e11d48',wickUpColor:'#0d9488',wickDownColor:'#e11d48',borderVisible:false,priceFormat:{type:'price',precision:3,minMove:.001}});
+const markers=createSeriesMarkers(series,[]);let lines=[];
+const select=document.getElementById('trade');rows.forEach((r,i)=>{const o=document.createElement('option');o.value=i;o.textContent=r.signalNepal+' Nepal | '+r.direction.toUpperCase()+' '+r.type;select.append(o)});
+const fmt=n=>Number(n).toFixed(3),yes=b=>b?'Yes':'No';
+function render(){const r=rows[Number(select.value)],d=r.detail;lines.forEach(l=>series.removePriceLine(l));lines=[];
+series.setData(r.candles.map(c=>({time:c.time,open:c.open,high:c.high,low:c.low,close:c.close})));
+const line=(price,color,title,style=LineStyle.Dashed)=>lines.push(series.createPriceLine({price,color,title,lineWidth:1,lineStyle:style,axisLabelVisible:true}));
+d.legs.forEach(l=>line(l.entry,'#2563eb',l.leg===10?'First entry':'Second entry'));
+line(r.stopLoss,'#dc2626','SL',LineStyle.Solid);line(r.takeProfit,'#059669','TP',LineStyle.Solid);
+const obstacles=r.zones.filter(z=>z.status==='valid'&&z.opposite&&z.beforeTP&&z.timeframe!=='M5');
+const unique=new Set();obstacles.slice().sort((a,b)=>Number(b.rejectionCloseBeforeExit)-Number(a.rejectionCloseBeforeExit)||a.distanceR-b.distanceR).filter(z=>{const k=z.bottom+':'+z.top;if(unique.has(k))return false;unique.add(k);return true}).slice(0,3).forEach((z,i)=>{const col=['#7c3aed','#d97706','#0891b2'][i];line(z.bottom,col,z.timeframe+' '+z.name+' lower',LineStyle.Dotted);line(z.top,col,z.timeframe+' '+z.name+' upper',LineStyle.Dotted)});
+markers.setMarkers([{time:Date.parse(r.signalUTC)/1000,position:r.direction==='bullish'?'belowBar':'aboveBar',color:'#2563eb',shape:r.direction==='bullish'?'arrowUp':'arrowDown',text:'Signal'},{time:Date.parse(d.resolvedUTC)/1000,position:r.direction==='bullish'?'belowBar':'aboveBar',color:'#dc2626',shape:'square',text:'SL candle'}]);
+document.getElementById('summary').textContent='M15 opposing zone: '+yes(r.features.opposingM15BeforeTP)+' | HTF opposing zone: '+yes(r.features.opposingHTFBeforeTP)+' | Inside mother: '+yes(r.insideMother)+' | Existing opposing-zone guard would flag: '+yes(r.otherGoldStrategyWouldBlock)+'. Scalp 1:1 is exempt from that guard.';
+document.getElementById('zones').replaceChildren();obstacles.forEach(z=>{const tr=document.createElement('tr');[z.timeframe,z.name+' '+z.side,fmt(z.bottom)+' – '+fmt(z.top),z.distanceR.toFixed(2)+'R',yes(z.overlapEntry),yes(z.fibAligned),yes(z.engulfingConfirmedBeforeEntry),yes(z.rejectionCloseBeforeExit)].forEach(v=>{const td=document.createElement('td');td.textContent=v;tr.append(td)});document.getElementById('zones').append(tr)});
+document.getElementById('none').hidden=obstacles.length>0;
+document.getElementById('detail').textContent='First entry candle closed against trade: '+yes(d.firstExecutionCandleAgainst)+'. H1 trendline distance: '+d.h1SupportATR.toFixed(2)+' ATR. First-leg stop: '+d.riskATR.toFixed(2)+' ATR. Full audit also includes M5 and nearby pending zones.';
+chart.timeScale().fitContent();document.documentElement.dataset.chartReady='true';}
+select.onchange=render;render();`;
+const bundled=await build({stdin:{contents:js,loader:'js',resolveDir:process.cwd()},bundle:true,write:false,format:'iife',minify:true});
+const script=bundled.outputFiles[0].text.replaceAll('</script','<\\/script');
+const html=`<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>November Scalp 1:1 zone review</title><style>body{font:14px system-ui;color:#0f172a;background:#f1f5f9;margin:0;padding:24px}main{max-width:1320px;margin:auto;background:white;padding:24px;border-radius:12px}h1{font-size:24px;margin-top:0}p{line-height:1.6}select{padding:10px;max-width:100%;font:inherit;border:1px solid #94a3b8;border-radius:6px}#chart{height:540px;margin:20px 0}table{border-collapse:collapse;width:100%;font-size:12px}td,th{padding:8px;border:1px solid #e2e8f0;text-align:left}th{background:#f8fafc}.scroll{overflow:auto}.note{color:#475569;font-size:12px}#summary{font-weight:600;color:#3730a3}</style><main><h1>November Scalp 1:1 loss review</h1><p>Choose one of the 10 clear SL setups. Pan or zoom the chart to inspect the move. All displayed zones were reconstructed using candles closed before entry. Times in the selector and tooltips are Nepal time.</p><label>Loss to inspect <select id="trade"></select></label><p id="summary"></p><div id="chart"></div><h2>Active opposing zones before TP</h2><div class="scroll"><table><thead><tr><th>TF</th><th>Zone</th><th>Price range</th><th>Distance</th><th>Entry inside</th><th>Fib aligned</th><th>Engulf confirmed at entry</th><th>Later rejection close</th></tr></thead><tbody id="zones"></tbody></table></div><p id="none" hidden>No valid M15/HTF opposing zone before TP was reconstructed for this entry.</p><p id="detail"></p><p class="note">Zones drawn on the chart are references from the entry snapshot; subsequent continued validity is not assumed. Reaction observations exclude the entry and SL candles. Zone distance uses the first entry's risk. A zone's presence or later rejection does not prove it caused the loss. The chart shows up to three distinct nearest/rejected zone bands; the table lists all M15/HTF obstacles.</p><p class="note">Current strategy replay, 1–18 November 2026 through 08:45 Nepal. Historical broker spreads, slippage, event timing and M1 context are not reconstructed. No trading code or settings were changed.</p></main><script>${script}</script></html>`;
+fs.writeFileSync(new URL(`${stem}.html`,root),html);
+console.log('Saved self-contained interactive charts for',data.length,'losses.');

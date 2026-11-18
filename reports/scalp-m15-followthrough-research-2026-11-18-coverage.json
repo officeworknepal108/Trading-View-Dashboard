@@ -1,0 +1,4 @@
+{
+  "unavailableEarlierM15": "Error: TradingView's available M15 history does not reach 2026-08-02T21:59:59.000Z.",
+  "policy": "Under 500 M15 bars is unknown; retain original setup and report assessed-only sensitivity separately."
+}
