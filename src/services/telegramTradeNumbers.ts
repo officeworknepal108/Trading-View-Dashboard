@@ -5,7 +5,7 @@ export interface TelegramTradeNumber {
 
 export interface SentTelegramTradeState extends Partial<TelegramTradeNumber> {
   entry2?: boolean;
-  tradeStyle?: 'SCALPING' | 'INTRADAY' | 'SCALP_1_1';
+  tradeStyle?: 'SCALPING' | 'INTRADAY' | 'SCALP_1_1' | 'BOLLINGER_M5';
   openedAt?: number;
   closedAt?: number;
   rfAt?: number;

@@ -1,3 +1,4 @@
+import { buildBollingerM5Signals } from './src/services/bollingerM5';
 import 'dotenv/config';
 import { buildScalpOneToOneSignals } from './src/services/scalpOneToOne';
 import { buildPullbackChartSetups } from './src/services/pullbackChartSetup';
@@ -135,6 +136,7 @@ const DEFAULT_MT5_CONFIG: Mt5AutomationConfig = {
   scalpingEnabled: true,
   intradayEnabled: true,
   scalpOneToOneEnabled: false,
+  bollingerM5Enabled: false,
   ...MT5_DEFAULT_RISK_SETTINGS,
   mtfLtfFibRequired: false,
   symbol: 'XAUUSD',
@@ -446,6 +448,8 @@ async function readMt5Config(): Promise<Mt5AutomationConfig> {
       scalpingEnabled: parsed?.scalpingEnabled !== false,
       intradayEnabled: parsed?.intradayEnabled !== false,
       scalpOneToOneEnabled: parsed?.scalpOneToOneEnabled === true,
+      bollingerM5Enabled: parsed?.bollingerM5Enabled === true,
+      bollingerM5RiskPercent: normalizeMt5RiskPercent(parsed?.bollingerM5RiskPercent, .25),
       scalpOneToOneRiskPercent: normalizeScalpOneToOneRisk(parsed?.scalpOneToOneRiskPercent),
       mtfLtfFibRequired: parsed?.mtfLtfFibRequired === true,
       enabledTimeframes: normalizeMt5EnabledTimeframes(
@@ -555,7 +559,7 @@ function validateMt5Signal(candidate: any): string | undefined {
   if (candidate.symbol !== 'XAUUSD') return 'Only XAUUSD is supported.';
   if (!['BUY', 'SELL'].includes(candidate.direction)) return 'Invalid direction.';
   if (!['MARKET', 'LIMIT'].includes(candidate.orderType)) return 'Invalid order type.';
-  if (!['ENGULFING', 'MTF'].includes(candidate.source)) return 'Invalid signal source.';
+  if (!['ENGULFING', 'MTF', 'BOLLINGER'].includes(candidate.source)) return 'Invalid signal source.';
   if (!validFinitePrice(candidate.entry) || !validFinitePrice(candidate.stopLoss)
     || !validFinitePrice(candidate.takeProfit) || !validFinitePrice(candidate.riskFree)) {
     return 'Entry, SL, TP and risk-free prices must be positive numbers.';
@@ -606,6 +610,8 @@ function sanitizeMt5Config(candidate: any, current: Mt5AutomationConfig): Mt5Aut
     intradayEnabled: candidate?.intradayEnabled === undefined ? current.intradayEnabled : candidate.intradayEnabled !== false,
     scalpOneToOneEnabled: candidate?.scalpOneToOneEnabled === undefined
       ? current.scalpOneToOneEnabled === true : candidate.scalpOneToOneEnabled === true,
+    bollingerM5Enabled: candidate?.bollingerM5Enabled === undefined ? current.bollingerM5Enabled === true : candidate.bollingerM5Enabled === true,
+    bollingerM5RiskPercent: normalizeMt5RiskPercent(candidate?.bollingerM5RiskPercent, current.bollingerM5RiskPercent ?? .25),
     scalpOneToOneRiskPercent: normalizeScalpOneToOneRisk(candidate?.scalpOneToOneRiskPercent,
       current.scalpOneToOneRiskPercent ?? MT5_DEFAULT_RISK_SETTINGS.scalpOneToOneRiskPercent),
     mtfLtfFibRequired: candidate?.mtfLtfFibRequired === undefined
@@ -641,6 +647,9 @@ async function enqueueMt5Signal(
   const executionConnection = mt5Context().mt5BridgeHeartbeat ? { ...mt5Context().mt5BridgeHeartbeat } : undefined;
   const error = validateMt5Signal(candidate);
   if (error) throw new Error(error);
+  if ((candidate.tradeStyle === 'BOLLINGER_M5' || candidate.source === 'BOLLINGER') && !scannerQualified) {
+    throw new Error('Bollinger M5 signals must be qualified by the server strategy scanner.');
+  }
   if (candidate.tradeStyle === 'SCALP_1_1' && !scannerQualified) {
     throw new Error('Scalp 1:1 signals must be qualified by the server strategy scanner.');
   }
@@ -678,6 +687,7 @@ async function enqueueMt5Signal(
       && signal.direction === candidate.direction
       && signal.signalAt === candidate.signalAt
       && (signal.tradeStyle === 'SCALP_1_1') === (candidate.tradeStyle === 'SCALP_1_1')
+      && (signal.tradeStyle === 'BOLLINGER_M5') === (candidate.tradeStyle === 'BOLLINGER_M5')
       && (!candidate.scalpEntry || !signal.scalpEntry || signal.scalpEntry.leg === candidate.scalpEntry.leg)
       && !(sameIntradayPullbackSetup(candidate, signal) && candidate.intradayEntry!.leg !== signal.intradayEntry!.leg)
     ));
@@ -735,7 +745,10 @@ async function enqueueMt5Signal(
       await writeMt5Signals(signals);
       return { signal: existing, duplicate: true };
     }
-    if (candidate.symbol === 'XAUUSD' && candidate.tradeStyle !== 'SCALP_1_1') {
+    if (candidate.tradeStyle === 'BOLLINGER_M5' && signals.some(s => s.tradeStyle === 'BOLLINGER_M5'
+      && ['QUEUED', 'CLAIMED', 'PLACED', 'ACTIVE', 'RISK_FREE'].includes(s.status)
+      && mt5ConnectionMatches(executionConnection, s))) throw new Error('A Bollinger M5 position or order is already open.');
+    if (candidate.symbol === 'XAUUSD' && candidate.tradeStyle !== 'SCALP_1_1' && candidate.tradeStyle !== 'BOLLINGER_M5') {
       const zones = opposingZones ?? await loadGoldOpposingZones();
       if (!zones) throw new Error('Unable to verify opposing Gold zones; new entry is paused.');
       if (goldAutomationOpposingZoneBlocked(candidate, zones)) {
@@ -899,7 +912,7 @@ function buildJournalAutoReason(options: {
   fibSource?: string;
   fibBand?: string;
   volumeLogicStatus: string;
-  source: 'ENGULFING' | 'MTF';
+  source: 'ENGULFING' | 'MTF' | 'BOLLINGER';
 }): string {
   const fib = options.fibSource === 'MAJOR LIQUIDITY'
     ? 'Major Liquidity qualification (no FIB required)'
@@ -1109,6 +1122,11 @@ async function scanMt5AutomationSignals(): Promise<number> {
   );
   const candidates: Mt5SignalInput[] = [];
   const now = Math.floor(Date.now() / 1000);
+
+  if (config.bollingerM5Enabled) {
+    try { candidates.push(...buildBollingerM5Signals(candles.M5, candles.H4, now, config.signalMaxAgeSeconds)); }
+    catch (error) { console.warn('Bollinger M5 waiting for history:', error instanceof Error ? error.message : error); }
+  }
 
   if (config.scalpOneToOneEnabled) {
     try {
@@ -1496,7 +1514,7 @@ async function updateMt5JournalRecord(
     }
     if (status !== 'ACTIVE' && status !== 'RISK_FREE'
       && !['TP', 'SL', 'RF'].includes(status) && !existing) return;
-    const confirmedFastPullbackClose = (signal.scalpEntry || signal.intradayEntry) && ['TP', 'SL', 'RF'].includes(status)
+    const confirmedFastPullbackClose = (signal.scalpEntry || signal.intradayEntry || signal.tradeStyle === 'BOLLINGER_M5') && ['TP', 'SL', 'RF'].includes(status)
       && (signal.brokerTicket ?? 0) > 0 && (signal.closedAt ?? 0) > 0
       && (signal.closePrice ?? 0) > 0;
     if (!existing && status !== 'ACTIVE' && !confirmedFastPullbackClose) return;
@@ -1562,8 +1580,8 @@ async function updateMt5JournalRecord(
       signalAt: signal.signalAt,
       entry: executionPrice,
       stopLoss,
-      takeProfit: signal.takeProfit,
-      rewardRisk: signal.scalpEntry || signal.intradayEntry ? Math.abs(signal.takeProfit - executionPrice) / Math.abs(executionPrice - stopLoss)
+      takeProfit: signal.executionTakeProfit ?? signal.takeProfit,
+      rewardRisk: signal.scalpEntry || signal.intradayEntry || signal.tradeStyle === 'BOLLINGER_M5' ? Math.abs((signal.executionTakeProfit ?? signal.takeProfit) - executionPrice) / Math.abs(executionPrice - stopLoss)
         : signal.rewardRisk,
       riskPips,
       brokerTicket: signal.brokerPosition || signal.brokerTicket,
@@ -1620,7 +1638,7 @@ function validTelegramTradeAlert(value: any): value is TelegramTradeAlert {
     && [value.entry, value.stopLoss, value.takeProfit, value.riskPips, value.rewardRisk, value.openedAt]
       .every((number) => Number.isFinite(number) && number > 0)
     && value.entry !== value.stopLoss
-    && (value.tradeStyle === undefined || ['SCALPING', 'INTRADAY', 'SCALP_1_1'].includes(value.tradeStyle))
+    && (value.tradeStyle === undefined || ['SCALPING', 'INTRADAY', 'SCALP_1_1', 'BOLLINGER_M5'].includes(value.tradeStyle))
     && (value.kind !== 'entry' || value.tradeStyle !== 'SCALPING'
       || Number.isFinite(value.riskFree) && value.riskFree > 0)
     && value.openedAt <= now + 5
@@ -1836,6 +1854,7 @@ async function startServer() {
         enabled: config.enabled, dryRun: config.dryRun, riskPercent: config.riskPercent,
         intradayRiskPercent: config.intradayRiskPercent, scalpingRiskPercent: config.scalpingRiskPercent,
         scalpOneToOneRiskPercent: config.scalpOneToOneRiskPercent,
+        bollingerM5RiskPercent: config.bollingerM5RiskPercent,
         maximumDailyLossPercent: config.maximumDailyLossPercent };
     })));
     res.setHeader('Cache-Control', 'no-store');
@@ -2061,6 +2080,9 @@ async function startServer() {
   });
 
   app.post('/api/mt5/signals', async (req, res) => {
+    if (req.body?.tradeStyle === 'BOLLINGER_M5' || req.body?.source === 'BOLLINGER') {
+      return res.status(403).json({ ok: false, error: 'Bollinger M5 signals must be qualified by the server strategy scanner.' });
+    }
     try {
       const error = validateMt5Signal(req.body);
       if (error) return res.status(400).json({ ok: false, error });
@@ -2327,7 +2349,7 @@ async function startServer() {
         signal.status = status;
         signal.updatedAt = Math.floor(Date.now() / 1000);
         for (const field of [
-          'brokerTicket', 'brokerPosition', 'executionPrice', 'volume', 'initialVolume',
+          'brokerTicket', 'brokerPosition', 'executionPrice', 'executionTakeProfit', 'volume', 'initialVolume',
           'initialStopLoss', 'riskFree', 'riskPips', 'openedAt', 'closedAt',
           'closePrice', 'realizedProfit',
           'partialClosedVolume', 'remainingVolume', 'partialClosePrice', 'partialCloseTicket',
@@ -2370,10 +2392,10 @@ async function startServer() {
           || confirmedRf || confirmedResult)
           && (await readMt5Config()).telegramMessagesEnabled) {
           const telegramAlert: TelegramTradeAlert = {
-            tradeKey: (updated.tradeStyle === 'SCALP_1_1' ? 'SCALP_1_1:' : '') + [updated.symbol, updated.direction === 'BUY' ? 'bullish' : 'bearish',
+            tradeKey: (['SCALP_1_1', 'BOLLINGER_M5'].includes(updated.tradeStyle ?? '') ? updated.tradeStyle + ':' : '') + [updated.symbol, updated.direction === 'BUY' ? 'bullish' : 'bearish',
               updated.signalTimeframe, updated.signalAt, updated.entry.toFixed(5)].join(':')
                 + (updated.intradayEntry ? `:P${updated.intradayEntry.leg}` : ''),
-            id: updated.intradayEntry || updated.tradeStyle === 'SCALP_1_1' || status === 'PLACED' || cancelledBeyondOneAndHalfR || confirmedRf ? updated.id : [
+            id: updated.intradayEntry || updated.tradeStyle === 'SCALP_1_1' || updated.tradeStyle === 'BOLLINGER_M5' || status === 'PLACED' || cancelledBeyondOneAndHalfR || confirmedRf ? updated.id : [
               updated.symbol,
               updated.direction === 'BUY' ? 'bullish' : 'bearish',
               updated.signalTimeframe,

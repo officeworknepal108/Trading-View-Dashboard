@@ -1,0 +1,70 @@
+{
+  "period": "August 3-November 18, 2026",
+  "type": "OHLC chart simulations, not broker executions",
+  "fillDefinition": "Filled only if every allowed OHLC ordering establishes the second entry. A fill may be confirmed while its eventual TP/SL remains uncertain.",
+  "comparison": [
+    {
+      "method": "Old 10/25",
+      "counts": {
+        "filled": 199,
+        "not-filled": 27,
+        "uncertain": 7,
+        "no-valid-entry": 2
+      },
+      "percentOfAll235": {
+        "filled": 84.68,
+        "not-filled": 11.49,
+        "uncertain": 2.98,
+        "no-valid-entry": 0.85
+      },
+      "secondLegOutcomes": {
+        "sl": 75,
+        "not-filled": 27,
+        "tp": 100,
+        "uncertain": 31
+      }
+    },
+    {
+      "method": "Corrected 10/25",
+      "counts": {
+        "filled": 193,
+        "not-filled": 35,
+        "uncertain": 6,
+        "no-valid-entry": 1
+      },
+      "percentOfAll235": {
+        "filled": 82.13,
+        "not-filled": 14.89,
+        "uncertain": 2.55,
+        "no-valid-entry": 0.43
+      },
+      "secondLegOutcomes": {
+        "sl": 74,
+        "not-filled": 35,
+        "tp": 95,
+        "uncertain": 30
+      }
+    },
+    {
+      "method": "Candidate 0/70",
+      "counts": {
+        "not-filled": 81,
+        "filled": 142,
+        "uncertain": 11,
+        "no-valid-entry": 1
+      },
+      "percentOfAll235": {
+        "not-filled": 34.47,
+        "filled": 60.43,
+        "uncertain": 4.68,
+        "no-valid-entry": 0.43
+      },
+      "secondLegOutcomes": {
+        "not-filled": 81,
+        "sl": 64,
+        "tp": 61,
+        "uncertain": 28
+      }
+    }
+  ]
+}

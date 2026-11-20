@@ -1,0 +1,5 @@
+month,coverage,entries,tp,sl,win_pct,loss_pct,reported_net_r,usd_at_fixed_50,pct_of_initial_5000
+2026-07,Partial month,6,2,4,33.3,66.7,-1.46,-73.0,-1.46
+2026-08,Full calendar month within source history,10,7,3,70.0,30.0,6.88,344.0,6.88
+2026-09,Full calendar month within source history,13,9,4,69.2,30.8,8.65,432.5,8.65
+2026-10,Partial month,5,5,0,100.0,0.0,7.18,359.0,7.18

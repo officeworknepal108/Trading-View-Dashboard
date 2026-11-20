@@ -10,6 +10,7 @@
     {
       "paths": [
         "src/components/OandaProChart.tsx",
+        "src/components/BollingerStudy.tsx",
         "src/services/autoTrendlines.ts",
         "src/services/trendlineStudy.ts",
         "src/services/trendlineStudy.worker.ts",
@@ -81,6 +82,14 @@
         "tests/goldScalping.test.ts",
         "mt5_bridge.py",
         "src/services/mt5Automation.ts",
+        "src/services/bollingerM5.ts",
+        "src/services/bollingerM5.worker.ts",
+        "src/services/bollingerArchive.ts",
+        "src/studyAssets/bollingerBrokerHistory.json",
+        "scripts/import-bollinger-history.ts",
+        "tests/bollingerArchive.test.ts",
+        "scripts/study-bollinger-m5.ts",
+        "tests/bollingerM5.test.ts",
         "tests/mt5Automation.test.ts",
         "tests/test_mt5_bridge.py"
       ],

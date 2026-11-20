@@ -12,7 +12,7 @@ export const TradeStrategyCheckboxes: React.FC<{
         <input type="checkbox" checked={selected.includes(strategy)} onChange={event => onChange(
           event.target.checked ? [...selected, strategy] : selected.filter(value => value !== strategy),
         )} />
-        {strategy === 'SCALP_1_1' ? 'Scalp 1:1' : strategy === 'SCALPING' ? 'Scalping' : 'Intraday'}
+        {strategy === 'BOLLINGER_M5' ? 'Bollinger M5' : strategy === 'SCALP_1_1' ? 'Scalp 1:1' : strategy === 'SCALPING' ? 'Scalping' : 'Intraday'}
       </label>
     ))}
   </fieldset>

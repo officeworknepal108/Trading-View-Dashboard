@@ -414,6 +414,10 @@ def signal_risk_percent(signal: dict[str, Any], config: dict[str, Any]) -> float
         if isinstance(multiplier, bool) or multiplier not in (1, 0.5):
             raise RuntimeError('Invalid Scalp 1:1 setup risk multiplier.')
         value *= multiplier
+    elif signal.get('tradeStyle') == 'BOLLINGER_M5':
+        value = float(config.get('bollingerM5RiskPercent', .25))
+        if value not in (.25, .5, 1, 1.5, 2, 2.5, 3, 3.5, 4, 4.5, 5):
+            raise RuntimeError('Invalid Bollinger M5 risk selection.')
     elif signal.get('tradeStyle') == 'INTRADAY':
         value = float(config.get('intradayRiskPercent', config.get('riskPercent', .5)))
     elif signal.get('tradeStyle') == 'SCALPING':
@@ -588,6 +592,14 @@ def checked_live_entry_price(signal: dict[str, Any], config: dict[str, Any],
         raise RuntimeError("The executable MT5 price or stop loss is invalid.")
     if (buy and price <= stop) or (not buy and price >= stop):
         raise RuntimeError("The live MT5 quote has passed the planned stop loss.")
+    if signal.get('tradeStyle') == 'BOLLINGER_M5':
+        # Check the executable quote against the rounded broker SL as well as the planned signal.
+        if abs(price - stop) * 10 > 80 + 1e-8:
+            raise RuntimeError('Bollinger M5 SL exceeds the 80-pip maximum at the live entry price.')
+        target = float(signal['takeProfit'])
+        live_rr = ((target - price) if buy else (price - target)) / abs(price - stop)
+        if abs(live_rr - 1.5) > .05:
+            raise RuntimeError('Live Bollinger M5 entry moved outside the 1.5R tolerance; fixed exits are preserved.')
     if not is_limit:
         spread = float(tick.ask) - float(tick.bid)
         if not math.isfinite(spread) or spread < 0:
@@ -829,7 +841,45 @@ def opposite_position_alert(signal: dict[str, Any], symbol: str) -> str | None:
             f"{reason} {action}")
 
 
+def validate_bollinger_m5(signal: dict[str, Any], config: dict[str, Any]) -> None:
+    if not config.get('bollingerM5Enabled', False):
+        raise RuntimeError('Bollinger M5 automatic trading is disabled.')
+    try:
+        sign = 1 if signal['direction'] == 'BUY' else -1
+        entry, stop, target = map(float, (signal['entry'], signal['stopLoss'], signal['takeProfit']))
+        risk = sign * (entry - stop)
+        if risk * 10 > 80 + 1e-8:
+            raise RuntimeError('Bollinger M5 SL exceeds the 80-pip maximum.')
+        valid = (signal['direction'] in ('BUY', 'SELL') and signal.get('source') == 'BOLLINGER'
+                 and signal.get('symbol') == 'XAUUSD' and signal.get('orderType') == 'MARKET'
+                 and signal.get('zoneTimeframe') == 'H4' and signal.get('signalTimeframe') == 'M5'
+                 and not signal.get('scalpEntry') and not signal.get('intradayEntry')
+                 and all(math.isfinite(v) and v > 0 for v in (entry, stop, target)) and risk > 0
+                 and abs(sign * (target - entry) / risk - 1.5) < 1e-6
+                 and signal.get('rewardRisk') == 1.5
+                 and signal['calculatedAt'] == signal['signalAt'] + 300
+                 and signal['calculatedAt'] < signal['expiresAt'] <= signal['calculatedAt'] + 299
+                 and signal['calculatedAt'] <= time.time() < signal['expiresAt'])
+    except (KeyError, TypeError, ValueError, ZeroDivisionError):
+        valid = False
+    if not valid:
+        raise RuntimeError('Invalid Bollinger M5 single entry, freshness or fixed 1.5R exits.')
+
+
+def check_bollinger_position_isolation(signal: dict[str, Any], account: Any, symbol: str) -> None:
+    if signal.get('tradeStyle') != 'BOLLINGER_M5':
+        return
+    if not account:
+        raise RuntimeError('Unable to verify the Bollinger M5 account position mode.')
+    hedging = getattr(mt5, 'ACCOUNT_MARGIN_MODE_RETAIL_HEDGING', 2)
+    if getattr(account, 'margin_mode', None) != hedging and any(
+            position.symbol == symbol for position in (mt5.positions_get() or [])):
+        raise RuntimeError('Bollinger M5 cannot merge into an existing netting-account position; independent exits are required.')
+
+
 def check_safety(signal: dict[str, Any], config: dict[str, Any]) -> tuple[Any, Any]:
+    if signal.get('tradeStyle') == 'BOLLINGER_M5':
+        validate_bollinger_m5(signal, config)
     if signal.get('intradayEntry'):
         if not config.get('intradayEnabled', True):
             raise RuntimeError('Intraday automatic trading is disabled.')
@@ -869,6 +919,7 @@ def check_safety(signal: dict[str, Any], config: dict[str, Any]) -> tuple[Any, A
     symbol = str(config["brokerSymbol"])
     if not mt5.symbol_select(symbol, True):
         raise RuntimeError(f"Broker symbol {symbol} is unavailable: {mt5.last_error()}")
+    check_bollinger_position_isolation(signal, account, symbol)
     conflict = opposite_position_alert(signal, symbol)
     if conflict:
         raise RuntimeError(conflict)
@@ -947,6 +998,16 @@ def quantized_pullback_signal(signal: dict[str, Any], info: Any) -> dict[str, An
     return {**signal, 'entry': entry, 'riskPips': abs(entry - float(signal['stopLoss'])) * 10}
 
 
+def quantized_bollinger_signal(signal: dict[str, Any], info: Any) -> dict[str, Any]:
+    step = float(getattr(info, 'trade_tick_size', 0) or getattr(info, 'point', 0))
+    if not math.isfinite(step) or step <= 0:
+        raise RuntimeError('Unable to verify broker tick size for Bollinger M5.')
+    def price(value: Any) -> float:
+        return float((Decimal(str(value)) / Decimal(str(step))).to_integral_value() * Decimal(str(step)))
+    stop, target = price(signal['stopLoss']), price(signal['takeProfit'])
+    return {**signal, 'stopLoss': stop, 'takeProfit': target, 'riskPips': abs(float(signal['entry']) - stop) * 10}
+
+
 def prepare_pullback_allocation(signal: dict[str, Any], config: dict[str, Any], info: Any) -> dict[str, Any]:
     meta = pullback_entry(signal)
     if not meta or meta.get('version', 0) < 3 or signal.get('pullbackFallback') == 'SECOND_ONLY':
@@ -983,6 +1044,8 @@ def place_signal(signal: dict[str, Any], config: dict[str, Any]) -> dict[str, An
         return {"status": "SIMULATED"}
 
     info, tick = check_safety(signal, config)
+    if signal.get('tradeStyle') == 'BOLLINGER_M5':
+        signal = quantized_bollinger_signal(signal, info)
     signal = prepare_pullback_allocation(signal, config, info)
     if signal.get('pullbackFallback') == 'SECOND_ONLY' and pullback_entry(signal).get('leg') == 10:
         return {'status': 'CANCELLED', 'pullbackFallback': 'SECOND_ONLY'}
@@ -1045,6 +1108,7 @@ def place_signal(signal: dict[str, Any], config: dict[str, Any]) -> dict[str, An
         "riskPips": actual_risk * 10,
         "volume": volume,
         "comment": request["comment"],
+        **({'executionTakeProfit': float(request['tp'])} if signal.get('tradeStyle') == 'BOLLINGER_M5' else {}),
         **({'pullbackFallback': 'SECOND_ONLY'} if signal.get('pullbackFallback') == 'SECOND_ONLY' else {}),
     }
     update_status(signal["id"], status, **{key: value for key, value in details.items() if key != "status"})
@@ -1233,7 +1297,7 @@ def position_fib_exit_timeframe(position: Any, status_payload: dict[str, Any],
                if (record.get('account'), record.get('server')) == ACTIVE_ACCOUNT
                and record.get('brokerSymbol') == position.symbol
                and any(int(record.get(field) or 0) in identifiers for field in ('brokerPosition', 'brokerTicket'))]
-    if any(record.get('tradeStyle') == 'SCALP_1_1' for record in matches):
+    if any(record.get('tradeStyle') in ('SCALP_1_1', 'BOLLINGER_M5') for record in matches):
         return None  # Fixed SL/TP only; no opposing-Fib partial or full exit.
     timeframes = {record.get('zoneTimeframe') for record in matches}
     value = next(iter(timeframes)) if len(timeframes) == 1 else None
@@ -1665,7 +1729,7 @@ def manage_open_signals(
             )
             state.pop(signal_id, None)
             continue
-        if record.get('tradeStyle') == 'SCALP_1_1' or record.get('opposingFibProfitTaken'):
+        if record.get('tradeStyle') in ('SCALP_1_1', 'BOLLINGER_M5') or record.get('opposingFibProfitTaken'):
             continue  # Its remaining position must reach the original TP/SL, without another 1R partial close.
         is_buy = position.type == mt5.POSITION_TYPE_BUY
         tick = mt5.symbol_info_tick(position.symbol)

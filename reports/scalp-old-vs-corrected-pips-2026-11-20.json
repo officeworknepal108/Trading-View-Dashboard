@@ -1,0 +1,65 @@
+{
+  "method": {
+    "period": "August 3-November 18, 2026; same 235 archived setups",
+    "pipSize": 0.1,
+    "pips": "Unweighted sum of distances across both filled legs, only in completely resolved setups. Not lot-weighted and not setup counts. Uncertain and open setups excluded.",
+    "dollars": "Fixed $4 total risk per setup; 60/40 allocation, ideal fractional lots; no costs, compounding or live account restrictions. Selected methods fail minimum-lot sizing at $200/2% risk on current Exness contract.",
+    "selection": "0/70 is a hindsight full-history candidate, not a validated future optimum."
+  },
+  "comparison": [
+    {
+      "method": "Old: next-open 10% / 25%",
+      "tpSetups": 116,
+      "slSetups": 75,
+      "winPercent": 60.73298429319372,
+      "lossPercent": 39.26701570680628,
+      "tpPips": 29962.15750000017,
+      "slPips": 19044.397500000036,
+      "netPips": 10917.760000000133,
+      "tpLegs": 216,
+      "slLegs": 150,
+      "grossProfitDollars": 483.33897269398744,
+      "grossLossDollars": 300.0,
+      "netDollars": 183.33897269398744,
+      "uncertainSetups": 32,
+      "unfilledSetups": 10,
+      "noValidEntry": 2
+    },
+    {
+      "method": "Corrected: reference 10% / 25%",
+      "tpSetups": 110,
+      "slSetups": 74,
+      "winPercent": 59.78260869565217,
+      "lossPercent": 40.21739130434783,
+      "tpPips": 28596.000000000175,
+      "slPips": 18077.410000000058,
+      "netPips": 10518.590000000117,
+      "tpLegs": 205,
+      "slLegs": 148,
+      "grossProfitDollars": 475.2789578179748,
+      "grossLossDollars": 296.0,
+      "netDollars": 179.2789578179748,
+      "uncertainSetups": 31,
+      "unfilledSetups": 19,
+      "noValidEntry": 1
+    },
+    {
+      "method": "Study candidate: reference 0% / 70%",
+      "tpSetups": 122,
+      "slSetups": 75,
+      "winPercent": 61.92893401015228,
+      "lossPercent": 38.07106598984771,
+      "tpPips": 25641.8550000001,
+      "slPips": 15650.004999999992,
+      "netPips": 9991.85000000011,
+      "tpLegs": 183,
+      "slLegs": 139,
+      "grossProfitDollars": 471.2171290034492,
+      "grossLossDollars": 282.4,
+      "netDollars": 188.81712900344922,
+      "uncertainSetups": 28,
+      "unfilledSetups": 9,
+      "noValidEntry": 1
+    }
+  ]
+}

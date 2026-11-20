@@ -17,7 +17,7 @@ export interface CanonicalTradeRecord extends FilterableTradeRecord {
   id: string; symbol?: string; zoneTimeframe: TradeTimeframe;
   signalAt?: number; openedAt?: number; engulfingType: string; engulfingCandleCount?: number;
   entry: number; stopLoss: number; takeProfit: number; rewardRisk: number; riskPips: number;
-  tradeStyle?: 'SCALPING' | 'INTRADAY' | 'SCALP_1_1'; fibSource?: string; fibBand?: string;
+  tradeStyle?: 'SCALPING' | 'INTRADAY' | 'SCALP_1_1' | 'BOLLINGER_M5'; fibSource?: string; fibBand?: string;
   brokerTicket?: number; mt5Managed?: boolean;
   scalpEntry?: import('./mt5Automation').ScalpPullbackEntry;
   intradayEntry?: import('./intradayPullback').IntradayPullbackEntry;
@@ -39,7 +39,7 @@ export interface TradeRecordVerification {
 export interface FilterableTradeRecord {
   completedAt: number;
   signalTimeframe: TradeTimeframe;
-  source: 'ENGULFING' | 'MTF';
+  source: 'ENGULFING' | 'MTF' | 'BOLLINGER';
   direction: 'bullish' | 'bearish';
   result: TradeResult | 'open' | 'risk-free';
   zoneName: string;
@@ -50,8 +50,8 @@ export interface FilterableTradeRecord {
 }
 
 export type TradeDatePeriod = 'DAY' | 'WEEK' | 'MONTH';
-export type TradeStrategy = 'SCALPING' | 'SCALP_1_1' | 'INTRADAY';
-export const TRADE_STRATEGIES: TradeStrategy[] = ['SCALPING', 'SCALP_1_1', 'INTRADAY'];
+export type TradeStrategy = 'SCALPING' | 'SCALP_1_1' | 'INTRADAY' | 'BOLLINGER_M5';
+export const TRADE_STRATEGIES: TradeStrategy[] = ['SCALPING', 'SCALP_1_1', 'INTRADAY', 'BOLLINGER_M5'];
 
 export function matchesTradeStrategies(style: string | undefined, selected: readonly TradeStrategy[]): boolean {
   return selected.includes((style === 'ALL' ? 'INTRADAY' : style ?? 'INTRADAY') as TradeStrategy);
@@ -440,7 +440,7 @@ export function accuracyResultMatchesCandles(
     // Match the existing trade engine's TP priority when both exits share a candle.
     if (tpHit) return index === lastIndex && record.result === 'tp';
     if (slHit) {
-      const result = record.tradeStyle !== 'INTRADAY' && record.tradeStyle !== 'SCALP_1_1' && reachedOneR ? 'rf' : 'sl';
+      const result = record.tradeStyle !== 'INTRADAY' && record.tradeStyle !== 'SCALP_1_1' && record.tradeStyle !== 'BOLLINGER_M5' && reachedOneR ? 'rf' : 'sl';
       return index === lastIndex && record.result === result;
     }
   }
@@ -474,6 +474,7 @@ export function buildCanonicalTradeRecords<T extends CanonicalTradeRecord>(
         record.openedAt].every((value) => typeof value === 'number' && Number.isFinite(value))
       || record.openedAt! < record.signalAt!) return false;
     if (brokerRecord(record)) return ['open', 'risk-free', 'tp', 'sl', 'rf'].includes(record.result);
+    if (record.tradeStyle === 'BOLLINGER_M5') return current.some(r => r.id === record.id && r.tradeStyle === 'BOLLINGER_M5');
     const filledIntraday = record.intradayEntry && record.result === 'open' && currentIntradayIds.has(record.id);
     if ((!['tp', 'sl', 'rf'].includes(record.result) && !filledIntraday) || record.completedAt < record.openedAt!
       || record.openedAt! < record.signalAt! + tradeTimeframeSeconds(record.signalTimeframe)
@@ -527,6 +528,7 @@ export function buildCanonicalTradeRecords<T extends CanonicalTradeRecord>(
     }
     // The dedicated volume study verifies this strategy's bias, EMA, H1 support
     // and fixed exits. Generic zone/Fib validation describes another strategy.
+    if (record.tradeStyle === 'BOLLINGER_M5') return current.some(candidate => candidate.id === record.id && candidate.tradeStyle === 'BOLLINGER_M5') ? [record] : [];
     if (record.tradeStyle === 'SCALP_1_1') {
       return current.some(candidate => candidate.id === record.id
         && candidate.tradeStyle === 'SCALP_1_1') ? [record] : [];

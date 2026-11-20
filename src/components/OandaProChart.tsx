@@ -1,3 +1,4 @@
+import { BollingerStudy } from './BollingerStudy';
 import { detectAutoTrendlines, type AutoTrendline } from '../services/autoTrendlines';
 import { buildIntradayPullbackSignals, intradayPullbackChartRecords } from '../services/intradayPullback';
 import { tradeToMt5Signal } from '../services/mt5Automation';
@@ -2646,6 +2647,8 @@ const EngulfingAccuracyTable: React.FC<{
                 {resultRow('INTRADAY ENTRIES', accuracyCounts(summaryRecords.filter((record) => record.tradeStyle === 'INTRADAY')))}
                 {resultRow('SCALPING', accuracyCounts(summaryRecords.filter((record) => record.tradeStyle === 'SCALPING')))}
                 {resultRow('SCALP 1:1 ENTRIES', accuracyCounts(summaryRecords.filter((record) => record.tradeStyle === 'SCALP_1_1')))}
+                {resultRow('BB M5 CHART STUDY', accuracyCounts(summaryRecords.filter(record => record.tradeStyle === 'BOLLINGER_M5' && !record.mt5Managed && record.brokerTicket === undefined)))}
+                {resultRow('BB M5 MT5 FILLS', accuracyCounts(summaryRecords.filter(record => record.tradeStyle === 'BOLLINGER_M5' && (record.mt5Managed || record.brokerTicket !== undefined))))}
               </>}
               {header('Trade source')}
               {resultRow('ENGULFING', accuracyCounts(
@@ -2685,7 +2688,7 @@ const EngulfingAccuracyTable: React.FC<{
                 )}
                 {filters.date !== 'ALL' && <button type="button" onClick={() => setFilters((current) => ({ ...current, date: 'ALL' }))} className="rounded border border-slate-200 bg-white px-1.5 py-1 text-[8px] font-black text-slate-500">ALL DATES</button>}
                 <select value={filters.source} onChange={(event) => setFilters((current) => ({ ...current, source: event.target.value as TradeRecordFilters['source'] }))} className="rounded border border-slate-200 bg-white px-1.5 py-1 text-[8px] font-bold">
-                  <option value="ALL">ALL SOURCES</option><option value="ENGULFING">ENGULFING</option><option value="MTF">MTF</option>
+                  <option value="ALL">ALL SOURCES</option><option value="ENGULFING">ENGULFING</option><option value="MTF">MTF</option><option value="BOLLINGER">BOLLINGER</option>
                 </select>
                 <select value={filters.side} onChange={(event) => setFilters((current) => ({ ...current, side: event.target.value as TradeRecordFilters['side'] }))} className="rounded border border-slate-200 bg-white px-1.5 py-1 text-[8px] font-bold">
                   <option value="ALL">ALL SIDES</option><option value="BUY">BUY</option><option value="SELL">SELL</option>
@@ -2757,10 +2760,10 @@ const EngulfingAccuracyTable: React.FC<{
                     {formatTradeTimeframe(record.signalTimeframe)}
                   </td>
                   <td className="px-1.5 py-1 font-bold text-slate-600">{record.source}</td>
-                  <td className="px-1.5 py-1 font-bold text-indigo-700">{record.tradeStyle === 'SCALP_1_1' ? 'SCALP 1:1' : record.tradeStyle ?? '—'}</td>
+                  <td className="px-1.5 py-1 font-bold text-indigo-700">{record.tradeStyle === 'BOLLINGER_M5' ? 'BOLLINGER M5' : record.tradeStyle === 'SCALP_1_1' ? 'SCALP 1:1' : record.tradeStyle ?? '—'}</td>
                   <td className="whitespace-nowrap px-1.5 py-1 text-left font-bold text-slate-700">
                     {record.zoneName}
-                    {record.tradeStyle === 'SCALP_1_1' && <div className="text-[8px] text-slate-500">
+                    {(record.tradeStyle === 'SCALP_1_1' || record.tradeStyle === 'BOLLINGER_M5') && <div className="text-[8px] text-slate-500">
                       {record.mt5Managed || record.brokerTicket !== undefined ? 'MT5' : 'CHART ONLY'}
                       {record.scalpEntry && ` · ${record.scalpEntry.leg}% pullback / ${Math.round(record.scalpEntry.riskShare * 100)}% risk`}
                     </div>}
@@ -2825,7 +2828,7 @@ export const OandaProChart: React.FC<{
     id: 'primary' | 'secondary'; label: string; connected: boolean; account?: string;
     server?: string; equity?: number; enabled: boolean; dryRun: boolean;
     riskPercent: number; maximumDailyLossPercent: number;
-    intradayRiskPercent?: number; scalpingRiskPercent?: number; scalpOneToOneRiskPercent?: number;
+    intradayRiskPercent?: number; scalpingRiskPercent?: number; scalpOneToOneRiskPercent?: number; bollingerM5RiskPercent?: number;
   }>>([]);
 
   const hostRef = useRef<HTMLDivElement | null>(null);
@@ -2974,6 +2977,18 @@ export const OandaProChart: React.FC<{
   const [showAccuracyTable, setShowAccuracyTable] = useState(false);
   const [showTrendlineStudy, setShowTrendlineStudy] = useState(false);
   const [showVolumeStudy, setShowVolumeStudy] = useState(false);
+  const [showBollingerStudy, setShowBollingerStudy] = useState(false);
+  const [visitedStudies, setVisitedStudies] = useState({ trendline: false, volume: false });
+  const backtestingMenuRef = useRef<HTMLDetailsElement | null>(null);
+  const openBacktestingStudy = (study: 'trendline' | 'volume' | 'bollinger') => {
+    if (study !== 'bollinger') setVisitedStudies(current => ({ ...current, [study]: true }));
+    setShowTrendlineStudy(study === 'trendline');
+    setShowVolumeStudy(study === 'volume');
+    setShowBollingerStudy(study === 'bollinger');
+    if (backtestingMenuRef.current) backtestingMenuRef.current.open = false;
+    setShowIndicatorControls(false);
+  };
+  const [bollingerChartRecords, setBollingerChartRecords] = useState<JournalTradeRecord[]>([]);
   const [showAccuracyOptions, setShowAccuracyOptions] = useState(false);
   const [showAllAccuracyTrades, setShowAllAccuracyTrades] = useState(false);
   const [executedMt5Trades, setExecutedMt5Trades] = useState<AccuracyTradeRecord[]>([]);
@@ -2996,11 +3011,12 @@ export const OandaProChart: React.FC<{
   const scalpingEnabled = mt5Status?.config.scalpingEnabled ?? true;
   const intradayEnabled = mt5Status?.config.intradayEnabled ?? true;
   const scalpOneToOneEnabled = mt5Status?.config.scalpOneToOneEnabled === true;
+  const bollingerM5Enabled = mt5Status?.config.bollingerM5Enabled === true;
   const tradeStyleEnabled = useCallback((trade: {
-    tradeStyle?: 'SCALPING' | 'INTRADAY' | 'SCALP_1_1'; zoneTimeframe?: TradeTimeframe;
-  }) => trade.tradeStyle === 'SCALP_1_1'
-    || isTradeStyleEnabled({ scalpingEnabled, intradayEnabled, scalpOneToOneEnabled }, trade),
-  [scalpingEnabled, intradayEnabled, scalpOneToOneEnabled]);
+    tradeStyle?: 'SCALPING' | 'INTRADAY' | 'SCALP_1_1' | 'BOLLINGER_M5'; zoneTimeframe?: TradeTimeframe;
+  }) => trade.tradeStyle === 'BOLLINGER_M5' || trade.tradeStyle === 'SCALP_1_1'
+    || isTradeStyleEnabled({ scalpingEnabled, intradayEnabled, scalpOneToOneEnabled, bollingerM5Enabled }, trade),
+  [scalpingEnabled, intradayEnabled, scalpOneToOneEnabled, bollingerM5Enabled]);
   const directTradeStyleEnabled = tradeStyleEnabled({
     tradeStyle: marketSymbol === 'XAUUSD' ? 'INTRADAY' : undefined,
     zoneTimeframe: granularity,
@@ -3688,7 +3704,7 @@ export const OandaProChart: React.FC<{
     record.mt5Managed || record.brokerTicket !== undefined || record.mt5SignalId
     || record.id.startsWith('MT5:')
     || (!(marketSymbol === 'XAUUSD' && (record.symbol ?? 'XAUUSD') === 'XAUUSD'
-      && record.tradeStyle !== 'SCALPING' && record.tradeStyle !== 'SCALP_1_1' && !record.intradayEntry)
+      && record.tradeStyle !== 'SCALPING' && record.tradeStyle !== 'SCALP_1_1' && record.tradeStyle !== 'BOLLINGER_M5' && !record.intradayEntry)
       && (record.signalAt === undefined || !blockedGoldChartEntry(record.signalAt, record.signalTimeframe, record.direction)))
   )), [blockedGoldChartEntry, savedJournalTrades, marketSymbol]);
   const visibleRetainedChartTradeOverlays = useMemo(() => [
@@ -4733,7 +4749,7 @@ export const OandaProChart: React.FC<{
     const records: JournalTradeRecord[] = [];
     const add = (id: string, zoneId: string | undefined, zoneName: string,
       zoneTimeframe: TradeTimeframe, source: 'ENGULFING' | 'MTF',
-      trade: TradeLevels | undefined, tradeStyle?: 'SCALPING' | 'INTRADAY' | 'SCALP_1_1', mtfContext?: MtfRow) => {
+      trade: TradeLevels | undefined, tradeStyle?: 'SCALPING' | 'INTRADAY' | 'SCALP_1_1' | 'BOLLINGER_M5', mtfContext?: MtfRow) => {
       if (!trade || trade.filledAt === undefined || isCompletedTrade(trade)) return;
       if (blockedGoldChartEntry(
         trade.signal.time, trade.signal.timeframe, trade.signal.direction,
@@ -4806,13 +4822,14 @@ export const OandaProChart: React.FC<{
     return result;
   }, [marketSymbol, intradayEnabled, tradeDisplayAsOf, tableTimeframeData,
     directZoneEntryDecisions, displayZones, granularity, allMtfTradeRows]);
+  const bollingerCandles = useMemo(() => ({ M5: tableTimeframeData.M5?.candles ?? [], H4: tableTimeframeData.H4?.candles ?? [] }), [tableTimeframeData]);
   const canonicalTradeRecords = useMemo(() => buildCanonicalTradeRecords(
     reconciledMtfJournalTrades, [...openChartJournalTrades.filter(record => record.intradayEntry),
-      ...accuracyTradeRecords, ...scalpOneToOneChartRecords], {
+      ...accuracyTradeRecords, ...scalpOneToOneChartRecords, ...bollingerChartRecords], {
       marketSymbol, pipSize: marketConfig.pipSize, requireLtfFib: mtfLtfFibRequired,
       timeframeData: tableTimeframeData, qualifyMtf: savedChartMtfEntryQualification,
     },
-  ), [accuracyTradeRecords, openChartJournalTrades, scalpOneToOneChartRecords, marketConfig.pipSize, marketSymbol, mtfLtfFibRequired,
+  ), [accuracyTradeRecords, openChartJournalTrades, scalpOneToOneChartRecords, bollingerChartRecords, marketConfig.pipSize, marketSymbol, mtfLtfFibRequired,
     savedChartMtfEntryQualification, reconciledMtfJournalTrades, tableTimeframeData]);
   const visibleCanonicalTradeRecords = useMemo(() => canonicalTradeRecords.filter((record) => (
     tradeStyleEnabled(record) && !blockedGoldHistoricalTrade(record)
@@ -5219,7 +5236,7 @@ export const OandaProChart: React.FC<{
         symbol: 'XAUUSD' as const,
         setupId: position.setupId,
         trade,
-        label: `${storedSignal?.tradeStyle === 'SCALP_1_1' ? 'SCALP 1:1 · ' : storedSignal?.tradeStyle === 'SCALPING' ? 'SCALP · ' : ''}${position.zoneTimeframe ?? '?'}→${position.signalTimeframe ?? '?'} · 1:${position.rewardRisk ?? rewardRisk}`,
+        label: `${storedSignal?.tradeStyle === 'BOLLINGER_M5' ? 'BOLLINGER M5 ? ' : storedSignal?.tradeStyle === 'SCALP_1_1' ? 'SCALP 1:1 · ' : storedSignal?.tradeStyle === 'SCALPING' ? 'SCALP · ' : ''}${position.zoneTimeframe ?? '?'}→${position.signalTimeframe ?? '?'} · 1:${position.rewardRisk ?? rewardRisk}`,
         chartTimeframe: signalTimeframe,
       }];
     })
@@ -5495,12 +5512,12 @@ export const OandaProChart: React.FC<{
     const addEntry = (details: {
       zoneName: string; zoneTimeframe: TradeTimeframe;
       source?: 'MTF' | 'ENGULFING'; higherZoneName?: string; entryZoneName?: string;
-      tradeStyle?: 'SCALPING' | 'INTRADAY' | 'SCALP_1_1';
+      tradeStyle?: 'SCALPING' | 'INTRADAY' | 'SCALP_1_1' | 'BOLLINGER_M5';
       trade: TradeLevels;
     }) => {
       const { trade } = details;
       if (marketSymbol === 'XAUUSD' && details.tradeStyle !== 'SCALPING') return;
-      if (!isTradeStyleEnabled({ scalpingEnabled, intradayEnabled, scalpOneToOneEnabled }, details)) return;
+      if (!isTradeStyleEnabled({ scalpingEnabled, intradayEnabled, scalpOneToOneEnabled, bollingerM5Enabled }, details)) return;
       if (trade.filledAt === undefined || trade.filledAt > now + 5
         || now - trade.filledAt > 180) return;
       const id = [marketSymbol, trade.signal.direction, trade.signal.timeframe,
@@ -5571,6 +5588,7 @@ export const OandaProChart: React.FC<{
     }
     for (const record of [...allSavedAccuracyRecords].sort((first, second) => second.completedAt - first.completedAt)) {
       if (record.scalpEntry || record.intradayEntry) continue;
+      if (record.tradeStyle === 'BOLLINGER_M5') continue; // Server owns these alerts; chart studies never send messages.
       if (record.tradeStyle === 'SCALP_1_1' && !record.mt5Managed && record.brokerTicket === undefined) continue;
       if (record.symbol && record.symbol !== marketSymbol) continue;
       if (!record.openedAt || !record.signalAt || !['tp', 'sl'].includes(record.result)
@@ -5771,6 +5789,7 @@ export const OandaProChart: React.FC<{
       add(item.id, item.trade, item.statusText, 'Scalp 1:1 chart fill', 'Not recorded', item.style, false, item.markerTime, item);
     }
     for (const record of chartEntryRecords) {
+      if (record.tradeStyle === 'BOLLINGER_M5' && !record.mt5Managed && record.brokerTicket === undefined) continue; // Dedicated study overlay.
       if (record.tradeStyle === 'SCALP_1_1' && historyDisplays.some(item => entries.has(item.id)
         && item.trade.signal.time === record.signalAt && item.trade.signal.direction === record.direction
         && item.entryLeg === record.scalpEntry?.leg)) continue;
@@ -5809,14 +5828,14 @@ export const OandaProChart: React.FC<{
         },
       };
       add(record.id, trade,
-        projected ? `${record.signalTimeframe} ${record.tradeStyle === 'SCALPING' ? 'SCALPING' : 'INTRADAY'} ENTRY`
+        record.tradeStyle === 'BOLLINGER_M5' ? 'BOLLINGER M5 BROKER ENTRY' : projected ? `${record.signalTimeframe} ${record.tradeStyle === 'SCALPING' ? 'SCALPING' : 'INTRADAY'} ENTRY`
           : record.source === 'MTF'
           ? `${record.zoneTimeframe} → ${record.signalTimeframe} MTF` : 'CANDLE CONFIRMATION',
         record.zoneName,
         [record.fibSource, record.fibBand].filter(Boolean).join(' · ') || 'Not recorded',
         record.tradeStyle ?? 'INTRADAY',
         tradingTimeEnabled && accuracyRecordOutsideTradingTime(record),
-        record.tradeStyle === 'SCALP_1_1' ? record.openedAt ?? signalAt
+        record.tradeStyle === 'SCALP_1_1' || record.tradeStyle === 'BOLLINGER_M5' ? record.openedAt ?? signalAt
           : projected ? record.openedAt ?? signalAt + TIMEFRAME_SECONDS[record.signalTimeframe]
           : signalAt);
     }
@@ -9980,7 +9999,7 @@ export const OandaProChart: React.FC<{
                         <span className={account.connected ? 'text-emerald-700' : 'text-rose-700'}>{account.connected ? 'Connected' : 'Offline'}</span>
                       </div>
                       <div>{account.server} ? {account.enabled ? account.dryRun ? 'Dry Run' : 'Auto ON' : 'Auto OFF'}</div>
-                      <div>Intraday {mt5StrategyRiskPercent(account, 'INTRADAY')}% · Scalping {mt5StrategyRiskPercent(account, 'SCALPING')}% · Scalp 1:1 {mt5StrategyRiskPercent(account, 'SCALP_1_1')}%</div>
+                      <div>Intraday {mt5StrategyRiskPercent(account, 'INTRADAY')}% · Scalping {mt5StrategyRiskPercent(account, 'SCALPING')}% · Scalp 1:1 {mt5StrategyRiskPercent(account, 'SCALP_1_1')}% · Bollinger M5 {mt5StrategyRiskPercent(account, 'BOLLINGER_M5')}%</div>
                       <div>Daily limit {account.maximumDailyLossPercent}%</div>
                     </button>
                   ))}
@@ -10062,10 +10081,17 @@ export const OandaProChart: React.FC<{
                         onChange={event => void updateMt5Config({ scalpOneToOneEnabled: event.target.checked })} />
                       Scalp 1:1
                     </label>
+                    <label className="flex items-center gap-1 font-bold text-blue-800">
+                      <input type="checkbox" aria-label="Enable Bollinger M5"
+                        checked={mt5Status.config.bollingerM5Enabled === true}
+                        onChange={event => void updateMt5Config({ bollingerM5Enabled: event.target.checked })} />
+                      Bollinger M5
+                    </label>
                   </div>
                   <span className="mt-1 block text-[8px] font-semibold text-slate-500">
                     Gold scalping uses M15/H1 zones with M1/M5 confirmation. Each style can be enabled independently.
                     {' '}OFF hides that style across the dashboard and stops its alerts and new orders.
+                    {' '}Bollinger chart studies remain available with automatic trading OFF.
                   </span>
                 </fieldset>
                 <fieldset className="mb-2 rounded border border-slate-200 bg-slate-50 p-2">
@@ -10117,6 +10143,14 @@ export const OandaProChart: React.FC<{
                     {MT5_RISK_PERCENT_OPTIONS.map((riskPercent) => (
                       <option key={riskPercent} value={riskPercent}>{riskPercent}%</option>
                     ))}
+                  </select>
+                </label>
+                <label className="mb-2 block font-bold text-blue-800">
+                  Bollinger M5 risk per trade (one entry)
+                  <select aria-label="Bollinger M5 risk per trade" value={mt5StrategyRiskPercent(mt5Status.config, 'BOLLINGER_M5')}
+                    onChange={event => void updateMt5Config({ bollingerM5RiskPercent: Number(event.target.value) })}
+                    className="mt-1 w-full rounded border border-blue-200 bg-white px-2 py-1">
+                    {MT5_RISK_PERCENT_OPTIONS.map(risk => <option key={risk} value={risk}>{risk}%</option>)}
                   </select>
                 </label>
                 <label className="mb-2 block font-bold text-cyan-800">
@@ -10212,8 +10246,8 @@ export const OandaProChart: React.FC<{
                   Equity: <b>{mt5Status.bridge.equity === undefined
                     ? '—'
                     : `${mt5Status.bridge.currency || '$'} ${mt5Status.bridge.equity.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}</b><br />
-                  {(['INTRADAY', 'SCALPING', 'SCALP_1_1'] as const).map(style => <div key={style}>
-                    {style === 'SCALP_1_1' ? 'Scalp 1:1' : style === 'INTRADAY' ? 'Intraday' : 'Scalping'} cash risk: <b>{mt5Status.bridge.equity === undefined
+                  {(['INTRADAY', 'SCALPING', 'SCALP_1_1', 'BOLLINGER_M5'] as const).map(style => <div key={style}>
+                    {style === 'BOLLINGER_M5' ? 'Bollinger M5' : style === 'SCALP_1_1' ? 'Scalp 1:1' : style === 'INTRADAY' ? 'Intraday' : 'Scalping'} cash risk: <b>{mt5Status.bridge.equity === undefined
                       ? '—' : `${mt5Status.bridge.currency || '$'} ${(mt5Status.bridge.equity * mt5StrategyRiskPercent(mt5Status.config, style) / 100).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}</b>
                   </div>)}
                   Waiting to send: <b>{mt5Status.counts.QUEUED ?? 0}</b> · Open MT5 trades: <b>{mt5Status.positions.length}</b><br />
@@ -10721,16 +10755,29 @@ export const OandaProChart: React.FC<{
                 <TradeStrategyCheckboxes label="Entry arrow strategies" selected={arrowStrategies} onChange={setArrowStrategies} />
               </div>
             </details>
-            <button type="button" onClick={() => { setShowTrendlineStudy(value => !value); setShowVolumeStudy(false); }}
-              aria-pressed={showTrendlineStudy}
-              className="whitespace-nowrap rounded-full border border-violet-200 bg-violet-50 px-1.5 py-0.5 text-[8px] font-black text-violet-800">
-              TRENDLINE STUDY {showTrendlineStudy ? 'ON' : 'OFF'}
-            </button>
-            <button type="button" onClick={() => { setShowVolumeStudy(value => !value); setShowTrendlineStudy(false); }}
-              aria-pressed={showVolumeStudy}
-              className="whitespace-nowrap rounded-full border border-teal-200 bg-teal-50 px-1.5 py-0.5 text-[8px] font-black text-teal-800">
-              VOLUME ENGULFING STUDY {showVolumeStudy ? 'ON' : 'OFF'}
-            </button>
+            <details ref={backtestingMenuRef} className="relative" onKeyDown={event => {
+              if (event.key === 'Escape') { event.preventDefault(); event.currentTarget.open = false;
+                event.currentTarget.querySelector('summary')?.focus(); }
+            }}>
+              <summary aria-label="Backtesting studies" className={`cursor-pointer list-none whitespace-nowrap rounded-full border px-1.5 py-0.5 text-[8px] font-black ${
+                showTrendlineStudy || showVolumeStudy || showBollingerStudy ? 'border-indigo-300 bg-indigo-100 text-indigo-800' : 'border-indigo-200 bg-indigo-50 text-indigo-700'
+              }`}>BACKTESTING ▾</summary>
+              <div role="group" aria-label="Backtesting study choices" className="absolute left-1/2 top-full z-[70] mt-1 w-64 max-w-[calc(100vw-2rem)] -translate-x-1/2 rounded-lg border border-indigo-200 bg-white p-1.5 text-xs shadow-xl">
+                <button type="button" aria-label="Open Trendline Study" aria-pressed={showTrendlineStudy}
+                  onClick={() => openBacktestingStudy('trendline')} className="flex w-full items-center justify-between rounded px-3 py-2 text-left font-semibold text-violet-800 hover:bg-violet-50">
+                  Trendline Study {showTrendlineStudy && <span className="text-[9px]">OPEN</span>}
+                </button>
+                <button type="button" aria-label="Open Volume Engulfing Study" aria-pressed={showVolumeStudy}
+                  onClick={() => openBacktestingStudy('volume')} className="flex w-full items-center justify-between rounded px-3 py-2 text-left font-semibold text-teal-800 hover:bg-teal-50">
+                  Volume Engulfing Study {showVolumeStudy && <span className="text-[9px]">OPEN</span>}
+                </button>
+                <button type="button" aria-label="Open Bollinger M5 Study" aria-pressed={showBollingerStudy} disabled={marketSymbol !== 'XAUUSD'}
+                  title={marketSymbol === 'XAUUSD' ? 'Open the Bollinger 5-minute study' : 'Select Gold / XAUUSD to use Bollinger M5'}
+                  onClick={() => openBacktestingStudy('bollinger')} className="flex w-full items-center justify-between rounded px-3 py-2 text-left font-semibold text-blue-800 hover:bg-blue-50 disabled:cursor-not-allowed disabled:opacity-40">
+                  Bollinger M5 Study {showBollingerStudy && <span className="text-[9px]">OPEN</span>}
+                </button>
+              </div>
+            </details>
             <div className="relative flex">
               <button
                 type="button"
@@ -11219,19 +11266,27 @@ export const OandaProChart: React.FC<{
           }}
         >
           <div ref={hostRef} className="absolute inset-0" />
-          {showVolumeStudy && <VolumeEngulfingStudy
+          {marketSymbol === 'XAUUSD' && <BollingerStudy open={showBollingerStudy}
+            enabled={showBollingerStudy || arrowStrategies.includes('BOLLINGER_M5') || showAccuracyTable || showJournal || bollingerM5Enabled}
+            showArrows={arrowStrategies.includes('BOLLINGER_M5')} timeframe={granularity} symbol={marketSymbol}
+            candles={bollingerCandles} cutoff={tradeDisplayAsOf}
+            historySeed={liveChartDataSource === 'OANDA' ? bollingerCandles : {}}
+            chartRef={chartRef} seriesRef={candleSeriesRef} onClose={() => setShowBollingerStudy(false)}
+            onShowM5={() => changeTimeframe('M5')}
+            onRecords={setBollingerChartRecords} />}
+          {visitedStudies.volume && <div hidden={!showVolumeStudy}><VolumeEngulfingStudy active={showVolumeStudy}
             symbol={marketSymbol} timeframe={granularity}
             chartCandles={displayCandles} candles={vipCandles}
             chartRef={chartRef} seriesRef={candleSeriesRef}
             onClose={() => setShowVolumeStudy(false)}
-          />}
-          {showTrendlineStudy && <TrendlineStudy
+          /></div>}
+          {visitedStudies.trendline && <div hidden={!showTrendlineStudy}><TrendlineStudy active={showTrendlineStudy}
             symbol={marketSymbol} pipSize={marketConfig.pipSize} timeframe={granularity}
             entryArrows={entryArrowStudyEntries}
             chartCandles={displayCandles} candles={vipCandles} tradingTimeEnabled={tradingTimeEnabled}
             chartRef={chartRef} seriesRef={candleSeriesRef} hostRef={hostRef}
             onClose={() => setShowTrendlineStudy(false)}
-          />}
+          /></div>}
           {hoveredEntry && visibleEntryHovers.some(entry => entry.id === hoveredEntry.entry.id) && (() => {
             const { entry, x, y } = hoveredEntry;
             const { trade } = entry;
@@ -11279,10 +11334,12 @@ export const OandaProChart: React.FC<{
               {entry.tradingTimeBlocked && <div className="mt-1 text-amber-700">⚠️ Outside trading hours</div>}
               <div className="mt-3 border-t border-slate-100 pt-2">
                 <div className="mb-1 font-bold text-slate-900">📍 Trade setup</div>
-                <div>Main zone: <b>{record ? `${timeframeName(record.zoneTimeframe)} ` : ''}{zoneName(mainZone)}</b></div>
+                {entry.style === 'BOLLINGER_M5' ? <div>Bias: <b>H4 confirmed structure</b></div>
+                  : <div>Main zone: <b>{record ? `${timeframeName(record.zoneTimeframe)} ` : ''}{zoneName(mainZone)}</b></div>}
                 {mtf && <div>Entry zone: <b>{timeframeName(trade.signal.timeframe)} {zoneName(entryZone)}</b></div>}
-                <div>Confirmation: <b>{timeframeName(trade.signal.timeframe)} {bullish ? 'bullish' : 'bearish'} engulfing {trade.signal.type}</b></div>
-                {scalpOneToOne ? <div>Entry method: <b>10% / 25% body pullbacks · 60% / 40% setup risk · original SL/TP fixed · M15 volume decrease ≥ 250 units · H4 bias + EMA20/50 · H1 continuation/Far</b></div>
+                {entry.style === 'BOLLINGER_M5' ? <div>Confirmation: <b>M5 Bollinger re-entry, EMA200, SuperTrend, ADX ≥15, confirmed H4 bias. One entry; fixed SL / 1.5R TP.</b></div> : <div>Confirmation: <b>{timeframeName(trade.signal.timeframe)} {bullish ? 'bullish' : 'bearish'} engulfing {trade.signal.type}</b></div>}
+                {entry.style === 'BOLLINGER_M5' ? <div>Entry method: <b>One market entry; original SL and TP fixed</b></div>
+                  : scalpOneToOne ? <div>Entry method: <b>10% / 25% body pullbacks · 60% / 40% setup risk · original SL/TP fixed · M15 volume decrease ≥ 250 units · H4 bias + EMA20/50 · H1 continuation/Far</b></div>
                   : entry.pullbackSetup ? <div>Entry method: <b>10% / 25% body pullbacks · 60% / 40% setup risk · original SL/TP fixed</b></div>
                   : !mtf && <div>Entry method: <b>Candle confirmation at the main zone</b></div>}
                 {entry.fib !== 'Not recorded' && <div>Fibonacci: <b>{entry.fib}</b></div>}

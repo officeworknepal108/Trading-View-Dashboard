@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { loadStudyDateHistory, mergeStudyCandles, studyHistoryRequirements, type StudyCandles } from '../src/services/trendlineStudyHistory';
+import { loadStudyDateHistory, mergeStudyCandles, StudyHistoryCoverageError, studyHistoryRequirements, type StudyCandles } from '../src/services/trendlineStudyHistory';
 import { STUDY_SECONDS, STUDY_TIMEFRAMES, type StudyTimeframe } from '../src/services/trendlineStudy';
 import type { StructureCandle } from '../src/services/marketStructure';
 
@@ -137,4 +137,60 @@ test('cancelling history loading aborts the run and invalid date ranges never fe
 test('overlapping candle histories remain sorted and latest input wins', () => {
   const current = candle(200, false);
   assert.deepEqual(mergeStudyCandles([candle(200), candle(100)], [current, candle(300)]), [candle(100), current, candle(300)]);
+});
+
+test('Bollinger history requests only M5 and H4 and retains existing inputs', async () => {
+  const opts = options(), original = JSON.stringify(opts.candles), requested: string[] = [];
+  const result = await loadStudyDateHistory({ ...opts, requiredTimeframes: ['M5', 'H4'],
+    candles: { ...opts.candles, M5: [], H4: [] }, fetcher: async url => {
+      const tf = new URL(String(url), 'http://test').searchParams.get('granularity')!;
+      requested.push(tf);
+      return response(tf, [...context(tf as StudyTimeframe), candle(fromTime + 300)]);
+    } });
+  assert.deepEqual(requested.sort(), ['H4', 'M5']);
+  assert.deepEqual(Object.keys(result.candles).sort(), ['H4', 'M5']);
+  assert.equal(JSON.stringify(opts.candles), original);
+});
+
+test('opt-in history deadline reports a stalled fetch instead of spinning forever', async () => {
+  const opts = options();
+  await assert.rejects(loadStudyDateHistory({ ...opts, requiredTimeframes: ['M5'], candles: { M5: [] },
+    requestTimeoutMs: 10, fetcher: async (_url, init) => new Promise<Response>((_resolve, reject) => {
+      init!.signal!.addEventListener('abort', () => reject(new DOMException('Stopped', 'AbortError')), { once: true });
+    }) }), /History request timed out.*shorter period/);
+});
+
+test('cancelling a deadline-enabled history request propagates to its fetch and stays cancellation', async () => {
+  const opts = options(), controller = new AbortController(); let fetchAborted = false;
+  await assert.rejects(loadStudyDateHistory({ ...opts, requiredTimeframes: ['M5'], candles: { M5: [] },
+    signal: controller.signal, requestTimeoutMs: 1000, fetcher: async (_url, init) => new Promise<Response>((_resolve, reject) => {
+      init!.signal!.addEventListener('abort', () => { fetchAborted = true; reject(new DOMException('Stopped', 'AbortError')); }, { once: true });
+      queueMicrotask(() => controller.abort());
+    }) }), { name: 'AbortError' });
+  assert.equal(fetchAborted, true);
+});
+
+test('a provider history limit offers explicit available dates with warmup and never silently shortens a run', async () => {
+  const history = Array.from({ length: 1000 }, (_, i) => candle(fromTime + (i + 1) * 300));
+  let failure: unknown;
+  try {
+    await loadStudyDateHistory({ ...options(), cutoff: fromTime + 10 * 86400,
+      requiredTimeframes: ['M5'], candles: { M5: history }, fetcher: async () => response('M5', []) });
+  } catch (e) { failure = e; }
+  assert.ok(failure instanceof StudyHistoryCoverageError);
+  assert.equal(failure.timeframe, 'M5');
+  assert.ok(failure.availableFrom! > fromTime);
+  assert.ok(history.filter(b => b.time < failure.availableFrom!).length >= 500);
+  assert.equal(failure.availableTo, history.at(-1)!.time);
+  const result = await loadStudyDateHistory({ ...options(), fromTime: failure.availableFrom!,
+    cutoff: failure.availableTo!, requiredTimeframes: ['M5'], candles: { M5: history },
+    fetcher: async () => { throw new Error('Available period should reuse its complete history'); } });
+  assert.equal(result.warnings.length, 0);
+  assert.ok(result.candles.M5!.length);
+});
+
+test('insufficient warmup cannot be advertised as an available study period', async () => {
+  await assert.rejects(loadStudyDateHistory({ ...options(), requiredTimeframes: ['M5'],
+    candles: { M5: [candle(fromTime + 300)] }, fetcher: async () => response('M5', []) }),
+  (e: unknown) => e instanceof StudyHistoryCoverageError && e.availableFrom === undefined);
 });

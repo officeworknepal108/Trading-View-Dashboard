@@ -45,8 +45,8 @@ export interface JournalTradeRecord {
   zoneTimeframe: TradeTimeframe;
   result: TradeResult | 'open' | 'risk-free';
   completedAt: number;
-  source: 'ENGULFING' | 'MTF';
-  tradeStyle?: 'SCALPING' | 'INTRADAY' | 'SCALP_1_1';
+  source: 'ENGULFING' | 'MTF' | 'BOLLINGER';
+  tradeStyle?: 'SCALPING' | 'INTRADAY' | 'SCALP_1_1' | 'BOLLINGER_M5';
   scalpEntry?: import('../services/mt5Automation').ScalpPullbackEntry;
   intradayEntry?: import('../services/intradayPullback').IntradayPullbackEntry;
   direction: 'bullish' | 'bearish';
@@ -233,9 +233,12 @@ export function calculateJournalCashSummary(trades: JournalTradeRecord[]): Journ
 
 function tradeResultR(trade: JournalTradeRecord): number | undefined {
   if (!['tp', 'sl', 'rf'].includes(trade.result)) return undefined;
+  if (trade.tradeStyle === 'BOLLINGER_M5' && Number.isFinite(trade.closePrice)
+    && Math.abs(trade.entry - trade.stopLoss) > 0) return (trade.closePrice! - trade.entry)
+      * (trade.direction === 'bullish' ? 1 : -1) / Math.abs(trade.entry - trade.stopLoss);
   const share = trade.pullbackFallback === 'SECOND_ONLY' ? 1
     : trade.tradeStyle === 'SCALP_1_1' ? trade.scalpEntry?.riskShare ?? 1 : trade.intradayEntry?.riskShare ?? 1;
-  if ((trade.tradeStyle === 'INTRADAY' || trade.tradeStyle === 'SCALP_1_1') && !trade.partialClosedAt) {
+  if ((trade.tradeStyle === 'INTRADAY' || trade.tradeStyle === 'SCALP_1_1' || trade.tradeStyle === 'BOLLINGER_M5') && !trade.partialClosedAt) {
     if (trade.result === 'tp') return trade.rewardRisk * share;
     if (trade.result === 'sl') return -share;
   }
@@ -345,7 +348,7 @@ export function renderHistoricalTradeSnapshot(
   );
   const fibDescription = [trade.fibSource || 'FIB-qualified setup', trade.fibBand].filter(Boolean).join(' · ');
   context.fillStyle = '#b45309';
-  context.fillText(`FIB: ${fibDescription}`, 690, 32);
+  context.fillText(trade.tradeStyle === 'BOLLINGER_M5' ? 'Bollinger M5 (no Fib filter)' : `FIB: ${fibDescription}`, 690, 32);
 
   const chartLeft = 62;
   const chartTop = 82;
@@ -396,7 +399,7 @@ export function renderHistoricalTradeSnapshot(
       context.strokeRect(x - candleSlot / 2, chartTop, candleSlot, chartHeight);
       context.fillStyle = '#7c3aed';
       context.font = 'bold 11px Arial';
-      context.fillText('ENGULFING', Math.max(chartLeft, x - 32), chartTop + 15);
+      context.fillText(trade.tradeStyle === 'BOLLINGER_M5' ? 'BOLLINGER' : 'ENGULFING', Math.max(chartLeft, x - 32), chartTop + 15);
     }
   });
 
@@ -971,7 +974,7 @@ export const TradeJournal: React.FC<TradeJournalProps> = ({ records, timeframe, 
         )}
         {dateFilter !== 'ALL' && <button type="button" onClick={() => setDateFilter('ALL')} className="rounded border border-slate-200 bg-white px-2 py-1 text-[8px] font-black text-slate-500">ALL DATES</button>}
         <select value={sourceFilter} onChange={(event) => setSourceFilter(event.target.value as TradeRecordFilters['source'])} className="rounded border border-slate-200 px-2 py-1 text-[9px] font-bold">
-          <option value="ALL">ALL SOURCES</option><option value="ENGULFING">ENGULFING</option><option value="MTF">MTF</option>
+          <option value="ALL">ALL SOURCES</option><option value="ENGULFING">ENGULFING</option><option value="MTF">MTF</option><option value="BOLLINGER">BOLLINGER</option>
         </select>
         <select value={sideFilter} onChange={(event) => setSideFilter(event.target.value as TradeRecordFilters['side'])} className="rounded border border-slate-200 px-2 py-1 text-[9px] font-bold">
           <option value="ALL">ALL SIDES</option><option value="BUY">BUY</option><option value="SELL">SELL</option>
@@ -1174,7 +1177,7 @@ export const TradeJournal: React.FC<TradeJournalProps> = ({ records, timeframe, 
                     {trade.intradayEntry && <div className="text-[8px] text-slate-500">
                       {trade.intradayEntry.leg}% pullback / {Math.round(trade.intradayEntry.riskShare * 100)}% setup risk
                     </div>}
-                    {trade.tradeStyle === 'SCALP_1_1' && <div className="text-[8px] text-slate-500">
+                    {(trade.tradeStyle === 'SCALP_1_1' || trade.tradeStyle === 'BOLLINGER_M5') && <div className="text-[8px] text-slate-500">
                       {trade.mt5Managed || trade.brokerTicket !== undefined ? 'MT5' : 'CHART ONLY'}
                       {trade.scalpEntry && ` · ${trade.scalpEntry.leg}% pullback / ${trade.pullbackFallback === 'SECOND_ONLY' ? 100 : Math.round(trade.scalpEntry.riskShare * 100)}% risk`}
                     </div>}

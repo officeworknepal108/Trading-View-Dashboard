@@ -38,7 +38,7 @@ export function tradeExecutionKey(record: DeduplicableTradeRecord): string {
   // TP is intentionally omitted. Overlapping routes may calculate different
   // targets for the same entry and stop, but the execution is still one trade.
   return [
-    record.tradeStyle === 'SCALP_1_1' ? 'SCALP_1_1:EXECUTION' : 'EXECUTION',
+    record.tradeStyle === 'BOLLINGER_M5' ? 'BOLLINGER_M5:EXECUTION' : record.tradeStyle === 'SCALP_1_1' ? 'SCALP_1_1:EXECUTION' : 'EXECUTION',
     record.symbol ?? 'XAUUSD', Math.trunc(signalAt), record.signalTimeframe,
     record.direction, entry, stopLoss,
     ...(record.tradeStyle === 'SCALP_1_1' && record.scalpEntry ? [`P${record.scalpEntry.leg}`] : []),

@@ -12,6 +12,7 @@ import { readStudySnapshot, studyAccuracy, studyCloseTime, studyJournalCsv, stud
 import { loadStudyDateHistory, mergeStudyCandles, type StudyCandles } from '../services/trendlineStudyHistory';
 
 interface Props {
+  active?: boolean;
   symbol: string;
   pipSize: number;
   timeframe: StudyTimeframe;
@@ -208,6 +209,7 @@ export function TrendlineStudy(props: Props) {
 
   useEffect(() => {
     let frame = 0;
+    if (props.active === false) { setPositions([]); return; }
     let previous: string | null = null;
     let lastDraw = 0;
     const draw = (time: number) => {
@@ -236,7 +238,7 @@ export function TrendlineStudy(props: Props) {
     };
     frame = requestAnimationFrame(draw);
     return () => cancelAnimationFrame(frame);
-  }, [visible, props.chartCandles, props.timeframe, props.chartRef, props.seriesRef, props.hostRef]);
+  }, [visible, props.chartCandles, props.timeframe, props.chartRef, props.seriesRef, props.hostRef, props.active]);
 
   const exportJournal = () => {
     const blob = new Blob(['\uFEFF', studyJournalCsv(visible)], { type: 'text/csv;charset=utf-8' });

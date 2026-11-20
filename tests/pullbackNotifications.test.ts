@@ -86,7 +86,8 @@ test('daily setup summary deduplicates aliases, includes all styles, and exclude
   const text = formatDailyTradeSummary(counts);
   assert.ok(['SCALP 1:1', 'INTRADAY', 'SCALPING'].every(name => text.includes(name)));
   const zero = countTelegramSetups({}, now);
-  assert.equal(zero.total, 0); assert.equal(Object.keys(zero.strategies!).length, 3);
+  assert.equal(zero.total, 0); assert.equal(Object.keys(zero.strategies!).length, 4);
+  assert.equal(zero.strategies!.BOLLINGER_M5.total, 0);
   const rf = countTelegramSetups({ live: { ...one, tradeNumber: 8, result: undefined,
     tradeStyle: 'SCALPING', rf: true, rfAt: day.end - 1 } }, now);
   assert.equal(rf.total, 1); assert.equal(rf.open, 1); assert.equal(rf.riskFree, 1, 'partially closed Scalping setup remains open');

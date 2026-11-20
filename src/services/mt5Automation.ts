@@ -1,4 +1,5 @@
 import { pullbackExpirySeconds } from './pullbackExpiry';
+import { BOLLINGER_M5_MAX_SL_PIPS } from './bollingerM5';
 import {
   hasOppositeOpenPosition,
   type EngulfingVolumeStatus,
@@ -166,6 +167,7 @@ export const MT5_DEFAULT_RISK_SETTINGS = {
   scalpingRiskPercent: 0.25,
   intradayRiskPercent: 0.5,
   scalpOneToOneRiskPercent: 0.5,
+  bollingerM5RiskPercent: 0.25,
   maximumDailyLossPercent: 2,
 } as const;
 
@@ -207,12 +209,13 @@ export function isMt5SignalAllowedByTimeframes(
 
 /** The dashboard, alerts and execution use the same trade-style switches. */
 export function isTradeStyleEnabled(
-  config: { scalpingEnabled: boolean; intradayEnabled: boolean; scalpOneToOneEnabled?: boolean },
-  trade: { tradeStyle?: 'SCALPING' | 'INTRADAY' | 'SCALP_1_1'; zoneTimeframe?: TradeTimeframe },
+  config: { scalpingEnabled: boolean; intradayEnabled: boolean; scalpOneToOneEnabled?: boolean; bollingerM5Enabled?: boolean },
+  trade: { tradeStyle?: 'SCALPING' | 'INTRADAY' | 'SCALP_1_1' | 'BOLLINGER_M5'; zoneTimeframe?: TradeTimeframe },
 ): boolean {
   const style = trade.tradeStyle
     ?? (trade.zoneTimeframe === 'M1' || trade.zoneTimeframe === 'M5' ? 'SCALPING' : 'INTRADAY');
   if (style === 'SCALP_1_1') return config.scalpOneToOneEnabled === true;
+  if (style === 'BOLLINGER_M5') return config.bollingerM5Enabled === true;
   return style === 'SCALPING' ? config.scalpingEnabled : config.intradayEnabled;
 }
 
@@ -222,6 +225,7 @@ export function mt5SignalDisabledReason(
     scalpingEnabled: boolean;
     intradayEnabled: boolean;
     scalpOneToOneEnabled?: boolean;
+    bollingerM5Enabled?: boolean;
     mtfLtfFibRequired?: boolean;
   },
   signal: Pick<Mt5SignalInput, 'zoneTimeframe' | 'signalTimeframe' | 'tradeStyle'>
@@ -235,6 +239,11 @@ export function mt5SignalDisabledReason(
     return `${signal.zoneTimeframe} setup / ${signal.signalTimeframe} entry automatic trading is disabled.`;
   }
   if (isTradeStyleEnabled(config, signal)) {
+    if (signal.tradeStyle === 'BOLLINGER_M5') {
+      if (signal.source !== 'BOLLINGER' || signal.zoneTimeframe !== 'H4' || signal.signalTimeframe !== 'M5') return 'Invalid Bollinger M5 route.';
+      if ('entry' in signal) return bollingerM5SignalError(signal as Mt5SignalInput);
+      return undefined;
+    }
     if ('intradayEntry' in signal && signal.intradayEntry) {
       const error = intradayPullbackSignalError(signal as Mt5SignalInput);
       if (error) return error;
@@ -250,6 +259,7 @@ export function mt5SignalDisabledReason(
     return undefined;
   }
   if (signal.tradeStyle === 'SCALP_1_1') return 'Scalp 1:1 automatic trading is disabled.';
+  if (signal.tradeStyle === 'BOLLINGER_M5') return 'Bollinger M5 automatic trading is disabled.';
   const scalping = signal.tradeStyle === 'SCALPING' || (signal.tradeStyle === undefined
     && (signal.zoneTimeframe === 'M1' || signal.zoneTimeframe === 'M5'));
   return `${scalping ? 'Scalping' : 'Intraday'} automatic trading is disabled.`;
@@ -321,6 +331,8 @@ export interface Mt5AutomationConfig {
   intradayEnabled: boolean;
   scalpOneToOneEnabled?: boolean;
   scalpOneToOneRiskPercent?: number;
+  bollingerM5Enabled?: boolean;
+  bollingerM5RiskPercent?: number;
   intradayRiskPercent?: number;
   scalpingRiskPercent?: number;
   mtfLtfFibRequired: boolean;
@@ -340,9 +352,10 @@ export interface Mt5AutomationConfig {
 
 /** Legacy shared risk initializes each new strategy field independently. */
 export function mt5StrategyRiskPercent(config: Partial<Pick<Mt5AutomationConfig,
-  'riskPercent' | 'intradayRiskPercent' | 'scalpingRiskPercent' | 'scalpOneToOneRiskPercent'>>,
+  'riskPercent' | 'intradayRiskPercent' | 'scalpingRiskPercent' | 'scalpOneToOneRiskPercent' | 'bollingerM5RiskPercent'>>,
   style?: Mt5SignalInput['tradeStyle']): number {
   if (style === 'SCALP_1_1') return normalizeScalpOneToOneRisk(config.scalpOneToOneRiskPercent);
+  if (style === 'BOLLINGER_M5') return normalizeMt5RiskPercent(config.bollingerM5RiskPercent, MT5_DEFAULT_RISK_SETTINGS.bollingerM5RiskPercent);
   const value = style === 'INTRADAY' ? config.intradayRiskPercent
     : style === 'SCALPING' ? config.scalpingRiskPercent : config.riskPercent;
   const fallback = style === 'INTRADAY' ? MT5_DEFAULT_RISK_SETTINGS.intradayRiskPercent
@@ -390,6 +403,21 @@ export function scalpPullbackSignalError(signal: Pick<Mt5SignalInput,
   return undefined;
 }
 
+export function bollingerM5SignalError(signal: Mt5SignalInput): string | undefined {
+  const sign = signal.direction === 'BUY' ? 1 : -1;
+  const risk = sign * (signal.entry - signal.stopLoss);
+  if (risk * 10 > BOLLINGER_M5_MAX_SL_PIPS + 1e-8) return 'Bollinger M5 SL exceeds the 80-pip maximum.';
+  if (signal.source !== 'BOLLINGER' || signal.tradeStyle !== 'BOLLINGER_M5' || signal.orderType !== 'MARKET'
+    || signal.symbol !== 'XAUUSD' || signal.zoneTimeframe !== 'H4' || signal.signalTimeframe !== 'M5'
+    || signal.scalpEntry || signal.intradayEntry
+    || ![signal.entry, signal.stopLoss, signal.takeProfit, signal.signalAt, signal.calculatedAt, signal.expiresAt, signal.riskPips].every(v => Number.isFinite(v) && v > 0)
+    || !(risk > 0) || Math.abs(sign * (signal.takeProfit - signal.entry) / risk - 1.5) > 1e-6
+    || signal.rewardRisk !== 1.5 || Math.abs(signal.riskPips - risk * 10) > 1e-5
+    || signal.calculatedAt !== signal.signalAt + 300 || signal.expiresAt <= signal.calculatedAt
+    || signal.expiresAt > signal.calculatedAt + 299) return 'Invalid Bollinger M5 single entry or fixed 1.5R exits.';
+  return undefined;
+}
+
 export interface Mt5SignalInput {
   id: string;
   setupId?: string;
@@ -397,9 +425,9 @@ export interface Mt5SignalInput {
   symbol: string;
   direction: 'BUY' | 'SELL';
   orderType: 'MARKET' | 'LIMIT';
-  source: 'ENGULFING' | 'MTF';
+  source: 'ENGULFING' | 'MTF' | 'BOLLINGER';
   mtfLtfFibRequiredAtSignal?: boolean;
-  tradeStyle?: 'SCALPING' | 'INTRADAY' | 'SCALP_1_1';
+  tradeStyle?: 'SCALPING' | 'INTRADAY' | 'SCALP_1_1' | 'BOLLINGER_M5';
   scalpEntry?: ScalpPullbackEntry;
   /** Frozen full-setup cash allowance, shared by both broker entries. */
   scalpSetupRiskBudget?: number;
@@ -538,7 +566,7 @@ export function goldAutomationOpposingZoneBlocked(
   signal: Mt5SignalInput,
   zones: readonly StructureZone[],
 ): boolean {
-  return signal.tradeStyle !== 'SCALP_1_1' && goldOpposingZoneBeforeOneR(signal, zones) !== undefined;
+  return signal.tradeStyle !== 'SCALP_1_1' && signal.tradeStyle !== 'BOLLINGER_M5' && goldOpposingZoneBeforeOneR(signal, zones) !== undefined;
 }
 
 /** One unusually large completed minute must not consume the whole planned stop. */
@@ -563,7 +591,7 @@ export function goldAutomationRepeatAreaBlocked(
   previous: readonly Mt5StoredSignal[],
   m15Lines: readonly StructureLine[],
 ): boolean {
-  if (signal.tradeStyle === 'SCALP_1_1') return false;
+  if (signal.tradeStyle === 'SCALP_1_1' || signal.tradeStyle === 'BOLLINGER_M5') return false;
   const lower = Math.min(signal.entry, signal.stopLoss);
   const upper = Math.max(signal.entry, signal.stopLoss);
   return previous.some((prior) => {
@@ -713,6 +741,7 @@ export interface Mt5StoredSignal extends Mt5SignalInput {
   brokerTicket?: number;
   brokerPosition?: number;
   executionPrice?: number;
+  executionTakeProfit?: number;
   initialStopLoss?: number;
   volume?: number;
   initialVolume?: number;
@@ -985,6 +1014,7 @@ export function positionFibExitTimeframe(
   const matches = signals.filter(signal => mt5ConnectionMatches(connection, signal)
     && [position.ticket, position.identifier].some(ticket => ticket !== undefined
       && (signal.brokerPosition === ticket || signal.brokerTicket === ticket)));
+  if (matches.some(signal => signal.tradeStyle === 'BOLLINGER_M5')) return undefined;
   const timeframes = new Set(matches.map(signal => signal.zoneTimeframe));
   const value = timeframes.size === 1 ? [...timeframes][0] : undefined;
   return value && MT5_FIB_EXIT_TIMEFRAMES.includes(value) ? value : undefined;
@@ -1017,7 +1047,7 @@ export function applySignalOppositePositionTarget(
   signal: Mt5SignalInput,
   positions: readonly { direction: 'BUY' | 'SELL' }[] | undefined,
 ): Mt5SignalInput {
-  if (signal.tradeStyle === 'SCALP_1_1' || signal.intradayEntry) return signal;
+  if (signal.tradeStyle === 'SCALP_1_1' || signal.tradeStyle === 'BOLLINGER_M5' || signal.intradayEntry) return signal;
   const requestedNormalRewardRisk = signal.normalRewardRisk ?? signal.rewardRisk;
   const normalRewardRisk = Number.isFinite(requestedNormalRewardRisk)
     && requestedNormalRewardRisk > 0

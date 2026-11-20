@@ -1,0 +1,100 @@
+{
+  "createdUTC": "2026-11-20T16:42:53.515Z",
+  "primary": "primary",
+  "freshStartUTC": "2026-11-18T02:00:00.000Z",
+  "freshEndUTC": "2026-11-20T16:37:00.000Z",
+  "candidates": [
+    {
+      "id": "old",
+      "role": "Existing-method comparator",
+      "spec": {
+        "profile": {
+          "name": "Old next-open 10/25",
+          "first": 10,
+          "second": 25,
+          "share": 0.6,
+          "expiry": 75,
+          "anchor": "next-open"
+        },
+        "targets": [
+          1,
+          1
+        ],
+        "cancel": "original-target"
+      }
+    },
+    {
+      "id": "corrected",
+      "role": "Corrected-reference control",
+      "spec": {
+        "profile": {
+          "name": "Corrected reference 10/25",
+          "first": 10,
+          "second": 25,
+          "share": 0.6,
+          "expiry": 75
+        },
+        "targets": [
+          1,
+          1
+        ],
+        "cancel": "original-target"
+      }
+    },
+    {
+      "id": "entry-only",
+      "role": "Entry/deadline/allocation control",
+      "spec": {
+        "profile": {
+          "name": "Reference 0/10, 30/70",
+          "first": 0,
+          "second": 10,
+          "share": 0.3,
+          "expiry": 30
+        },
+        "targets": [
+          1,
+          1
+        ],
+        "cancel": "new-target"
+      }
+    },
+    {
+      "id": "primary",
+      "role": "Primary candidate fixed before fresh outcomes",
+      "spec": {
+        "profile": {
+          "name": "Reference 0/10, 30/70",
+          "first": 0,
+          "second": 10,
+          "share": 0.3,
+          "expiry": 30
+        },
+        "targets": [
+          1.25,
+          1.25
+        ],
+        "cancel": "new-target"
+      }
+    },
+    {
+      "id": "larger-target",
+      "role": "Higher-target control, not eligible to replace primary using fresh outcomes",
+      "spec": {
+        "profile": {
+          "name": "Reference 0/10, 30/70",
+          "first": 0,
+          "second": 10,
+          "share": 0.3,
+          "expiry": 30
+        },
+        "targets": [
+          1.5,
+          1.5
+        ],
+        "cancel": "new-target"
+      }
+    }
+  ],
+  "rule": "No choice of a new winning setting based on fresh outcomes. Report primary even if it loses. Same strategy qualification filters. Compare frozen historical, fresh M1 and fresh M15 outcomes; retain uncertain and open cases."
+}

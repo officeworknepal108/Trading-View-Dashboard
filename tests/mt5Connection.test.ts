@@ -78,6 +78,8 @@ test('MT5 account handshake resets old candles and queues while preserving autom
     assert.equal(freshDefaults.intradayRiskPercent, .5);
     assert.equal(freshDefaults.scalpOneToOneRiskPercent, .5);
     assert.equal(freshDefaults.maximumDailyLossPercent, 2);
+    assert.equal(freshDefaults.bollingerM5Enabled, false);
+    assert.equal(freshDefaults.bollingerM5RiskPercent, .25);
     const first = { bridgeId: 'test-bridge', account: '123', server: 'Broker-A', brokerSymbol: 'XAUUSD.x', balance: 12345, equity: 12400,
       terminalConnected: true, symbolResolved: true, symbolCandidates: ['XAUUSD.x'],
       positions: [{ ticket: 77, identifier: 77, openedAtMsc: 1700000000000, magic: 0, symbol: 'XAUUSD.x',
@@ -465,13 +467,13 @@ test('MT5 account handshake resets old candles and queues while preserving autom
     // requests must not reset execution switches or unrelated saved settings.
     const beforeRisk = (await (await request('/api/mt5/status')).json()).config;
     const secondaryBeforeRisk = (await (await request(secondaryRoute('/api/mt5/status'))).json()).config;
-    for (const [field, value] of [['intradayRiskPercent', 1.5], ['scalpingRiskPercent', 2], ['scalpOneToOneRiskPercent', .75]] as const) {
+    for (const [field, value] of [['intradayRiskPercent', 1.5], ['scalpingRiskPercent', 2], ['scalpOneToOneRiskPercent', .75], ['bollingerM5RiskPercent', .5]] as const) {
       const prior = (await (await request('/api/mt5/status')).json()).config;
       const riskResponse = await request('/api/mt5/config', { [field]: value }, 'PUT');
       assert.equal(riskResponse.status, 200, await riskResponse.text());
       const next = (await (await request('/api/mt5/status')).json()).config;
       assert.equal(next[field], value);
-      for (const untouched of ['intradayRiskPercent', 'scalpingRiskPercent', 'scalpOneToOneRiskPercent',
+      for (const untouched of ['intradayRiskPercent', 'scalpingRiskPercent', 'scalpOneToOneRiskPercent', 'bollingerM5RiskPercent', 'bollingerM5Enabled',
         'enabled', 'dryRun', 'scalpingEnabled', 'intradayEnabled', 'maximumDailyLossPercent'] as const)
         if (untouched !== field) assert.equal(next[untouched], prior[untouched], `${field} must not change ${untouched}`);
     }
@@ -485,13 +487,26 @@ test('MT5 account handshake resets old candles and queues while preserving autom
     const persisted = JSON.parse(await readFile(path.join(dataPath, 'mt5-automation.json'), 'utf8'));
     assert.equal(persisted.intradayRiskPercent, 1.5); assert.equal(persisted.scalpingRiskPercent, 2);
     assert.equal(persisted.scalpOneToOneRiskPercent, .75);
+    assert.equal(persisted.bollingerM5RiskPercent, .5);
+    assert.equal((await request('/api/mt5/config', { bollingerM5Enabled: true }, 'PUT')).status, 200);
+    assert.equal((await (await request(secondaryRoute('/api/mt5/status'))).json()).config.bollingerM5Enabled, false,
+      'Bollinger selection belongs to the selected account');
+    const bollingerNow = Math.floor(Date.now() / 1000);
+    const forgedBollinger = { id: 'BOLLINGER_M5:test', setupId: 'BOLLINGER_M5:test', symbol: 'XAUUSD',
+      direction: 'BUY', orderType: 'MARKET', source: 'BOLLINGER', tradeStyle: 'BOLLINGER_M5',
+      zoneName: 'Bollinger M5', zoneTimeframe: 'H4', signalTimeframe: 'M5', engulfingType: 'BOLLINGER',
+      entry: 4000, stopLoss: 3990, takeProfit: 4015, riskFree: 4000, riskPips: 100, rewardRisk: 1.5,
+      signalAt: bollingerNow - 300, calculatedAt: bollingerNow, expiresAt: bollingerNow + 120 };
+    const forgedResponse = await request('/api/mt5/signals', forgedBollinger);
+    assert.notEqual(forgedResponse.status, 200);
+    assert.match((await forgedResponse.json()).error, /server strategy scanner/);
     // Daily-limit edits are partial too: neither account's strategy selections
     // may be reset by the other settings, a refresh, or a server restart.
     assert.equal((await request('/api/mt5/config', { maximumDailyLossPercent: 3 }, 'PUT')).status, 200);
     assert.equal((await request(secondaryRoute('/api/mt5/config'), { scalpingRiskPercent: .75,
       scalpOneToOneRiskPercent: 1.5, maximumDailyLossPercent: 4 }, 'PUT')).status, 200);
     const expected = new Map<string, unknown>();
-    const fields = ['scalpingRiskPercent', 'intradayRiskPercent', 'scalpOneToOneRiskPercent', 'maximumDailyLossPercent'];
+    const fields = ['scalpingRiskPercent', 'intradayRiskPercent', 'scalpOneToOneRiskPercent', 'bollingerM5Enabled', 'bollingerM5RiskPercent', 'maximumDailyLossPercent'];
     for (const terminal of ['primary', 'secondary']) {
       const config = (await (await request(`/api/mt5/status?terminal=${terminal}`)).json()).config;
       expected.set(terminal, Object.fromEntries(fields.map(field => [field, config[field]])));
@@ -519,6 +534,6 @@ test('MT5 account handshake resets old candles and queues while preserving autom
     await exited;
     const relative = path.relative(path.resolve(tmpdir()), path.resolve(workspace));
     assert.ok(!relative.startsWith('..') && !path.isAbsolute(relative) && path.basename(workspace).startsWith('mt5-connection-test-'));
-    await rm(workspace, { recursive: true, force: true });
+    await rm(workspace, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
   }
 });

@@ -477,6 +477,81 @@ class ScalpOneToOneTests(BridgeTestCase):
         self.assertIsNone(bridge.position_fib_exit_timeframe(position, {}, {"trade": record}))
 
 
+class BollingerM5Tests(BridgeTestCase):
+    def test_netting_position_is_never_merged_with_another_strategy_or_manual_trade(self):
+        with patch.object(bridge.mt5, 'positions_get', return_value=[SimpleNamespace(symbol='XAUUSD')]):
+            with self.assertRaisesRegex(RuntimeError, 'cannot merge'):
+                bridge.check_bollinger_position_isolation(self.signal(), SimpleNamespace(margin_mode=0), 'XAUUSD')
+            bridge.check_bollinger_position_isolation(self.signal(), SimpleNamespace(margin_mode=2), 'XAUUSD')
+            bridge.check_bollinger_position_isolation(self.signal(), SimpleNamespace(margin_mode=0), 'OTHER')
+        with patch.object(bridge.mt5, 'positions_get', return_value=[]):
+            bridge.check_bollinger_position_isolation(self.signal(), SimpleNamespace(margin_mode=0), 'XAUUSD')
+
+    def signal(self):
+        return {'id': 'BOLLINGER_M5:300', 'tradeStyle': 'BOLLINGER_M5', 'source': 'BOLLINGER',
+                'symbol': 'XAUUSD', 'direction': 'BUY', 'orderType': 'MARKET', 'zoneTimeframe': 'H4',
+                'signalTimeframe': 'M5', 'entry': 100, 'stopLoss': 92, 'takeProfit': 112,
+                'riskPips': 80, 'rewardRisk': 1.5, 'signalAt': 300, 'calculatedAt': 600, 'expiresAt': 720}
+
+    def test_default_off_and_strict_single_entry_geometry_and_freshness(self):
+        signal = self.signal()
+        with patch.object(bridge.time, 'time', return_value=610):
+            with self.assertRaisesRegex(RuntimeError, 'disabled'):
+                bridge.validate_bollinger_m5(signal, {})
+            bridge.validate_bollinger_m5(signal, {'bollingerM5Enabled': True})
+            for change in ({'takeProfit': 110}, {'orderType': 'LIMIT'}, {'signalTimeframe': 'M15'},
+                           {'source': 'ENGULFING'}, {'calculatedAt': 601}, {'expiresAt': 900},
+                           {'scalpEntry': {'leg': 10}}):
+                with self.subTest(change=change), self.assertRaisesRegex(RuntimeError, 'Invalid Bollinger'):
+                    bridge.validate_bollinger_m5({**signal, **change}, {'bollingerM5Enabled': True})
+        with patch.object(bridge.time, 'time', return_value=720), self.assertRaisesRegex(RuntimeError, 'freshness'):
+            bridge.validate_bollinger_m5(signal, {'bollingerM5Enabled': True})
+
+    def test_risk_defaults_and_independence_and_live_rr_guard(self):
+        signal = self.signal()
+        self.assertEqual(bridge.signal_risk_percent(signal, {'riskPercent': 5}), .25)
+        config = {'bollingerM5RiskPercent': .5, 'riskPercent': 5, 'scalpingRiskPercent': 3}
+        self.assertEqual(bridge.signal_risk_money(signal, config, 10_000), 50)
+        symbol = SimpleNamespace(name='XAUUSD', volume_step=.01, volume_min=.01, volume_max=100)
+        with patch.object(bridge.mt5, 'account_info', return_value=SimpleNamespace(equity=10_000)), \
+             patch.object(bridge.mt5, 'order_calc_profit', side_effect=lambda side, name, volume, opened, closed: (closed-opened)*volume*100):
+            self.assertEqual(bridge.calculate_volume(signal, config, symbol), .06)
+            self.assertEqual(bridge.checked_live_entry_price(signal, config, symbol, SimpleNamespace(ask=100, bid=99.9), .06), 100)
+            with self.assertRaisesRegex(RuntimeError, '1.5R tolerance'):
+                bridge.checked_live_entry_price(signal, config, symbol, SimpleNamespace(ask=99.8, bid=99.7), .06)
+
+    def test_80_pip_cap_for_both_directions_and_rounded_live_quote(self):
+        with patch.object(bridge.time, 'time', return_value=610):
+            for side, sign in [('BUY', 1), ('SELL', -1)]:
+                for pips in (79.9, 80, 80.01):
+                    signal = {**self.signal(), 'direction': side, 'stopLoss': 100-sign*pips/10,
+                              'takeProfit': 100+sign*pips/10*1.5, 'riskPips': pips}
+                    if pips <= 80:
+                        bridge.validate_bollinger_m5(signal, {'bollingerM5Enabled': True})
+                    else:
+                        with self.assertRaisesRegex(RuntimeError, '80-pip'):
+                            bridge.validate_bollinger_m5(signal, {'bollingerM5Enabled': True})
+                # Quote moved 0.01 against the entry: still near 1.5R, but now over 80 pips.
+                signal = {**self.signal(), 'direction': side, 'stopLoss': 100-sign*8,
+                          'takeProfit': 100+sign*12}
+                tick = SimpleNamespace(ask=100.01, bid=99.99)
+                with self.assertRaisesRegex(RuntimeError, '80-pip'):
+                    bridge.checked_live_entry_price(signal, {}, SimpleNamespace(), tick, .01)
+
+    def test_tick_rounding_and_no_fib_partial_or_breakeven(self):
+        signal = self.signal()
+        rounded = bridge.quantized_bollinger_signal({**signal, 'stopLoss': 90.003, 'takeProfit': 114.997}, SimpleNamespace(trade_tick_size=.01))
+        self.assertEqual((rounded['stopLoss'], rounded['takeProfit']), (90, 115))
+        record = {**signal, 'status': 'ACTIVE', 'brokerTicket': 77, 'account': 'test-account',
+                  'server': 'test-server', 'brokerSymbol': 'XAUUSD'}
+        position = SimpleNamespace(ticket=77, identifier=77, magic=123, symbol='XAUUSD')
+        self.assertIsNone(bridge.position_fib_exit_timeframe(position, {'recentSignals': [record]}, {}))
+        with patch.object(bridge, 'find_position', return_value=position), \
+             patch.object(bridge.mt5, 'symbol_info_tick') as tick, patch.object(bridge.mt5, 'order_send') as send:
+            bridge.manage_open_signals({'test': record}, [], {'bollingerM5Enabled': True})
+            tick.assert_not_called(); send.assert_not_called()
+
+
 class IntradayPullbackTests(BridgeTestCase):
     def signal(self, leg=10):
         entry = 3009 if leg == 10 else 3007.5

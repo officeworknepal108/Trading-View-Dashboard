@@ -9,6 +9,7 @@ import { TRADE_PIP_SIZE } from '../services/tradeLevels';
 import type { StudyCandles } from '../services/trendlineStudyHistory';
 
 interface Props {
+  active?: boolean;
   symbol: string;
   timeframe: StudyTimeframe;
   chartCandles: StructureCandle[];
@@ -94,6 +95,7 @@ export function VolumeEngulfingStudy(props: Props) {
   };
 
   useEffect(() => {
+    if (props.active === false) { setPositions([]); return; }
     const chart = props.chartRef.current;
     const series = props.seriesRef.current;
     if (!chart || !series || result?.settings.timeframe !== props.timeframe) { setPositions([]); return; }
@@ -112,7 +114,7 @@ export function VolumeEngulfingStudy(props: Props) {
       window.clearInterval(timer);
       try { chart.timeScale().unsubscribeVisibleLogicalRangeChange(update); } catch { /* Chart disposed. */ }
     };
-  }, [visible, result, props.timeframe, props.chartCandles, props.chartRef, props.seriesRef]);
+  }, [visible, result, props.timeframe, props.chartCandles, props.chartRef, props.seriesRef, props.active]);
 
   const exportCsv = () => {
     if (!result) return;

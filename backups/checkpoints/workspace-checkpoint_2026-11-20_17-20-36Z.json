@@ -1,0 +1,477 @@
+{
+  "createdUTC": "2026-11-20T17:20:36.346818+00:00",
+  "repository": "C:\\Users\\ABHI\\Desktop\\backup also 29 09 2026 3am",
+  "baseCommit": "eb3bf2ce85b84641721982d1e15ed7a1de75830c",
+  "branch": "main",
+  "scope": "All Git-visible modified, staged, deleted and untracked non-ignored files. Existing ignored runtime files and secrets are not copied. No source, index, commit or lock configuration changed.",
+  "files": [
+    {
+      "path": "code-lock.config.json",
+      "bytes": 4603,
+      "sha256": "ce20c56014fb50cb03086d111c209b170cf541217da42b64969174adf9e93551"
+    },
+    {
+      "path": "mt5_bridge.py",
+      "bytes": 105604,
+      "sha256": "d62e5c0e1dceab0e9d97193bf102fc880df7350f0679f2cd8dc5cbe33905edf6"
+    },
+    {
+      "path": "reports/m5-bollinger-105-day-study-2026-11-19-trades.csv",
+      "bytes": 10065,
+      "sha256": "9629b4a1b7a4e99c4203ca960dc3b95da989142096db535db724706b5cce6a46"
+    },
+    {
+      "path": "reports/m5-bollinger-105-day-study-2026-11-19.json",
+      "bytes": 16026,
+      "sha256": "3bac78f7c9e9bf7b6de77c77b75027b4aa0566ee57103592292fd02709cb9430"
+    },
+    {
+      "path": "reports/m5-bollinger-implementation-2026-11-19.md",
+      "bytes": 9228,
+      "sha256": "16cd49c0867cdb00104c2a5a60041fbcabd56748c5ed44a70dc925f7eef8d0ba"
+    },
+    {
+      "path": "reports/m5-bollinger-max80-replay-2026-11-19-trades.csv",
+      "bytes": 8315,
+      "sha256": "830a28d95df2ecbf2c23f8b60c36bbb8e5ac2e12ae443f2cf1625d4960e31262"
+    },
+    {
+      "path": "reports/m5-bollinger-max80-replay-2026-11-19.json",
+      "bytes": 16473,
+      "sha256": "908aa31d410a2b8ba2a68d271f79d8fd07f74871df2181582aeddda67636bc8f"
+    },
+    {
+      "path": "reports/m5-bollinger-max80-replay-2026-11-19.md",
+      "bytes": 2002,
+      "sha256": "611429c5a740074751c13ed27c48563ef57b58bfa347a859b957d1015b00af0c"
+    },
+    {
+      "path": "reports/m5-bollinger-native-replay-2026-11-19-trades.csv",
+      "bytes": 8315,
+      "sha256": "830a28d95df2ecbf2c23f8b60c36bbb8e5ac2e12ae443f2cf1625d4960e31262"
+    },
+    {
+      "path": "reports/m5-bollinger-native-replay-2026-11-19.json",
+      "bytes": 16434,
+      "sha256": "ac1796c1bee35f77fe25b6aa8ea734891b4d9b94fef87ede7b8bae3847650d00"
+    },
+    {
+      "path": "reports/m5-bollinger-native-replay-2026-11-19.md",
+      "bytes": 1963,
+      "sha256": "63745d5fdddbcb9cf550e9147ee694daa973dd15993e5e784b4ec95416aad845"
+    },
+    {
+      "path": "reports/m5-bollinger-study-2026-11-19-dashboard-spec.md",
+      "bytes": 5230,
+      "sha256": "b39829c86d72e6908e3f1b5e701c7a47c93226686a0d73f96dc804eb1915e99e"
+    },
+    {
+      "path": "reports/m5-bollinger-study-2026-11-19-monthly.csv",
+      "bytes": 378,
+      "sha256": "7c16fcfac7b4fa83f9a58f6a8e25946295f6bd6915f0bf94fc21cbef8c3c1c55"
+    },
+    {
+      "path": "reports/m5-bollinger-study-2026-11-19-trades.csv",
+      "bytes": 6489,
+      "sha256": "a55c71d5913ce8b4962837c1dd2dea27b152a97f5d2b0a67ccb315ad585bf87e"
+    },
+    {
+      "path": "reports/m5-bollinger-study-2026-11-19.json",
+      "bytes": 16765,
+      "sha256": "5034c05daaf5fb42101bd92546cbd3fe274fb7fa140adef9674629b82485fa30"
+    },
+    {
+      "path": "reports/m5-bollinger-study-2026-11-19.md",
+      "bytes": 6398,
+      "sha256": "798d3c882b9ef472046e7814236c95ba7d12f9f3583960cf970b2ad31d1c4c35"
+    },
+    {
+      "path": "reports/scalp-both-entry-fill-study-2026-11-20-selected-trades.csv",
+      "bytes": 477005,
+      "sha256": "4b8406d18a601909c85496dd4d88f288e080f0fa0ff6b76a7e4edb9772488d35"
+    },
+    {
+      "path": "reports/scalp-both-entry-fill-study-2026-11-20.csv",
+      "bytes": 37087,
+      "sha256": "5d84843b3e6020441ffbf2de623c6cb02bc73aa21c7f4f52f1d74aa95453e11d"
+    },
+    {
+      "path": "reports/scalp-both-entry-fill-study-2026-11-20.html",
+      "bytes": 10440,
+      "sha256": "50d1c99eceb510ea3cd5e96e137945bbdcdc4a14fbed069b6d9864eb3fa689a6"
+    },
+    {
+      "path": "reports/scalp-both-entry-fill-study-2026-11-20.json",
+      "bytes": 2892261,
+      "sha256": "50aa363fe197d3b9b3857bd48d329566ec8fe5f09ffcda6d2a1479eff8a6d812"
+    },
+    {
+      "path": "reports/scalp-both-entry-fill-study-2026-11-20.ts",
+      "bytes": 17734,
+      "sha256": "d1976d5221d80dbcee7663d1f12c8bd1db013e56f8237e6e68d8e4f241f3af33"
+    },
+    {
+      "path": "reports/scalp-entry-percentage-study-2026-11-20-selected-trades.csv",
+      "bytes": 303707,
+      "sha256": "af93f33a6439476d89048122fa63dd2e4e1f08868a09dce963a1699634a4d44f"
+    },
+    {
+      "path": "reports/scalp-entry-percentage-study-2026-11-20.csv",
+      "bytes": 38366,
+      "sha256": "931d7b19d2f8d080296be5cc1d285daa983b5709888441dd7af7f18bf2325d31"
+    },
+    {
+      "path": "reports/scalp-entry-percentage-study-2026-11-20.html",
+      "bytes": 8182,
+      "sha256": "718fa055d202149ef452567c0ab1fc3e0bff085593e4cf6b316621a610b0a49b"
+    },
+    {
+      "path": "reports/scalp-entry-percentage-study-2026-11-20.json",
+      "bytes": 1947274,
+      "sha256": "f78cf39a72c7d6d2db2d3d029a4f9b0193903d7d35000ca3faebe7b07dd9504d"
+    },
+    {
+      "path": "reports/scalp-entry-percentage-study-2026-11-20.ts",
+      "bytes": 14579,
+      "sha256": "a4ab184a39dd92f0606eb005d223e55c80e8a5dab0f54d9b04737b8261cd4d6c"
+    },
+    {
+      "path": "reports/scalp-expanded-entry-study-2026-11-20-selected-trades.csv",
+      "bytes": 397292,
+      "sha256": "779648ddc0aeac73fbafa3e8da65b6ccc33ed12346b10e953b48a5da92b6053e"
+    },
+    {
+      "path": "reports/scalp-expanded-entry-study-2026-11-20.csv",
+      "bytes": 422477,
+      "sha256": "7d3f601575b563253c991c58222768f343deea28111203ecb406615046382a7c"
+    },
+    {
+      "path": "reports/scalp-expanded-entry-study-2026-11-20.html",
+      "bytes": 9948,
+      "sha256": "961bb53dab92be59819f5b64c429460ca7c659c48dca329a2f1702ba875136ff"
+    },
+    {
+      "path": "reports/scalp-expanded-entry-study-2026-11-20.json",
+      "bytes": 8208710,
+      "sha256": "0651f5b9a0f666fd45cd1a42aa97ba3fc72bf0ff4842505ae688577ed7e6f8c2"
+    },
+    {
+      "path": "reports/scalp-expanded-entry-study-2026-11-20.ts",
+      "bytes": 23114,
+      "sha256": "d5f991dc8c999a2f042b55dbcb54690dc7f80b2084085cff2ab7c730c6965e31"
+    },
+    {
+      "path": "reports/scalp-expanded-study-summary-2026-11-20.py",
+      "bytes": 10127,
+      "sha256": "e984182c108ab6e2be62de0507b6585577413620edcbb072e7d39c6118c10bd8"
+    },
+    {
+      "path": "reports/scalp-fresh-data-2026-11-20-H1.json",
+      "bytes": 169045,
+      "sha256": "806ba92cc27010d14405cf0e445be01af9855a577d22df05795ce906ad47aa94"
+    },
+    {
+      "path": "reports/scalp-fresh-data-2026-11-20-H4.json",
+      "bytes": 79377,
+      "sha256": "3f1a24701ef889578ebc4413b453d92c586f3a19563ecd48cb9b99d77918a2a7"
+    },
+    {
+      "path": "reports/scalp-fresh-data-2026-11-20-M1.json",
+      "bytes": 554863,
+      "sha256": "cebed12bfeec2643c928a573e811c87a39726b41c3b7a3cfc8518dcb6881f3ea"
+    },
+    {
+      "path": "reports/scalp-fresh-data-2026-11-20-M15.json",
+      "bytes": 559658,
+      "sha256": "453123a0525fd9ae763e8c04f0cb13d45c10a24458c94a367404538c8922a49e"
+    },
+    {
+      "path": "reports/scalp-fresh-data-2026-11-20-coverage.json",
+      "bytes": 890,
+      "sha256": "c75d73ccdadfb3e0858a106a2e1c058cafeefc2301f0490a5e86eb85efe2ae59"
+    },
+    {
+      "path": "reports/scalp-fresh-data-2026-11-20.ts",
+      "bytes": 1240,
+      "sha256": "2388a73f8e27221e0986b05665ccd14c4361271f3c8f0a3c172bc756eaa2ae84"
+    },
+    {
+      "path": "reports/scalp-management-study-summary-2026-11-20.py",
+      "bytes": 14528,
+      "sha256": "b6b326075afe3bbd4451ef35bd085f4ebb75cdb165feef1974957a820549ce9f"
+    },
+    {
+      "path": "reports/scalp-old-vs-corrected-pips-2026-11-20.csv",
+      "bytes": 742,
+      "sha256": "44fb28b7f5b05c5f65b60b745f9ba6a5c66fc4b64268911de2e8d3c676073bd1"
+    },
+    {
+      "path": "reports/scalp-old-vs-corrected-pips-2026-11-20.json",
+      "bytes": 2310,
+      "sha256": "4fca4a1db87b6fd7fb749280e8cddb8c9afe237bfdf4a9de13642d1cf66aa4df"
+    },
+    {
+      "path": "reports/scalp-reference-entry-comparison-2026-11-20.csv",
+      "bytes": 113865,
+      "sha256": "4ed95841a0eb1635fb56c167a352856eb7f172454f91b7ba73f347fba9cd2953"
+    },
+    {
+      "path": "reports/scalp-reference-entry-comparison-2026-11-20.json",
+      "bytes": 483466,
+      "sha256": "1f65613593e4565b5a039b3f962e9badb248779c36246af62a6ced7b3dfaaffb"
+    },
+    {
+      "path": "reports/scalp-reference-entry-comparison-2026-11-20.ts",
+      "bytes": 7410,
+      "sha256": "6d5f6a2c4f40510c6118d58075092233796cd9c2120e116ccf658276f6c0b739"
+    },
+    {
+      "path": "reports/scalp-second-close-breakeven-study-2026-11-20-selected-trades.csv",
+      "bytes": 857923,
+      "sha256": "61e32465523607f67a4a7f0acce60bcaa64599047d795121dc025d0315ede7b1"
+    },
+    {
+      "path": "reports/scalp-second-close-breakeven-study-2026-11-20.csv",
+      "bytes": 28513,
+      "sha256": "459323379289f1eb57686534246845a2e13f481c42a00bbd9f7a21702e2b2f5a"
+    },
+    {
+      "path": "reports/scalp-second-close-breakeven-study-2026-11-20.html",
+      "bytes": 14088,
+      "sha256": "d36cd0afd7443b4c23722e3c35acd71846620eb59ef0a1710cf4de1a02632407"
+    },
+    {
+      "path": "reports/scalp-second-close-breakeven-study-2026-11-20.json",
+      "bytes": 8415129,
+      "sha256": "21d9945560e51237dcaca847acd36d71264eb4d25d32b83e9ab02b8a48079a31"
+    },
+    {
+      "path": "reports/scalp-second-close-breakeven-study-2026-11-20.ts",
+      "bytes": 26894,
+      "sha256": "d332c4bcbcc118e4c2a5c73e6d191e7f0af777deca2062aa20a423e2234bd570"
+    },
+    {
+      "path": "reports/scalp-second-entry-fill-comparison-2026-11-20.json",
+      "bytes": 1696,
+      "sha256": "52dd948af09ea084007db7f2ccc6849948b16b831b03ec9024cf85d2f47a7683"
+    },
+    {
+      "path": "reports/scalp-selected-rule-summary-2026-11-20.py",
+      "bytes": 10071,
+      "sha256": "1ec6e3d3cd8e59765aeb5deb8998fdc3ecbdaa1d5f338064da64ff4c9032dc71"
+    },
+    {
+      "path": "reports/scalp-selected-rule-validation-2026-11-20-fresh-qualified-setups.json",
+      "bytes": 29340,
+      "sha256": "146fdd52652d3d67525e078b7364fb33cbdaf31ee7a4b2af8bb7ff0504af3301"
+    },
+    {
+      "path": "reports/scalp-selected-rule-validation-2026-11-20-fresh-trades.csv",
+      "bytes": 22608,
+      "sha256": "5b805d9ba6ccd65f21a8de5d612974fa36647cab3688b08d0c1dc48fed86a442"
+    },
+    {
+      "path": "reports/scalp-selected-rule-validation-2026-11-20-frozen-plan.json",
+      "bytes": 2361,
+      "sha256": "72bc5aa8f8e9109b4b068439e2c65b1e331cea17999f4a33fdf2fa585fa39701"
+    },
+    {
+      "path": "reports/scalp-selected-rule-validation-2026-11-20.csv",
+      "bytes": 2728,
+      "sha256": "409d22280d58baac3d4ac22982d16c05a51255caea46b15aa834914df71f3b87"
+    },
+    {
+      "path": "reports/scalp-selected-rule-validation-2026-11-20.html",
+      "bytes": 13542,
+      "sha256": "e6119664b4553b4478271e8d8a736b338c5a561b8f2e50743653adf5b37d8129"
+    },
+    {
+      "path": "reports/scalp-selected-rule-validation-2026-11-20.json",
+      "bytes": 2305743,
+      "sha256": "dfa5c8b84f88627894592614362b16129d41ad998bd34a529a0ea1f874f42307"
+    },
+    {
+      "path": "reports/scalp-selected-rule-validation-2026-11-20.ts",
+      "bytes": 16367,
+      "sha256": "46756725d9cbeacc8022bd746e939ee0609100f6a5dedca3f34448da8059aa77"
+    },
+    {
+      "path": "reports/scalp-tp-extension-study-2026-11-20-selected-trades.csv",
+      "bytes": 207363,
+      "sha256": "5b11cd4ab048771c22e5ec713e47ab020f889171eaa751983d94ff84dca6a9dc"
+    },
+    {
+      "path": "reports/scalp-tp-extension-study-2026-11-20.csv",
+      "bytes": 43779,
+      "sha256": "f3c83ac10502245e471b379de441290540dd9a88e59675d1f4f2f50039ff1979"
+    },
+    {
+      "path": "reports/scalp-tp-extension-study-2026-11-20.html",
+      "bytes": 13889,
+      "sha256": "231e3c70ab9e311cb3741b52be04c273d19dc81bdb63e35f285af400d98c1257"
+    },
+    {
+      "path": "reports/scalp-tp-extension-study-2026-11-20.json",
+      "bytes": 2227830,
+      "sha256": "6d74e4fd7706cb957e3770a5aa20d3b3fa27cde29110656198fecfe802ffdba9"
+    },
+    {
+      "path": "reports/scalp-tp-extension-study-2026-11-20.ts",
+      "bytes": 22543,
+      "sha256": "e40143930e6f284441bc1b8463186720cd370be250b415b073065c7a2cfb022e"
+    },
+    {
+      "path": "reports/scalp-tp-study-summary-2026-11-20.py",
+      "bytes": 11434,
+      "sha256": "1e4ffce54efe338361e6818ef5e6ee587f9e9d50feb20084574a0b104787676e"
+    },
+    {
+      "path": "reports/scalp-validation-model-2026-11-20.ts",
+      "bytes": 10316,
+      "sha256": "0a701bad41ff70ade80cff01b60d1e6b5aa08e4a802f0e1120c21cf65f5738d7"
+    },
+    {
+      "path": "scripts/import-bollinger-history.ts",
+      "bytes": 3208,
+      "sha256": "75c50919557a8805e20afc9b739714d7b4a1933066b93350c9a9fb2ef297fb09"
+    },
+    {
+      "path": "scripts/study-bollinger-m5.ts",
+      "bytes": 4812,
+      "sha256": "4864f0064415c6a5cdfc0e36391563c3fc5fa6fa2bc93a573fac04c18ebfc683"
+    },
+    {
+      "path": "server.ts",
+      "bytes": 150316,
+      "sha256": "df06a7dd88cc61ccbe7839ed5d9bd33a8d3340fb2a4ad7caabaf94e93f3b9d64"
+    },
+    {
+      "path": "src/components/BollingerStudy.tsx",
+      "bytes": 33792,
+      "sha256": "992079b380b411a2fc03ce9812ad2f479254be179aee3f208482d8b360b3b299"
+    },
+    {
+      "path": "src/components/OandaProChart.tsx",
+      "bytes": 656044,
+      "sha256": "c17c444cbc356cc5f358e5bf67e8baa2279f1e99ca8b08b18a8bdf24228bac8b"
+    },
+    {
+      "path": "src/components/TradeJournal.tsx",
+      "bytes": 70339,
+      "sha256": "7bd827b81f448dac61e4cd2f7ebeb67b1165a6c9fc70b96e68fc305970c0c776"
+    },
+    {
+      "path": "src/components/TradeMultiSelect.tsx",
+      "bytes": 3444,
+      "sha256": "3309c6ef3d5aa4aaf9440f994ae92235e6bc97c8d409e735210f94127b73ddf3"
+    },
+    {
+      "path": "src/components/TrendlineStudy.tsx",
+      "bytes": 42006,
+      "sha256": "3f831a71d0c3e67f344e866b686c211b9420899a061d596528c05124b534ef21"
+    },
+    {
+      "path": "src/components/VolumeEngulfingStudy.tsx",
+      "bytes": 20594,
+      "sha256": "8c534b6981049cbea9fca1be0ca7f83348aaba86f4bedd52b7a4bd65f74263d8"
+    },
+    {
+      "path": "src/server/authentication.ts",
+      "bytes": 30927,
+      "sha256": "e6e3b4ce67c0b7474b265fd81eeb06ce0f4205d66622ef2074acf75b3c64f11b"
+    },
+    {
+      "path": "src/services/bollingerArchive.ts",
+      "bytes": 3919,
+      "sha256": "5dac6d3f11bc7372120e17af86037ea2fb0788e348f82cb285a767f4b7e025cf"
+    },
+    {
+      "path": "src/services/bollingerM5.ts",
+      "bytes": 15208,
+      "sha256": "fe0ca4d2693552d9fde07113d616ba261edf41bc80cd6cf7d998955065c165bc"
+    },
+    {
+      "path": "src/services/bollingerM5.worker.ts",
+      "bytes": 408,
+      "sha256": "b28a209b701b3893474324e03fbcdd2b4e62004ee5ed3e7fbf7196322e4b1f12"
+    },
+    {
+      "path": "src/services/mt5Automation.ts",
+      "bytes": 53118,
+      "sha256": "64fd6a894d934192bdcc1d7ad6da02d347aaaf85e9b56429f6a6a0a796e22a56"
+    },
+    {
+      "path": "src/services/telegramMessages.ts",
+      "bytes": 11092,
+      "sha256": "274a0fbfb31146ad978605105330f14ff636f4e2a76e460d6c962fe03e845e22"
+    },
+    {
+      "path": "src/services/telegramTradeNumbers.ts",
+      "bytes": 4873,
+      "sha256": "3446efcd6d5575d1719faa278c4870f8c171af1763364e761becf7a53aa5704f"
+    },
+    {
+      "path": "src/services/tradeRecordDeduplication.ts",
+      "bytes": 5887,
+      "sha256": "fac810b7aab9290202fbbf1f53232001c46f0277e8941ba7b77527393f816e9b"
+    },
+    {
+      "path": "src/services/tradeRecordFilters.ts",
+      "bytes": 29239,
+      "sha256": "4997b35071c4a20e07e19c4afb3c7d0ca600300f161def8f412bb85eabc0df52"
+    },
+    {
+      "path": "src/services/trendlineStudyHistory.ts",
+      "bytes": 7354,
+      "sha256": "874145b93fb0d6cf82b9483b3068993ba266a9b9e299ebef8dd792e77d54d5f8"
+    },
+    {
+      "path": "src/studyAssets/bollingerBrokerHistory.json",
+      "bytes": 4616582,
+      "sha256": "94794aede130d9b3f0bc7f943b7935db7ff8cffe5cf9fc08d4a8b761792a1e8c"
+    },
+    {
+      "path": "tests/agentKnowledge.test.ts",
+      "bytes": 2274,
+      "sha256": "5a860ff4dab8fcb6e17f29463e09d206a0ad25a80b89f49e09fbb164b100363d"
+    },
+    {
+      "path": "tests/bollingerArchive.test.ts",
+      "bytes": 4605,
+      "sha256": "65c01df7a11125bbd1c45b19b94e6726744e79014648f4db3d168151803c9cfb"
+    },
+    {
+      "path": "tests/bollingerM5.test.ts",
+      "bytes": 11637,
+      "sha256": "468f60156450db3ea5601d9257cce11a8f8a46c837682a326864d72b064a9ac5"
+    },
+    {
+      "path": "tests/mt5Connection.test.ts",
+      "bytes": 41004,
+      "sha256": "aacf2f71b2ade8246fb0114357b081bdbbfd1d6584b1df24c5095c2d2fe27fd7"
+    },
+    {
+      "path": "tests/pullbackNotifications.test.ts",
+      "bytes": 6683,
+      "sha256": "df4c704faaaf591d34c4152c489099ed7c33a710c6fd5ebc88f11b5bcfbfede2"
+    },
+    {
+      "path": "tests/test_mt5_bridge.py",
+      "bytes": 116625,
+      "sha256": "e22f0563549910a9b2e6728813586c2557ebf4603c3d2f8e6072434ce36f22cc"
+    },
+    {
+      "path": "tests/trendlineStudyHistory.test.ts",
+      "bytes": 11373,
+      "sha256": "00beca4cb15264095dae579395fa1dcd521c6d8b768a19b332586dd7ed9152ad"
+    }
+  ],
+  "deleted": [],
+  "fileCount": 92,
+  "deletedCount": 0,
+  "totalUncompressedBytes": 37281505,
+  "archivePath": "C:\\Users\\ABHI\\Desktop\\backup also 29 09 2026 3am\\backups\\checkpoints\\workspace-checkpoint_2026-11-20_17-20-36Z.zip",
+  "archiveBytes": 4389248,
+  "archiveSHA256": "817ffc77f174ae7bd0b4aff720e31324cdf9120e61087e1665e900c221414cb8",
+  "verified": true
+}

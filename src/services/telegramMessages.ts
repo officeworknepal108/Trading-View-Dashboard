@@ -10,9 +10,9 @@ export interface TelegramTradeAlert {
   outsideTradingTime?: boolean;
   symbol: string; direction: 'BUY' | 'SELL'; zoneName: string;
   zoneTimeframe: TradeTimeframe; signalTimeframe: TradeTimeframe; engulfingType: string;
-  source?: 'MTF' | 'ENGULFING'; higherZoneName?: string; entryZoneName?: string;
+  source?: 'MTF' | 'ENGULFING' | 'BOLLINGER'; higherZoneName?: string; entryZoneName?: string;
   entry: number; stopLoss: number; takeProfit: number; riskPips: number; rewardRisk: number;
-  tradeStyle?: 'SCALPING' | 'INTRADAY' | 'SCALP_1_1'; riskFree?: number; openedAt: number;
+  tradeStyle?: 'SCALPING' | 'INTRADAY' | 'SCALP_1_1' | 'BOLLINGER_M5'; riskFree?: number; openedAt: number;
   rfAt?: number; partialClosedVolume?: number; remainingVolume?: number;
   closedAt?: number; exitPrice?: number; returnR?: number;
 }
@@ -33,7 +33,7 @@ const entryTime = (seconds: number) => new Intl.DateTimeFormat('en-GB', {
 
 export function formatTelegramTradeMessage(alert: TelegramTradeAlert, number: TelegramTradeNumber): string {
   if (alert.kind === 'entry2' && alert.pullback) return `2nd Entry: ${price(alert.pullback.secondEntry)} ✓ Filled`;
-  const style = alert.tradeStyle === 'SCALP_1_1' ? 'SCALP 1:1'
+  const style = alert.tradeStyle === 'BOLLINGER_M5' ? 'BOLLINGER M5' : alert.tradeStyle === 'SCALP_1_1' ? 'SCALP 1:1'
     : alert.tradeStyle ?? (['M1', 'M5'].includes(alert.zoneTimeframe) ? 'SCALPING' : 'INTRADAY');
   const identity = `${alert.symbol} ${alert.direction} · ${style}`;
   const heading = (event: string) => `Trade #${number.tradeNumber} — ${event}\n${identity}`;
@@ -56,7 +56,10 @@ export function formatTelegramTradeMessage(alert: TelegramTradeAlert, number: Te
     `SL: ${price(alert.stopLoss)} · TP: ${price(alert.takeProfit)}`].join('\n');
 
   const mtf = alert.source === 'MTF' || alert.entryZoneName !== undefined;
-  const setup = [
+  const setup = alert.tradeStyle === 'BOLLINGER_M5' ? [
+    'Confirmation: M5 Bollinger re-entry + EMA200 + SuperTrend + ADX >=15; confirmed H4 structure bias',
+    'Entry method: One market entry; original SL and 1.5R TP fixed. No engulfing filter.',
+  ] : [
     `Main zone: ${timeframes[alert.zoneTimeframe]} ${zoneName(alert.higherZoneName ?? (mtf ? 'zone not recorded' : alert.zoneName))}`,
     ...(mtf ? [`Entry zone: ${timeframes[alert.signalTimeframe]} ${zoneName(alert.entryZoneName ?? alert.zoneName)}`] : []),
     `Confirmation: ${timeframes[alert.signalTimeframe]} ${alert.direction === 'BUY' ? 'bullish' : 'bearish'} engulfing ${alert.engulfingType}`,
@@ -87,7 +90,7 @@ export function countTelegramSetups(sent: SentTelegramAlerts, now: number): Dail
     unique.set(`${state.tradeDate}:${state.tradeNumber}`, state);
   }
   const summary: DailyTradeCounts = { date: day.date, total: unique.size, wins: 0, losses: 0, riskFree: 0, open: 0, strategies: {} };
-  for (const style of ['SCALP_1_1', 'INTRADAY', 'SCALPING']) summary.strategies![style] = { total: 0, wins: 0, losses: 0, riskFree: 0, open: 0 };
+  for (const style of ['SCALP_1_1', 'INTRADAY', 'SCALPING', 'BOLLINGER_M5']) summary.strategies![style] = { total: 0, wins: 0, losses: 0, riskFree: 0, open: 0 };
   for (const state of unique.values()) {
     const row = summary.strategies![state.tradeStyle!];
     if (!row) continue;

@@ -1,0 +1,1135 @@
+{
+  "source": "TradingView OANDA:XAUUSD",
+  "from": 1794967200,
+  "to": 1795192620,
+  "records": [
+    {
+      "id": "VE:XAUUSD:M15:1794973500",
+      "signal": {
+        "type": "T1",
+        "direction": "bearish",
+        "timeframe": "M15",
+        "time": 1794973500,
+        "candleCount": 2
+      },
+      "confirmedAt": 1794974400,
+      "bias": "bearish",
+      "h4Ema": {
+        "time": 1794952800,
+        "ema20": 3878.894671697907,
+        "ema50": 3938.3261532017113
+      },
+      "h1Trendline": {
+        "timeframe": "H1",
+        "kind": "continuation",
+        "color": "red",
+        "firstTime": 1794574800,
+        "secondTime": 1794837600,
+        "confirmedAt": 1794895200,
+        "geometry": {
+          "time": 1794970800,
+          "slope": -0.708958333333328,
+          "price": 3864.1414583333335
+        },
+        "distance": {
+          "linePrice": 3863.4325000000003,
+          "pips": 750.3750000000036,
+          "atrRatio": 7.515622746060245,
+          "band": "Far"
+        }
+      },
+      "group": "V2 < V1",
+      "v1": 9809,
+      "v2": 8340,
+      "levels": {
+        "entry": 3788.395,
+        "stopLoss": 3801.945,
+        "takeProfit": 3774.845,
+        "riskFree": 3774.845,
+        "riskFreeEnabled": false,
+        "riskPips": 135.5,
+        "rewardRisk": 1,
+        "pendingAtCreation": false,
+        "status": "active",
+        "calculatedAt": 1794974400,
+        "filledAt": 1794974400,
+        "signal": {
+          "type": "T1",
+          "direction": "bearish",
+          "timeframe": "M15",
+          "time": 1794973500,
+          "candleCount": 2
+        }
+      },
+      "outcome": "tp",
+      "filledAt": 1794974400,
+      "resolvedAt": 1794985200,
+      "returnR": 1
+    },
+    {
+      "id": "VE:XAUUSD:M15:1794976200",
+      "signal": {
+        "type": "T1",
+        "direction": "bearish",
+        "timeframe": "M15",
+        "time": 1794976200,
+        "candleCount": 2
+      },
+      "confirmedAt": 1794977100,
+      "bias": "bearish",
+      "h4Ema": {
+        "time": 1794952800,
+        "ema20": 3878.894671697907,
+        "ema50": 3938.3261532017113
+      },
+      "h1Trendline": {
+        "timeframe": "H1",
+        "kind": "continuation",
+        "color": "red",
+        "firstTime": 1794574800,
+        "secondTime": 1794837600,
+        "confirmedAt": 1794895200,
+        "geometry": {
+          "time": 1794970800,
+          "slope": -0.708958333333328,
+          "price": 3864.1414583333335
+        },
+        "distance": {
+          "linePrice": 3862.9007812500004,
+          "pips": 785.1078125000049,
+          "atrRatio": 8.51702200703349,
+          "band": "Far"
+        }
+      },
+      "group": "V2 < V1",
+      "v1": 5699,
+      "v2": 5270,
+      "levels": {
+        "entry": 3784.39,
+        "stopLoss": 3795.27,
+        "takeProfit": 3773.5099999999998,
+        "riskFree": 3773.5099999999998,
+        "riskFreeEnabled": false,
+        "riskPips": 108.8,
+        "rewardRisk": 1,
+        "pendingAtCreation": false,
+        "status": "active",
+        "calculatedAt": 1794977100,
+        "filledAt": 1794977100,
+        "signal": {
+          "type": "T1",
+          "direction": "bearish",
+          "timeframe": "M15",
+          "time": 1794976200,
+          "candleCount": 2
+        }
+      },
+      "outcome": "sl",
+      "filledAt": 1794977100,
+      "resolvedAt": 1794979800,
+      "returnR": -1
+    },
+    {
+      "id": "VE:XAUUSD:M15:1795010400",
+      "signal": {
+        "type": "T3",
+        "direction": "bearish",
+        "timeframe": "M15",
+        "time": 1795010400,
+        "candleCount": 3
+      },
+      "confirmedAt": 1795011300,
+      "bias": "bearish",
+      "h4Ema": {
+        "time": 1794996000,
+        "ema20": 3854.0862512877598,
+        "ema50": 3920.8020370598647
+      },
+      "h1Trendline": {
+        "timeframe": "H1",
+        "kind": "continuation",
+        "color": "red",
+        "firstTime": 1794574800,
+        "secondTime": 1794837600,
+        "confirmedAt": 1794895200,
+        "geometry": {
+          "time": 1795006800,
+          "slope": -0.708958333333328,
+          "price": 3857.051875
+        },
+        "distance": {
+          "linePrice": 3856.1656770833333,
+          "pips": 791.8067708333319,
+          "atrRatio": 7.519703148194056,
+          "band": "Far"
+        }
+      },
+      "group": "V3 < V2 only",
+      "v1": 10818,
+      "v2": 11590,
+      "v3": 11279,
+      "levels": {
+        "entry": 3776.985,
+        "stopLoss": 3793.59,
+        "takeProfit": 3760.38,
+        "riskFree": 3760.38,
+        "riskFreeEnabled": false,
+        "riskPips": 166.05,
+        "rewardRisk": 1,
+        "pendingAtCreation": false,
+        "status": "active",
+        "calculatedAt": 1795011300,
+        "filledAt": 1795011300,
+        "signal": {
+          "type": "T3",
+          "direction": "bearish",
+          "timeframe": "M15",
+          "time": 1795010400,
+          "candleCount": 3
+        }
+      },
+      "outcome": "tp",
+      "filledAt": 1795011300,
+      "resolvedAt": 1795014000,
+      "returnR": 1
+    },
+    {
+      "id": "VE:XAUUSD:M15:1795023000",
+      "signal": {
+        "type": "T1",
+        "direction": "bearish",
+        "timeframe": "M15",
+        "time": 1795023000,
+        "candleCount": 2
+      },
+      "confirmedAt": 1795023900,
+      "bias": "bearish",
+      "h4Ema": {
+        "time": 1794996000,
+        "ema20": 3854.0862512877598,
+        "ema50": 3920.8020370598647
+      },
+      "h1Trendline": {
+        "timeframe": "H1",
+        "kind": "continuation",
+        "color": "red",
+        "firstTime": 1794574800,
+        "secondTime": 1794837600,
+        "confirmedAt": 1794895200,
+        "geometry": {
+          "time": 1795017600,
+          "slope": -0.708958333333328,
+          "price": 3854.925
+        },
+        "distance": {
+          "linePrice": 3853.684322916667,
+          "pips": 1127.8432291666695,
+          "atrRatio": 10.990983316373597,
+          "band": "Far"
+        }
+      },
+      "group": "V2 < V1",
+      "v1": 8725,
+      "v2": 8165,
+      "levels": {
+        "entry": 3740.9,
+        "stopLoss": 3754.045,
+        "takeProfit": 3727.755,
+        "riskFree": 3727.755,
+        "riskFreeEnabled": false,
+        "riskPips": 131.45,
+        "rewardRisk": 1,
+        "pendingAtCreation": false,
+        "status": "active",
+        "calculatedAt": 1795023900,
+        "filledAt": 1795023900,
+        "signal": {
+          "type": "T1",
+          "direction": "bearish",
+          "timeframe": "M15",
+          "time": 1795023000,
+          "candleCount": 2
+        }
+      },
+      "outcome": "tp",
+      "filledAt": 1795023900,
+      "resolvedAt": 1795028400,
+      "returnR": 1
+    },
+    {
+      "id": "VE:XAUUSD:M15:1795027500",
+      "signal": {
+        "type": "T1",
+        "direction": "bearish",
+        "timeframe": "M15",
+        "time": 1795027500,
+        "candleCount": 2
+      },
+      "confirmedAt": 1795028400,
+      "bias": "bearish",
+      "h4Ema": {
+        "time": 1795010400,
+        "ema20": 3842.8242273555925,
+        "ema50": 3913.5484277633996
+      },
+      "h1Trendline": {
+        "timeframe": "H1",
+        "kind": "continuation",
+        "color": "red",
+        "firstTime": 1794574800,
+        "secondTime": 1794837600,
+        "confirmedAt": 1794895200,
+        "geometry": {
+          "time": 1795024800,
+          "slope": -0.708958333333328,
+          "price": 3853.5070833333334
+        },
+        "distance": {
+          "linePrice": 3852.7981250000003,
+          "pips": 1149.4312500000024,
+          "atrRatio": 12.516374810101317,
+          "band": "Far"
+        }
+      },
+      "group": "V2 < V1",
+      "v1": 6789,
+      "v2": 5762,
+      "levels": {
+        "entry": 3737.855,
+        "stopLoss": 3746.315,
+        "takeProfit": 3729.395,
+        "riskFree": 3729.395,
+        "riskFreeEnabled": false,
+        "riskPips": 84.6,
+        "rewardRisk": 1,
+        "pendingAtCreation": false,
+        "status": "active",
+        "calculatedAt": 1795028400,
+        "filledAt": 1795028400,
+        "signal": {
+          "type": "T1",
+          "direction": "bearish",
+          "timeframe": "M15",
+          "time": 1795027500,
+          "candleCount": 2
+        }
+      },
+      "outcome": "tp",
+      "filledAt": 1795028400,
+      "resolvedAt": 1795028400,
+      "returnR": 1
+    },
+    {
+      "id": "VE:XAUUSD:M15:1795037400",
+      "signal": {
+        "type": "T1",
+        "direction": "bearish",
+        "timeframe": "M15",
+        "time": 1795037400,
+        "candleCount": 2
+      },
+      "confirmedAt": 1795038300,
+      "bias": "bearish",
+      "h4Ema": {
+        "time": 1795010400,
+        "ema20": 3842.8242273555925,
+        "ema50": 3913.5484277633996
+      },
+      "h1Trendline": {
+        "timeframe": "H1",
+        "kind": "continuation",
+        "color": "red",
+        "firstTime": 1794574800,
+        "secondTime": 1794837600,
+        "confirmedAt": 1794895200,
+        "geometry": {
+          "time": 1795032000,
+          "slope": -0.708958333333328,
+          "price": 3852.0891666666666
+        },
+        "distance": {
+          "linePrice": 3850.8484895833335,
+          "pips": 1267.484895833336,
+          "atrRatio": 16.86826154168097,
+          "band": "Far"
+        }
+      },
+      "group": "V2 < V1",
+      "v1": 3395,
+      "v2": 2776,
+      "levels": {
+        "entry": 3724.1,
+        "stopLoss": 3731.325,
+        "takeProfit": 3716.875,
+        "riskFree": 3716.875,
+        "riskFreeEnabled": false,
+        "riskPips": 72.25,
+        "rewardRisk": 1,
+        "pendingAtCreation": false,
+        "status": "active",
+        "calculatedAt": 1795038300,
+        "filledAt": 1795038300,
+        "signal": {
+          "type": "T1",
+          "direction": "bearish",
+          "timeframe": "M15",
+          "time": 1795037400,
+          "candleCount": 2
+        }
+      },
+      "outcome": "sl",
+      "filledAt": 1795038300,
+      "resolvedAt": 1795042800,
+      "returnR": -1
+    },
+    {
+      "id": "VE:XAUUSD:M15:1795050900",
+      "signal": {
+        "type": "T1",
+        "direction": "bearish",
+        "timeframe": "M15",
+        "time": 1795050900,
+        "candleCount": 2
+      },
+      "confirmedAt": 1795051800,
+      "bias": "bearish",
+      "h4Ema": {
+        "time": 1795024800,
+        "ema20": 3831.6200152264882,
+        "ema50": 3906.1614305962075
+      },
+      "h1Trendline": {
+        "timeframe": "H1",
+        "kind": "continuation",
+        "color": "red",
+        "firstTime": 1794574800,
+        "secondTime": 1794837600,
+        "confirmedAt": 1794895200,
+        "geometry": {
+          "time": 1795046400,
+          "slope": -0.708958333333328,
+          "price": 3849.9622916666667
+        },
+        "distance": {
+          "linePrice": 3848.8988541666668,
+          "pips": 1048.2885416666659,
+          "atrRatio": 12.235988845942392,
+          "band": "Far"
+        }
+      },
+      "group": "V2 < V1",
+      "v1": 24389,
+      "v2": 14241,
+      "levels": {
+        "entry": 3744.07,
+        "stopLoss": 3761.725,
+        "takeProfit": 3726.4150000000004,
+        "riskFree": 3726.4150000000004,
+        "riskFreeEnabled": false,
+        "riskPips": 176.55,
+        "rewardRisk": 1,
+        "pendingAtCreation": false,
+        "status": "active",
+        "calculatedAt": 1795051800,
+        "filledAt": 1795051800,
+        "signal": {
+          "type": "T1",
+          "direction": "bearish",
+          "timeframe": "M15",
+          "time": 1795050900,
+          "candleCount": 2
+        }
+      },
+      "outcome": "tp",
+      "filledAt": 1795051800,
+      "resolvedAt": 1795056300,
+      "returnR": 1
+    },
+    {
+      "id": "VE:XAUUSD:M15:1795079700",
+      "signal": {
+        "type": "T2",
+        "direction": "bearish",
+        "timeframe": "M15",
+        "time": 1795079700,
+        "candleCount": 3
+      },
+      "confirmedAt": 1795080600,
+      "bias": "bearish",
+      "h4Ema": {
+        "time": 1795053600,
+        "ema20": 3816.3308514665814,
+        "ema50": 3893.9656573861953
+      },
+      "h1Trendline": {
+        "timeframe": "H1",
+        "kind": "continuation",
+        "color": "red",
+        "firstTime": 1794574800,
+        "secondTime": 1794837600,
+        "confirmedAt": 1794895200,
+        "geometry": {
+          "time": 1795075200,
+          "slope": -0.708958333333328,
+          "price": 3844.290625
+        },
+        "distance": {
+          "linePrice": 3843.2271875,
+          "pips": 1160.5718750000005,
+          "atrRatio": 12.732715106107984,
+          "band": "Far"
+        }
+      },
+      "group": "V3 < V2 and V1",
+      "v1": 6550,
+      "v2": 5992,
+      "v3": 5268,
+      "levels": {
+        "entry": 3727.17,
+        "stopLoss": 3744.425,
+        "takeProfit": 3709.915,
+        "riskFree": 3709.915,
+        "riskFreeEnabled": false,
+        "riskPips": 172.55,
+        "rewardRisk": 1,
+        "pendingAtCreation": false,
+        "status": "active",
+        "calculatedAt": 1795080600,
+        "filledAt": 1795080600,
+        "signal": {
+          "type": "T2",
+          "direction": "bearish",
+          "timeframe": "M15",
+          "time": 1795079700,
+          "candleCount": 3
+        }
+      },
+      "outcome": "tp",
+      "filledAt": 1795080600,
+      "resolvedAt": 1795096800,
+      "returnR": 1
+    },
+    {
+      "id": "VE:XAUUSD:M15:1795081500",
+      "signal": {
+        "type": "T1",
+        "direction": "bearish",
+        "timeframe": "M15",
+        "time": 1795081500,
+        "candleCount": 2
+      },
+      "confirmedAt": 1795082400,
+      "bias": "bearish",
+      "h4Ema": {
+        "time": 1795068000,
+        "ema20": 3807.7355322792882,
+        "ema50": 3887.3819061161485
+      },
+      "h1Trendline": {
+        "timeframe": "H1",
+        "kind": "continuation",
+        "color": "red",
+        "firstTime": 1794574800,
+        "secondTime": 1794837600,
+        "confirmedAt": 1794895200,
+        "geometry": {
+          "time": 1795078800,
+          "slope": -0.708958333333328,
+          "price": 3843.581666666667
+        },
+        "distance": {
+          "linePrice": 3842.872708333334,
+          "pips": 1167.9770833333396,
+          "atrRatio": 12.955966969612682,
+          "band": "Far"
+        }
+      },
+      "group": "V2 < V1",
+      "v1": 5768,
+      "v2": 4721,
+      "levels": {
+        "entry": 3726.075,
+        "stopLoss": 3739.335,
+        "takeProfit": 3712.8149999999996,
+        "riskFree": 3712.8149999999996,
+        "riskFreeEnabled": false,
+        "riskPips": 132.6,
+        "rewardRisk": 1,
+        "pendingAtCreation": false,
+        "status": "active",
+        "calculatedAt": 1795082400,
+        "filledAt": 1795082400,
+        "signal": {
+          "type": "T1",
+          "direction": "bearish",
+          "timeframe": "M15",
+          "time": 1795081500,
+          "candleCount": 2
+        }
+      },
+      "outcome": "tp",
+      "filledAt": 1795082400,
+      "resolvedAt": 1795091400,
+      "returnR": 1
+    },
+    {
+      "id": "VE:XAUUSD:M15:1795086000",
+      "signal": {
+        "type": "T1",
+        "direction": "bearish",
+        "timeframe": "M15",
+        "time": 1795086000,
+        "candleCount": 2
+      },
+      "confirmedAt": 1795086900,
+      "bias": "bearish",
+      "h4Ema": {
+        "time": 1795068000,
+        "ema20": 3807.7355322792882,
+        "ema50": 3887.3819061161485
+      },
+      "h1Trendline": {
+        "timeframe": "H1",
+        "kind": "continuation",
+        "color": "red",
+        "firstTime": 1794574800,
+        "secondTime": 1794837600,
+        "confirmedAt": 1794895200,
+        "geometry": {
+          "time": 1795082400,
+          "slope": -0.708958333333328,
+          "price": 3842.872708333334
+        },
+        "distance": {
+          "linePrice": 3841.986510416667,
+          "pips": 1135.6651041666692,
+          "atrRatio": 13.283623173713778,
+          "band": "Far"
+        }
+      },
+      "group": "V2 < V1",
+      "v1": 6315,
+      "v2": 4536,
+      "levels": {
+        "entry": 3728.42,
+        "stopLoss": 3740.845,
+        "takeProfit": 3715.9950000000003,
+        "riskFree": 3715.9950000000003,
+        "riskFreeEnabled": false,
+        "riskPips": 124.25,
+        "rewardRisk": 1,
+        "pendingAtCreation": false,
+        "status": "active",
+        "calculatedAt": 1795086900,
+        "filledAt": 1795086900,
+        "signal": {
+          "type": "T1",
+          "direction": "bearish",
+          "timeframe": "M15",
+          "time": 1795086000,
+          "candleCount": 2
+        }
+      },
+      "outcome": "tp",
+      "filledAt": 1795086900,
+      "resolvedAt": 1795090500,
+      "returnR": 1
+    },
+    {
+      "id": "VE:XAUUSD:M15:1795110300",
+      "signal": {
+        "type": "T3",
+        "direction": "bearish",
+        "timeframe": "M15",
+        "time": 1795110300,
+        "candleCount": 3
+      },
+      "confirmedAt": 1795111200,
+      "bias": "bearish",
+      "h4Ema": {
+        "time": 1795096800,
+        "ema20": 3787.531648872615,
+        "ema50": 3872.733174388648
+      },
+      "h1Trendline": {
+        "timeframe": "H1",
+        "kind": "continuation",
+        "color": "red",
+        "firstTime": 1794574800,
+        "secondTime": 1794837600,
+        "confirmedAt": 1794895200,
+        "geometry": {
+          "time": 1795107600,
+          "slope": -0.708958333333328,
+          "price": 3837.9100000000003
+        },
+        "distance": {
+          "linePrice": 3837.201041666667,
+          "pips": 1570.9604166666713,
+          "atrRatio": 14.46449881053214,
+          "band": "Far"
+        }
+      },
+      "group": "V3 < V2 and V1",
+      "v1": 20311,
+      "v2": 13407,
+      "v3": 10564,
+      "levels": {
+        "entry": 3680.105,
+        "stopLoss": 3695.365,
+        "takeProfit": 3664.8450000000003,
+        "riskFree": 3664.8450000000003,
+        "riskFreeEnabled": false,
+        "riskPips": 152.6,
+        "rewardRisk": 1,
+        "pendingAtCreation": false,
+        "status": "active",
+        "calculatedAt": 1795111200,
+        "filledAt": 1795111200,
+        "signal": {
+          "type": "T3",
+          "direction": "bearish",
+          "timeframe": "M15",
+          "time": 1795110300,
+          "candleCount": 3
+        }
+      },
+      "outcome": "tp",
+      "filledAt": 1795111200,
+      "resolvedAt": 1795118400,
+      "returnR": 1
+    },
+    {
+      "id": "VE:XAUUSD:M15:1795137300",
+      "signal": {
+        "type": "T2",
+        "direction": "bearish",
+        "timeframe": "M15",
+        "time": 1795137300,
+        "candleCount": 3
+      },
+      "confirmedAt": 1795138200,
+      "bias": "bearish",
+      "h4Ema": {
+        "time": 1795111200,
+        "ema20": 3772.0172061228423,
+        "ema50": 3863.003638138113
+      },
+      "h1Trendline": {
+        "timeframe": "H1",
+        "kind": "continuation",
+        "color": "red",
+        "firstTime": 1794574800,
+        "secondTime": 1794837600,
+        "confirmedAt": 1794895200,
+        "geometry": {
+          "time": 1795132800,
+          "slope": -0.708958333333328,
+          "price": 3833.6562500000005
+        },
+        "distance": {
+          "linePrice": 3832.5928125000005,
+          "pips": 2398.528125000007,
+          "atrRatio": 15.208659060647257,
+          "band": "Far"
+        }
+      },
+      "group": "V3 < V2 only",
+      "v1": 25080,
+      "v2": 43004,
+      "v3": 28012,
+      "levels": {
+        "entry": 3592.74,
+        "stopLoss": 3612.74,
+        "takeProfit": 3572.74,
+        "riskFree": 3572.74,
+        "riskFreeEnabled": false,
+        "riskPips": 200,
+        "rewardRisk": 1,
+        "pendingAtCreation": true,
+        "status": "pending",
+        "calculatedAt": 1795138200,
+        "signal": {
+          "type": "T2",
+          "direction": "bearish",
+          "timeframe": "M15",
+          "time": 1795137300,
+          "candleCount": 3
+        }
+      },
+      "outcome": "cancelled",
+      "resolvedAt": 1795138200
+    },
+    {
+      "id": "VE:XAUUSD:M15:1795143600",
+      "signal": {
+        "type": "T2",
+        "direction": "bearish",
+        "timeframe": "M15",
+        "time": 1795143600,
+        "candleCount": 3
+      },
+      "confirmedAt": 1795144500,
+      "bias": "bearish",
+      "h4Ema": {
+        "time": 1795125600,
+        "ema20": 3751.8231864920954,
+        "ema50": 3851.120358211128
+      },
+      "h1Trendline": {
+        "timeframe": "H1",
+        "kind": "continuation",
+        "color": "red",
+        "firstTime": 1794574800,
+        "secondTime": 1794837600,
+        "confirmedAt": 1794895200,
+        "geometry": {
+          "time": 1795140000,
+          "slope": -0.708958333333328,
+          "price": 3832.2383333333337
+        },
+        "distance": {
+          "linePrice": 3831.352135416667,
+          "pips": 2897.9713541666706,
+          "atrRatio": 14.84826770801496,
+          "band": "Far"
+        }
+      },
+      "group": "V3 < V2 and V1",
+      "v1": 29877,
+      "v2": 27528,
+      "v3": 26824,
+      "levels": {
+        "entry": 3541.555,
+        "stopLoss": 3561.555,
+        "takeProfit": 3521.555,
+        "riskFree": 3521.555,
+        "riskFreeEnabled": false,
+        "riskPips": 200,
+        "rewardRisk": 1,
+        "pendingAtCreation": true,
+        "status": "pending",
+        "calculatedAt": 1795144500,
+        "signal": {
+          "type": "T2",
+          "direction": "bearish",
+          "timeframe": "M15",
+          "time": 1795143600,
+          "candleCount": 3
+        }
+      },
+      "outcome": "cancelled",
+      "resolvedAt": 1795144500
+    },
+    {
+      "id": "VE:XAUUSD:M15:1795180500",
+      "signal": {
+        "type": "T2",
+        "direction": "bearish",
+        "timeframe": "M15",
+        "time": 1795180500,
+        "candleCount": 3
+      },
+      "confirmedAt": 1795181400,
+      "bias": "bearish",
+      "h4Ema": {
+        "time": 1795154400,
+        "ema20": 3716.502744498064,
+        "ema50": 3828.4866282448747
+      },
+      "h1Trendline": {
+        "timeframe": "H1",
+        "kind": "continuation",
+        "color": "red",
+        "firstTime": 1794574800,
+        "secondTime": 1794837600,
+        "confirmedAt": 1794895200,
+        "geometry": {
+          "time": 1795176000,
+          "slope": -0.708958333333328,
+          "price": 3825.1487500000003
+        },
+        "distance": {
+          "linePrice": 3824.0853125000003,
+          "pips": 2597.803125000005,
+          "atrRatio": 21.881125236709657,
+          "band": "Far"
+        }
+      },
+      "group": "V3 < V2 only",
+      "v1": 8098,
+      "v2": 18511,
+      "v3": 18061,
+      "levels": {
+        "entry": 3564.305,
+        "stopLoss": 3584.305,
+        "takeProfit": 3544.305,
+        "riskFree": 3544.305,
+        "riskFreeEnabled": false,
+        "riskPips": 200,
+        "rewardRisk": 1,
+        "pendingAtCreation": true,
+        "status": "pending",
+        "calculatedAt": 1795181400,
+        "signal": {
+          "type": "T2",
+          "direction": "bearish",
+          "timeframe": "M15",
+          "time": 1795180500,
+          "candleCount": 3
+        }
+      },
+      "outcome": "sl",
+      "filledAt": 1795182300,
+      "resolvedAt": 1795186800,
+      "returnR": -1
+    }
+  ],
+  "setups": [
+    {
+      "signalUTC": "2026-11-18T03:45:00.000Z",
+      "time": 1794973500,
+      "confirmed": 1794974400,
+      "direction": "bearish",
+      "type": "T1",
+      "v1": 9809,
+      "v2": 8340,
+      "group": "V2 < V1",
+      "sign": -1,
+      "reference": 3788.395,
+      "stop": 3801.945,
+      "target": 3774.845,
+      "nextOpen": 3788.395,
+      "body": 5.664999999999964,
+      "confirmationRange": 9.940000000000055
+    },
+    {
+      "signalUTC": "2026-11-18T04:30:00.000Z",
+      "time": 1794976200,
+      "confirmed": 1794977100,
+      "direction": "bearish",
+      "type": "T1",
+      "v1": 5699,
+      "v2": 5270,
+      "group": "V2 < V1",
+      "sign": -1,
+      "reference": 3784.39,
+      "stop": 3795.27,
+      "target": 3773.5099999999998,
+      "nextOpen": 3784.39,
+      "body": 3.3400000000001455,
+      "confirmationRange": 4.5949999999998
+    },
+    {
+      "signalUTC": "2026-11-18T14:00:00.000Z",
+      "time": 1795010400,
+      "confirmed": 1795011300,
+      "direction": "bearish",
+      "type": "T3",
+      "v1": 10818,
+      "v2": 11590,
+      "v3": 11279,
+      "group": "V3 < V2 only",
+      "sign": -1,
+      "reference": 3776.985,
+      "stop": 3793.59,
+      "target": 3760.38,
+      "nextOpen": 3776.985,
+      "body": 5.315000000000055,
+      "confirmationRange": 10.600000000000364
+    },
+    {
+      "signalUTC": "2026-11-18T17:30:00.000Z",
+      "time": 1795023000,
+      "confirmed": 1795023900,
+      "direction": "bearish",
+      "type": "T1",
+      "v1": 8725,
+      "v2": 8165,
+      "group": "V2 < V1",
+      "sign": -1,
+      "reference": 3740.9,
+      "stop": 3754.045,
+      "target": 3727.755,
+      "nextOpen": 3740.9,
+      "body": 6.375,
+      "confirmationRange": 11.430000000000291
+    },
+    {
+      "signalUTC": "2026-11-18T18:45:00.000Z",
+      "time": 1795027500,
+      "confirmed": 1795028400,
+      "direction": "bearish",
+      "type": "T1",
+      "v1": 6789,
+      "v2": 5762,
+      "group": "V2 < V1",
+      "sign": -1,
+      "reference": 3737.855,
+      "stop": 3746.315,
+      "target": 3729.395,
+      "nextOpen": 3737.855,
+      "body": 2.2899999999999636,
+      "confirmationRange": 4.025000000000091
+    },
+    {
+      "signalUTC": "2026-11-18T21:30:00.000Z",
+      "time": 1795037400,
+      "confirmed": 1795038300,
+      "direction": "bearish",
+      "type": "T1",
+      "v1": 3395,
+      "v2": 2776,
+      "group": "V2 < V1",
+      "sign": -1,
+      "reference": 3724.1,
+      "stop": 3731.325,
+      "target": 3716.875,
+      "nextOpen": 3724.1,
+      "body": 2.6100000000001273,
+      "confirmationRange": 4.644999999999982
+    },
+    {
+      "signalUTC": "2026-11-19T01:15:00.000Z",
+      "time": 1795050900,
+      "confirmed": 1795051800,
+      "direction": "bearish",
+      "type": "T1",
+      "v1": 24389,
+      "v2": 14241,
+      "group": "V2 < V1",
+      "sign": -1,
+      "reference": 3744.07,
+      "stop": 3761.725,
+      "target": 3726.4150000000004,
+      "nextOpen": 3744.07,
+      "body": 10.400000000000091,
+      "confirmationRange": 11.824999999999818
+    },
+    {
+      "signalUTC": "2026-11-19T09:15:00.000Z",
+      "time": 1795079700,
+      "confirmed": 1795080600,
+      "direction": "bearish",
+      "type": "T2",
+      "v1": 6550,
+      "v2": 5992,
+      "v3": 5268,
+      "group": "V3 < V2 and V1",
+      "sign": -1,
+      "reference": 3727.17,
+      "stop": 3744.425,
+      "target": 3709.915,
+      "nextOpen": 3727.17,
+      "body": 5.875,
+      "confirmationRange": 9.144999999999982
+    },
+    {
+      "signalUTC": "2026-11-19T09:45:00.000Z",
+      "time": 1795081500,
+      "confirmed": 1795082400,
+      "direction": "bearish",
+      "type": "T1",
+      "v1": 5768,
+      "v2": 4721,
+      "group": "V2 < V1",
+      "sign": -1,
+      "reference": 3726.075,
+      "stop": 3739.335,
+      "target": 3712.8149999999996,
+      "nextOpen": 3726.075,
+      "body": 5.164999999999964,
+      "confirmationRange": 6.820000000000164
+    },
+    {
+      "signalUTC": "2026-11-19T11:00:00.000Z",
+      "time": 1795086000,
+      "confirmed": 1795086900,
+      "direction": "bearish",
+      "type": "T1",
+      "v1": 6315,
+      "v2": 4536,
+      "group": "V2 < V1",
+      "sign": -1,
+      "reference": 3728.42,
+      "stop": 3740.845,
+      "target": 3715.9950000000003,
+      "nextOpen": 3728.42,
+      "body": 7.235000000000127,
+      "confirmationRange": 9.835000000000036
+    },
+    {
+      "signalUTC": "2026-11-19T17:45:00.000Z",
+      "time": 1795110300,
+      "confirmed": 1795111200,
+      "direction": "bearish",
+      "type": "T3",
+      "v1": 20311,
+      "v2": 13407,
+      "v3": 10564,
+      "group": "V3 < V2 and V1",
+      "sign": -1,
+      "reference": 3680.105,
+      "stop": 3695.365,
+      "target": 3664.8450000000003,
+      "nextOpen": 3680.105,
+      "body": 3.650000000000091,
+      "confirmationRange": 6.995000000000346
+    },
+    {
+      "signalUTC": "2026-11-20T01:15:00.000Z",
+      "time": 1795137300,
+      "confirmed": 1795138200,
+      "direction": "bearish",
+      "type": "T2",
+      "v1": 25080,
+      "v2": 43004,
+      "v3": 28012,
+      "group": "V3 < V2 only",
+      "sign": -1,
+      "reference": 3592.74,
+      "stop": 3612.74,
+      "target": 3572.74,
+      "nextOpen": 3575.335,
+      "body": 19.109999999999673,
+      "confirmationRange": 25.320000000000164
+    },
+    {
+      "signalUTC": "2026-11-20T03:00:00.000Z",
+      "time": 1795143600,
+      "confirmed": 1795144500,
+      "direction": "bearish",
+      "type": "T2",
+      "v1": 29877,
+      "v2": 27528,
+      "v3": 26824,
+      "group": "V3 < V2 and V1",
+      "sign": -1,
+      "reference": 3541.555,
+      "stop": 3561.555,
+      "target": 3521.555,
+      "nextOpen": 3523.53,
+      "body": 23.914999999999964,
+      "confirmationRange": 28.199999999999818
+    },
+    {
+      "signalUTC": "2026-11-20T13:15:00.000Z",
+      "time": 1795180500,
+      "confirmed": 1795181400,
+      "direction": "bearish",
+      "type": "T2",
+      "v1": 8098,
+      "v2": 18511,
+      "v3": 18061,
+      "group": "V3 < V2 only",
+      "sign": -1,
+      "reference": 3564.305,
+      "stop": 3584.305,
+      "target": 3544.305,
+      "nextOpen": 3559.86,
+      "body": 11.66000000000031,
+      "confirmationRange": 19.894999999999982
+    }
+  ],
+  "warnings": []
+}

@@ -6,6 +6,14 @@ export type StudyCandles = Partial<Record<StudyTimeframe, StructureCandle[]>>;
 const WARMUP_BARS = 500;
 const MAX_HISTORY_BARS = 100000;
 
+/** A requested period failed; expose a usable alternative without silently shortening it. */
+export class StudyHistoryCoverageError extends Error {
+  constructor(message: string, public timeframe: StudyTimeframe,
+    public availableFrom?: number, public availableTo?: number) {
+    super(message); this.name = 'StudyHistoryCoverageError';
+  }
+}
+
 export function mergeStudyCandles(...sources: StructureCandle[][]): StructureCandle[] {
   const byTime = new Map<number, StructureCandle>();
   for (const source of sources) for (const c of source) byTime.set(c.time, c);
@@ -23,6 +31,9 @@ export function studyHistoryRequirements(symbol: string, zoneTimeframe: TradeTim
 }
 
 interface HistoryOptions {
+  requiredTimeframes?: StudyTimeframe[];
+  /** Opt-in deadline for one history page, including its response body. */
+  requestTimeoutMs?: number;
   symbol: string;
   zoneTimeframe: TradeTimeframe;
   fromTime: number;
@@ -37,8 +48,9 @@ interface HistoryOptions {
 export async function loadStudyDateHistory(options: HistoryOptions): Promise<{ candles: StudyCandles; warnings: string[] }> {
   const { symbol, fromTime, cutoff, signal, progress = () => undefined, fetcher = fetch } = options;
   if (!Number.isFinite(fromTime) || fromTime >= cutoff) throw new Error('Choose a start date before the study end time.');
-  const requirements = studyHistoryRequirements(symbol, options.zoneTimeframe);
-  const candles: StudyCandles = Object.fromEntries(studyDataTimeframes(symbol, options.zoneTimeframe)
+  const requirements = options.requiredTimeframes ? { mandatory: options.requiredTimeframes, optional: [] }
+    : studyHistoryRequirements(symbol, options.zoneTimeframe);
+  const candles: StudyCandles = Object.fromEntries((options.requiredTimeframes ?? studyDataTimeframes(symbol, options.zoneTimeframe))
     .map(tf => [tf, options.candles[tf] ?? []]));
   const warnings: string[] = [];
   const load = async (tf: StudyTimeframe, mandatory: boolean) => {
@@ -54,8 +66,22 @@ export async function loadStudyDateHistory(options: HistoryOptions): Promise<{ c
         progress(`Loading ${tf} history for ${new Date(fromTime * 1000).toLocaleDateString()} (page ${pages + 1})…`);
         const query = new URLSearchParams({ symbol, granularity: tf, count: '5000' });
         if (history.length && !loadLatest) query.set('endTime', String(Math.floor(history[0].time - 1)));
-        const response = await fetcher(`/api/tradingview/market-data?${query}`, { signal, cache: 'no-store' });
-        const payload = await response.json();
+        const controller = options.requestTimeoutMs ? new AbortController() : undefined;
+        const abort = () => controller?.abort(signal.reason);
+        signal.addEventListener('abort', abort, { once: true });
+        let timedOut = false;
+        const timer = controller ? setTimeout(() => { timedOut = true; controller.abort(); }, options.requestTimeoutMs) : undefined;
+        let response: Response, payload: any;
+        try {
+          response = await fetcher(`/api/tradingview/market-data?${query}`, { signal: controller?.signal ?? signal, cache: 'no-store' });
+          payload = await response.json();
+        } catch (error) {
+          if (timedOut && !signal.aborted) throw new Error('History request timed out. Try again or choose a shorter period.');
+          throw error;
+        } finally {
+          if (timer !== undefined) clearTimeout(timer);
+          signal.removeEventListener('abort', abort);
+        }
         signal.throwIfAborted();
         if (!response.ok || !payload.ok) throw new Error(payload.error ?? `History request failed (${response.status}).`);
         if (payload.symbol !== symbol || payload.granularity !== tf || !Array.isArray(payload.candles)) {
@@ -79,7 +105,11 @@ export async function loadStudyDateHistory(options: HistoryOptions): Promise<{ c
       signal.throwIfAborted();
       const message = `${tf}: ${error instanceof Error ? error.message : 'History unavailable.'}`;
       if (mandatory && (!coversDate() || (history.at(-1)?.time ?? -Infinity) < fromTime)) {
-        throw new Error(`Cannot study the full selected period. ${message}`);
+        // Reserve the normal warmup before suggesting an alternative start date.
+        const usableFrom = history.length > WARMUP_BARS ? Math.ceil(history[WARMUP_BARS].time / 86400) * 86400 : undefined;
+        const usableTo = history.at(-1)?.time;
+        throw new StudyHistoryCoverageError(`Cannot study the full selected period. ${message}`, tf,
+          usableFrom !== undefined && usableTo !== undefined && usableFrom < usableTo ? usableFrom : undefined, usableTo);
       }
       warnings.push(`${message} ${coversDate() ? `Only ${beforeStart()} earlier candles are available for calculation context.` : 'Trendline evidence on this timeframe may be incomplete.'}`);
     }

@@ -25,7 +25,8 @@ test('retrieves MTF implementation and regression knowledge for MTF questions', 
 });
 
 test('returns general project documentation when a question has no keyword match', async () => {
-  const chunks = await retrieveProjectKnowledge(randomUUID(), 6);
+  // A hyphenated UUID splits into short tokens that can match code/history numbers.
+  const chunks = await retrieveProjectKnowledge(`unmatched${randomUUID().replaceAll('-', '')}`, 6);
 
   assert.ok(chunks.some((chunk) => chunk.source === 'README.md'));
 });
