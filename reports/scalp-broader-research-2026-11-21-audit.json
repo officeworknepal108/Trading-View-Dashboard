@@ -1,0 +1,86 @@
+{
+  "accounting": "passed",
+  "thresholdSensitivity": [
+    {
+      "threshold": 0.2,
+      "closed": 204,
+      "wins": 118,
+      "losses": 86,
+      "netDollars": 3173.016178311785,
+      "drawdown": 380.0,
+      "winPercent": 57.84313725490197
+    },
+    {
+      "threshold": 0.25,
+      "closed": 203,
+      "wins": 118,
+      "losses": 85,
+      "netDollars": 3223.016178311785,
+      "drawdown": 380.0,
+      "winPercent": 58.128078817733986
+    },
+    {
+      "threshold": 0.3,
+      "closed": 201,
+      "wins": 118,
+      "losses": 83,
+      "netDollars": 3323.016178311785,
+      "drawdown": 380.0,
+      "winPercent": 58.70646766169154
+    },
+    {
+      "threshold": 0.35,
+      "closed": 196,
+      "wins": 116,
+      "losses": 80,
+      "netDollars": 3345.1501283099833,
+      "drawdown": 363.7757743982112,
+      "winPercent": 59.183673469387756
+    },
+    {
+      "threshold": 0.4,
+      "closed": 190,
+      "wins": 113,
+      "losses": 77,
+      "netDollars": 3301.0256121000034,
+      "drawdown": 350.0,
+      "winPercent": 59.473684210526315
+    },
+    {
+      "threshold": 0.45,
+      "closed": 184,
+      "wins": 110,
+      "losses": 74,
+      "netDollars": 3301.2196238319693,
+      "drawdown": 350.0,
+      "winPercent": 59.78260869565217
+    },
+    {
+      "threshold": 0.5,
+      "closed": 171,
+      "wins": 102,
+      "losses": 69,
+      "netDollars": 3029.0871643093437,
+      "drawdown": 350.0,
+      "winPercent": 59.64912280701754
+    }
+  ],
+  "pairedDayBootstrap": {
+    "days": 70,
+    "iterations": 5000,
+    "seed": 20261121,
+    "difference": 136.8160201417362,
+    "descriptive95Interval": [
+      -89.55193957479142,
+      386.8160201417362
+    ],
+    "limitations": "Does not account for 12,960-combination selection, previous studies, serial dependence across days, excluded outcomes or unseen future performance."
+  },
+  "sourceHashes": {
+    "scalp-broader-research-2026-11-21.ts": "24fa67ec752baf40e0f2bf2e19ca50c31f924af68e20f36840eab19788996fdc",
+    "scalp-validation-model-2026-11-20.ts": "0a701bad41ff70ade80cff01b60d1e6b5aa08e4a802f0e1120c21cf65f5738d7",
+    "scalp-selected-rule-validation-2026-11-20.json": "dfa5c8b84f88627894592614362b16129d41ad998bd34a529a0ea1f874f42307",
+    "scalp-selected-rule-validation-2026-11-20-fresh-qualified-setups.json": "146fdd52652d3d67525e078b7364fb33cbdaf31ee7a4b2af8bb7ff0504af3301",
+    "scalp-fresh-data-2026-11-20-M1.json": "cebed12bfeec2643c928a573e811c87a39726b41c3b7a3cfc8518dcb6881f3ea"
+  }
+}

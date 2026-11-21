@@ -6,7 +6,8 @@ export interface TelegramTradeAlert {
   id: string; tradeKey?: string;
   kind: 'pending' | 'cancelled' | 'entry' | 'entry2' | 'rf' | 'tp' | 'sl';
   chartSetup?: boolean;
-  pullback?: { firstEntry: number; firstRiskPips: number; secondEntry: number; secondRiskPips: number; secondOnly: boolean };
+  pullback?: { firstEntry: number; firstRiskPips: number; secondEntry: number; secondRiskPips: number; secondOnly: boolean;
+    abhi?: boolean; firstTarget?: number; secondTarget?: number; netReturnR?: number };
   outsideTradingTime?: boolean;
   symbol: string; direction: 'BUY' | 'SELL'; zoneName: string;
   zoneTimeframe: TradeTimeframe; signalTimeframe: TradeTimeframe; engulfingType: string;
@@ -32,8 +33,8 @@ const entryTime = (seconds: number) => new Intl.DateTimeFormat('en-GB', {
 }).format(seconds * 1000) + ' Nepal';
 
 export function formatTelegramTradeMessage(alert: TelegramTradeAlert, number: TelegramTradeNumber): string {
-  if (alert.kind === 'entry2' && alert.pullback) return `2nd Entry: ${price(alert.pullback.secondEntry)} ✓ Filled`;
-  const style = alert.tradeStyle === 'BOLLINGER_M5' ? 'BOLLINGER M5' : alert.tradeStyle === 'SCALP_1_1' ? 'SCALP 1:1'
+  if (alert.kind === 'entry2' && alert.pullback) return `2nd Entry: ${price(alert.pullback.secondEntry)} ✓ Filled${alert.pullback.abhi ? ` · TP: ${price(alert.pullback.secondTarget!)} · 60% setup risk` : ''}`;
+  const style = alert.pullback?.abhi || alert.zoneName === 'Abhi Scalp Logic' ? 'ABHI SCALP LOGIC' : alert.tradeStyle === 'BOLLINGER_M5' ? 'BOLLINGER M5' : alert.tradeStyle === 'SCALP_1_1' ? 'SCALP 1:1'
     : alert.tradeStyle ?? (['M1', 'M5'].includes(alert.zoneTimeframe) ? 'SCALPING' : 'INTRADAY');
   const identity = `${alert.symbol} ${alert.direction} · ${style}`;
   const heading = (event: string) => `Trade #${number.tradeNumber} — ${event}\n${identity}`;
@@ -42,12 +43,16 @@ export function formatTelegramTradeMessage(alert: TelegramTradeAlert, number: Te
     return [`TRADE #${number.tradeNumber} · ${style}`, `${alert.symbol} · ${alert.direction} · ${alert.signalTimeframe}`, '',
       p.secondOnly ? '1st Entry: Skipped — split lot below broker minimum' : `1st Entry: ${price(p.firstEntry)} ✓ Filled`,
       ...(!p.secondOnly ? [`SL: ${p.firstRiskPips.toFixed(2)} pips`, ''] : []),
+      ...(p.abhi && !p.secondOnly ? [`1st TP: ${price(p.firstTarget!)} · 40% setup risk`] : []),
       `2nd Entry: ${price(p.secondEntry)} ${p.secondOnly ? '✓ Filled' : '⏳ Waiting'}`,
       `SL: ${p.secondRiskPips.toFixed(2)} pips`,
+      ...(p.abhi ? [`2nd TP: ${price(p.secondTarget!)} · ${p.secondOnly ? 100 : 60}% setup risk`] : []),
       ...(p.secondOnly ? ['Risk allocation: 100% of setup risk'] : []), '',
-      `🔴 SL: ${price(alert.stopLoss)}`, `🟢 TP: ${price(alert.takeProfit)}`].join('\n');
+      `🔴 SL: ${price(alert.stopLoss)}`, ...(p.abhi ? ['Each entry: fixed 1:1.25 target'] : [`🟢 TP: ${price(alert.takeProfit)}`])].join('\n');
   }
   if (alert.kind === 'tp' || alert.kind === 'sl') {
+    if (alert.pullback?.abhi && alert.pullback.netReturnR !== undefined)
+      return heading(`SETUP CLOSED · ${alert.pullback.netReturnR >= 0 ? '+' : ''}${alert.pullback.netReturnR.toFixed(2)}R before costs`);
     return heading(alert.kind === 'tp' ? 'TAKE PROFIT HIT' : 'STOP LOSS HIT');
   }
   if (alert.kind === 'rf') return [heading('RISK-FREE HIT'), '',

@@ -428,8 +428,9 @@ def signal_risk_percent(signal: dict[str, Any], config: dict[str, Any]) -> float
         raise RuntimeError("Invalid per-trade risk selection.")
     leg = pullback_entry(signal)
     if leg:
-        expected = {10: 0.6, 25: 0.4}.get(leg.get("leg"))
-        if leg.get("version") not in (1, 2, 3) or expected is None or leg.get("riskShare") != expected:
+        abhi = bool(signal.get('scalpEntry') and leg.get('version') == 4)
+        expected = ({10: 0.4, 25: 0.6} if abhi else {10: 0.6, 25: 0.4}).get(leg.get("leg"))
+        if leg.get("version") not in ((1, 2, 3, 4) if abhi else (1, 2, 3)) or expected is None or leg.get("riskShare") != expected:
             raise RuntimeError("Invalid pullback risk allocation.")
         if signal.get('pullbackFallback') == 'SECOND_ONLY':
             if leg.get('leg') != 25:
@@ -455,6 +456,27 @@ def validate_scalp_pullback(signal: dict[str, Any]) -> None:
     leg = signal.get("scalpEntry")
     if not leg:
         return  # Preserve existing single-entry positions/orders.
+    if leg.get('version') == 4:
+        try:
+            sign = 1 if signal['direction'] == 'BUY' else -1
+            anchor, body, candle_range = map(float, (leg['confirmationClose'], leg['confirmationBody'], leg['confirmationRange']))
+            entry, stop, target = map(float, (signal['entry'], signal['stopLoss'], signal['takeProfit']))
+            risk = sign * (entry - stop)
+            valid = (leg['leg'] in (10, 25) and leg['riskShare'] == {10: .4, 25: .6}[leg['leg']]
+                and all(math.isfinite(v) and v > 0 for v in (anchor, body, candle_range, entry, stop, target, float(leg['referenceEntry'])))
+                and body <= candle_range + 1e-6 and body / candle_range >= .3 - 1e-10
+                and leg['nextOpen'] == anchor and isinstance(leg['setupKey'], str) and 0 < len(leg['setupKey']) <= 300
+                and signal['orderType'] == 'LIMIT' and abs(entry - (anchor - sign * body * leg['leg'] / 100)) <= 1e-6
+                and 0 < risk <= 30.000001 and abs(sign * (target-entry) / risk - 1.25) <= 1e-6
+                and abs(float(signal['rewardRisk']) - 1.25) <= 1e-6
+                and abs(float(signal['riskPips']) - risk * 10) <= 1e-5
+                and signal['calculatedAt'] == signal['signalAt'] + 900
+                and signal['expiresAt'] == signal['calculatedAt'] + 3600)
+        except (KeyError, TypeError, ValueError, ZeroDivisionError):
+            valid = False
+        if not valid:
+            raise RuntimeError('Invalid Abhi Scalp Logic confirmation pullback, allocation or 1.25R target.')
+        return
     try:
         index = leg["leg"]
         share = {10: 0.6, 25: 0.4}.get(index)
@@ -995,7 +1017,17 @@ def quantized_pullback_signal(signal: dict[str, Any], info: Any) -> dict[str, An
     units = (Decimal(str(signal['entry'])) / Decimal(str(step))).to_integral_value(
         rounding=ROUND_DOWN if signal['direction'] == 'BUY' else ROUND_UP)
     entry = float(units * Decimal(str(step)))
-    return {**signal, 'entry': entry, 'riskPips': abs(entry - float(signal['stopLoss'])) * 10}
+    result = {**signal, 'entry': entry, 'riskPips': abs(entry - float(signal['stopLoss'])) * 10}
+    if signal.get('scalpEntry', {}).get('version') == 4:
+        # Preserve the planned exits. Quantization may improve the entry by one tick.
+        target_units = (Decimal(str(signal['takeProfit'])) / Decimal(str(step))).to_integral_value(
+            rounding=ROUND_UP if signal['direction'] == 'BUY' else ROUND_DOWN)
+        stop_units = (Decimal(str(signal['stopLoss'])) / Decimal(str(step))).to_integral_value(
+            rounding=ROUND_DOWN if signal['direction'] == 'BUY' else ROUND_UP)
+        result['takeProfit'] = float(target_units * Decimal(str(step)))
+        result['stopLoss'] = float(stop_units * Decimal(str(step)))
+        result['riskPips'] = abs(entry - result['stopLoss']) * 10
+    return result
 
 
 def quantized_bollinger_signal(signal: dict[str, Any], info: Any) -> dict[str, Any]:
@@ -1013,11 +1045,14 @@ def prepare_pullback_allocation(signal: dict[str, Any], config: dict[str, Any], 
     if not meta or meta.get('version', 0) < 3 or signal.get('pullbackFallback') == 'SECOND_ONLY':
         return signal
     below = False
-    for leg, share in ((10, .6), (25, .4)):
+    abhi = bool(signal.get('scalpEntry') and meta.get('version') == 4)
+    for leg, share in (((10, .4), (25, .6)) if abhi else ((10, .6), (25, .4))):
         sign = 1 if signal['direction'] == 'BUY' else -1
-        entry = float(meta['nextOpen']) - sign * float(meta['confirmationBody']) * leg / 100
+        entry = float(meta['confirmationClose'] if abhi else meta['nextOpen']) - sign * float(meta['confirmationBody']) * leg / 100
         trial = {**signal, 'entry': entry, 'riskPips': abs(entry - float(signal['stopLoss'])) * 10,
                  ('intradayEntry' if signal.get('intradayEntry') else 'scalpEntry'): {**meta, 'leg': leg, 'riskShare': share}}
+        if abhi:
+            trial['takeProfit'] = entry + sign * abs(entry-float(signal['stopLoss'])) * 1.25
         try:
             calculate_volume(quantized_pullback_signal(trial, info), config, info)
         except BelowMinimumLot:
@@ -1108,7 +1143,7 @@ def place_signal(signal: dict[str, Any], config: dict[str, Any]) -> dict[str, An
         "riskPips": actual_risk * 10,
         "volume": volume,
         "comment": request["comment"],
-        **({'executionTakeProfit': float(request['tp'])} if signal.get('tradeStyle') == 'BOLLINGER_M5' else {}),
+        **({'executionTakeProfit': float(request['tp'])} if signal.get('tradeStyle') == 'BOLLINGER_M5' or signal.get('scalpEntry', {}).get('version') == 4 else {}),
         **({'pullbackFallback': 'SECOND_ONLY'} if signal.get('pullbackFallback') == 'SECOND_ONLY' else {}),
     }
     update_status(signal["id"], status, **{key: value for key, value in details.items() if key != "status"})
@@ -1572,6 +1607,18 @@ def pending_order_passed_one_and_half_r(record: dict[str, Any], tick: Any) -> bo
     return float(tick.ask) < entry - multiple * risk
 
 
+def scalp_pending_sibling_finished(record: dict[str, Any], other: dict[str, Any]) -> bool:
+    if (other.get('tradeStyle') != 'SCALP_1_1' or other.get('signalAt') != record.get('signalAt')
+            or other.get('direction') != record.get('direction')):
+        return False
+    meta = record.get('scalpEntry') or {}
+    if meta.get('version') == 4:
+        return (other.get('status') == 'SL' and other.get('scalpEntry', {}).get('version') == 4
+                and other.get('scalpEntry', {}).get('setupKey') == meta.get('setupKey')
+                and other.get('stopLoss') == record.get('stopLoss'))
+    return other.get('status') in {'TP', 'SL', 'RF'}
+
+
 def manage_open_signals(
     state: dict[str, dict[str, Any]],
     recent: list[dict[str, Any]],
@@ -1611,10 +1658,7 @@ def manage_open_signals(
             expired = float(record.get('expiresAt', 0)) <= time.time()
             stop_hit = tick is not None and (float(tick.bid) <= float(record['stopLoss'])
                 if record['direction'] == 'BUY' else float(tick.ask) >= float(record['stopLoss']))
-            sibling_done = any(item.get('tradeStyle') == 'SCALP_1_1'
-                and item.get('signalAt') == record.get('signalAt')
-                and item.get('direction') == record.get('direction')
-                and item.get('status') in {'TP', 'SL', 'RF'} for item in recent)
+            sibling_done = any(scalp_pending_sibling_finished(record, item) for item in recent)
             if record.get('intradayEntry'):
                 sibling_done = any(same_intraday_setup(record, item) and item.get('status') in {'TP', 'SL', 'RF'} for item in recent)
             stop_hit = stop_hit or (tick is not None and intraday_boundary_reached(record, broker_symbol, tick))

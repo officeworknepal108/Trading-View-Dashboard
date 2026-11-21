@@ -1,0 +1,225 @@
+{
+  "method": {
+    "strategy": "Abhi Scalp Logic",
+    "period": "Aug3-Nov20 2026",
+    "balance": 5000,
+    "baselineBudget": 100,
+    "scope": "Same confirmation-close10%/25% pullbacks, original SL, each-entry exact1.25R TP,60min expiry,body>=30%,same T1/T2/T3 qualification. Only cash-risk allocation changes. No live code changes. No rerun of price paths is needed because allocation has no effect on fills/SL/TP/timing in this model; per-leg outcomes are reweighted.",
+    "limitations": "Reused historical simulations, not future forecasts. Gross assumes ideal fractional lots before costs and excludes uncertain/open setups. Drawdown resolved cash only, no floating risk. No daily/open-risk/margin constraints.",
+    "costs": "Optional sensitivity only:100oz contract,.01 min/step,floor lots,.20/.50 total gold price units plus$7/lot round trip. Both orders required: skip whole setup if split cannot fit. No second-only fallback. Costs not observed current broker charges. No tick/quote/slippage validation."
+  },
+  "sourceSha256": "72e98990f61269b0c7cc453aa2fcc6271a0a11b6158cc44a285c1217b0318288",
+  "resolvedOutcomeCounts": {
+    "sl / sl": 73,
+    "tp / not-filled": 12,
+    "tp / tp": 102,
+    "sl / not-filled": 2,
+    "sl / tp": 3
+  },
+  "results": [
+    {
+      "firstShare": 0.4,
+      "secondShare": 0.6,
+      "grossAt100": {
+        "setups": 244,
+        "closed": 192,
+        "wins": 117,
+        "losses": 75,
+        "winPercent": 60.9375,
+        "netDollars": 6075.000000000041,
+        "returnPercent": 121.50000000000082,
+        "drawdown": 740.0,
+        "fees": 0,
+        "noSizeOrInvalid": 0
+      },
+      "grossAt50": {
+        "setups": 244,
+        "closed": 192,
+        "wins": 117,
+        "losses": 75,
+        "winPercent": 60.9375,
+        "netDollars": 3037.5000000000205,
+        "returnPercent": 60.75000000000041,
+        "drawdown": 370.0,
+        "fees": 0,
+        "noSizeOrInvalid": 0
+      },
+      "costAt100": {
+        "setups": 244,
+        "closed": 192,
+        "wins": 117,
+        "losses": 75,
+        "winPercent": 60.9375,
+        "netDollars": 5093.032625000043,
+        "returnPercent": 101.86065250000085,
+        "drawdown": 644.4692500000009,
+        "fees": 379.35000000000065,
+        "noSizeOrInvalid": 4
+      },
+      "stressAt100": {
+        "setups": 244,
+        "closed": 192,
+        "wins": 117,
+        "losses": 75,
+        "winPercent": 60.9375,
+        "netDollars": 4671.532625000039,
+        "returnPercent": 93.43065250000078,
+        "drawdown": 667.1765625000041,
+        "fees": 800.85,
+        "noSizeOrInvalid": 4
+      },
+      "monthlyAt100": {
+        "2026-08": {
+          "setups": 41,
+          "closed": 33,
+          "wins": 14,
+          "losses": 19,
+          "winPercent": 42.42424242424242,
+          "netDollars": -314.99999999999363,
+          "returnPercent": -6.299999999999873,
+          "drawdown": 740.0,
+          "fees": 0,
+          "noSizeOrInvalid": 0
+        },
+        "2026-09": {
+          "setups": 80,
+          "closed": 66,
+          "wins": 43,
+          "losses": 23,
+          "winPercent": 65.15151515151516,
+          "netDollars": 2745.0000000000227,
+          "returnPercent": 54.90000000000046,
+          "drawdown": 500.0,
+          "fees": 0,
+          "noSizeOrInvalid": 0
+        },
+        "2026-10": {
+          "setups": 81,
+          "closed": 62,
+          "wins": 41,
+          "losses": 21,
+          "winPercent": 66.12903225806451,
+          "netDollars": 2485.0000000000123,
+          "returnPercent": 49.700000000000244,
+          "drawdown": 475.0000000000034,
+          "fees": 0,
+          "noSizeOrInvalid": 0
+        },
+        "2026-11": {
+          "setups": 42,
+          "closed": 31,
+          "wins": 19,
+          "losses": 12,
+          "winPercent": 61.29032258064516,
+          "netDollars": 1160.0000000000011,
+          "returnPercent": 23.200000000000024,
+          "drawdown": 300.0,
+          "fees": 0,
+          "noSizeOrInvalid": 0
+        }
+      }
+    },
+    {
+      "firstShare": 0.5,
+      "secondShare": 0.5,
+      "grossAt100": {
+        "setups": 244,
+        "closed": 192,
+        "wins": 117,
+        "losses": 75,
+        "winPercent": 60.9375,
+        "netDollars": 6137.50000000004,
+        "returnPercent": 122.7500000000008,
+        "drawdown": 750.0,
+        "fees": 0,
+        "noSizeOrInvalid": 0
+      },
+      "grossAt50": {
+        "setups": 244,
+        "closed": 192,
+        "wins": 117,
+        "losses": 75,
+        "winPercent": 60.9375,
+        "netDollars": 3068.75000000002,
+        "returnPercent": 61.3750000000004,
+        "drawdown": 375.0,
+        "fees": 0,
+        "noSizeOrInvalid": 0
+      },
+      "costAt100": {
+        "setups": 244,
+        "closed": 192,
+        "wins": 117,
+        "losses": 75,
+        "winPercent": 60.9375,
+        "netDollars": 4972.242312500032,
+        "returnPercent": 99.44484625000065,
+        "drawdown": 682.4570000000035,
+        "fees": 378.81000000000057,
+        "noSizeOrInvalid": 4
+      },
+      "stressAt100": {
+        "setups": 244,
+        "closed": 192,
+        "wins": 117,
+        "losses": 75,
+        "winPercent": 60.9375,
+        "netDollars": 4551.342312500023,
+        "returnPercent": 91.02684625000045,
+        "drawdown": 711.1670000000087,
+        "fees": 799.7099999999984,
+        "noSizeOrInvalid": 4
+      },
+      "monthlyAt100": {
+        "2026-08": {
+          "setups": 41,
+          "closed": 33,
+          "wins": 14,
+          "losses": 19,
+          "winPercent": 42.42424242424242,
+          "netDollars": -287.4999999999925,
+          "returnPercent": -5.74999999999985,
+          "drawdown": 750.0,
+          "fees": 0,
+          "noSizeOrInvalid": 0
+        },
+        "2026-09": {
+          "setups": 80,
+          "closed": 66,
+          "wins": 43,
+          "losses": 23,
+          "winPercent": 65.15151515151516,
+          "netDollars": 2725.00000000002,
+          "returnPercent": 54.500000000000405,
+          "drawdown": 500.0,
+          "fees": 0,
+          "noSizeOrInvalid": 0
+        },
+        "2026-10": {
+          "setups": 81,
+          "closed": 62,
+          "wins": 41,
+          "losses": 21,
+          "winPercent": 66.12903225806451,
+          "netDollars": 2537.500000000011,
+          "returnPercent": 50.75000000000022,
+          "drawdown": 475.0000000000002,
+          "fees": 0,
+          "noSizeOrInvalid": 0
+        },
+        "2026-11": {
+          "setups": 42,
+          "closed": 31,
+          "wins": 19,
+          "losses": 12,
+          "winPercent": 61.29032258064516,
+          "netDollars": 1162.5000000000018,
+          "returnPercent": 23.250000000000036,
+          "drawdown": 300.0,
+          "fees": 0,
+          "noSizeOrInvalid": 0
+        }
+      }
+    }
+  ]
+}

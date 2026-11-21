@@ -1,0 +1,34 @@
+Abhi Scalp Logic implementation — 21 November 2026
+
+Implemented for new setups:
+- Final closed T1/T2/T3 confirmation candle; body at least 30% of range.
+- Entries at 10% and 25% pullbacks of that candle body from its close.
+- Bridge-selected total setup risk split 40% / 60%.
+- Original SL; separate 1.25R target calculated from each entry.
+- Pending entries expire 60 minutes after confirmation.
+- If split sizing falls below minimum lot before broker acceptance, use the
+  second entry with the full frozen setup allowance. Skip if still too small.
+- Bridge/server validation, separate-target fallback, chart drawings, journal,
+  and message formatting updated. Existing older-version orders retain their rules.
+
+Verification:
+- Full TypeScript test suite: 647 passed, zero failures.
+- Python bridge suite: 145 passed, zero failures.
+- TypeScript lint/type check: passed.
+- Production frontend/server build: passed (bundle size advisory remains).
+- git diff --check and npm run lock:check: passed.
+- Message formatting was tested without sending external messages.
+
+Demo verification:
+- Verified demo terminal only, XAUUSDm broker specifications and real candles.
+- Read-only calculation/dry-run with order_send blocked; zero orders submitted.
+- Existing demo risk setting: 2%; current setup allowance: $4.
+- Five historical sample pairs correctly skipped below broker 0.01 lot minimum,
+  including second-entry-only fallback. Risk was not raised to force a fill.
+- Last available broker quote was Friday; no fresh eligible setup now.
+- Actual forward demo trading remains pending fresh quotes, a new qualifying
+  setup, and sufficient allowance for the broker minimum lot.
+- Source is built and ready; this work did not restart live trading services.
+
+Detailed demo evidence: abhi-demo-verification-2026-11-21.json
+Full TypeScript log: abhi-implementation-final-tests.log

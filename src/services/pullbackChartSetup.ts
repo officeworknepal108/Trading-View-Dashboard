@@ -1,5 +1,6 @@
 import type { JournalTradeRecord } from '../components/TradeJournal';
 import type { Mt5SignalInput, Mt5StoredSignal } from './mt5Automation';
+import { scalpEntryRiskShare } from './mt5Automation';
 import type { StructureCandle } from './marketStructure';
 import type { TradeLevels, TradeTimeframe } from './tradeLevels';
 import { entryTimeframeSeconds } from './intradayPullback';
@@ -9,6 +10,7 @@ import { chartPullbackState, confirmedPullbackFill, currentPullbackDisplay, grou
 
 export interface PullbackChartLeg {
   leg: 10 | 25; entry: number; riskPips: number;
+  takeProfit?: number; riskShare?: number;
   filled: boolean; filledAt?: number; uncertain: boolean; executed: boolean;
   chartConfirmed?: boolean;
   chartOutcome?: 'tp' | 'sl' | 'both';
@@ -16,6 +18,8 @@ export interface PullbackChartLeg {
   outcome?: 'tp' | 'sl' | 'both';
 }
 export interface PullbackChartSetup {
+  abhi?: boolean;
+  netReturnR?: number;
   secondOnly: boolean;
   telegramKey: string;
   id: string; symbol: 'XAUUSD'; style: 'SCALP_1_1' | 'INTRADAY';
@@ -79,15 +83,17 @@ export function buildPullbackChartSetups(options: {
   return groupPullbackTableSignals(signals, context).map(({ key, entries }): PullbackChartSetup => {
     const base = entries[0], meta = (base.scalpEntry ?? base.intradayEntry)!;
     const secondOnly = entries.some(s => s.pullbackFallback === 'SECOND_ONLY');
+    const abhi = base.scalpEntry?.version === 4;
     const buy = base.direction === 'BUY', sign = buy ? 1 : -1;
     const candles = options.candles[base.signalTimeframe] ?? [];
     const states = ([10, 25] as const).map(leg => {
       const saved = entries.find(s => (s.scalpEntry ?? s.intradayEntry)!.leg === leg);
-      const raw = meta.nextOpen - sign * meta.confirmationBody * leg / 100;
+      const raw = (abhi ? meta.confirmationClose! : meta.nextOpen) - sign * meta.confirmationBody * leg / 100;
       const entry = saved?.entry ?? (meta.version >= 2 ? raw : buy ? Math.min(raw, meta.referenceEntry) : Math.max(raw, meta.referenceEntry));
-      const signal: Mt5SignalInput = saved ?? { ...base, entry, riskPips: Math.abs(entry - base.stopLoss) * 10,
-        rewardRisk: Math.abs(base.takeProfit - entry) / Math.abs(entry - base.stopLoss),
-        ...(base.scalpEntry ? { scalpEntry: { ...meta, leg, riskShare: leg === 10 ? .6 : .4 } }
+      const target = saved?.takeProfit ?? (abhi ? entry + sign * Math.abs(entry-base.stopLoss)*1.25 : base.takeProfit);
+      const signal: Mt5SignalInput = saved ?? { ...base, entry, takeProfit: target, riskPips: Math.abs(entry - base.stopLoss) * 10,
+        rewardRisk: Math.abs(target - entry) / Math.abs(entry - base.stopLoss),
+        ...(base.scalpEntry ? { scalpEntry: { ...meta, leg, riskShare: scalpEntryRiskShare(meta.version, leg) } }
           : { intradayEntry: { ...base.intradayEntry!, leg, riskShare: leg === 10 ? .6 : .4 } }) };
       const chart = chartPullbackState(signal, candles, asOf);
       const evidence = saved?.chartEvidence;
@@ -102,7 +108,7 @@ export function buildPullbackChartSetups(options: {
       const brokerExit = !saved?.preview && saved?.closedAt !== undefined && saved.closedAt <= asOf
         && (saved.status === 'TP' || saved.status === 'SL') ? saved.status.toLowerCase() as 'tp' | 'sl' : undefined;
       const chartOutcome = historyOutcome ?? chart.outcome?.level;
-      return { leg, entry, riskPips: Math.abs(entry - base.stopLoss) * 10, filled,
+      return { leg, entry, takeProfit: target, riskShare: scalpEntryRiskShare(meta.version, leg), riskPips: Math.abs(entry - base.stopLoss) * 10, filled,
         chartConfirmed: !(secondOnly && leg === 10) && (chart.status === 'filled' || !!visibleEvidence),
         chartOutcome, chartResolvedAt: historyOutcome ? visibleEvidence?.resolvedAt : chart.outcome?.at,
         filledAt: filled ? chart.filledAt ?? saved?.openedAt : undefined,
@@ -122,29 +128,31 @@ export function buildPullbackChartSetups(options: {
     const exits = filled.filter(s => s.outcome);
     const running = filled.some(s => s.brokerRunning || s.chartRunning && !s.historyUncertain);
     const brokerRunning = filled.some(s => s.brokerRunning);
-    const result = filled.length && exits.length === filled.length && exits.every(s => s.outcome === exits[0].outcome)
+    const netReturnR = abhi && filled.length && exits.length === filled.length && exits.every(s => s.outcome === 'tp' || s.outcome === 'sl')
+      ? exits.reduce((sum,s)=>sum+(secondOnly ? 1 : s.riskShare)*(s.outcome==='tp'?1.25:-1),0) : undefined;
+    const result = netReturnR !== undefined ? netReturnR >= 0 ? 'tp' : 'sl' : filled.length && exits.length === filled.length && exits.every(s => s.outcome === exits[0].outcome)
       && (exits[0].outcome === 'tp' || exits[0].outcome === 'sl') ? exits[0].outcome : undefined;
     const markerTime = filled.length ? states[0].filledAt ?? Math.min(...filled.map(s => s.filledAt!)) : undefined;
     const entry = states[secondOnly ? 1 : 0].entry, risk = Math.abs(entry - base.stopLoss);
     const resolvedAt = exits.length ? Math.max(...exits.map(s => s.resolvedAt ?? 0)) : undefined;
     const parent = (base.intradayEntry?.setupKey ?? base.setupId ?? '').replace(/:secondary$/, '').replace(/:P(?:10|25)$/, '');
     const identity = [base.tradeStyle, base.symbol, base.source, base.zoneTimeframe, base.signalTimeframe,
-      base.signalAt, base.direction, parent, meta.referenceEntry, base.stopLoss, base.takeProfit].join(':');
+      base.signalAt, base.direction, parent, meta.referenceEntry, base.stopLoss, abhi ? meta.setupKey : base.takeProfit].join(':');
     let hash = 14695981039346656037n;
     for (const ch of identity) hash = BigInt.asUintN(64, (hash ^ BigInt(ch.charCodeAt(0))) * 1099511628211n);
     return { id: `PULLBACK_SETUP:${key}`, telegramKey: `CHART_SETUP:${base.tradeStyle}:${base.signalAt}:${hash.toString(16)}`,
-      secondOnly, symbol: 'XAUUSD', style: base.scalpEntry ? 'SCALP_1_1' : 'INTRADAY',
+      secondOnly, abhi, netReturnR, symbol: 'XAUUSD', style: base.scalpEntry ? 'SCALP_1_1' : 'INTRADAY',
       memberIds: entries.flatMap(s => [s.id, s.setupId,
         s.brokerTicket === undefined ? undefined : `MT5:${s.brokerTicket}`,
         s.brokerPosition === undefined ? undefined : `MT5:${s.brokerPosition}`].filter((id): id is string => !!id)),
       setupId: base.setupId, legs: states, chartTimeframe: base.signalTimeframe, zoneTimeframe: base.zoneTimeframe,
-      referenceOnly: !filled.length, chartFilled: !!filled.length, alwaysVisible: running && !exits.length,
-      drawing: !exits.length && (brokerRunning || !states.some(s => s.historyUncertain)
+      referenceOnly: !filled.length, chartFilled: !!filled.length, alwaysVisible: running && (abhi || !exits.length),
+      drawing: (abhi ? exits.length < filled.length || !filled.length || states.some(s=>!s.filled&&!s.expired&&asOf<base.expiresAt) : !exits.length) && (brokerRunning || !states.some(s => s.historyUncertain)
         && (running || !filled.length && asOf < base.expiresAt && states.some(s => !s.expired))),
-      markerTime, markerText: result?.toUpperCase() ?? '', label: '',
-      trade: { entry, stopLoss: base.stopLoss, takeProfit: base.takeProfit,
-        riskFree: base.takeProfit, riskFreeEnabled: false, riskPips: risk * 10,
-        rewardRisk: Math.abs(base.takeProfit - entry) / risk,
+      markerTime, markerText: result?.toUpperCase() ?? '', label: abhi ? 'ABHI SCALP LOGIC' : '',
+      trade: { entry, stopLoss: base.stopLoss, takeProfit: states[secondOnly ? 1 : 0].takeProfit,
+        riskFree: states[secondOnly ? 1 : 0].takeProfit, riskFreeEnabled: false, riskPips: risk * 10,
+        rewardRisk: Math.abs(states[secondOnly ? 1 : 0].takeProfit - entry) / risk,
         calculatedAt: markerTime ?? base.calculatedAt, filledAt: markerTime,
         status: result === 'tp' ? 'tp-hit' : result === 'sl' ? 'sl-hit' : filled.length ? 'active' : 'pending',
         pendingAtCreation: true, result, resolvedAt,
@@ -159,5 +167,6 @@ export function belongsToPullbackSetup(setup: PullbackChartSetup, trade: TradeLe
   if (identity && [identity.id, identity.setupId].some(id => id && setup.memberIds.includes(id))) return true;
   return (!style || style === setup.style) && trade.signal.time === setup.trade.signal.time
     && trade.signal.timeframe === setup.trade.signal.timeframe && trade.signal.direction === setup.trade.signal.direction
-    && Math.abs(trade.stopLoss - setup.trade.stopLoss) < 1e-6 && Math.abs(trade.takeProfit - setup.trade.takeProfit) < 1e-6;
+    && Math.abs(trade.stopLoss - setup.trade.stopLoss) < 1e-6
+    && (setup.abhi ? setup.legs.some(l=>Math.abs((l.takeProfit??NaN)-trade.takeProfit)<1e-6) : Math.abs(trade.takeProfit - setup.trade.takeProfit) < 1e-6);
 }

@@ -931,10 +931,10 @@ function pullbackSetupTooltip(setup: PullbackChartSetup): string {
     ...setup.legs.flatMap(leg => [
       `${leg.leg === 10 ? '1st' : '2nd'} Entry: ${formatPrice(leg.entry)} — ${setup.secondOnly && leg.leg === 10 ? 'Skipped — split lot below minimum'
         : leg.chartOutcome ? `${leg.chartOutcome.toUpperCase()} HIT` : leg.chartConfirmed ? '✓ Filled' : leg.uncertain ? 'Fill uncertain' : 'Waiting'}`,
-      `SL: ${leg.riskPips.toFixed(2)} pips · MT5: ${leg.executed ? 'Executed' : 'Not executed'}`,
+      `SL: ${leg.riskPips.toFixed(2)} pips · TP: ${formatPrice(leg.takeProfit ?? setup.trade.takeProfit)} · MT5: ${leg.executed ? 'Executed' : 'Not executed'}`,
     ]),
     `Fixed SL: ${formatPrice(setup.trade.stopLoss)}`,
-    `Fixed TP: ${formatPrice(setup.trade.takeProfit)}`,
+    ...(setup.abhi ? [] : [`Fixed TP: ${formatPrice(setup.trade.takeProfit)}`]),
   ].join('\n');
 }
 
@@ -957,9 +957,10 @@ export const ZonePullbackDetailsRow: React.FC<{ setup: PullbackChartSetup }> = (
           <span className="tabular-nums font-bold text-slate-700">{setup.secondOnly && leg.leg === 10 ? 'SKIPPED' : formatPrice(leg.entry)}</span>
         </span>
         {!(setup.secondOnly && leg.leg === 10) && <span className="tabular-nums">SL {leg.riskPips.toFixed(2)} PIPS</span>}
+        {setup.abhi && !(setup.secondOnly && leg.leg === 10) && <span className="text-emerald-700">TP {formatPrice(leg.takeProfit!)}</span>}
       </React.Fragment>)}
       <span aria-hidden="true">|</span><span className="text-rose-700">SL <span className="tabular-nums font-bold text-slate-700">{formatPrice(setup.trade.stopLoss)}</span></span>
-      <span aria-hidden="true">|</span><span className="text-emerald-700">TP <span className="tabular-nums font-bold text-slate-700">{formatPrice(setup.trade.takeProfit)}</span></span>
+      {!setup.abhi && <><span aria-hidden="true">|</span><span className="text-emerald-700">TP <span className="tabular-nums font-bold text-slate-700">{formatPrice(setup.trade.takeProfit)}</span></span></>}
     </div>
   </td></tr>;
 };
@@ -1019,7 +1020,7 @@ export const PullbackSetupRows: React.FC<{
     return [<React.Fragment key={group.key}>
       <tr className={`border-t ${style === 'SCALP_1_1' ? 'border-cyan-200 bg-cyan-50/80' : 'border-indigo-200 bg-indigo-50/80'}`}>
         <td className={`px-2 py-1 font-black ${style === 'SCALP_1_1' ? 'text-cyan-800' : 'text-indigo-800'}`}>
-          <div>{style === 'SCALP_1_1' ? 'SCALP 1:1' : 'INTRADAY'} · {signal.signalTimeframe}</div>
+          <div>{style === 'SCALP_1_1' ? signal.scalpEntry?.version === 4 ? 'ABHI SCALP LOGIC' : 'SCALP 1:1' : 'INTRADAY'} · {signal.signalTimeframe}</div>
           <div className="text-[8px] font-semibold text-slate-500">{formatAccuracyTradeTime(signal.calculatedAt, timeZone)}</div>
         </td>
         <td className={`px-2 py-1 font-bold ${signal.direction === 'BUY' ? 'text-emerald-700' : 'text-rose-700'}`}>{signal.direction}</td>
@@ -1045,11 +1046,12 @@ export const PullbackSetupRows: React.FC<{
                 <span className="tabular-nums font-bold text-slate-700">{secondOnly && slot === 10 ? 'SKIPPED' : state?.outcome ? state.outcome.label : state?.signal.displayPlan?.error ? 'OUTSIDE LIMITS' : price !== undefined ? formatPrice(price) : '—'}</span>
               </span>
               {state && !state.outcome && !state.signal.displayPlan?.error && price !== undefined && <span className="tabular-nums">SL {(Math.round(Math.abs(price - stop) * 1000 + 1e-7) / 100).toFixed(2)} PIPS</span>}
+              {state?.signal.scalpEntry?.version === 4 && <span className="text-emerald-700">TP {formatPrice(state.signal.takeProfit)}</span>}
             </React.Fragment>;
           })}
           <span aria-hidden="true">|</span><span className="text-rose-700">SL <span className="tabular-nums font-bold text-slate-700">{formatPrice(stop)}</span></span>
           {secondOnly && <span>2nd entry: 100% setup risk</span>}
-          <span aria-hidden="true">|</span><span className="text-emerald-700">TP <span className="tabular-nums font-bold text-slate-700">{formatPrice(signal.takeProfit)}</span></span>
+          {signal.scalpEntry?.version !== 4 && <><span aria-hidden="true">|</span><span className="text-emerald-700">TP <span className="tabular-nums font-bold text-slate-700">{formatPrice(signal.takeProfit)}</span></span></>}
         </div>
       </td></tr>}
     </React.Fragment>];
@@ -2646,7 +2648,7 @@ const EngulfingAccuracyTable: React.FC<{
                 {header('Trade style')}
                 {resultRow('INTRADAY ENTRIES', accuracyCounts(summaryRecords.filter((record) => record.tradeStyle === 'INTRADAY')))}
                 {resultRow('SCALPING', accuracyCounts(summaryRecords.filter((record) => record.tradeStyle === 'SCALPING')))}
-                {resultRow('SCALP 1:1 ENTRIES', accuracyCounts(summaryRecords.filter((record) => record.tradeStyle === 'SCALP_1_1')))}
+                {resultRow('ABHI SCALP ENTRIES', accuracyCounts(summaryRecords.filter((record) => record.tradeStyle === 'SCALP_1_1')))}
                 {resultRow('BB M5 CHART STUDY', accuracyCounts(summaryRecords.filter(record => record.tradeStyle === 'BOLLINGER_M5' && !record.mt5Managed && record.brokerTicket === undefined)))}
                 {resultRow('BB M5 MT5 FILLS', accuracyCounts(summaryRecords.filter(record => record.tradeStyle === 'BOLLINGER_M5' && (record.mt5Managed || record.brokerTicket !== undefined))))}
               </>}
@@ -4716,7 +4718,7 @@ export const OandaProChart: React.FC<{
     if (!scalpOneToOneHistoryRequested) {
       setScalpOneToOneHistoryStatus(''); return;
     }
-    setScalpOneToOneHistoryStatus('Loading Scalp 1:1 chart results...');
+    setScalpOneToOneHistoryStatus('Loading Abhi Scalp Logic chart results...');
     const task = new Worker(new URL('../services/scalpOneToOne.worker.ts', import.meta.url), { type: 'module' });
     const queue = new LatestWorkerTask<unknown>(message => task.postMessage(message));
     scalpHistoryQueueRef.current = queue;
@@ -4731,10 +4733,10 @@ export const OandaProChart: React.FC<{
       if (event.data.records) setScalpOneToOneChartRecords(event.data.records);
       if (event.data.fills) setScalpOneToOneChartFills(event.data.fills);
       setScalpOneToOneHistoryStatus(event.data.error ?? (event.data.progress !== undefined
-        ? `Loading Scalp 1:1 chart results... ${event.data.progress}%`
-        : `Scalp 1:1: ${event.data.fills?.length ?? 0} confirmed historical entry fills. Results and MT5 executions are tracked separately.`));
+        ? `Loading Abhi Scalp Logic chart results... ${event.data.progress}%`
+        : `Abhi Scalp Logic: ${event.data.fills?.length ?? 0} confirmed historical entry fills. Results and MT5 executions are tracked separately.`));
     };
-    task.onerror = () => setScalpOneToOneHistoryStatus('Scalp 1:1 history unavailable.');
+    task.onerror = () => setScalpOneToOneHistoryStatus('Abhi Scalp Logic history unavailable.');
     return () => {
       queue.dispose(); scalpHistoryQueueRef.current = null;
       task.onmessage = null; task.terminate();
@@ -7631,7 +7633,13 @@ export const OandaProChart: React.FC<{
           if (secondY !== null && !overlay.pullbackSetup.secondOnly) makeLevelLine(secondY, '#1e40af', `2nd Entry ${formatPrice(second!.entry)}`, true, true);
         } else makeLevelLine(entryY, '#1e40af', `${overlay.chartFilled ? 'CHART ENTRY' : overlay.referenceOnly ? 'SETUP ENTRY' : overlay.id.startsWith('GOLD_SCALP:') || overlay.label?.includes('SCALP') ? 'SCALP ENTRY' : 'ENTRY'} ${formatPrice(trade.entry)}`);
         makeLevelLine(stopY, '#be123c', `${overlay.pullbackSetup || overlay.referenceOnly ? 'SL' : 'SL EXIT'} ${formatPrice(trade.stopLoss)}`);
-        makeLevelLine(targetY, '#047857', `${overlay.pullbackSetup || overlay.referenceOnly ? 'TP' : 'TP EXIT'} ${formatPrice(trade.takeProfit)}`);
+        if (overlay.pullbackSetup?.abhi) {
+          for (const leg of overlay.pullbackSetup.legs) {
+            if (overlay.pullbackSetup.secondOnly && leg.leg === 10) continue;
+            const y = series.priceToCoordinate(leg.takeProfit!);
+            if (y !== null) makeLevelLine(y, '#047857', `${leg.leg === 10 ? '1st' : '2nd'} TP ${formatPrice(leg.takeProfit!)}`, leg.leg === 25);
+          }
+        } else makeLevelLine(targetY, '#047857', `${overlay.pullbackSetup || overlay.referenceOnly ? 'TP' : 'TP EXIT'} ${formatPrice(trade.takeProfit)}`);
         const riskFreeY = trade.riskFreeEnabled === false
           ? null : series.priceToCoordinate(trade.riskFree);
         if (riskFreeY !== null) {
@@ -10076,10 +10084,10 @@ export const OandaProChart: React.FC<{
                       Intraday
                     </label>
                     <label className="flex items-center gap-1 font-bold text-cyan-800">
-                      <input type="checkbox" aria-label="Enable Scalp 1:1"
+                      <input type="checkbox" aria-label="Enable Abhi Scalp Logic"
                         checked={mt5Status.config.scalpOneToOneEnabled === true}
                         onChange={event => void updateMt5Config({ scalpOneToOneEnabled: event.target.checked })} />
-                      Scalp 1:1
+                      Abhi Scalp Logic
                     </label>
                     <label className="flex items-center gap-1 font-bold text-blue-800">
                       <input type="checkbox" aria-label="Enable Bollinger M5"
@@ -10154,8 +10162,8 @@ export const OandaProChart: React.FC<{
                   </select>
                 </label>
                 <label className="mb-2 block font-bold text-cyan-800">
-                  Scalp 1:1 risk per trade
-                  <select aria-label="Scalp 1:1 risk per trade"
+                  Abhi Scalp Logic total setup risk
+                  <select aria-label="Abhi Scalp Logic total setup risk"
                     value={mt5Status.config.scalpOneToOneRiskPercent ?? 0.25}
                     onChange={event => void updateMt5Config({ scalpOneToOneRiskPercent: Number(event.target.value) })}
                     className="mt-1 w-full rounded border border-cyan-200 bg-white px-2 py-1">
@@ -11314,7 +11322,7 @@ export const OandaProChart: React.FC<{
               }}
             >
               <div className={`text-xs font-black ${bullish ? 'text-emerald-700' : 'text-rose-700'}`}>
-                {bullish ? '🟢' : '🔴'} {marketSymbol} {bullish ? 'BUY' : 'SELL'} · {scalpOneToOne ? 'SCALP 1:1' : entry.style}
+                {bullish ? '🟢' : '🔴'} {marketSymbol} {bullish ? 'BUY' : 'SELL'} · {scalpOneToOne ? entry.pullbackSetup?.abhi || record?.scalpEntry?.version === 4 ? 'ABHI SCALP LOGIC' : 'SCALP 1:1' : entry.style}
               </div>
               {scalpOneToOne && !entry.pullbackSetup && <div className="mt-1 font-bold text-emerald-700">
                 {entry.display ? entry.display.statusText + (entry.display.brokerTicket ? ` - Ticket ${entry.display.brokerTicket}` : '') : record?.mt5Managed || record?.brokerTicket !== undefined ? `MT5 execution · Ticket ${record?.brokerTicket ?? 'pending'}` : 'CHART ONLY · Simulated result'}
@@ -11323,13 +11331,13 @@ export const OandaProChart: React.FC<{
               {entry.pullbackSetup && <div className="mt-2 border-t border-slate-100 pt-2" aria-label="Both pullback entry details">
                 {entry.pullbackSetup.legs.map(leg => <div key={leg.leg} className="mb-2">
                   <div><b>{leg.leg === 10 ? '1st Entry' : '2nd Entry'} ({leg.leg}%): {formatPrice(leg.entry)}</b></div>
-                  <div>SL: {leg.riskPips.toFixed(2)} pips · Risk share: {entry.pullbackSetup!.secondOnly ? leg.leg === 25 ? '100%' : '0%' : leg.leg === 10 ? '60%' : '40%'}</div>
+                  <div>SL: {leg.riskPips.toFixed(2)} pips · TP: {formatPrice(leg.takeProfit ?? trade.takeProfit)} · Risk share: {entry.pullbackSetup!.secondOnly ? leg.leg === 25 ? '100%' : '0%' : `${Math.round((leg.riskShare ?? (leg.leg === 10 ? .6 : .4))*100)}%`}</div>
                   <div>CHART: {entry.pullbackSetup!.secondOnly && leg.leg === 10 ? 'Skipped — split lot below minimum' : leg.filled ? '✓ Filled' : leg.uncertain ? 'Fill uncertain — insufficient candle evidence' : 'Not filled'}</div>
                   <div>MT5: {leg.executed ? 'Executed' : 'Not executed'}</div>
                   {leg.outcome && <div>Outcome: {leg.outcome === 'both' ? 'SL / TP order uncertain' : leg.outcome.toUpperCase()}</div>}
                   {leg.filledAt !== undefined && <div>Filled: {formatAccuracyTradeTime(leg.filledAt, chartTimeZone)}</div>}
                 </div>)}
-                <div>Fixed SL: <b>{formatPrice(trade.stopLoss)}</b> · Fixed TP: <b>{formatPrice(trade.takeProfit)}</b></div>
+                <div>Fixed SL: <b>{formatPrice(trade.stopLoss)}</b>{!entry.pullbackSetup.abhi && <> · Fixed TP: <b>{formatPrice(trade.takeProfit)}</b></>}</div>
               </div>}
               {entry.tradingTimeBlocked && <div className="mt-1 text-amber-700">⚠️ Outside trading hours</div>}
               <div className="mt-3 border-t border-slate-100 pt-2">
@@ -11339,8 +11347,8 @@ export const OandaProChart: React.FC<{
                 {mtf && <div>Entry zone: <b>{timeframeName(trade.signal.timeframe)} {zoneName(entryZone)}</b></div>}
                 {entry.style === 'BOLLINGER_M5' ? <div>Confirmation: <b>M5 Bollinger re-entry, EMA200, SuperTrend, ADX ≥15, confirmed H4 bias. One entry; fixed SL / 1.5R TP.</b></div> : <div>Confirmation: <b>{timeframeName(trade.signal.timeframe)} {bullish ? 'bullish' : 'bearish'} engulfing {trade.signal.type}</b></div>}
                 {entry.style === 'BOLLINGER_M5' ? <div>Entry method: <b>One market entry; original SL and TP fixed</b></div>
-                  : scalpOneToOne ? <div>Entry method: <b>10% / 25% body pullbacks · 60% / 40% setup risk · original SL/TP fixed · M15 volume decrease ≥ 250 units · H4 bias + EMA20/50 · H1 continuation/Far</b></div>
-                  : entry.pullbackSetup ? <div>Entry method: <b>10% / 25% body pullbacks · 60% / 40% setup risk · original SL/TP fixed</b></div>
+                  : scalpOneToOne ? <div>Entry method: <b>{entry.pullbackSetup?.abhi || record?.scalpEntry?.version === 4 ? 'Abhi Scalp Logic: confirmation-close 10% / 25% body pullbacks · 40% / 60% setup risk · original SL · separate 1.25R targets · body >=30% range' : '10% / 25% body pullbacks · 60% / 40% setup risk · original SL/TP fixed'} · M15 volume decrease ≥ 250 units · H4 bias + EMA20/50 · H1 continuation/Far</b></div>
+                  : entry.pullbackSetup ? <div>Entry method: <b>{entry.pullbackSetup.abhi ? 'Abhi Scalp Logic: confirmation-close 10% / 25% pullbacks · 40% / 60% risk · individual 1.25R targets' : '10% / 25% body pullbacks · 60% / 40% setup risk · original SL/TP fixed'}</b></div>
                   : !mtf && <div>Entry method: <b>Candle confirmation at the main zone</b></div>}
                 {entry.fib !== 'Not recorded' && <div>Fibonacci: <b>{entry.fib}</b></div>}
               </div>

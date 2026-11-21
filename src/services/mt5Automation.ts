@@ -364,36 +364,64 @@ export function mt5StrategyRiskPercent(config: Partial<Pick<Mt5AutomationConfig,
 }
 
 export interface ScalpPullbackEntry {
-  /** v1 capped orders, v2 exact entries/one candle, v3 exact entries/75 minutes. */
-  version: 1 | 2 | 3;
+  /** v1 capped, v2 next-open/one candle, v3 next-open/75min, v4 Abhi close/60min. */
+  version: 1 | 2 | 3 | 4;
   leg: 10 | 25;
   riskShare: number;
   referenceEntry: number;
   nextOpen: number;
   confirmationBody: number;
+  /** v4 Abhi: closed confirmation anchor; nextOpen is a compatibility mirror only. */
+  confirmationClose?: number;
+  confirmationRange?: number;
+  setupKey?: string;
+}
+
+export function scalpEntryRiskShare(version: number, leg: 10 | 25): number {
+  return version === 4 ? (leg === 10 ? .4 : .6) : (leg === 10 ? .6 : .4);
+}
+
+/** Group independent targets by immutable setup geometry, not by TP price. */
+export function sameScalpPullbackSetup(a: Mt5SignalInput, b: Mt5SignalInput): boolean {
+  const x = a.scalpEntry, y = b.scalpEntry;
+  return !!x && !!y && a.tradeStyle === 'SCALP_1_1' && b.tradeStyle === 'SCALP_1_1'
+    && a.symbol === b.symbol && a.direction === b.direction && a.signalAt === b.signalAt
+    && a.signalTimeframe === b.signalTimeframe && x.version === y.version
+    && a.stopLoss === b.stopLoss && x.referenceEntry === y.referenceEntry
+    && x.confirmationBody === y.confirmationBody && x.nextOpen === y.nextOpen
+    && (x.version === 4 ? !!x.setupKey && x.setupKey === y.setupKey
+      && x.confirmationClose === y.confirmationClose && x.confirmationRange === y.confirmationRange
+      : a.takeProfit === b.takeProfit);
 }
 
 /** Validate the two fixed-exit entries independently of the scanner/UI. */
 export function scalpPullbackSignalError(signal: Pick<Mt5SignalInput,
   'scalpEntry' | 'entry' | 'stopLoss' | 'takeProfit' | 'direction' | 'orderType'
-  | 'signalAt' | 'calculatedAt' | 'expiresAt' | 'rewardRisk'>): string | undefined {
+  | 'signalAt' | 'calculatedAt' | 'expiresAt' | 'rewardRisk' | 'riskPips'>): string | undefined {
   const leg = signal.scalpEntry;
   if (!leg) return undefined; // Existing single-entry executions retain their exits.
-  const expectedShare = leg.leg === 10 ? 0.6 : leg.leg === 25 ? 0.4 : 0;
+  const abhi = leg.version === 4;
+  const expectedShare = [10, 25].includes(leg.leg) ? scalpEntryRiskShare(leg.version, leg.leg) : 0;
   const sign = signal.direction === 'BUY' ? 1 : -1;
-  const raw = leg.nextOpen - sign * leg.confirmationBody * leg.leg / 100;
+  const raw = (abhi ? leg.confirmationClose! : leg.nextOpen) - sign * leg.confirmationBody * leg.leg / 100;
   const entry = leg.version >= 2 ? raw : sign === 1 ? Math.min(raw, leg.referenceEntry) : Math.max(raw, leg.referenceEntry);
   const maximumRisk = leg.version >= 2 ? 30 : 20;
   const risk = sign * (signal.entry - signal.stopLoss);
   const reward = sign * (signal.takeProfit - signal.entry);
-  if (![1, 2, 3].includes(leg.version) || !expectedShare || leg.riskShare !== expectedShare
+  if (![1, 2, 3, 4].includes(leg.version) || !expectedShare || leg.riskShare !== expectedShare
     || ![signal.entry, signal.stopLoss, signal.takeProfit, signal.rewardRisk,
-      signal.signalAt, signal.calculatedAt, signal.expiresAt].every(v => Number.isFinite(v) && v > 0)
+      signal.signalAt, signal.calculatedAt, signal.expiresAt, signal.riskPips].every(v => Number.isFinite(v) && v > 0)
     || ![leg.referenceEntry, leg.nextOpen, leg.confirmationBody].every(v => Number.isFinite(v) && v > 0)
     || signal.orderType !== 'LIMIT' || Math.abs(entry - signal.entry) > 1e-6
-    || Math.abs((signal.stopLoss + signal.takeProfit) / 2 - leg.referenceEntry) > 1e-6
-    || sign * (leg.referenceEntry - signal.stopLoss) <= 0
-    || sign * (leg.referenceEntry - signal.stopLoss) > 20.000001
+    || (abhi ? ![leg.confirmationClose, leg.confirmationRange].every(v => Number.isFinite(v) && v! > 0)
+      || leg.nextOpen !== leg.confirmationClose || !leg.setupKey || leg.setupKey.length > 300
+      || leg.confirmationBody > leg.confirmationRange! + 1e-6
+      || leg.confirmationBody / leg.confirmationRange! < .3 - 1e-10
+      || Math.abs(signal.riskPips-risk*10)>1e-5
+      || Math.abs(reward / risk - 1.25) > 1e-6
+      : Math.abs((signal.stopLoss + signal.takeProfit) / 2 - leg.referenceEntry) > 1e-6
+        || sign * (leg.referenceEntry - signal.stopLoss) <= 0
+        || sign * (leg.referenceEntry - signal.stopLoss) > 20.000001)
     || risk <= 0 || risk > maximumRisk + 0.000001 || reward <= 0
     || Math.abs(signal.rewardRisk - reward / risk) > 1e-6
     || signal.calculatedAt !== signal.signalAt + 900
@@ -767,9 +795,12 @@ export function selectSecondOnlyPullback(signals: Mt5StoredSignal[], id: string,
   const peers = signals.filter(s => s.account === account && s.server === server && s.brokerSymbol === current.brokerSymbol
     && s.symbol === current.symbol && s.tradeStyle === current.tradeStyle && s.signalAt === current.signalAt
     && s.signalTimeframe === current.signalTimeframe && s.direction === current.direction
-    && s.stopLoss === current.stopLoss && s.takeProfit === current.takeProfit
+    && s.stopLoss === current.stopLoss && (current.scalpEntry?.version === 4
+      ? sameScalpPullbackSetup(current, s) : s.takeProfit === current.takeProfit)
     && (current.intradayEntry ? s.intradayEntry?.setupKey === current.intradayEntry.setupKey
       : s.scalpEntry?.referenceEntry === current.scalpEntry?.referenceEntry));
+  if (current.scalpEntry?.version === 4 && peers.some(s=>scalpPullbackSignalError(s)))
+    throw new Error('Invalid Abhi pullback geometry before minimum-lot allocation.');
   if (peers.some(s => s.brokerTicket || s.executionPrice || s.openedAt || ['PLACED', 'ACTIVE', 'RISK_FREE', 'TP', 'SL', 'RF'].includes(s.status)))
     throw new Error('Cannot transfer setup risk after either entry has reached the broker.');
   if (peers.some(s => !['QUEUED', 'CLAIMED'].includes(s.status) && !(s.status === 'CANCELLED' && s.pullbackFallback === 'SECOND_ONLY')))

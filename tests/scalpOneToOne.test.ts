@@ -29,13 +29,13 @@ const layeredCandles: StudyCandles = { M15: [
   { time: 2700, open: 100, high: 111, low: 99, close: 110, complete: true },
 ] };
 
-test('75-minute Scalp history admits later fills, blocks fills at expiry, and keeps actual fill candles', () => {
+test('60-minute Abhi history admits later fills, blocks fills at expiry, and keeps actual fill candles', () => {
   const quiet = [1800, 2700, 3600, 4500, 5400].map(time => ({ time, open: 100, high: 101, low: 99.5, close: 100, complete: true }));
-  const within = { M15: [layeredCandles.M15![0], ...quiet.map(c => c.time === 5400 ? { ...c, low: 97 } : c),
+  const within = { M15: [layeredCandles.M15![0], ...quiet.map(c => c.time === 4500 ? { ...c, low: 97 } : c),
     { time: 6300, open: 100, high: 111, low: 99.5, close: 110, complete: true }] };
   const { records, fills } = scalpOneToOneChartHistory(record, within, 7200);
-  assert.equal(records.length, 2); assert.ok(records.every(r => r.result === 'tp' && r.openedAt === 5400));
-  assert.ok(fills.every(fill => fill.trade.filledAt === 5400));
+  assert.equal(records.length, 2); assert.ok(records.every(r => r.result === 'tp' && r.openedAt === 4500));
+  assert.ok(fills.every(fill => fill.trade.filledAt === 4500));
   assert.equal(scalpOneToOneChartHistory(record, within, 5399).fills.length, 0, 'no future OHLC fills');
   const late = { M15: [layeredCandles.M15![0], ...quiet,
     { time: 6300, open: 100, high: 101, low: 97, close: 100, complete: true }] };
@@ -44,19 +44,19 @@ test('75-minute Scalp history admits later fills, blocks fills at expiry, and ke
   assert.equal(scalpOneToOneChartHistory(record, gapStop, 2700).fills.length, 0, 'SL gap cancels before a new fill');
 });
 
-test('two pullbacks freeze original exits, allocate 60/40 and expire after 75 minutes', () => {
+test('Abhi pullbacks preserve SL, use separate 1.25R targets, allocate 40/60 and expire after 60 minutes', () => {
   const snapshot = JSON.stringify(record);
   const signals = scalpOneToOnePullbackSignals(record, layeredCandles, 1800, 240);
   assert.equal(signals.length, 2);
   assert.deepEqual(signals.map(s => s.entry), [99, 97.5]);
-  assert.deepEqual(signals.map(s => s.scalpEntry?.riskShare), [0.6, 0.4]);
+  assert.deepEqual(signals.map(s => s.scalpEntry?.riskShare), [0.4, 0.6]);
   assert.equal(new Set(signals.map(s => s.setupId)).size, 2);
   assert.equal(new Set(signals.map(s => s.zoneId)).size, 2);
   for (const signal of signals) {
     assert.equal(signal.orderType, 'LIMIT');
-    assert.equal(signal.stopLoss, 90); assert.equal(signal.takeProfit, 110);
-    assert.equal(signal.expiresAt, 6300);
-    assert.equal(signal.riskFree, 110);
+    assert.equal(signal.stopLoss, 90); assert.equal(signal.takeProfit, signal.entry+(signal.entry-90)*1.25);
+    assert.equal(signal.expiresAt, 5400);
+    assert.equal(signal.riskFree, signal.takeProfit);
     assert.equal(scalpPullbackSignalError(signal), undefined);
     assert.deepEqual(applySignalOppositePositionTarget(signal, [{ direction: 'SELL' }]), signal);
   }
@@ -77,7 +77,7 @@ test('sell pullbacks mirror buys and exact pullbacks remain distinct beyond the 
       riskPips: 200, pendingAtCreation: true, status: 'pending' } };
   const cappedSignals = scalpOneToOnePullbackSignals(capped, layeredCandles, 1800, 240);
   assert.deepEqual(cappedSignals.map(s => s.entry), [99, 97.5]);
-  assert.ok(cappedSignals.every(s => s.scalpEntry?.version === 3));
+  assert.ok(cappedSignals.every(s => s.scalpEntry?.version === 4));
   assert.equal(new Set(cappedSignals.map(s => s.id)).size, 2);
   for (const signal of cappedSignals) assert.equal(scalpPullbackSignalError(signal), undefined);
 });
@@ -106,26 +106,26 @@ test('the reported SELL setup uses exact 10/25 body levels with its original fix
   assert.ok(Math.abs(signals[0].riskPips - 248.525) < 1e-7);
   assert.ok(Math.abs(signals[1].riskPips - 234.7625) < 1e-7);
   for (const signal of signals) {
-    assert.equal(signal.stopLoss, 3867.790); assert.equal(signal.takeProfit, 3827.790);
+    assert.equal(signal.stopLoss, 3867.790); assert.ok(Math.abs(signal.takeProfit-(signal.entry-(3867.790-signal.entry)*1.25))<1e-7);
     assert.equal(scalpPullbackSignalError(signal), undefined);
   }
-  assert.deepEqual(signals.map(s => s.scalpEntry?.riskShare), [0.6, 0.4]);
+  assert.deepEqual(signals.map(s => s.scalpEntry?.riskShare), [0.4, 0.6]);
 });
 
 test('300-pip Scalp entry limit is inclusive and over-limit legs are skipped without repricing', () => {
   const setup = { ...record, levels: { ...record.levels, entry: 100, stopLoss: 80, takeProfit: 120, riskPips: 200 } };
-  const source: StudyCandles = { M15: [layeredCandles.M15![0], { ...layeredCandles.M15![1], open: 111 }] };
+  const source: StudyCandles = { M15: [{ ...layeredCandles.M15![0],open:101,close:111,high:112,low:100 }, { ...layeredCandles.M15![1], open: 150 }] };
   const signals = scalpOneToOnePullbackSignals(setup, source, 1800, 15);
   assert.deepEqual(signals.map(s => s.entry), [110, 108.5]);
   assert.deepEqual(signals.map(s => s.riskPips), [300, 285]);
   for (const signal of signals) assert.equal(scalpPullbackSignalError(signal), undefined);
-  const above = scalpOneToOnePullbackSignals(setup, { M15: [source.M15![0], { ...source.M15![1], open: 111.01 }] }, 1800, 15);
-  assert.deepEqual(above.map(s => s.scalpEntry?.leg), [25]);
+  const above = scalpOneToOnePullbackSignals(setup, { M15: [{ ...source.M15![0],open:101.01,close:111.01 },source.M15![1]] }, 1800, 15);
+  assert.deepEqual(above, [], 'two valid entry levels are required');
   const invalid = { ...signals[0], entry: 110.01, rewardRisk: 9.99 / 30.01,
     scalpEntry: { ...signals[0].scalpEntry!, nextOpen: 111.01 } };
   assert.match(scalpPullbackSignalError(invalid)!, /Invalid Scalp/);
-  const legacy = { ...signals[0], entry: 100, riskPips: 200, rewardRisk: 1, expiresAt: 2700,
-    scalpEntry: { ...signals[0].scalpEntry!, version: 1 as const } };
+  const legacy = { ...signals[0], entry: 100, takeProfit:120,riskPips: 200, rewardRisk: 1, expiresAt: 2700,
+    scalpEntry: { ...signals[0].scalpEntry!, version: 1 as const,nextOpen:111,riskShare:.6 } };
   assert.equal(scalpPullbackSignalError(legacy), undefined, 'saved capped v1 orders retain their original policy');
 });
 
@@ -143,7 +143,7 @@ test('layered history uses individual RR and weighted setup R without merging ca
   const rows = scalpOneToOneChartRecords(record, layeredCandles, 3600);
   assert.equal(rows.length, 2);
   assert.ok(rows.every(r => r.result === 'tp' && r.completedAt === 2700));
-  assert.ok(Math.abs(calculateJournalPerformance(rows).totalR - 1.4) < 1e-8);
+  assert.ok(Math.abs(calculateJournalPerformance(rows).totalR - 1.25) < 1e-8);
   assert.ok(rows.every(r => isGoldTradeRecordRoute(r, true)));
   const samePrice = rows.map(r => ({ ...r, entry: 95 }));
   assert.equal(deduplicateTradeRecords(samePrice).length, 2);

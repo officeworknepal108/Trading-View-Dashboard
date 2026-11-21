@@ -135,8 +135,8 @@ export function isGoldTradeRecordRoute(record: {
   if (record.tradeStyle === 'SCALP_1_1') {
     return record.source === 'ENGULFING' && record.zoneTimeframe === 'M15'
       && record.signalTimeframe === 'M15' && (record.scalpEntry
-        ? [1, 2, 3].includes(record.scalpEntry.version) && (record.scalpEntry.leg === 10 && record.scalpEntry.riskShare === 0.6
-          || record.scalpEntry.leg === 25 && record.scalpEntry.riskShare === 0.4)
+        ? [1, 2, 3, 4].includes(record.scalpEntry.version) && (record.scalpEntry.leg === 10 && record.scalpEntry.riskShare === (record.scalpEntry.version === 4 ? .4 : .6)
+          || record.scalpEntry.leg === 25 && record.scalpEntry.riskShare === (record.scalpEntry.version === 4 ? .6 : .4))
           && Number.isFinite(record.rewardRisk) && record.rewardRisk > 0
         : record.rewardRisk === 1);
   }

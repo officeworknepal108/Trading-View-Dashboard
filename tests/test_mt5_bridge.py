@@ -1795,5 +1795,69 @@ class OpposingFibProfitTests(BridgeTestCase):
         self.send.assert_not_called()
 
 
+class AbhiScalpLogicTests(BridgeTestCase):
+    def signal(self, leg=10):
+        signal = ScalpOneToOneTests().pullback(leg)
+        signal['scalpEntry'].update(version=4, riskShare=.4 if leg == 10 else .6,
+                                   confirmationClose=100, confirmationRange=12,
+                                   setupKey='ABHI_SCALP:900:bullish')
+        signal.update(expiresAt=5400, rewardRisk=1.25)
+        signal['takeProfit'] = signal['entry'] + (signal['entry'] - signal['stopLoss']) * 1.25
+        signal['riskFree'] = signal['takeProfit']
+        return signal
+
+    def test_v4_geometry_targets_and_risk_split_validate_independently(self):
+        for leg, share in [(10, .4), (25, .6)]:
+            signal = self.signal(leg)
+            bridge.validate_scalp_pullback(signal)
+            self.assertEqual(bridge.signal_risk_money(signal, {'scalpOneToOneRiskPercent': 2}, 5000),
+                             min(100, signal['scalpSetupRiskBudget']) * share)
+            for change in [{'takeProfit': 110}, {'riskPips': 1}, {'expiresAt': 6300}]:
+                with self.assertRaises(RuntimeError):
+                    bridge.validate_scalp_pullback({**signal, **change})
+
+    def test_v4_fallback_sizes_only_the_second_with_full_frozen_allowance(self):
+        signal = self.signal(25)
+        signal.update(scalpSetupRiskBudget=16, pullbackFallback='SECOND_ONLY')
+        info = SimpleNamespace(name='XAUUSD', volume_step=.01, volume_min=.01, volume_max=100)
+        with patch.object(bridge.mt5, 'account_info', return_value=SimpleNamespace(equity=3200)), \
+             patch.object(bridge.mt5, 'order_calc_profit', side_effect=lambda side, symbol, volume, entry, stop: (stop-entry)*volume*100):
+            self.assertEqual(bridge.signal_risk_money(signal, {'scalpOneToOneRiskPercent': .5}, 3200), 16)
+            self.assertEqual(bridge.calculate_volume(signal, {'scalpOneToOneRiskPercent': .5}, info), .02)
+            signal['scalpSetupRiskBudget'] = 1
+            with self.assertRaises(bridge.BelowMinimumLot):
+                bridge.calculate_volume(signal, {'scalpOneToOneRiskPercent': .5}, info)
+
+    def test_v4_minimum_check_uses_40_60_and_does_not_submit_first(self):
+        signal = self.signal()
+        signal['scalpSetupRiskBudget'] = 16
+        info = SimpleNamespace(name='XAUUSD', volume_step=.01, volume_min=.01, volume_max=100, trade_tick_size=.01)
+        skipped = {**signal, 'pullbackFallback': 'SECOND_ONLY', 'status': 'CANCELLED'}
+        with patch.object(bridge, 'ALLOW_LIVE_EXECUTION', True), \
+             patch.object(bridge, 'check_safety', return_value=(info, SimpleNamespace(ask=100, bid=99.9))), \
+             patch.object(bridge.mt5, 'account_info', return_value=SimpleNamespace(equity=3200)), \
+             patch.object(bridge.mt5, 'order_calc_profit', side_effect=lambda side, symbol, volume, entry, stop: (stop-entry)*volume*100), \
+             patch.object(bridge, 'api', return_value={'ok': True, 'signal': skipped}) as api, \
+             patch.object(bridge.mt5, 'order_send') as send:
+            result = bridge.place_signal(signal, {'dryRun': False, 'scalpOneToOneRiskPercent': .5})
+        self.assertEqual(result['status'], 'CANCELLED')
+        api.assert_called_once(); send.assert_not_called()
+
+    def test_v4_tick_rounding_keeps_targets_separate_and_does_not_expand_lots(self):
+        info = SimpleNamespace(trade_tick_size=.01)
+        a = bridge.quantized_pullback_signal(self.signal(10), info)
+        b = bridge.quantized_pullback_signal(self.signal(25), info)
+        self.assertEqual(a['takeProfit'], 110.25)
+        self.assertEqual(b['takeProfit'], 106.88)
+        self.assertNotEqual(a['takeProfit'], b['takeProfit'])
+
+    def test_second_tp_cannot_cancel_the_first_abhi_ticket(self):
+        a = self.signal(10); b = self.signal(25)
+        self.assertFalse(bridge.scalp_pending_sibling_finished(a, {**b, 'status': 'TP'}))
+        self.assertTrue(bridge.scalp_pending_sibling_finished(a, {**b, 'status': 'SL'}))
+        foreign = {**b, 'status': 'SL', 'scalpEntry': {**b['scalpEntry'], 'setupKey': 'foreign'}}
+        self.assertFalse(bridge.scalp_pending_sibling_finished(a, foreign))
+
+
 if __name__ == "__main__":
     unittest.main()

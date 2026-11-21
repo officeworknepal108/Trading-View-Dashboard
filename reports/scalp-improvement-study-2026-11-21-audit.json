@@ -1,0 +1,19 @@
+{
+  "accounting": "passed",
+  "hashes": {
+    "scalp-validation-model-2026-11-20.ts": "0a701bad41ff70ade80cff01b60d1e6b5aa08e4a802f0e1120c21cf65f5738d7",
+    "scalp-improvement-study-2026-11-21.ts": "1993a15fae64eaf7e63237dafdb9a2227c06c74b7732200e6a7a3df555abc1f9",
+    "scalp-selected-rule-validation-2026-11-20.json": "dfa5c8b84f88627894592614362b16129d41ad998bd34a529a0ea1f874f42307"
+  },
+  "pairedDayResampling": {
+    "days": 67,
+    "iterations": 5000,
+    "seed": 20261121,
+    "matchedDifference": 242.81843039770624,
+    "descriptive95PercentInterval": [
+      -534.6031262238411,
+      955.8677372687561
+    ],
+    "limitation": "Exploratory descriptive interval on matched resolved setups only. Does not correct for 70-rule selection, serial dependence across days, excluded uncertainty, or prior reuse of data. Not independent significance evidence."
+  }
+}

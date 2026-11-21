@@ -531,7 +531,8 @@ export function buildCanonicalTradeRecords<T extends CanonicalTradeRecord>(
     if (record.tradeStyle === 'BOLLINGER_M5') return current.some(candidate => candidate.id === record.id && candidate.tradeStyle === 'BOLLINGER_M5') ? [record] : [];
     if (record.tradeStyle === 'SCALP_1_1') {
       return current.some(candidate => candidate.id === record.id
-        && candidate.tradeStyle === 'SCALP_1_1') ? [record] : [];
+        && candidate.tradeStyle === 'SCALP_1_1' && candidate.scalpEntry?.version === record.scalpEntry?.version
+        && Math.abs(candidate.entry-record.entry)<1e-6 && Math.abs(candidate.takeProfit-record.takeProfit)<1e-6) ? [record] : [];
     }
     const signalCandles = timeframeData[record.signalTimeframe]?.candles;
     let verified = { ...record,

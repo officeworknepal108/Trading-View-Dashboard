@@ -139,7 +139,8 @@ export function groupPullbackTableSignals(signals: readonly PullbackTableSignal[
     const key = JSON.stringify([signal.account ?? context.account, signal.server ?? context.server,
       signal.brokerSymbol ?? context.brokerSymbol, signal.symbol, signal.tradeStyle, signal.source,
       signal.zoneTimeframe, signal.signalTimeframe, signal.signalAt, signal.direction,
-      leg ? parent : signal.id, leg?.referenceEntry, signal.initialStopLoss ?? signal.stopLoss, signal.takeProfit]);
+      leg ? parent : signal.id, leg?.referenceEntry, signal.initialStopLoss ?? signal.stopLoss,
+      signal.scalpEntry?.version === 4 ? ['ABHI', leg?.setupKey, leg?.confirmationClose] : signal.takeProfit]);
     let entries = groups.get(key);
     if (!entries) { entries = new Map(); groups.set(key, entries); }
     const slot = leg?.leg ?? 0, prior = entries.get(slot);

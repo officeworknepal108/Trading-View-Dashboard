@@ -1,0 +1,2794 @@
+{
+  "demoVerified": true,
+  "newEligiblePairsNow": 0,
+  "qualifyingHistoricalRecords": 183,
+  "historicalSamplePairs": [
+    [
+      {
+        "id": "SCALP_1_1:M15:1795037400:SELL:3724.107:3731.238:3716.976:P10",
+        "setupId": "SCALP_1_1:1795037400:P10",
+        "symbol": "XAUUSD",
+        "direction": "SELL",
+        "orderType": "LIMIT",
+        "source": "ENGULFING",
+        "zoneName": "Abhi Scalp Logic",
+        "zoneTimeframe": "M15",
+        "signalTimeframe": "M15",
+        "engulfingType": "T1",
+        "signalAt": 1795037400,
+        "calculatedAt": 1795038300,
+        "entry": 3724.2542,
+        "stopLoss": 3731.238,
+        "takeProfit": 3715.52445,
+        "riskFree": 3715.52445,
+        "rewardRisk": 1.25,
+        "normalRewardRisk": 1.25,
+        "riskPips": 69.83799999999974,
+        "expiresAt": 1795041900,
+        "tradeStyle": "SCALP_1_1",
+        "zoneId": "SCALP_1_1-1795037400-P10",
+        "journalContext": {
+          "biasAtEntry": {
+            "M1": "neutral",
+            "M5": "neutral",
+            "M15": "neutral",
+            "M30": "neutral",
+            "H1": "neutral",
+            "H4": "bearish",
+            "D": "neutral"
+          },
+          "autoReason": "Scalp 1:1: M15 T1/T2/T3 + minimum 250-unit volume decrease, closed H4 structure and EMA20/50 agreement, confirmed H1 continuation/Far. 30-pip pattern buffer; original pattern SL. Abhi Scalp Logic: 10% confirmation-body pullback from its close; 40% of setup risk. Body >=30% of range. Original SL; this entry's fixed 1.25R TP; 60-minute expiry.",
+          "volumeLogicStatus": "valid",
+          "volume1": 1637,
+          "volume2": 1218,
+          "entrySnapshotCandles": [
+            {
+              "time": 1795015800,
+              "open": 3757.416,
+              "high": 3762.465,
+              "low": 3751.582,
+              "close": 3756.332,
+              "volume": 5256,
+              "complete": true
+            },
+            {
+              "time": 1795016700,
+              "open": 3756.278,
+              "high": 3756.79,
+              "low": 3750.183,
+              "close": 3753.601,
+              "volume": 4326,
+              "complete": true
+            },
+            {
+              "time": 1795017600,
+              "open": 3753.65,
+              "high": 3755.223,
+              "low": 3745.451,
+              "close": 3745.85,
+              "volume": 4167,
+              "complete": true
+            },
+            {
+              "time": 1795018500,
+              "open": 3746.147,
+              "high": 3751.381,
+              "low": 3738.196,
+              "close": 3742.684,
+              "volume": 5590,
+              "complete": true
+            },
+            {
+              "time": 1795019400,
+              "open": 3742.802,
+              "high": 3742.888,
+              "low": 3734.829,
+              "close": 3741.218,
+              "volume": 5770,
+              "complete": true
+            },
+            {
+              "time": 1795020300,
+              "open": 3741.17,
+              "high": 3746.211,
+              "low": 3736.243,
+              "close": 3745.28,
+              "volume": 4529,
+              "complete": true
+            },
+            {
+              "time": 1795021200,
+              "open": 3745.225,
+              "high": 3748.075,
+              "low": 3740.56,
+              "close": 3741.767,
+              "volume": 4496,
+              "complete": true
+            },
+            {
+              "time": 1795022100,
+              "open": 3741.825,
+              "high": 3751.103,
+              "low": 3740.933,
+              "close": 3747.238,
+              "volume": 3774,
+              "complete": true
+            },
+            {
+              "time": 1795023000,
+              "open": 3746.95,
+              "high": 3749.978,
+              "low": 3738.592,
+              "close": 3740.823,
+              "volume": 3599,
+              "complete": true
+            },
+            {
+              "time": 1795023900,
+              "open": 3740.617,
+              "high": 3741.459,
+              "low": 3728.547,
+              "close": 3735.479,
+              "volume": 3302,
+              "complete": true
+            },
+            {
+              "time": 1795024800,
+              "open": 3735.73,
+              "high": 3741.056,
+              "low": 3734.338,
+              "close": 3736.065,
+              "volume": 3190,
+              "complete": true
+            },
+            {
+              "time": 1795025700,
+              "open": 3735.944,
+              "high": 3740.84,
+              "low": 3734.27,
+              "close": 3738.26,
+              "volume": 3430,
+              "complete": true
+            },
+            {
+              "time": 1795026600,
+              "open": 3738.213,
+              "high": 3743.366,
+              "low": 3737.597,
+              "close": 3739.854,
+              "volume": 3466,
+              "complete": true
+            },
+            {
+              "time": 1795027500,
+              "open": 3739.831,
+              "high": 3740.737,
+              "low": 3736.579,
+              "close": 3737.767,
+              "volume": 2656,
+              "complete": true
+            },
+            {
+              "time": 1795028400,
+              "open": 3737.582,
+              "high": 3737.792,
+              "low": 3727.309,
+              "close": 3729.48,
+              "volume": 5065,
+              "complete": true
+            },
+            {
+              "time": 1795029300,
+              "open": 3729.598,
+              "high": 3730.219,
+              "low": 3726.208,
+              "close": 3727.922,
+              "volume": 3507,
+              "complete": true
+            },
+            {
+              "time": 1795030200,
+              "open": 3728.01,
+              "high": 3728.353,
+              "low": 3719.721,
+              "close": 3722.04,
+              "volume": 3628,
+              "complete": true
+            },
+            {
+              "time": 1795031100,
+              "open": 3721.966,
+              "high": 3724.54,
+              "low": 3720.719,
+              "close": 3722.631,
+              "volume": 2679,
+              "complete": true
+            },
+            {
+              "time": 1795032000,
+              "open": 3722.334,
+              "high": 3729.375,
+              "low": 3719.956,
+              "close": 3724.339,
+              "volume": 3575,
+              "complete": true
+            },
+            {
+              "time": 1795032900,
+              "open": 3724.547,
+              "high": 3728.522,
+              "low": 3723.039,
+              "close": 3725.534,
+              "volume": 2890,
+              "complete": true
+            },
+            {
+              "time": 1795033800,
+              "open": 3725.482,
+              "high": 3733.029,
+              "low": 3723.655,
+              "close": 3731.245,
+              "volume": 3180,
+              "complete": true
+            },
+            {
+              "time": 1795034700,
+              "open": 3731.291,
+              "high": 3732.473,
+              "low": 3723.511,
+              "close": 3724.804,
+              "volume": 3684,
+              "complete": true
+            },
+            {
+              "time": 1795035600,
+              "open": 3724.866,
+              "high": 3726.767,
+              "low": 3723.489,
+              "close": 3725.013,
+              "volume": 2169,
+              "complete": true
+            },
+            {
+              "time": 1795036500,
+              "open": 3725.026,
+              "high": 3728.238,
+              "low": 3724.667,
+              "close": 3726.265,
+              "volume": 1637,
+              "complete": true
+            },
+            {
+              "time": 1795037400,
+              "open": 3726.326,
+              "high": 3727.776,
+              "low": 3722.955,
+              "close": 3724.024,
+              "volume": 1218,
+              "complete": true
+            }
+          ]
+        },
+        "scalpEntry": {
+          "version": 4,
+          "leg": 10,
+          "riskShare": 0.4,
+          "referenceEntry": 3724.107,
+          "nextOpen": 3724.024,
+          "confirmationClose": 3724.024,
+          "confirmationRange": 4.820999999999913,
+          "confirmationBody": 2.3020000000001346,
+          "setupKey": "ABHI_SCALP:1795037400:bearish"
+        }
+      },
+      {
+        "id": "SCALP_1_1:M15:1795037400:SELL:3724.107:3731.238:3716.976:P25",
+        "setupId": "SCALP_1_1:1795037400:P25",
+        "symbol": "XAUUSD",
+        "direction": "SELL",
+        "orderType": "LIMIT",
+        "source": "ENGULFING",
+        "zoneName": "Abhi Scalp Logic",
+        "zoneTimeframe": "M15",
+        "signalTimeframe": "M15",
+        "engulfingType": "T1",
+        "signalAt": 1795037400,
+        "calculatedAt": 1795038300,
+        "entry": 3724.5995,
+        "stopLoss": 3731.238,
+        "takeProfit": 3716.301375,
+        "riskFree": 3716.301375,
+        "rewardRisk": 1.25,
+        "normalRewardRisk": 1.25,
+        "riskPips": 66.38500000000022,
+        "expiresAt": 1795041900,
+        "tradeStyle": "SCALP_1_1",
+        "zoneId": "SCALP_1_1-1795037400-P25",
+        "journalContext": {
+          "biasAtEntry": {
+            "M1": "neutral",
+            "M5": "neutral",
+            "M15": "neutral",
+            "M30": "neutral",
+            "H1": "neutral",
+            "H4": "bearish",
+            "D": "neutral"
+          },
+          "autoReason": "Scalp 1:1: M15 T1/T2/T3 + minimum 250-unit volume decrease, closed H4 structure and EMA20/50 agreement, confirmed H1 continuation/Far. 30-pip pattern buffer; original pattern SL. Abhi Scalp Logic: 25% confirmation-body pullback from its close; 60% of setup risk. Body >=30% of range. Original SL; this entry's fixed 1.25R TP; 60-minute expiry.",
+          "volumeLogicStatus": "valid",
+          "volume1": 1637,
+          "volume2": 1218,
+          "entrySnapshotCandles": [
+            {
+              "time": 1795015800,
+              "open": 3757.416,
+              "high": 3762.465,
+              "low": 3751.582,
+              "close": 3756.332,
+              "volume": 5256,
+              "complete": true
+            },
+            {
+              "time": 1795016700,
+              "open": 3756.278,
+              "high": 3756.79,
+              "low": 3750.183,
+              "close": 3753.601,
+              "volume": 4326,
+              "complete": true
+            },
+            {
+              "time": 1795017600,
+              "open": 3753.65,
+              "high": 3755.223,
+              "low": 3745.451,
+              "close": 3745.85,
+              "volume": 4167,
+              "complete": true
+            },
+            {
+              "time": 1795018500,
+              "open": 3746.147,
+              "high": 3751.381,
+              "low": 3738.196,
+              "close": 3742.684,
+              "volume": 5590,
+              "complete": true
+            },
+            {
+              "time": 1795019400,
+              "open": 3742.802,
+              "high": 3742.888,
+              "low": 3734.829,
+              "close": 3741.218,
+              "volume": 5770,
+              "complete": true
+            },
+            {
+              "time": 1795020300,
+              "open": 3741.17,
+              "high": 3746.211,
+              "low": 3736.243,
+              "close": 3745.28,
+              "volume": 4529,
+              "complete": true
+            },
+            {
+              "time": 1795021200,
+              "open": 3745.225,
+              "high": 3748.075,
+              "low": 3740.56,
+              "close": 3741.767,
+              "volume": 4496,
+              "complete": true
+            },
+            {
+              "time": 1795022100,
+              "open": 3741.825,
+              "high": 3751.103,
+              "low": 3740.933,
+              "close": 3747.238,
+              "volume": 3774,
+              "complete": true
+            },
+            {
+              "time": 1795023000,
+              "open": 3746.95,
+              "high": 3749.978,
+              "low": 3738.592,
+              "close": 3740.823,
+              "volume": 3599,
+              "complete": true
+            },
+            {
+              "time": 1795023900,
+              "open": 3740.617,
+              "high": 3741.459,
+              "low": 3728.547,
+              "close": 3735.479,
+              "volume": 3302,
+              "complete": true
+            },
+            {
+              "time": 1795024800,
+              "open": 3735.73,
+              "high": 3741.056,
+              "low": 3734.338,
+              "close": 3736.065,
+              "volume": 3190,
+              "complete": true
+            },
+            {
+              "time": 1795025700,
+              "open": 3735.944,
+              "high": 3740.84,
+              "low": 3734.27,
+              "close": 3738.26,
+              "volume": 3430,
+              "complete": true
+            },
+            {
+              "time": 1795026600,
+              "open": 3738.213,
+              "high": 3743.366,
+              "low": 3737.597,
+              "close": 3739.854,
+              "volume": 3466,
+              "complete": true
+            },
+            {
+              "time": 1795027500,
+              "open": 3739.831,
+              "high": 3740.737,
+              "low": 3736.579,
+              "close": 3737.767,
+              "volume": 2656,
+              "complete": true
+            },
+            {
+              "time": 1795028400,
+              "open": 3737.582,
+              "high": 3737.792,
+              "low": 3727.309,
+              "close": 3729.48,
+              "volume": 5065,
+              "complete": true
+            },
+            {
+              "time": 1795029300,
+              "open": 3729.598,
+              "high": 3730.219,
+              "low": 3726.208,
+              "close": 3727.922,
+              "volume": 3507,
+              "complete": true
+            },
+            {
+              "time": 1795030200,
+              "open": 3728.01,
+              "high": 3728.353,
+              "low": 3719.721,
+              "close": 3722.04,
+              "volume": 3628,
+              "complete": true
+            },
+            {
+              "time": 1795031100,
+              "open": 3721.966,
+              "high": 3724.54,
+              "low": 3720.719,
+              "close": 3722.631,
+              "volume": 2679,
+              "complete": true
+            },
+            {
+              "time": 1795032000,
+              "open": 3722.334,
+              "high": 3729.375,
+              "low": 3719.956,
+              "close": 3724.339,
+              "volume": 3575,
+              "complete": true
+            },
+            {
+              "time": 1795032900,
+              "open": 3724.547,
+              "high": 3728.522,
+              "low": 3723.039,
+              "close": 3725.534,
+              "volume": 2890,
+              "complete": true
+            },
+            {
+              "time": 1795033800,
+              "open": 3725.482,
+              "high": 3733.029,
+              "low": 3723.655,
+              "close": 3731.245,
+              "volume": 3180,
+              "complete": true
+            },
+            {
+              "time": 1795034700,
+              "open": 3731.291,
+              "high": 3732.473,
+              "low": 3723.511,
+              "close": 3724.804,
+              "volume": 3684,
+              "complete": true
+            },
+            {
+              "time": 1795035600,
+              "open": 3724.866,
+              "high": 3726.767,
+              "low": 3723.489,
+              "close": 3725.013,
+              "volume": 2169,
+              "complete": true
+            },
+            {
+              "time": 1795036500,
+              "open": 3725.026,
+              "high": 3728.238,
+              "low": 3724.667,
+              "close": 3726.265,
+              "volume": 1637,
+              "complete": true
+            },
+            {
+              "time": 1795037400,
+              "open": 3726.326,
+              "high": 3727.776,
+              "low": 3722.955,
+              "close": 3724.024,
+              "volume": 1218,
+              "complete": true
+            }
+          ]
+        },
+        "scalpEntry": {
+          "version": 4,
+          "leg": 25,
+          "riskShare": 0.6,
+          "referenceEntry": 3724.107,
+          "nextOpen": 3724.024,
+          "confirmationClose": 3724.024,
+          "confirmationRange": 4.820999999999913,
+          "confirmationBody": 2.3020000000001346,
+          "setupKey": "ABHI_SCALP:1795037400:bearish"
+        }
+      }
+    ],
+    [
+      {
+        "id": "SCALP_1_1:M15:1795050900:SELL:3743.811:3761.516:3726.106:P10",
+        "setupId": "SCALP_1_1:1795050900:P10",
+        "symbol": "XAUUSD",
+        "direction": "SELL",
+        "orderType": "LIMIT",
+        "source": "ENGULFING",
+        "zoneName": "Abhi Scalp Logic",
+        "zoneTimeframe": "M15",
+        "signalTimeframe": "M15",
+        "engulfingType": "T1",
+        "signalAt": 1795050900,
+        "calculatedAt": 1795051800,
+        "entry": 3744.9096,
+        "stopLoss": 3761.516,
+        "takeProfit": 3724.1515999999997,
+        "riskFree": 3724.1515999999997,
+        "rewardRisk": 1.25,
+        "normalRewardRisk": 1.25,
+        "riskPips": 166.06400000000122,
+        "expiresAt": 1795055400,
+        "tradeStyle": "SCALP_1_1",
+        "zoneId": "SCALP_1_1-1795050900-P10",
+        "journalContext": {
+          "biasAtEntry": {
+            "M1": "neutral",
+            "M5": "neutral",
+            "M15": "neutral",
+            "M30": "neutral",
+            "H1": "neutral",
+            "H4": "bearish",
+            "D": "neutral"
+          },
+          "autoReason": "Scalp 1:1: M15 T1/T2/T3 + minimum 250-unit volume decrease, closed H4 structure and EMA20/50 agreement, confirmed H1 continuation/Far. 30-pip pattern buffer; original pattern SL. Abhi Scalp Logic: 10% confirmation-body pullback from its close; 40% of setup risk. Body >=30% of range. Original SL; this entry's fixed 1.25R TP; 60-minute expiry.",
+          "volumeLogicStatus": "valid",
+          "volume1": 8339,
+          "volume2": 4845,
+          "entrySnapshotCandles": [
+            {
+              "time": 1795025700,
+              "open": 3735.944,
+              "high": 3740.84,
+              "low": 3734.27,
+              "close": 3738.26,
+              "volume": 3430,
+              "complete": true
+            },
+            {
+              "time": 1795026600,
+              "open": 3738.213,
+              "high": 3743.366,
+              "low": 3737.597,
+              "close": 3739.854,
+              "volume": 3466,
+              "complete": true
+            },
+            {
+              "time": 1795027500,
+              "open": 3739.831,
+              "high": 3740.737,
+              "low": 3736.579,
+              "close": 3737.767,
+              "volume": 2656,
+              "complete": true
+            },
+            {
+              "time": 1795028400,
+              "open": 3737.582,
+              "high": 3737.792,
+              "low": 3727.309,
+              "close": 3729.48,
+              "volume": 5065,
+              "complete": true
+            },
+            {
+              "time": 1795029300,
+              "open": 3729.598,
+              "high": 3730.219,
+              "low": 3726.208,
+              "close": 3727.922,
+              "volume": 3507,
+              "complete": true
+            },
+            {
+              "time": 1795030200,
+              "open": 3728.01,
+              "high": 3728.353,
+              "low": 3719.721,
+              "close": 3722.04,
+              "volume": 3628,
+              "complete": true
+            },
+            {
+              "time": 1795031100,
+              "open": 3721.966,
+              "high": 3724.54,
+              "low": 3720.719,
+              "close": 3722.631,
+              "volume": 2679,
+              "complete": true
+            },
+            {
+              "time": 1795032000,
+              "open": 3722.334,
+              "high": 3729.375,
+              "low": 3719.956,
+              "close": 3724.339,
+              "volume": 3575,
+              "complete": true
+            },
+            {
+              "time": 1795032900,
+              "open": 3724.547,
+              "high": 3728.522,
+              "low": 3723.039,
+              "close": 3725.534,
+              "volume": 2890,
+              "complete": true
+            },
+            {
+              "time": 1795033800,
+              "open": 3725.482,
+              "high": 3733.029,
+              "low": 3723.655,
+              "close": 3731.245,
+              "volume": 3180,
+              "complete": true
+            },
+            {
+              "time": 1795034700,
+              "open": 3731.291,
+              "high": 3732.473,
+              "low": 3723.511,
+              "close": 3724.804,
+              "volume": 3684,
+              "complete": true
+            },
+            {
+              "time": 1795035600,
+              "open": 3724.866,
+              "high": 3726.767,
+              "low": 3723.489,
+              "close": 3725.013,
+              "volume": 2169,
+              "complete": true
+            },
+            {
+              "time": 1795036500,
+              "open": 3725.026,
+              "high": 3728.238,
+              "low": 3724.667,
+              "close": 3726.265,
+              "volume": 1637,
+              "complete": true
+            },
+            {
+              "time": 1795037400,
+              "open": 3726.326,
+              "high": 3727.776,
+              "low": 3722.955,
+              "close": 3724.024,
+              "volume": 1218,
+              "complete": true
+            },
+            {
+              "time": 1795038300,
+              "open": 3724.107,
+              "high": 3724.837,
+              "low": 3722.98,
+              "close": 3724.498,
+              "volume": 1092,
+              "complete": true
+            },
+            {
+              "time": 1795042800,
+              "open": 3729.444,
+              "high": 3737.124,
+              "low": 3727.052,
+              "close": 3734.718,
+              "volume": 1687,
+              "complete": true
+            },
+            {
+              "time": 1795043700,
+              "open": 3734.608,
+              "high": 3744.847,
+              "low": 3732.532,
+              "close": 3740.058,
+              "volume": 1886,
+              "complete": true
+            },
+            {
+              "time": 1795044600,
+              "open": 3740.012,
+              "high": 3744.94,
+              "low": 3736.362,
+              "close": 3742.861,
+              "volume": 2341,
+              "complete": true
+            },
+            {
+              "time": 1795045500,
+              "open": 3742.808,
+              "high": 3743.352,
+              "low": 3738.497,
+              "close": 3740.27,
+              "volume": 1777,
+              "complete": true
+            },
+            {
+              "time": 1795046400,
+              "open": 3740.098,
+              "high": 3742.152,
+              "low": 3735.143,
+              "close": 3738.282,
+              "volume": 2851,
+              "complete": true
+            },
+            {
+              "time": 1795047300,
+              "open": 3738.227,
+              "high": 3745.578,
+              "low": 3736.202,
+              "close": 3744.109,
+              "volume": 2775,
+              "complete": true
+            },
+            {
+              "time": 1795048200,
+              "open": 3744.012,
+              "high": 3754.682,
+              "low": 3740.725,
+              "close": 3753.516,
+              "volume": 3954,
+              "complete": true
+            },
+            {
+              "time": 1795049100,
+              "open": 3753.47,
+              "high": 3756.291,
+              "low": 3749.597,
+              "close": 3753.462,
+              "volume": 3018,
+              "complete": true
+            },
+            {
+              "time": 1795050000,
+              "open": 3753.771,
+              "high": 3758.516,
+              "low": 3746.454,
+              "close": 3754.124,
+              "volume": 8339,
+              "complete": true
+            },
+            {
+              "time": 1795050900,
+              "open": 3754.329,
+              "high": 3755.225,
+              "low": 3743.28,
+              "close": 3743.863,
+              "volume": 4845,
+              "complete": true
+            }
+          ]
+        },
+        "scalpEntry": {
+          "version": 4,
+          "leg": 10,
+          "riskShare": 0.4,
+          "referenceEntry": 3743.811,
+          "nextOpen": 3743.863,
+          "confirmationClose": 3743.863,
+          "confirmationRange": 11.944999999999709,
+          "confirmationBody": 10.46600000000035,
+          "setupKey": "ABHI_SCALP:1795050900:bearish"
+        }
+      },
+      {
+        "id": "SCALP_1_1:M15:1795050900:SELL:3743.811:3761.516:3726.106:P25",
+        "setupId": "SCALP_1_1:1795050900:P25",
+        "symbol": "XAUUSD",
+        "direction": "SELL",
+        "orderType": "LIMIT",
+        "source": "ENGULFING",
+        "zoneName": "Abhi Scalp Logic",
+        "zoneTimeframe": "M15",
+        "signalTimeframe": "M15",
+        "engulfingType": "T1",
+        "signalAt": 1795050900,
+        "calculatedAt": 1795051800,
+        "entry": 3746.4795,
+        "stopLoss": 3761.516,
+        "takeProfit": 3727.6838749999997,
+        "riskFree": 3727.6838749999997,
+        "rewardRisk": 1.25,
+        "normalRewardRisk": 1.25,
+        "riskPips": 150.3650000000016,
+        "expiresAt": 1795055400,
+        "tradeStyle": "SCALP_1_1",
+        "zoneId": "SCALP_1_1-1795050900-P25",
+        "journalContext": {
+          "biasAtEntry": {
+            "M1": "neutral",
+            "M5": "neutral",
+            "M15": "neutral",
+            "M30": "neutral",
+            "H1": "neutral",
+            "H4": "bearish",
+            "D": "neutral"
+          },
+          "autoReason": "Scalp 1:1: M15 T1/T2/T3 + minimum 250-unit volume decrease, closed H4 structure and EMA20/50 agreement, confirmed H1 continuation/Far. 30-pip pattern buffer; original pattern SL. Abhi Scalp Logic: 25% confirmation-body pullback from its close; 60% of setup risk. Body >=30% of range. Original SL; this entry's fixed 1.25R TP; 60-minute expiry.",
+          "volumeLogicStatus": "valid",
+          "volume1": 8339,
+          "volume2": 4845,
+          "entrySnapshotCandles": [
+            {
+              "time": 1795025700,
+              "open": 3735.944,
+              "high": 3740.84,
+              "low": 3734.27,
+              "close": 3738.26,
+              "volume": 3430,
+              "complete": true
+            },
+            {
+              "time": 1795026600,
+              "open": 3738.213,
+              "high": 3743.366,
+              "low": 3737.597,
+              "close": 3739.854,
+              "volume": 3466,
+              "complete": true
+            },
+            {
+              "time": 1795027500,
+              "open": 3739.831,
+              "high": 3740.737,
+              "low": 3736.579,
+              "close": 3737.767,
+              "volume": 2656,
+              "complete": true
+            },
+            {
+              "time": 1795028400,
+              "open": 3737.582,
+              "high": 3737.792,
+              "low": 3727.309,
+              "close": 3729.48,
+              "volume": 5065,
+              "complete": true
+            },
+            {
+              "time": 1795029300,
+              "open": 3729.598,
+              "high": 3730.219,
+              "low": 3726.208,
+              "close": 3727.922,
+              "volume": 3507,
+              "complete": true
+            },
+            {
+              "time": 1795030200,
+              "open": 3728.01,
+              "high": 3728.353,
+              "low": 3719.721,
+              "close": 3722.04,
+              "volume": 3628,
+              "complete": true
+            },
+            {
+              "time": 1795031100,
+              "open": 3721.966,
+              "high": 3724.54,
+              "low": 3720.719,
+              "close": 3722.631,
+              "volume": 2679,
+              "complete": true
+            },
+            {
+              "time": 1795032000,
+              "open": 3722.334,
+              "high": 3729.375,
+              "low": 3719.956,
+              "close": 3724.339,
+              "volume": 3575,
+              "complete": true
+            },
+            {
+              "time": 1795032900,
+              "open": 3724.547,
+              "high": 3728.522,
+              "low": 3723.039,
+              "close": 3725.534,
+              "volume": 2890,
+              "complete": true
+            },
+            {
+              "time": 1795033800,
+              "open": 3725.482,
+              "high": 3733.029,
+              "low": 3723.655,
+              "close": 3731.245,
+              "volume": 3180,
+              "complete": true
+            },
+            {
+              "time": 1795034700,
+              "open": 3731.291,
+              "high": 3732.473,
+              "low": 3723.511,
+              "close": 3724.804,
+              "volume": 3684,
+              "complete": true
+            },
+            {
+              "time": 1795035600,
+              "open": 3724.866,
+              "high": 3726.767,
+              "low": 3723.489,
+              "close": 3725.013,
+              "volume": 2169,
+              "complete": true
+            },
+            {
+              "time": 1795036500,
+              "open": 3725.026,
+              "high": 3728.238,
+              "low": 3724.667,
+              "close": 3726.265,
+              "volume": 1637,
+              "complete": true
+            },
+            {
+              "time": 1795037400,
+              "open": 3726.326,
+              "high": 3727.776,
+              "low": 3722.955,
+              "close": 3724.024,
+              "volume": 1218,
+              "complete": true
+            },
+            {
+              "time": 1795038300,
+              "open": 3724.107,
+              "high": 3724.837,
+              "low": 3722.98,
+              "close": 3724.498,
+              "volume": 1092,
+              "complete": true
+            },
+            {
+              "time": 1795042800,
+              "open": 3729.444,
+              "high": 3737.124,
+              "low": 3727.052,
+              "close": 3734.718,
+              "volume": 1687,
+              "complete": true
+            },
+            {
+              "time": 1795043700,
+              "open": 3734.608,
+              "high": 3744.847,
+              "low": 3732.532,
+              "close": 3740.058,
+              "volume": 1886,
+              "complete": true
+            },
+            {
+              "time": 1795044600,
+              "open": 3740.012,
+              "high": 3744.94,
+              "low": 3736.362,
+              "close": 3742.861,
+              "volume": 2341,
+              "complete": true
+            },
+            {
+              "time": 1795045500,
+              "open": 3742.808,
+              "high": 3743.352,
+              "low": 3738.497,
+              "close": 3740.27,
+              "volume": 1777,
+              "complete": true
+            },
+            {
+              "time": 1795046400,
+              "open": 3740.098,
+              "high": 3742.152,
+              "low": 3735.143,
+              "close": 3738.282,
+              "volume": 2851,
+              "complete": true
+            },
+            {
+              "time": 1795047300,
+              "open": 3738.227,
+              "high": 3745.578,
+              "low": 3736.202,
+              "close": 3744.109,
+              "volume": 2775,
+              "complete": true
+            },
+            {
+              "time": 1795048200,
+              "open": 3744.012,
+              "high": 3754.682,
+              "low": 3740.725,
+              "close": 3753.516,
+              "volume": 3954,
+              "complete": true
+            },
+            {
+              "time": 1795049100,
+              "open": 3753.47,
+              "high": 3756.291,
+              "low": 3749.597,
+              "close": 3753.462,
+              "volume": 3018,
+              "complete": true
+            },
+            {
+              "time": 1795050000,
+              "open": 3753.771,
+              "high": 3758.516,
+              "low": 3746.454,
+              "close": 3754.124,
+              "volume": 8339,
+              "complete": true
+            },
+            {
+              "time": 1795050900,
+              "open": 3754.329,
+              "high": 3755.225,
+              "low": 3743.28,
+              "close": 3743.863,
+              "volume": 4845,
+              "complete": true
+            }
+          ]
+        },
+        "scalpEntry": {
+          "version": 4,
+          "leg": 25,
+          "riskShare": 0.6,
+          "referenceEntry": 3743.811,
+          "nextOpen": 3743.863,
+          "confirmationClose": 3743.863,
+          "confirmationRange": 11.944999999999709,
+          "confirmationBody": 10.46600000000035,
+          "setupKey": "ABHI_SCALP:1795050900:bearish"
+        }
+      }
+    ],
+    [
+      {
+        "id": "SCALP_1_1:M15:1795079700:SELL:3726.867:3744.122:3709.612:P10",
+        "setupId": "SCALP_1_1:1795079700:P10",
+        "symbol": "XAUUSD",
+        "direction": "SELL",
+        "orderType": "LIMIT",
+        "source": "ENGULFING",
+        "zoneName": "Abhi Scalp Logic",
+        "zoneTimeframe": "M15",
+        "signalTimeframe": "M15",
+        "engulfingType": "T2",
+        "signalAt": 1795079700,
+        "calculatedAt": 1795080600,
+        "entry": 3727.4622,
+        "stopLoss": 3744.122,
+        "takeProfit": 3706.63745,
+        "riskFree": 3706.63745,
+        "rewardRisk": 1.25,
+        "normalRewardRisk": 1.25,
+        "riskPips": 166.59799999999905,
+        "expiresAt": 1795084200,
+        "tradeStyle": "SCALP_1_1",
+        "zoneId": "SCALP_1_1-1795079700-P10",
+        "journalContext": {
+          "biasAtEntry": {
+            "M1": "neutral",
+            "M5": "neutral",
+            "M15": "neutral",
+            "M30": "neutral",
+            "H1": "neutral",
+            "H4": "bearish",
+            "D": "neutral"
+          },
+          "autoReason": "Scalp 1:1: M15 T1/T2/T3 + minimum 250-unit volume decrease, closed H4 structure and EMA20/50 agreement, confirmed H1 continuation/Far. 30-pip pattern buffer; original pattern SL. Abhi Scalp Logic: 10% confirmation-body pullback from its close; 40% of setup risk. Body >=30% of range. Original SL; this entry's fixed 1.25R TP; 60-minute expiry.",
+          "volumeLogicStatus": "valid",
+          "volume1": 2714,
+          "volume2": 3307,
+          "volume3": 2816,
+          "entrySnapshotCandles": [
+            {
+              "time": 1795058100,
+              "open": 3699.891,
+              "high": 3714.473,
+              "low": 3698.974,
+              "close": 3713.92,
+              "volume": 7184,
+              "complete": true
+            },
+            {
+              "time": 1795059000,
+              "open": 3713.873,
+              "high": 3714.631,
+              "low": 3707.403,
+              "close": 3708.401,
+              "volume": 4162,
+              "complete": true
+            },
+            {
+              "time": 1795059900,
+              "open": 3708.607,
+              "high": 3723.17,
+              "low": 3707.321,
+              "close": 3720.423,
+              "volume": 3813,
+              "complete": true
+            },
+            {
+              "time": 1795060800,
+              "open": 3720.317,
+              "high": 3728.024,
+              "low": 3719.64,
+              "close": 3727.815,
+              "volume": 3616,
+              "complete": true
+            },
+            {
+              "time": 1795061700,
+              "open": 3728.018,
+              "high": 3728.126,
+              "low": 3723.42,
+              "close": 3725.684,
+              "volume": 2853,
+              "complete": true
+            },
+            {
+              "time": 1795062600,
+              "open": 3725.637,
+              "high": 3727.642,
+              "low": 3720.784,
+              "close": 3723.637,
+              "volume": 2647,
+              "complete": true
+            },
+            {
+              "time": 1795063500,
+              "open": 3723.622,
+              "high": 3728.747,
+              "low": 3722.266,
+              "close": 3724.555,
+              "volume": 2547,
+              "complete": true
+            },
+            {
+              "time": 1795064400,
+              "open": 3724.264,
+              "high": 3734.984,
+              "low": 3721.431,
+              "close": 3728.637,
+              "volume": 3841,
+              "complete": true
+            },
+            {
+              "time": 1795065300,
+              "open": 3728.872,
+              "high": 3734.792,
+              "low": 3726.782,
+              "close": 3734.277,
+              "volume": 3712,
+              "complete": true
+            },
+            {
+              "time": 1795066200,
+              "open": 3734.578,
+              "high": 3744.528,
+              "low": 3729.81,
+              "close": 3739.592,
+              "volume": 9681,
+              "complete": true
+            },
+            {
+              "time": 1795067100,
+              "open": 3739.64,
+              "high": 3743.131,
+              "low": 3733.226,
+              "close": 3740.515,
+              "volume": 5204,
+              "complete": true
+            },
+            {
+              "time": 1795068000,
+              "open": 3740.435,
+              "high": 3742.284,
+              "low": 3732.201,
+              "close": 3739.089,
+              "volume": 4339,
+              "complete": true
+            },
+            {
+              "time": 1795068900,
+              "open": 3739.035,
+              "high": 3740.987,
+              "low": 3733.854,
+              "close": 3735.448,
+              "volume": 3197,
+              "complete": true
+            },
+            {
+              "time": 1795069800,
+              "open": 3735.499,
+              "high": 3738.664,
+              "low": 3729.375,
+              "close": 3733.138,
+              "volume": 3282,
+              "complete": true
+            },
+            {
+              "time": 1795070700,
+              "open": 3733.186,
+              "high": 3734.971,
+              "low": 3728.059,
+              "close": 3732.783,
+              "volume": 3176,
+              "complete": true
+            },
+            {
+              "time": 1795071600,
+              "open": 3732.714,
+              "high": 3740.261,
+              "low": 3732.059,
+              "close": 3733.995,
+              "volume": 3923,
+              "complete": true
+            },
+            {
+              "time": 1795072500,
+              "open": 3734.235,
+              "high": 3741.615,
+              "low": 3732.776,
+              "close": 3734.235,
+              "volume": 2869,
+              "complete": true
+            },
+            {
+              "time": 1795073400,
+              "open": 3734.441,
+              "high": 3737.689,
+              "low": 3731.099,
+              "close": 3733.024,
+              "volume": 2429,
+              "complete": true
+            },
+            {
+              "time": 1795074300,
+              "open": 3733.225,
+              "high": 3737.925,
+              "low": 3730.349,
+              "close": 3737.282,
+              "volume": 2397,
+              "complete": true
+            },
+            {
+              "time": 1795075200,
+              "open": 3737.239,
+              "high": 3742.62,
+              "low": 3732.761,
+              "close": 3740.232,
+              "volume": 3769,
+              "complete": true
+            },
+            {
+              "time": 1795076100,
+              "open": 3740.184,
+              "high": 3742.479,
+              "low": 3732.283,
+              "close": 3735.132,
+              "volume": 3036,
+              "complete": true
+            },
+            {
+              "time": 1795077000,
+              "open": 3735.083,
+              "high": 3736.905,
+              "low": 3730.803,
+              "close": 3732.091,
+              "volume": 2767,
+              "complete": true
+            },
+            {
+              "time": 1795077900,
+              "open": 3732.046,
+              "high": 3738.705,
+              "low": 3730.132,
+              "close": 3736.773,
+              "volume": 2714,
+              "complete": true
+            },
+            {
+              "time": 1795078800,
+              "open": 3736.475,
+              "high": 3741.122,
+              "low": 3732.507,
+              "close": 3733.143,
+              "volume": 3307,
+              "complete": true
+            },
+            {
+              "time": 1795079700,
+              "open": 3733.098,
+              "high": 3735.996,
+              "low": 3726.781,
+              "close": 3726.836,
+              "volume": 2816,
+              "complete": true
+            }
+          ]
+        },
+        "scalpEntry": {
+          "version": 4,
+          "leg": 10,
+          "riskShare": 0.4,
+          "referenceEntry": 3726.867,
+          "nextOpen": 3726.836,
+          "confirmationClose": 3726.836,
+          "confirmationRange": 9.215000000000146,
+          "confirmationBody": 6.262000000000171,
+          "setupKey": "ABHI_SCALP:1795079700:bearish"
+        }
+      },
+      {
+        "id": "SCALP_1_1:M15:1795079700:SELL:3726.867:3744.122:3709.612:P25",
+        "setupId": "SCALP_1_1:1795079700:P25",
+        "symbol": "XAUUSD",
+        "direction": "SELL",
+        "orderType": "LIMIT",
+        "source": "ENGULFING",
+        "zoneName": "Abhi Scalp Logic",
+        "zoneTimeframe": "M15",
+        "signalTimeframe": "M15",
+        "engulfingType": "T2",
+        "signalAt": 1795079700,
+        "calculatedAt": 1795080600,
+        "entry": 3728.4015,
+        "stopLoss": 3744.122,
+        "takeProfit": 3708.750875,
+        "riskFree": 3708.750875,
+        "rewardRisk": 1.25,
+        "normalRewardRisk": 1.25,
+        "riskPips": 157.20499999999902,
+        "expiresAt": 1795084200,
+        "tradeStyle": "SCALP_1_1",
+        "zoneId": "SCALP_1_1-1795079700-P25",
+        "journalContext": {
+          "biasAtEntry": {
+            "M1": "neutral",
+            "M5": "neutral",
+            "M15": "neutral",
+            "M30": "neutral",
+            "H1": "neutral",
+            "H4": "bearish",
+            "D": "neutral"
+          },
+          "autoReason": "Scalp 1:1: M15 T1/T2/T3 + minimum 250-unit volume decrease, closed H4 structure and EMA20/50 agreement, confirmed H1 continuation/Far. 30-pip pattern buffer; original pattern SL. Abhi Scalp Logic: 25% confirmation-body pullback from its close; 60% of setup risk. Body >=30% of range. Original SL; this entry's fixed 1.25R TP; 60-minute expiry.",
+          "volumeLogicStatus": "valid",
+          "volume1": 2714,
+          "volume2": 3307,
+          "volume3": 2816,
+          "entrySnapshotCandles": [
+            {
+              "time": 1795058100,
+              "open": 3699.891,
+              "high": 3714.473,
+              "low": 3698.974,
+              "close": 3713.92,
+              "volume": 7184,
+              "complete": true
+            },
+            {
+              "time": 1795059000,
+              "open": 3713.873,
+              "high": 3714.631,
+              "low": 3707.403,
+              "close": 3708.401,
+              "volume": 4162,
+              "complete": true
+            },
+            {
+              "time": 1795059900,
+              "open": 3708.607,
+              "high": 3723.17,
+              "low": 3707.321,
+              "close": 3720.423,
+              "volume": 3813,
+              "complete": true
+            },
+            {
+              "time": 1795060800,
+              "open": 3720.317,
+              "high": 3728.024,
+              "low": 3719.64,
+              "close": 3727.815,
+              "volume": 3616,
+              "complete": true
+            },
+            {
+              "time": 1795061700,
+              "open": 3728.018,
+              "high": 3728.126,
+              "low": 3723.42,
+              "close": 3725.684,
+              "volume": 2853,
+              "complete": true
+            },
+            {
+              "time": 1795062600,
+              "open": 3725.637,
+              "high": 3727.642,
+              "low": 3720.784,
+              "close": 3723.637,
+              "volume": 2647,
+              "complete": true
+            },
+            {
+              "time": 1795063500,
+              "open": 3723.622,
+              "high": 3728.747,
+              "low": 3722.266,
+              "close": 3724.555,
+              "volume": 2547,
+              "complete": true
+            },
+            {
+              "time": 1795064400,
+              "open": 3724.264,
+              "high": 3734.984,
+              "low": 3721.431,
+              "close": 3728.637,
+              "volume": 3841,
+              "complete": true
+            },
+            {
+              "time": 1795065300,
+              "open": 3728.872,
+              "high": 3734.792,
+              "low": 3726.782,
+              "close": 3734.277,
+              "volume": 3712,
+              "complete": true
+            },
+            {
+              "time": 1795066200,
+              "open": 3734.578,
+              "high": 3744.528,
+              "low": 3729.81,
+              "close": 3739.592,
+              "volume": 9681,
+              "complete": true
+            },
+            {
+              "time": 1795067100,
+              "open": 3739.64,
+              "high": 3743.131,
+              "low": 3733.226,
+              "close": 3740.515,
+              "volume": 5204,
+              "complete": true
+            },
+            {
+              "time": 1795068000,
+              "open": 3740.435,
+              "high": 3742.284,
+              "low": 3732.201,
+              "close": 3739.089,
+              "volume": 4339,
+              "complete": true
+            },
+            {
+              "time": 1795068900,
+              "open": 3739.035,
+              "high": 3740.987,
+              "low": 3733.854,
+              "close": 3735.448,
+              "volume": 3197,
+              "complete": true
+            },
+            {
+              "time": 1795069800,
+              "open": 3735.499,
+              "high": 3738.664,
+              "low": 3729.375,
+              "close": 3733.138,
+              "volume": 3282,
+              "complete": true
+            },
+            {
+              "time": 1795070700,
+              "open": 3733.186,
+              "high": 3734.971,
+              "low": 3728.059,
+              "close": 3732.783,
+              "volume": 3176,
+              "complete": true
+            },
+            {
+              "time": 1795071600,
+              "open": 3732.714,
+              "high": 3740.261,
+              "low": 3732.059,
+              "close": 3733.995,
+              "volume": 3923,
+              "complete": true
+            },
+            {
+              "time": 1795072500,
+              "open": 3734.235,
+              "high": 3741.615,
+              "low": 3732.776,
+              "close": 3734.235,
+              "volume": 2869,
+              "complete": true
+            },
+            {
+              "time": 1795073400,
+              "open": 3734.441,
+              "high": 3737.689,
+              "low": 3731.099,
+              "close": 3733.024,
+              "volume": 2429,
+              "complete": true
+            },
+            {
+              "time": 1795074300,
+              "open": 3733.225,
+              "high": 3737.925,
+              "low": 3730.349,
+              "close": 3737.282,
+              "volume": 2397,
+              "complete": true
+            },
+            {
+              "time": 1795075200,
+              "open": 3737.239,
+              "high": 3742.62,
+              "low": 3732.761,
+              "close": 3740.232,
+              "volume": 3769,
+              "complete": true
+            },
+            {
+              "time": 1795076100,
+              "open": 3740.184,
+              "high": 3742.479,
+              "low": 3732.283,
+              "close": 3735.132,
+              "volume": 3036,
+              "complete": true
+            },
+            {
+              "time": 1795077000,
+              "open": 3735.083,
+              "high": 3736.905,
+              "low": 3730.803,
+              "close": 3732.091,
+              "volume": 2767,
+              "complete": true
+            },
+            {
+              "time": 1795077900,
+              "open": 3732.046,
+              "high": 3738.705,
+              "low": 3730.132,
+              "close": 3736.773,
+              "volume": 2714,
+              "complete": true
+            },
+            {
+              "time": 1795078800,
+              "open": 3736.475,
+              "high": 3741.122,
+              "low": 3732.507,
+              "close": 3733.143,
+              "volume": 3307,
+              "complete": true
+            },
+            {
+              "time": 1795079700,
+              "open": 3733.098,
+              "high": 3735.996,
+              "low": 3726.781,
+              "close": 3726.836,
+              "volume": 2816,
+              "complete": true
+            }
+          ]
+        },
+        "scalpEntry": {
+          "version": 4,
+          "leg": 25,
+          "riskShare": 0.6,
+          "referenceEntry": 3726.867,
+          "nextOpen": 3726.836,
+          "confirmationClose": 3726.836,
+          "confirmationRange": 9.215000000000146,
+          "confirmationBody": 6.262000000000171,
+          "setupKey": "ABHI_SCALP:1795079700:bearish"
+        }
+      }
+    ],
+    [
+      {
+        "id": "SCALP_1_1:M15:1795110300:SELL:3679.900:3695.351:3664.449:P10",
+        "setupId": "SCALP_1_1:1795110300:P10",
+        "symbol": "XAUUSD",
+        "direction": "SELL",
+        "orderType": "LIMIT",
+        "source": "ENGULFING",
+        "zoneName": "Abhi Scalp Logic",
+        "zoneTimeframe": "M15",
+        "signalTimeframe": "M15",
+        "engulfingType": "T3",
+        "signalAt": 1795110300,
+        "calculatedAt": 1795111200,
+        "entry": 3680.5343,
+        "stopLoss": 3695.351,
+        "takeProfit": 3662.013424999999,
+        "riskFree": 3662.013424999999,
+        "rewardRisk": 1.25,
+        "normalRewardRisk": 1.25,
+        "riskPips": 148.1670000000031,
+        "expiresAt": 1795114800,
+        "tradeStyle": "SCALP_1_1",
+        "zoneId": "SCALP_1_1-1795110300-P10",
+        "journalContext": {
+          "biasAtEntry": {
+            "M1": "neutral",
+            "M5": "neutral",
+            "M15": "neutral",
+            "M30": "neutral",
+            "H1": "neutral",
+            "H4": "bearish",
+            "D": "neutral"
+          },
+          "autoReason": "Scalp 1:1: M15 T1/T2/T3 + minimum 250-unit volume decrease, closed H4 structure and EMA20/50 agreement, confirmed H1 continuation/Far. 30-pip pattern buffer; original pattern SL. Abhi Scalp Logic: 10% confirmation-body pullback from its close; 40% of setup risk. Body >=30% of range. Original SL; this entry's fixed 1.25R TP; 60-minute expiry.",
+          "volumeLogicStatus": "best",
+          "volume1": 8366,
+          "volume2": 6074,
+          "volume3": 4752,
+          "entrySnapshotCandles": [
+            {
+              "time": 1795088700,
+              "open": 3725.597,
+              "high": 3728.106,
+              "low": 3718.657,
+              "close": 3718.657,
+              "volume": 2454,
+              "complete": true
+            },
+            {
+              "time": 1795089600,
+              "open": 3718.967,
+              "high": 3721.754,
+              "low": 3716.031,
+              "close": 3716.311,
+              "volume": 3045,
+              "complete": true
+            },
+            {
+              "time": 1795090500,
+              "open": 3716.064,
+              "high": 3719.105,
+              "low": 3713.388,
+              "close": 3718.665,
+              "volume": 3147,
+              "complete": true
+            },
+            {
+              "time": 1795091400,
+              "open": 3718.766,
+              "high": 3718.766,
+              "low": 3710.32,
+              "close": 3713.31,
+              "volume": 2896,
+              "complete": true
+            },
+            {
+              "time": 1795092300,
+              "open": 3713.264,
+              "high": 3720.867,
+              "low": 3712.514,
+              "close": 3719.758,
+              "volume": 2573,
+              "complete": true
+            },
+            {
+              "time": 1795093200,
+              "open": 3719.81,
+              "high": 3724.009,
+              "low": 3713.037,
+              "close": 3718.216,
+              "volume": 5629,
+              "complete": true
+            },
+            {
+              "time": 1795094100,
+              "open": 3718.275,
+              "high": 3723.851,
+              "low": 3710.804,
+              "close": 3722.097,
+              "volume": 4684,
+              "complete": true
+            },
+            {
+              "time": 1795095000,
+              "open": 3723.578,
+              "high": 3727.426,
+              "low": 3711.598,
+              "close": 3713.926,
+              "volume": 5555,
+              "complete": true
+            },
+            {
+              "time": 1795095900,
+              "open": 3713.88,
+              "high": 3716.747,
+              "low": 3711.901,
+              "close": 3714.232,
+              "volume": 3969,
+              "complete": true
+            },
+            {
+              "time": 1795096800,
+              "open": 3714.377,
+              "high": 3716.338,
+              "low": 3707.552,
+              "close": 3710.881,
+              "volume": 4926,
+              "complete": true
+            },
+            {
+              "time": 1795097700,
+              "open": 3710.823,
+              "high": 3711.412,
+              "low": 3705.594,
+              "close": 3710.14,
+              "volume": 4419,
+              "complete": true
+            },
+            {
+              "time": 1795098600,
+              "open": 3710.197,
+              "high": 3717.655,
+              "low": 3707.491,
+              "close": 3711.305,
+              "volume": 9166,
+              "complete": true
+            },
+            {
+              "time": 1795099500,
+              "open": 3711.353,
+              "high": 3715.351,
+              "low": 3702.969,
+              "close": 3708.725,
+              "volume": 6597,
+              "complete": true
+            },
+            {
+              "time": 1795100400,
+              "open": 3708.667,
+              "high": 3713.692,
+              "low": 3702.473,
+              "close": 3702.766,
+              "volume": 6924,
+              "complete": true
+            },
+            {
+              "time": 1795101300,
+              "open": 3702.458,
+              "high": 3703.28,
+              "low": 3685.597,
+              "close": 3687.176,
+              "volume": 7219,
+              "complete": true
+            },
+            {
+              "time": 1795102200,
+              "open": 3687.229,
+              "high": 3693.757,
+              "low": 3682.459,
+              "close": 3692.633,
+              "volume": 9327,
+              "complete": true
+            },
+            {
+              "time": 1795103100,
+              "open": 3692.584,
+              "high": 3692.584,
+              "low": 3670.995,
+              "close": 3672.789,
+              "volume": 7560,
+              "complete": true
+            },
+            {
+              "time": 1795104000,
+              "open": 3672.637,
+              "high": 3681.62,
+              "low": 3669.56,
+              "close": 3678.665,
+              "volume": 7140,
+              "complete": true
+            },
+            {
+              "time": 1795104900,
+              "open": 3678.573,
+              "high": 3682.092,
+              "low": 3675.491,
+              "close": 3680.039,
+              "volume": 4562,
+              "complete": true
+            },
+            {
+              "time": 1795105800,
+              "open": 3679.983,
+              "high": 3690.437,
+              "low": 3678.579,
+              "close": 3688.296,
+              "volume": 5935,
+              "complete": true
+            },
+            {
+              "time": 1795106700,
+              "open": 3688.615,
+              "high": 3692.284,
+              "low": 3684.113,
+              "close": 3684.113,
+              "volume": 6483,
+              "complete": true
+            },
+            {
+              "time": 1795107600,
+              "open": 3684.318,
+              "high": 3685.053,
+              "low": 3667.41,
+              "close": 3674.267,
+              "volume": 10459,
+              "complete": true
+            },
+            {
+              "time": 1795108500,
+              "open": 3674.186,
+              "high": 3690.933,
+              "low": 3672.321,
+              "close": 3687.568,
+              "volume": 8366,
+              "complete": true
+            },
+            {
+              "time": 1795109400,
+              "open": 3687.622,
+              "high": 3692.351,
+              "low": 3683.441,
+              "close": 3683.561,
+              "volume": 6074,
+              "complete": true
+            },
+            {
+              "time": 1795110300,
+              "open": 3683.759,
+              "high": 3685.352,
+              "low": 3678.187,
+              "close": 3680.176,
+              "volume": 4752,
+              "complete": true
+            }
+          ]
+        },
+        "scalpEntry": {
+          "version": 4,
+          "leg": 10,
+          "riskShare": 0.4,
+          "referenceEntry": 3679.9,
+          "nextOpen": 3680.176,
+          "confirmationClose": 3680.176,
+          "confirmationRange": 7.164999999999964,
+          "confirmationBody": 3.5830000000000837,
+          "setupKey": "ABHI_SCALP:1795110300:bearish"
+        }
+      },
+      {
+        "id": "SCALP_1_1:M15:1795110300:SELL:3679.900:3695.351:3664.449:P25",
+        "setupId": "SCALP_1_1:1795110300:P25",
+        "symbol": "XAUUSD",
+        "direction": "SELL",
+        "orderType": "LIMIT",
+        "source": "ENGULFING",
+        "zoneName": "Abhi Scalp Logic",
+        "zoneTimeframe": "M15",
+        "signalTimeframe": "M15",
+        "engulfingType": "T3",
+        "signalAt": 1795110300,
+        "calculatedAt": 1795111200,
+        "entry": 3681.07175,
+        "stopLoss": 3695.351,
+        "takeProfit": 3663.2226875,
+        "riskFree": 3663.2226875,
+        "rewardRisk": 1.25,
+        "normalRewardRisk": 1.25,
+        "riskPips": 142.79250000000047,
+        "expiresAt": 1795114800,
+        "tradeStyle": "SCALP_1_1",
+        "zoneId": "SCALP_1_1-1795110300-P25",
+        "journalContext": {
+          "biasAtEntry": {
+            "M1": "neutral",
+            "M5": "neutral",
+            "M15": "neutral",
+            "M30": "neutral",
+            "H1": "neutral",
+            "H4": "bearish",
+            "D": "neutral"
+          },
+          "autoReason": "Scalp 1:1: M15 T1/T2/T3 + minimum 250-unit volume decrease, closed H4 structure and EMA20/50 agreement, confirmed H1 continuation/Far. 30-pip pattern buffer; original pattern SL. Abhi Scalp Logic: 25% confirmation-body pullback from its close; 60% of setup risk. Body >=30% of range. Original SL; this entry's fixed 1.25R TP; 60-minute expiry.",
+          "volumeLogicStatus": "best",
+          "volume1": 8366,
+          "volume2": 6074,
+          "volume3": 4752,
+          "entrySnapshotCandles": [
+            {
+              "time": 1795088700,
+              "open": 3725.597,
+              "high": 3728.106,
+              "low": 3718.657,
+              "close": 3718.657,
+              "volume": 2454,
+              "complete": true
+            },
+            {
+              "time": 1795089600,
+              "open": 3718.967,
+              "high": 3721.754,
+              "low": 3716.031,
+              "close": 3716.311,
+              "volume": 3045,
+              "complete": true
+            },
+            {
+              "time": 1795090500,
+              "open": 3716.064,
+              "high": 3719.105,
+              "low": 3713.388,
+              "close": 3718.665,
+              "volume": 3147,
+              "complete": true
+            },
+            {
+              "time": 1795091400,
+              "open": 3718.766,
+              "high": 3718.766,
+              "low": 3710.32,
+              "close": 3713.31,
+              "volume": 2896,
+              "complete": true
+            },
+            {
+              "time": 1795092300,
+              "open": 3713.264,
+              "high": 3720.867,
+              "low": 3712.514,
+              "close": 3719.758,
+              "volume": 2573,
+              "complete": true
+            },
+            {
+              "time": 1795093200,
+              "open": 3719.81,
+              "high": 3724.009,
+              "low": 3713.037,
+              "close": 3718.216,
+              "volume": 5629,
+              "complete": true
+            },
+            {
+              "time": 1795094100,
+              "open": 3718.275,
+              "high": 3723.851,
+              "low": 3710.804,
+              "close": 3722.097,
+              "volume": 4684,
+              "complete": true
+            },
+            {
+              "time": 1795095000,
+              "open": 3723.578,
+              "high": 3727.426,
+              "low": 3711.598,
+              "close": 3713.926,
+              "volume": 5555,
+              "complete": true
+            },
+            {
+              "time": 1795095900,
+              "open": 3713.88,
+              "high": 3716.747,
+              "low": 3711.901,
+              "close": 3714.232,
+              "volume": 3969,
+              "complete": true
+            },
+            {
+              "time": 1795096800,
+              "open": 3714.377,
+              "high": 3716.338,
+              "low": 3707.552,
+              "close": 3710.881,
+              "volume": 4926,
+              "complete": true
+            },
+            {
+              "time": 1795097700,
+              "open": 3710.823,
+              "high": 3711.412,
+              "low": 3705.594,
+              "close": 3710.14,
+              "volume": 4419,
+              "complete": true
+            },
+            {
+              "time": 1795098600,
+              "open": 3710.197,
+              "high": 3717.655,
+              "low": 3707.491,
+              "close": 3711.305,
+              "volume": 9166,
+              "complete": true
+            },
+            {
+              "time": 1795099500,
+              "open": 3711.353,
+              "high": 3715.351,
+              "low": 3702.969,
+              "close": 3708.725,
+              "volume": 6597,
+              "complete": true
+            },
+            {
+              "time": 1795100400,
+              "open": 3708.667,
+              "high": 3713.692,
+              "low": 3702.473,
+              "close": 3702.766,
+              "volume": 6924,
+              "complete": true
+            },
+            {
+              "time": 1795101300,
+              "open": 3702.458,
+              "high": 3703.28,
+              "low": 3685.597,
+              "close": 3687.176,
+              "volume": 7219,
+              "complete": true
+            },
+            {
+              "time": 1795102200,
+              "open": 3687.229,
+              "high": 3693.757,
+              "low": 3682.459,
+              "close": 3692.633,
+              "volume": 9327,
+              "complete": true
+            },
+            {
+              "time": 1795103100,
+              "open": 3692.584,
+              "high": 3692.584,
+              "low": 3670.995,
+              "close": 3672.789,
+              "volume": 7560,
+              "complete": true
+            },
+            {
+              "time": 1795104000,
+              "open": 3672.637,
+              "high": 3681.62,
+              "low": 3669.56,
+              "close": 3678.665,
+              "volume": 7140,
+              "complete": true
+            },
+            {
+              "time": 1795104900,
+              "open": 3678.573,
+              "high": 3682.092,
+              "low": 3675.491,
+              "close": 3680.039,
+              "volume": 4562,
+              "complete": true
+            },
+            {
+              "time": 1795105800,
+              "open": 3679.983,
+              "high": 3690.437,
+              "low": 3678.579,
+              "close": 3688.296,
+              "volume": 5935,
+              "complete": true
+            },
+            {
+              "time": 1795106700,
+              "open": 3688.615,
+              "high": 3692.284,
+              "low": 3684.113,
+              "close": 3684.113,
+              "volume": 6483,
+              "complete": true
+            },
+            {
+              "time": 1795107600,
+              "open": 3684.318,
+              "high": 3685.053,
+              "low": 3667.41,
+              "close": 3674.267,
+              "volume": 10459,
+              "complete": true
+            },
+            {
+              "time": 1795108500,
+              "open": 3674.186,
+              "high": 3690.933,
+              "low": 3672.321,
+              "close": 3687.568,
+              "volume": 8366,
+              "complete": true
+            },
+            {
+              "time": 1795109400,
+              "open": 3687.622,
+              "high": 3692.351,
+              "low": 3683.441,
+              "close": 3683.561,
+              "volume": 6074,
+              "complete": true
+            },
+            {
+              "time": 1795110300,
+              "open": 3683.759,
+              "high": 3685.352,
+              "low": 3678.187,
+              "close": 3680.176,
+              "volume": 4752,
+              "complete": true
+            }
+          ]
+        },
+        "scalpEntry": {
+          "version": 4,
+          "leg": 25,
+          "riskShare": 0.6,
+          "referenceEntry": 3679.9,
+          "nextOpen": 3680.176,
+          "confirmationClose": 3680.176,
+          "confirmationRange": 7.164999999999964,
+          "confirmationBody": 3.5830000000000837,
+          "setupKey": "ABHI_SCALP:1795110300:bearish"
+        }
+      }
+    ],
+    [
+      {
+        "id": "SCALP_1_1:M15:1795147200:SELL:3543.196:3559.532:3526.860:P10",
+        "setupId": "SCALP_1_1:1795147200:P10",
+        "symbol": "XAUUSD",
+        "direction": "SELL",
+        "orderType": "LIMIT",
+        "source": "ENGULFING",
+        "zoneName": "Abhi Scalp Logic",
+        "zoneTimeframe": "M15",
+        "signalTimeframe": "M15",
+        "engulfingType": "T3",
+        "signalAt": 1795147200,
+        "calculatedAt": 1795148100,
+        "entry": 3543.9352999999996,
+        "stopLoss": 3559.532,
+        "takeProfit": 3524.439424999999,
+        "riskFree": 3524.439424999999,
+        "rewardRisk": 1.25,
+        "normalRewardRisk": 1.25,
+        "riskPips": 155.9670000000051,
+        "expiresAt": 1795151700,
+        "tradeStyle": "SCALP_1_1",
+        "zoneId": "SCALP_1_1-1795147200-P10",
+        "journalContext": {
+          "biasAtEntry": {
+            "M1": "neutral",
+            "M5": "neutral",
+            "M15": "neutral",
+            "M30": "neutral",
+            "H1": "neutral",
+            "H4": "bearish",
+            "D": "neutral"
+          },
+          "autoReason": "Scalp 1:1: M15 T1/T2/T3 + minimum 250-unit volume decrease, closed H4 structure and EMA20/50 agreement, confirmed H1 continuation/Far. 30-pip pattern buffer; original pattern SL. Abhi Scalp Logic: 10% confirmation-body pullback from its close; 40% of setup risk. Body >=30% of range. Original SL; this entry's fixed 1.25R TP; 60-minute expiry.",
+          "volumeLogicStatus": "best",
+          "volume1": 11338,
+          "volume2": 7456,
+          "volume3": 6556,
+          "entrySnapshotCandles": [
+            {
+              "time": 1795122000,
+              "open": 3660.16,
+              "high": 3662.026,
+              "low": 3657.462,
+              "close": 3660.216,
+              "volume": 2690,
+              "complete": true
+            },
+            {
+              "time": 1795122900,
+              "open": 3660.462,
+              "high": 3661.859,
+              "low": 3631.952,
+              "close": 3634.649,
+              "volume": 5889,
+              "complete": true
+            },
+            {
+              "time": 1795123800,
+              "open": 3634.714,
+              "high": 3636.993,
+              "low": 3619.649,
+              "close": 3625.671,
+              "volume": 8799,
+              "complete": true
+            },
+            {
+              "time": 1795124700,
+              "open": 3625.895,
+              "high": 3629.293,
+              "low": 3620.622,
+              "close": 3625.331,
+              "volume": 4554,
+              "complete": true
+            },
+            {
+              "time": 1795129200,
+              "open": 3632.755,
+              "high": 3636.707,
+              "low": 3621.88,
+              "close": 3629.522,
+              "volume": 2656,
+              "complete": true
+            },
+            {
+              "time": 1795130100,
+              "open": 3629.572,
+              "high": 3634.724,
+              "low": 3624.687,
+              "close": 3625.963,
+              "volume": 2242,
+              "complete": true
+            },
+            {
+              "time": 1795131000,
+              "open": 3626.072,
+              "high": 3627.891,
+              "low": 3590.411,
+              "close": 3608.323,
+              "volume": 9422,
+              "complete": true
+            },
+            {
+              "time": 1795131900,
+              "open": 3608.378,
+              "high": 3611.162,
+              "low": 3595.385,
+              "close": 3607.239,
+              "volume": 5916,
+              "complete": true
+            },
+            {
+              "time": 1795132800,
+              "open": 3607.153,
+              "high": 3622.578,
+              "low": 3600.758,
+              "close": 3620.827,
+              "volume": 7518,
+              "complete": true
+            },
+            {
+              "time": 1795133700,
+              "open": 3620.783,
+              "high": 3626.653,
+              "low": 3612.557,
+              "close": 3612.749,
+              "volume": 4196,
+              "complete": true
+            },
+            {
+              "time": 1795134600,
+              "open": 3612.704,
+              "high": 3614.695,
+              "low": 3592.911,
+              "close": 3595.733,
+              "volume": 6534,
+              "complete": true
+            },
+            {
+              "time": 1795135500,
+              "open": 3595.687,
+              "high": 3598.617,
+              "low": 3585.663,
+              "close": 3596.882,
+              "volume": 10805,
+              "complete": true
+            },
+            {
+              "time": 1795136400,
+              "open": 3596.838,
+              "high": 3609.593,
+              "low": 3582.124,
+              "close": 3594.396,
+              "volume": 27383,
+              "complete": true
+            },
+            {
+              "time": 1795137300,
+              "open": 3594.539,
+              "high": 3598.844,
+              "low": 3573.443,
+              "close": 3575.233,
+              "volume": 18256,
+              "complete": true
+            },
+            {
+              "time": 1795138200,
+              "open": 3575.169,
+              "high": 3590.421,
+              "low": 3562.118,
+              "close": 3565.951,
+              "volume": 16795,
+              "complete": true
+            },
+            {
+              "time": 1795139100,
+              "open": 3566.153,
+              "high": 3578.676,
+              "low": 3556.692,
+              "close": 3559.887,
+              "volume": 13193,
+              "complete": true
+            },
+            {
+              "time": 1795140000,
+              "open": 3559.83,
+              "high": 3561.341,
+              "low": 3537.202,
+              "close": 3553.662,
+              "volume": 14602,
+              "complete": true
+            },
+            {
+              "time": 1795140900,
+              "open": 3553.759,
+              "high": 3555.572,
+              "low": 3530.903,
+              "close": 3531.636,
+              "volume": 13880,
+              "complete": true
+            },
+            {
+              "time": 1795141800,
+              "open": 3531.583,
+              "high": 3553.293,
+              "low": 3525.771,
+              "close": 3550.644,
+              "volume": 20820,
+              "complete": true
+            },
+            {
+              "time": 1795142700,
+              "open": 3550.6,
+              "high": 3558.644,
+              "low": 3537.714,
+              "close": 3547.49,
+              "volume": 14000,
+              "complete": true
+            },
+            {
+              "time": 1795143600,
+              "open": 3547.539,
+              "high": 3549.641,
+              "low": 3521.183,
+              "close": 3523.521,
+              "volume": 13643,
+              "complete": true
+            },
+            {
+              "time": 1795144500,
+              "open": 3523.575,
+              "high": 3536.384,
+              "low": 3517.186,
+              "close": 3524.038,
+              "volume": 12927,
+              "complete": true
+            },
+            {
+              "time": 1795145400,
+              "open": 3524.093,
+              "high": 3555.555,
+              "low": 3521.024,
+              "close": 3553.259,
+              "volume": 11338,
+              "complete": true
+            },
+            {
+              "time": 1795146300,
+              "open": 3553.201,
+              "high": 3556.532,
+              "low": 3546.814,
+              "close": 3550.274,
+              "volume": 7456,
+              "complete": true
+            },
+            {
+              "time": 1795147200,
+              "open": 3550.193,
+              "high": 3550.91,
+              "low": 3537.346,
+              "close": 3543.24,
+              "volume": 6556,
+              "complete": true
+            }
+          ]
+        },
+        "scalpEntry": {
+          "version": 4,
+          "leg": 10,
+          "riskShare": 0.4,
+          "referenceEntry": 3543.196,
+          "nextOpen": 3543.24,
+          "confirmationClose": 3543.24,
+          "confirmationRange": 13.56399999999985,
+          "confirmationBody": 6.953000000000429,
+          "setupKey": "ABHI_SCALP:1795147200:bearish"
+        }
+      },
+      {
+        "id": "SCALP_1_1:M15:1795147200:SELL:3543.196:3559.532:3526.860:P25",
+        "setupId": "SCALP_1_1:1795147200:P25",
+        "symbol": "XAUUSD",
+        "direction": "SELL",
+        "orderType": "LIMIT",
+        "source": "ENGULFING",
+        "zoneName": "Abhi Scalp Logic",
+        "zoneTimeframe": "M15",
+        "signalTimeframe": "M15",
+        "engulfingType": "T3",
+        "signalAt": 1795147200,
+        "calculatedAt": 1795148100,
+        "entry": 3544.97825,
+        "stopLoss": 3559.532,
+        "takeProfit": 3526.7860625000003,
+        "riskFree": 3526.7860625000003,
+        "rewardRisk": 1.25,
+        "normalRewardRisk": 1.25,
+        "riskPips": 145.53750000000036,
+        "expiresAt": 1795151700,
+        "tradeStyle": "SCALP_1_1",
+        "zoneId": "SCALP_1_1-1795147200-P25",
+        "journalContext": {
+          "biasAtEntry": {
+            "M1": "neutral",
+            "M5": "neutral",
+            "M15": "neutral",
+            "M30": "neutral",
+            "H1": "neutral",
+            "H4": "bearish",
+            "D": "neutral"
+          },
+          "autoReason": "Scalp 1:1: M15 T1/T2/T3 + minimum 250-unit volume decrease, closed H4 structure and EMA20/50 agreement, confirmed H1 continuation/Far. 30-pip pattern buffer; original pattern SL. Abhi Scalp Logic: 25% confirmation-body pullback from its close; 60% of setup risk. Body >=30% of range. Original SL; this entry's fixed 1.25R TP; 60-minute expiry.",
+          "volumeLogicStatus": "best",
+          "volume1": 11338,
+          "volume2": 7456,
+          "volume3": 6556,
+          "entrySnapshotCandles": [
+            {
+              "time": 1795122000,
+              "open": 3660.16,
+              "high": 3662.026,
+              "low": 3657.462,
+              "close": 3660.216,
+              "volume": 2690,
+              "complete": true
+            },
+            {
+              "time": 1795122900,
+              "open": 3660.462,
+              "high": 3661.859,
+              "low": 3631.952,
+              "close": 3634.649,
+              "volume": 5889,
+              "complete": true
+            },
+            {
+              "time": 1795123800,
+              "open": 3634.714,
+              "high": 3636.993,
+              "low": 3619.649,
+              "close": 3625.671,
+              "volume": 8799,
+              "complete": true
+            },
+            {
+              "time": 1795124700,
+              "open": 3625.895,
+              "high": 3629.293,
+              "low": 3620.622,
+              "close": 3625.331,
+              "volume": 4554,
+              "complete": true
+            },
+            {
+              "time": 1795129200,
+              "open": 3632.755,
+              "high": 3636.707,
+              "low": 3621.88,
+              "close": 3629.522,
+              "volume": 2656,
+              "complete": true
+            },
+            {
+              "time": 1795130100,
+              "open": 3629.572,
+              "high": 3634.724,
+              "low": 3624.687,
+              "close": 3625.963,
+              "volume": 2242,
+              "complete": true
+            },
+            {
+              "time": 1795131000,
+              "open": 3626.072,
+              "high": 3627.891,
+              "low": 3590.411,
+              "close": 3608.323,
+              "volume": 9422,
+              "complete": true
+            },
+            {
+              "time": 1795131900,
+              "open": 3608.378,
+              "high": 3611.162,
+              "low": 3595.385,
+              "close": 3607.239,
+              "volume": 5916,
+              "complete": true
+            },
+            {
+              "time": 1795132800,
+              "open": 3607.153,
+              "high": 3622.578,
+              "low": 3600.758,
+              "close": 3620.827,
+              "volume": 7518,
+              "complete": true
+            },
+            {
+              "time": 1795133700,
+              "open": 3620.783,
+              "high": 3626.653,
+              "low": 3612.557,
+              "close": 3612.749,
+              "volume": 4196,
+              "complete": true
+            },
+            {
+              "time": 1795134600,
+              "open": 3612.704,
+              "high": 3614.695,
+              "low": 3592.911,
+              "close": 3595.733,
+              "volume": 6534,
+              "complete": true
+            },
+            {
+              "time": 1795135500,
+              "open": 3595.687,
+              "high": 3598.617,
+              "low": 3585.663,
+              "close": 3596.882,
+              "volume": 10805,
+              "complete": true
+            },
+            {
+              "time": 1795136400,
+              "open": 3596.838,
+              "high": 3609.593,
+              "low": 3582.124,
+              "close": 3594.396,
+              "volume": 27383,
+              "complete": true
+            },
+            {
+              "time": 1795137300,
+              "open": 3594.539,
+              "high": 3598.844,
+              "low": 3573.443,
+              "close": 3575.233,
+              "volume": 18256,
+              "complete": true
+            },
+            {
+              "time": 1795138200,
+              "open": 3575.169,
+              "high": 3590.421,
+              "low": 3562.118,
+              "close": 3565.951,
+              "volume": 16795,
+              "complete": true
+            },
+            {
+              "time": 1795139100,
+              "open": 3566.153,
+              "high": 3578.676,
+              "low": 3556.692,
+              "close": 3559.887,
+              "volume": 13193,
+              "complete": true
+            },
+            {
+              "time": 1795140000,
+              "open": 3559.83,
+              "high": 3561.341,
+              "low": 3537.202,
+              "close": 3553.662,
+              "volume": 14602,
+              "complete": true
+            },
+            {
+              "time": 1795140900,
+              "open": 3553.759,
+              "high": 3555.572,
+              "low": 3530.903,
+              "close": 3531.636,
+              "volume": 13880,
+              "complete": true
+            },
+            {
+              "time": 1795141800,
+              "open": 3531.583,
+              "high": 3553.293,
+              "low": 3525.771,
+              "close": 3550.644,
+              "volume": 20820,
+              "complete": true
+            },
+            {
+              "time": 1795142700,
+              "open": 3550.6,
+              "high": 3558.644,
+              "low": 3537.714,
+              "close": 3547.49,
+              "volume": 14000,
+              "complete": true
+            },
+            {
+              "time": 1795143600,
+              "open": 3547.539,
+              "high": 3549.641,
+              "low": 3521.183,
+              "close": 3523.521,
+              "volume": 13643,
+              "complete": true
+            },
+            {
+              "time": 1795144500,
+              "open": 3523.575,
+              "high": 3536.384,
+              "low": 3517.186,
+              "close": 3524.038,
+              "volume": 12927,
+              "complete": true
+            },
+            {
+              "time": 1795145400,
+              "open": 3524.093,
+              "high": 3555.555,
+              "low": 3521.024,
+              "close": 3553.259,
+              "volume": 11338,
+              "complete": true
+            },
+            {
+              "time": 1795146300,
+              "open": 3553.201,
+              "high": 3556.532,
+              "low": 3546.814,
+              "close": 3550.274,
+              "volume": 7456,
+              "complete": true
+            },
+            {
+              "time": 1795147200,
+              "open": 3550.193,
+              "high": 3550.91,
+              "low": 3537.346,
+              "close": 3543.24,
+              "volume": 6556,
+              "complete": true
+            }
+          ]
+        },
+        "scalpEntry": {
+          "version": 4,
+          "leg": 25,
+          "riskShare": 0.6,
+          "referenceEntry": 3543.196,
+          "nextOpen": 3543.24,
+          "confirmationClose": 3543.24,
+          "confirmationRange": 13.56399999999985,
+          "confirmationBody": 6.953000000000429,
+          "setupKey": "ABHI_SCALP:1795147200:bearish"
+        }
+      }
+    ]
+  ],
+  "source": "Actual demo XAUUSDm M15/H1/H4 prices; no execution requests"
+}

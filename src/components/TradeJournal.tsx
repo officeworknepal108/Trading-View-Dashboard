@@ -1173,7 +1173,7 @@ export const TradeJournal: React.FC<TradeJournalProps> = ({ records, timeframe, 
                   <td className="px-2 py-1.5">{formatJournalTime(trade.completedAt, timeZone)}</td>
                   <td className="whitespace-nowrap px-2 py-1.5 font-bold">{trade.session || inferTradingSession(trade.completedAt)}</td>
                   <td className="px-2 py-1.5 font-bold">{displayTimeframe(trade.zoneTimeframe)}</td>
-                  <td className="whitespace-nowrap px-2 py-1.5 text-left font-bold">{trade.zoneName}
+                  <td className="whitespace-nowrap px-2 py-1.5 text-left font-bold">{trade.scalpEntry?.version === 4 ? 'Abhi Scalp Logic' : trade.zoneName}
                     {trade.intradayEntry && <div className="text-[8px] text-slate-500">
                       {trade.intradayEntry.leg}% pullback / {Math.round(trade.intradayEntry.riskShare * 100)}% setup risk
                     </div>}

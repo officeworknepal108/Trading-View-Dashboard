@@ -79,7 +79,7 @@ export function scalpHistoryFillDisplays(fills: readonly ScalpOneToOneChartFill[
       zoneTimeframe: 'M15' as const, entryLeg: fill.leg, markerOnly: true, chartFilled: true,
       referenceOnly: true, alwaysVisible: false, displayOffset: 0,
       markerTime: trade.filledAt!, markerText: `SCALP ${trade.signal.direction === 'bullish' ? 'BUY' : 'SELL'} ${fill.leg === 10 ? '1st' : '2nd'} ENTRY · ${result}`,
-      statusText: `CHART: Filled · ${result} · MT5: Not linked`, label: 'SCALP 1:1 · CHART FILL HISTORY' };
+      statusText: `CHART: Filled · ${result} · MT5: Not linked`, label: `${fill.signal?.scalpEntry?.version === 4 ? 'ABHI SCALP LOGIC' : 'SCALP 1:1'} · CHART FILL HISTORY` };
   });
 }
 
@@ -138,7 +138,7 @@ export function buildScalpChartDisplays(options: {
     const referenceRisk = Math.abs(position.priceOpen - (signal?.initialStopLoss ?? signal?.stopLoss ?? position.stopLoss));
     const rr = referenceRisk > 0 ? Math.abs(position.takeProfit - position.priceOpen) / referenceRisk : 0;
     const leg = signal?.scalpEntry?.leg;
-    const name = style === 'SCALP_1_1' ? 'SCALP 1:1' : 'SCALP';
+    const name = style === 'SCALP_1_1' ? signal?.scalpEntry?.version === 4 ? 'ABHI SCALP LOGIC' : 'SCALP 1:1' : 'SCALP';
     const statusText = connection.connected === false ? 'MT5 LAST KNOWN OPEN POSITION' : 'MT5 LIVE OPEN POSITION';
     result.push({ id: `MT5:${position.ticket}`, symbol: 'XAUUSD', setupId: position.setupId ?? signal?.setupId,
       chartTimeframe: timeframe, zoneTimeframe, referenceOnly: false, kind: 'live', style,

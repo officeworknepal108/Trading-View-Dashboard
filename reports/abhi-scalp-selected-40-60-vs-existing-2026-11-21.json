@@ -1,0 +1,381 @@
+{
+  "selection": {
+    "strategyName": "Abhi Scalp Logic",
+    "firstEntryRiskFraction": 0.4,
+    "secondEntryRiskFraction": 0.6,
+    "status": "User-selected research allocation; bridge/live code not modified",
+    "setupRisk": "Selected through bridge when implemented. $100 here is comparison allowance only, not a fixed strategy amount."
+  },
+  "method": {
+    "period": "Aug3-Nov20 2026",
+    "balance": 5000,
+    "setupRisk": 100,
+    "existingRules": "10/25 body pullbacks from next M15 open,60/40 allocation,original SL/common original target,75min expiry,original qualification.",
+    "newRules": "T1/T2/T3 final confirmation-close10/25 body pullbacks,40/60 allocation,original SL,each-entry exact1.25R target,60min expiry,body>=30% range. Two valid orders.",
+    "costs": "Same100oz contract,.01 min/step,floor lots for both. .20 price-unit round trip +$7/lot commission; stress.50+$7/lot. Illustrative assumptions, not broker observations. All valid orders fit individual budgets at$100; no one-entry fallback needed.",
+    "limitations": "Previously reused historical data,not future forecasts. Gross ideal lots before costs; other rows rounded-size sensitivities. No executable quotes/tick rounding/swaps/margin/daily or aggregate-open-risk limits. Unknown outcomes excluded; DD resolved cash only,excludes floating losses. No protected code/live settings changed."
+  },
+  "sourceSha256": "72e98990f61269b0c7cc453aa2fcc6271a0a11b6158cc44a285c1217b0318288",
+  "results": [
+    {
+      "label": "Existing code",
+      "firstShare": 0.6,
+      "secondShare": 0.4,
+      "gross": {
+        "setups": 249,
+        "closed": 201,
+        "wins": 124,
+        "losses": 77,
+        "winPercent": 61.69154228855721,
+        "netDollars": 5301.7013392385015,
+        "returnOn5000": 106.03402678477003,
+        "endingBalance": 10301.701339238502,
+        "drawdown": 1129.0952656827872,
+        "fees": 0,
+        "invalid": 4,
+        "uncertain": 33,
+        "unfilled": 11
+      },
+      "cost": {
+        "setups": 249,
+        "closed": 201,
+        "wins": 124,
+        "losses": 77,
+        "winPercent": 61.69154228855721,
+        "netDollars": 4218.9805000000515,
+        "returnOn5000": 84.37961000000104,
+        "endingBalance": 9218.980500000052,
+        "drawdown": 1015.0302500000054,
+        "fees": 396.0900000000008,
+        "invalid": 4,
+        "uncertain": 33,
+        "unfilled": 11
+      },
+      "stress": {
+        "setups": 249,
+        "closed": 201,
+        "wins": 124,
+        "losses": 77,
+        "winPercent": 61.69154228855721,
+        "netDollars": 3778.8805000000443,
+        "returnOn5000": 75.57761000000089,
+        "endingBalance": 8778.880500000045,
+        "drawdown": 1068.4302500000053,
+        "fees": 836.1899999999993,
+        "invalid": 4,
+        "uncertain": 33,
+        "unfilled": 11
+      },
+      "monthly": {
+        "2026-08": {
+          "gross": {
+            "setups": 43,
+            "closed": 36,
+            "wins": 15,
+            "losses": 21,
+            "winPercent": 41.66666666666667,
+            "netDollars": -783.0525661668421,
+            "returnOn5000": -15.661051323336842,
+            "endingBalance": 4216.947433833158,
+            "drawdown": 1129.0952656827872,
+            "fees": 0,
+            "invalid": 1,
+            "uncertain": 6,
+            "unfilled": 0
+          },
+          "cost": {
+            "setups": 43,
+            "closed": 36,
+            "wins": 15,
+            "losses": 21,
+            "winPercent": 41.66666666666667,
+            "netDollars": -741.7539999999944,
+            "returnOn5000": -14.83507999999989,
+            "endingBalance": 4258.246000000006,
+            "drawdown": 1015.0302500000054,
+            "fees": 57.50999999999998,
+            "invalid": 1,
+            "uncertain": 6,
+            "unfilled": 0
+          }
+        },
+        "2026-09": {
+          "gross": {
+            "setups": 81,
+            "closed": 68,
+            "wins": 45,
+            "losses": 23,
+            "winPercent": 66.17647058823529,
+            "netDollars": 2600.5195454928953,
+            "returnOn5000": 52.010390909857904,
+            "endingBalance": 7600.519545492895,
+            "drawdown": 500.0,
+            "fees": 0,
+            "invalid": 0,
+            "uncertain": 8,
+            "unfilled": 5
+          },
+          "cost": {
+            "setups": 81,
+            "closed": 68,
+            "wins": 45,
+            "losses": 23,
+            "winPercent": 66.17647058823529,
+            "netDollars": 2083.545500000014,
+            "returnOn5000": 41.670910000000276,
+            "endingBalance": 7083.545500000014,
+            "drawdown": 469.5079999999998,
+            "fees": 132.84000000000006,
+            "invalid": 0,
+            "uncertain": 8,
+            "unfilled": 5
+          }
+        },
+        "2026-10": {
+          "gross": {
+            "setups": 82,
+            "closed": 64,
+            "wins": 43,
+            "losses": 21,
+            "winPercent": 67.1875,
+            "netDollars": 2446.3930998597193,
+            "returnOn5000": 48.927861997194384,
+            "endingBalance": 7446.393099859719,
+            "drawdown": 386.71722751573,
+            "fees": 0,
+            "invalid": 0,
+            "uncertain": 15,
+            "unfilled": 3
+          },
+          "cost": {
+            "setups": 82,
+            "closed": 64,
+            "wins": 43,
+            "losses": 21,
+            "winPercent": 67.1875,
+            "netDollars": 2011.495250000019,
+            "returnOn5000": 40.22990500000038,
+            "endingBalance": 7011.495250000019,
+            "drawdown": 345.1047500000134,
+            "fees": 137.7,
+            "invalid": 0,
+            "uncertain": 15,
+            "unfilled": 3
+          }
+        },
+        "2026-11": {
+          "gross": {
+            "setups": 43,
+            "closed": 33,
+            "wins": 21,
+            "losses": 12,
+            "winPercent": 63.63636363636363,
+            "netDollars": 1037.8412600527274,
+            "returnOn5000": 20.75682520105455,
+            "endingBalance": 6037.841260052727,
+            "drawdown": 318.3236816767654,
+            "fees": 0,
+            "invalid": 3,
+            "uncertain": 4,
+            "unfilled": 3
+          },
+          "cost": {
+            "setups": 43,
+            "closed": 33,
+            "wins": 21,
+            "losses": 12,
+            "winPercent": 63.63636363636363,
+            "netDollars": 865.6937500000067,
+            "returnOn5000": 17.313875000000134,
+            "endingBalance": 5865.693750000007,
+            "drawdown": 294.31524999999897,
+            "fees": 68.04000000000002,
+            "invalid": 3,
+            "uncertain": 4,
+            "unfilled": 3
+          }
+        }
+      }
+    },
+    {
+      "label": "Abhi Scalp Logic40/60",
+      "firstShare": 0.4,
+      "secondShare": 0.6,
+      "gross": {
+        "setups": 244,
+        "closed": 192,
+        "wins": 117,
+        "losses": 75,
+        "winPercent": 60.9375,
+        "netDollars": 6075.000000000041,
+        "returnOn5000": 121.50000000000082,
+        "endingBalance": 11075.00000000004,
+        "drawdown": 740.0,
+        "fees": 0,
+        "invalid": 4,
+        "uncertain": 35,
+        "unfilled": 13
+      },
+      "cost": {
+        "setups": 244,
+        "closed": 192,
+        "wins": 117,
+        "losses": 75,
+        "winPercent": 60.9375,
+        "netDollars": 5093.032625000043,
+        "returnOn5000": 101.86065250000085,
+        "endingBalance": 10093.032625000043,
+        "drawdown": 644.4692500000009,
+        "fees": 379.35000000000065,
+        "invalid": 4,
+        "uncertain": 35,
+        "unfilled": 13
+      },
+      "stress": {
+        "setups": 244,
+        "closed": 192,
+        "wins": 117,
+        "losses": 75,
+        "winPercent": 60.9375,
+        "netDollars": 4671.532625000039,
+        "returnOn5000": 93.43065250000078,
+        "endingBalance": 9671.53262500004,
+        "drawdown": 667.1765625000041,
+        "fees": 800.85,
+        "invalid": 4,
+        "uncertain": 35,
+        "unfilled": 13
+      },
+      "monthly": {
+        "2026-08": {
+          "gross": {
+            "setups": 41,
+            "closed": 33,
+            "wins": 14,
+            "losses": 19,
+            "winPercent": 42.42424242424242,
+            "netDollars": -314.99999999999363,
+            "returnOn5000": -6.299999999999873,
+            "endingBalance": 4685.000000000006,
+            "drawdown": 740.0,
+            "fees": 0,
+            "invalid": 1,
+            "uncertain": 6,
+            "unfilled": 1
+          },
+          "cost": {
+            "setups": 41,
+            "closed": 33,
+            "wins": 14,
+            "losses": 19,
+            "winPercent": 42.42424242424242,
+            "netDollars": -293.22274999999735,
+            "returnOn5000": -5.864454999999947,
+            "endingBalance": 4706.777250000003,
+            "drawdown": 644.4692500000009,
+            "fees": 48.59999999999999,
+            "invalid": 1,
+            "uncertain": 6,
+            "unfilled": 1
+          }
+        },
+        "2026-09": {
+          "gross": {
+            "setups": 80,
+            "closed": 66,
+            "wins": 43,
+            "losses": 23,
+            "winPercent": 65.15151515151516,
+            "netDollars": 2745.0000000000227,
+            "returnOn5000": 54.90000000000045,
+            "endingBalance": 7745.000000000023,
+            "drawdown": 500.0,
+            "fees": 0,
+            "invalid": 0,
+            "uncertain": 9,
+            "unfilled": 5
+          },
+          "cost": {
+            "setups": 80,
+            "closed": 66,
+            "wins": 43,
+            "losses": 23,
+            "winPercent": 65.15151515151516,
+            "netDollars": 2302.288500000047,
+            "returnOn5000": 46.04577000000094,
+            "endingBalance": 7302.288500000047,
+            "drawdown": 449.94524999999385,
+            "fees": 132.57000000000002,
+            "invalid": 0,
+            "uncertain": 9,
+            "unfilled": 5
+          }
+        },
+        "2026-10": {
+          "gross": {
+            "setups": 81,
+            "closed": 62,
+            "wins": 41,
+            "losses": 21,
+            "winPercent": 66.12903225806451,
+            "netDollars": 2485.0000000000123,
+            "returnOn5000": 49.700000000000244,
+            "endingBalance": 7485.000000000013,
+            "drawdown": 475.0000000000034,
+            "fees": 0,
+            "invalid": 0,
+            "uncertain": 16,
+            "unfilled": 3
+          },
+          "cost": {
+            "setups": 81,
+            "closed": 62,
+            "wins": 41,
+            "losses": 21,
+            "winPercent": 66.12903225806451,
+            "netDollars": 2105.306062499999,
+            "returnOn5000": 42.10612124999998,
+            "endingBalance": 7105.306062499999,
+            "drawdown": 422.55887500001097,
+            "fees": 133.38,
+            "invalid": 0,
+            "uncertain": 16,
+            "unfilled": 3
+          }
+        },
+        "2026-11": {
+          "gross": {
+            "setups": 42,
+            "closed": 31,
+            "wins": 19,
+            "losses": 12,
+            "winPercent": 61.29032258064516,
+            "netDollars": 1160.0000000000011,
+            "returnOn5000": 23.200000000000024,
+            "endingBalance": 6160.000000000001,
+            "drawdown": 300.0,
+            "fees": 0,
+            "invalid": 3,
+            "uncertain": 4,
+            "unfilled": 4
+          },
+          "cost": {
+            "setups": 42,
+            "closed": 31,
+            "wins": 19,
+            "losses": 12,
+            "winPercent": 61.29032258064516,
+            "netDollars": 978.6608124999912,
+            "returnOn5000": 19.573216249999824,
+            "endingBalance": 5978.660812499991,
+            "drawdown": 290.8564999999928,
+            "fees": 64.80000000000001,
+            "invalid": 3,
+            "uncertain": 4,
+            "unfilled": 4
+          }
+        }
+      }
+    }
+  ]
+}

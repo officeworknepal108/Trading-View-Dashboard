@@ -4,7 +4,7 @@ import { tradeToMt5Signal, scalpOneToOneVolumePasses, type Mt5SignalInput } from
 import type { MarketTrend, TradeLevels, TradeTimeframe } from './tradeLevels';
 import type { JournalTradeRecord } from '../components/TradeJournal';
 import type { StructureCandle } from './marketStructure';
-import { PULLBACK_EXPIRY_SECONDS } from './pullbackExpiry';
+import { ABHI_SCALP_EXPIRY_SECONDS } from './pullbackExpiry';
 
 /** Chart results are simulations, never broker fills. Pending/ambiguous rows are not results. */
 export function scalpOneToOneChartRecord(r: VolumeStudyRecord): JournalTradeRecord | undefined {
@@ -34,39 +34,43 @@ export function buildScalpOneToOneSignals(candles: StudyCandles, now: number,
     h4EmaFilter: true, h1TrendlineFilter: true, cutoff: now, lookback: 2, candles });
   return result.records.filter(r => scalpOneToOneVolumePasses(r.signal.type, r.v1, r.v2, r.v3)
     && r.confirmedAt >= now - maximumAgeSeconds
-    && r.confirmedAt <= now && now < r.confirmedAt + 900 && r.outcome !== 'tp' && r.outcome !== 'sl'
-    && r.outcome !== 'cancelled' && r.outcome !== 'ambiguous')
+    && r.confirmedAt <= now && now < r.confirmedAt + 900)
     .flatMap(r => scalpOneToOnePullbackSignals(r, candles, now, pendingExpiryMinutes));
 }
 
-/** Freeze the original exits, then split the selected setup risk 60% / 40%. */
+/** Abhi Scalp Logic: closed-candle anchor, original SL, separate 1.25R exits. */
 export function scalpOneToOnePullbackSignals(r: VolumeStudyRecord, candles: StudyCandles,
   now: number, pendingExpiryMinutes: number): Mt5SignalInput[] {
   // The general study includes smaller volume decreases. Skip that row instead
   // of aborting an entire historical batch in the strict signal converter.
   if (!scalpOneToOneVolumePasses(r.signal.type, r.v1, r.v2, r.v3)) return [];
   const confirmation = candles.M15?.find(c => c.time === r.signal.time);
-  const next = candles.M15?.find(c => c.time === r.confirmedAt);
-  if (!confirmation || confirmation.complete === false || !next
+  if (!confirmation || confirmation.complete === false || now < r.confirmedAt
     || r.confirmedAt !== r.signal.time + 900) return [];
   const body = Math.abs(confirmation.close - confirmation.open);
-  if (!(body > 0)) return [];
+  const range = confirmation.high - confirmation.low;
+  if (![body, range, confirmation.close].every(v => Number.isFinite(v) && v > 0)
+    || body > range + 1e-6 || body / range < .3 - 1e-10) return [];
   const base = scalpOneToOneSignal(r, candles, now, pendingExpiryMinutes);
   const sign = r.signal.direction === 'bullish' ? 1 : -1;
-  return ([10, 25] as const).flatMap(leg => {
-    const entry = next.open - sign * body * leg / 100;
-    const risk = sign * (entry - base.stopLoss), reward = sign * (base.takeProfit - entry);
-    if (!(risk > 0 && risk <= 30.000001 && reward > 0)) return [];
-    const riskShare = leg === 10 ? 0.6 : 0.4;
-    return [{ ...base, id: `${base.id}:P${leg}`, setupId: `${base.setupId}:P${leg}`,
-      zoneId: `${base.zoneId}-P${leg}`, orderType: 'LIMIT' as const, entry,
-      rewardRisk: reward / risk, normalRewardRisk: reward / risk,
-      riskPips: risk * 10, calculatedAt: r.confirmedAt, expiresAt: r.confirmedAt + PULLBACK_EXPIRY_SECONDS,
-      scalpEntry: { version: 3 as const, leg, riskShare, referenceEntry: base.entry,
-        nextOpen: next.open, confirmationBody: body },
-      journalContext: { ...base.journalContext!, autoReason: `${base.journalContext!.autoReason} `
-        + `${leg}% body pullback; ${Math.round(riskShare * 100)}% of total setup risk. Original SL/TP fixed; original TP/SL or 75-minute expiry, whichever comes first.` },
-    }];
+  const plans = ([10, 25] as const).map(leg => {
+    const entry = confirmation.close - sign * body * leg / 100;
+    return { leg, entry, risk: sign * (entry - base.stopLoss) };
+  });
+  if (plans.some(p => !(p.risk > 0 && p.risk <= 30.000001))) return [];
+  return plans.map(({ leg, entry, risk }) => {
+    const takeProfit = entry + sign * risk * 1.25;
+    const riskShare = leg === 10 ? 0.4 : 0.6;
+    return { ...base, id: `${base.id}:P${leg}`, setupId: `${base.setupId}:P${leg}`,
+      zoneName: 'Abhi Scalp Logic', zoneId: `${base.zoneId}-P${leg}`, orderType: 'LIMIT' as const, entry,
+      takeProfit, riskFree: takeProfit, rewardRisk: 1.25, normalRewardRisk: 1.25,
+      riskPips: risk * 10, calculatedAt: r.confirmedAt, expiresAt: r.confirmedAt + ABHI_SCALP_EXPIRY_SECONDS,
+      scalpEntry: { version: 4 as const, leg, riskShare, referenceEntry: base.entry,
+        nextOpen: confirmation.close, confirmationClose: confirmation.close, confirmationRange: range,
+        confirmationBody: body, setupKey: `ABHI_SCALP:${r.signal.time}:${r.signal.direction}` },
+      journalContext: { ...base.journalContext!, autoReason: `${base.journalContext!.autoReason.replace('fixed 1:1 target.', 'original pattern SL.')} `
+        + `Abhi Scalp Logic: ${leg}% confirmation-body pullback from its close; ${Math.round(riskShare * 100)}% of setup risk. Body >=30% of range. Original SL; this entry's fixed 1.25R TP; 60-minute expiry.` },
+    };
   });
 }
 
@@ -129,8 +133,12 @@ export function scalpOneToOneChartHistory(r: VolumeStudyRecord, candles: StudyCa
   const next = candles.M15?.find(c => c.time === r.confirmedAt);
   if (!next || next.complete === false || next.time + 900 > asOf) return { records, fills };
   if (!signals.length) return { records, fills };
-  type Scenario = { mask: number; exit: number; filledAt: number[]; resolvedAt?: number };
-  let states: Scenario[] = [{ mask: 0, exit: 0, filledAt: [] }];
+  const base = scalpOneToOneChartRecord({ ...r, outcome: 'active', filledAt: next.time });
+  if (!base) return { records, fills };
+  // Replay each leg independently: the second TP must not close the first leg.
+  for (const signal of signals) {
+  type Scenario = { mask: number; exit: number; filledAt?: number; resolvedAt?: number };
+  let states: Scenario[] = [{ mask: 0, exit: 0 }];
   let expected = next.time;
   for (const bar of (candles.M15 ?? []).filter(c => c.time >= next.time && c.complete !== false && c.time + 900 <= asOf)) {
     if (bar.time !== expected) {
@@ -140,23 +148,19 @@ export function scalpOneToOneChartHistory(r: VolumeStudyRecord, candles: StudyCa
     }
     expected += 900;
     const paths = states.flatMap(previous => previous.exit ? [previous]
-      : scalpPullbackBarStates(bar, signals, previous.mask, bar.time < signals[0].expiresAt).map(state => {
-        const filledAt = [...previous.filledAt];
-        signals.forEach((_, i) => { if ((state.mask & (1 << i)) && !(previous.mask & (1 << i))) filledAt[i] = bar.time; });
+      : scalpPullbackBarStates(bar, [signal], previous.mask, bar.time < signal.expiresAt).map(state => {
+        const filledAt = previous.filledAt ?? (state.mask ? bar.time : undefined);
         return { ...state, filledAt, resolvedAt: state.exit ? bar.time : undefined };
       }));
-    states = [...new Map(paths.map(state => [`${state.mask}:${state.exit}:${state.filledAt.join(',')}:${state.resolvedAt}`, state])).values()];
-    if (states.every(state => state.exit || !state.mask && bar.time + 900 >= signals[0].expiresAt)) break;
+    states = [...new Map(paths.map(state => [`${state.mask}:${state.exit}:${state.filledAt}:${state.resolvedAt}`, state])).values()];
+    if (states.every(state => state.exit || !state.mask && bar.time + 900 >= signal.expiresAt)) break;
   }
-  const base = scalpOneToOneChartRecord({ ...r, outcome: 'active', filledAt: next.time });
-  if (!base) return { records, fills };
-  signals.forEach((signal, index) => {
-    if (!states.every(state => (state.mask & (1 << index)) !== 0)) return;
-    const possibilities = states.map(state => !(state.mask & (1 << index)) ? 'unfilled'
+    if (!states.every(state => state.mask !== 0)) continue;
+    const possibilities = states.map(state => !state.mask ? 'unfilled'
       : String(state.exit));
     const established = new Set(possibilities).size === 1 && possibilities[0] !== '2';
     const exit = established ? Number(possibilities[0]) : undefined;
-    const filledAt = Math.max(...states.map(state => state.filledAt[index]));
+    const filledAt = Math.max(...states.map(state => state.filledAt!));
     const resolvedAt = states.every(state => state.exit !== 0 && state.resolvedAt !== undefined)
       ? Math.max(...states.map(state => state.resolvedAt!)) : undefined;
     const outcome = exit === 1 ? 'tp' : exit === -1 ? 'sl' : established ? 'active' : 'uncertain';
@@ -168,14 +172,15 @@ export function scalpOneToOneChartHistory(r: VolumeStudyRecord, candles: StudyCa
         result: outcome === 'tp' || outcome === 'sl' ? outcome : undefined,
         calculatedAt: filledAt, filledAt, resolvedAt, pendingAtCreation: true,
         signal: { ...r.signal, timeframe: 'M15' } } });
-    if (!established) return;
+    if (!established) continue;
     records.push({ ...base, id: `SCALP_1_1:CHART:${r.signal.time}:P${signal.scalpEntry!.leg}`,
       setupId: signal.setupId, scalpEntry: signal.scalpEntry,
       result: exit === 1 ? 'tp' as const : exit === -1 ? 'sl' as const : 'open' as const,
       completedAt: resolvedAt ?? filledAt, openedAt: filledAt,
-      entry: signal.entry, rewardRisk: signal.rewardRisk, riskPips: signal.riskPips,
+      zoneName: 'Abhi Scalp Logic', entry: signal.entry, takeProfit: signal.takeProfit,
+      rewardRisk: signal.rewardRisk, riskPips: signal.riskPips,
       autoReason: `CHART ONLY. ${signal.journalContext!.autoReason}` });
-  });
+  }
   return { records, fills };
 }
 

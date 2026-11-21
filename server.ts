@@ -4,7 +4,7 @@ import { buildScalpOneToOneSignals } from './src/services/scalpOneToOne';
 import { buildPullbackChartSetups } from './src/services/pullbackChartSetup';
 import { pullbackTelegramAlerts } from './src/services/pullbackTelegram';
 import { buildIntradayPullbackSignals, intradayPullbackSignalError, sameIntradayPullbackSetup } from './src/services/intradayPullback';
-import { normalizeScalpOneToOneRisk, selectSecondOnlyPullback, mt5StrategyRiskPercent } from './src/services/mt5Automation';
+import { normalizeScalpOneToOneRisk, selectSecondOnlyPullback, mt5StrategyRiskPercent, sameScalpPullbackSetup } from './src/services/mt5Automation';
 import { DashboardAuth } from './src/server/authentication';
 import { denyPrivateFiles, privateFilePatterns } from './src/server/privateFiles';
 import { clientVisibleTrades } from './src/server/clientJournal';
@@ -695,14 +695,16 @@ async function enqueueMt5Signal(
       && signal.scalpEntry && signal.signalAt === candidate.signalAt && signal.direction === candidate.direction
       && mt5ConnectionMatches(executionConnection, signal)) : undefined;
     if (sibling && candidate.scalpEntry && (Math.abs(sibling.stopLoss - candidate.stopLoss) > 1e-6
-      || Math.abs(sibling.takeProfit - candidate.takeProfit) > 1e-6
+      || (candidate.scalpEntry.version === 4 ? !sameScalpPullbackSetup(candidate, sibling)
+        : Math.abs(sibling.takeProfit - candidate.takeProfit) > 1e-6)
       || Math.abs(sibling.scalpEntry!.nextOpen - candidate.scalpEntry.nextOpen) > 1e-6
       || Math.abs(sibling.scalpEntry!.confirmationBody - candidate.scalpEntry.confirmationBody) > 1e-6)) {
       throw new Error('Scalp 1:1 setup prices changed after the first order; the second entry is paused.');
     }
     if (candidate.scalpEntry && signals.some(signal => signal.tradeStyle === 'SCALP_1_1'
       && signal.signalAt === candidate.signalAt && signal.direction === candidate.direction
-      && ['TP', 'SL', 'RF'].includes(signal.status) && mt5ConnectionMatches(executionConnection, signal))) {
+      && (candidate.scalpEntry?.version === 4 ? signal.status === 'SL' : ['TP', 'SL', 'RF'].includes(signal.status))
+      && mt5ConnectionMatches(executionConnection, signal))) {
       throw new Error('Original Scalp 1:1 SL/TP has already been reached; remaining entries are cancelled.');
     }
     const scalpRisk = scalpSetupRiskAllocation(candidate, signals, mt5Context().mt5BridgeHeartbeat,
@@ -764,7 +766,7 @@ async function enqueueMt5Signal(
       intradaySetupRiskBudget,
       journalContext: candidate.journalContext && scalpRisk.scalpSetupRiskMultiplier === 0.5 ? {
         ...candidate.journalContext,
-        autoReason: `${candidate.journalContext.autoReason} Overlapping Scalp 1:1: 50% of selected setup risk; frozen 60/40 allocation.`,
+        autoReason: `${candidate.journalContext.autoReason} Overlapping scalp setup: 50% of selected setup risk; frozen ${candidate.scalpEntry?.version === 4 ? '40/60' : '60/40'} allocation.`,
       } : candidate.journalContext,
       id: candidate.id.trim(),
       setupId: candidate.setupId?.trim().slice(0, 300) || undefined,
@@ -1624,6 +1626,11 @@ function validTelegramTradeAlert(value: any): value is TelegramTradeAlert {
     && (value.chartSetup === undefined || value.chartSetup === true && value.tradeKey?.startsWith('CHART_SETUP:')
       && ['SCALP_1_1', 'INTRADAY'].includes(value.tradeStyle) && value.pullback
       && typeof value.pullback.secondOnly === 'boolean'
+      && (value.pullback.abhi === undefined || typeof value.pullback.abhi === 'boolean')
+      && (!value.pullback.abhi || value.tradeStyle === 'SCALP_1_1'
+        && [value.pullback.firstTarget, value.pullback.secondTarget].every(v=>Number.isFinite(v)&&v>0)
+        && (value.pullback.netReturnR === undefined || Number.isFinite(value.pullback.netReturnR)
+          && value.pullback.netReturnR >= -1.000001 && value.pullback.netReturnR <= 1.250001))
       && [value.pullback.firstEntry, value.pullback.secondEntry, value.pullback.firstRiskPips, value.pullback.secondRiskPips].every(v => Number.isFinite(v) && v > 0))
     && (value.kind !== 'entry2' || value.chartSetup === true && !value.pullback.secondOnly)
     && (value.outsideTradingTime === undefined || typeof value.outsideTradingTime === 'boolean')
