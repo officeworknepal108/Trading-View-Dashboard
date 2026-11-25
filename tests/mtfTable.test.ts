@@ -153,9 +153,9 @@ test('compact table restores bar counts and confirmation text while preserving f
   const readiness = explainZoneEntry(options);
   const before = structuredClone(readiness);
   const label = compactZoneTableStatus(readiness, 2);
-  assert.equal(label, '2 bars · TRADE');
+  assert.equal(label, '2 bars · NO TRADE');
   const cell = renderToStaticMarkup(React.createElement(ZoneEntryReadinessText, { readiness, compactLabel: label }));
-  assert.ok(cell.includes('2 bars · TRADE') && cell.includes('tabindex="0"'));
+  assert.ok(cell.includes('2 bars · NO TRADE') && cell.includes('tabindex="0"'));
   assert.ok(!cell.includes('WAIT —') && !cell.includes('+1') && !cell.includes('A+ FIB ALIGNMENT'));
   const details = renderToStaticMarkup(React.createElement(ZoneEntryReasonDetails, { readiness }));
   assert.ok(details.includes('Fib alignment is still missing') && details.includes('engulfing has qualified') && details.includes('text-[11px]'));
@@ -166,6 +166,7 @@ test('compact table restores bar counts and confirmation text while preserving f
   assert.equal(compactZoneTableStatus(explainZoneEntry(options), 2), 'WAIT 1H BELOW');
   assert.equal(compactZoneTableStatus(explainZoneEntry({ ...options, opportunityExpired: true }), 6), '6 bars · NO TRADE');
   assert.equal(compactZoneTableStatus(readiness, 6, false), '6 bars · NO TRADE');
+  assert.equal(compactZoneTableStatus(explainZoneEntry(entryDiagnosticOptions()), 2), '2 bars · TRADE');
 });
 
 test('compact result labels keep their detailed hover without long waiting labels', () => {

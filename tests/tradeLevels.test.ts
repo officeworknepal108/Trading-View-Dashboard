@@ -10,6 +10,7 @@ import {
   getMtfTradeRule,
   isDeepDiscountTradeSignal,
   isUnfilledDirectSetupQualified,
+  isCurrentZoneEngulfingSignal,
   isDaySwingFibEntryTimeframe,
   isZoneEngulfingFibQualified,
   measureTradeableFibZone,
@@ -117,6 +118,21 @@ test('an unfilled retained TJL1 entry requires its current zone, Fib and exact c
     isUnfilledDirectSetupQualified({ zone: currentZone, signal, zoneTimeframe: 'M15', sourceCandles })
   );
   assert.equal(qualifies(), true);
+  assert.equal(isCurrentZoneEngulfingSignal(zone, signal, 'M15'), true);
+  const missingFib = { ...zone, fibStatus: 'not-valid' as const, fibBand: undefined };
+  // Filled paper trades and replay caches must not treat their old T4 as Fib evidence.
+  assert.equal(isCurrentZoneEngulfingSignal(missingFib, signal, 'M15'), false);
+  assert.equal(isCurrentZoneEngulfingSignal(undefined, signal, 'M15'), false);
+  assert.equal(isCurrentZoneEngulfingSignal(zone, { ...signal, time: 900 }, 'M15'), false);
+  assert.equal(isCurrentZoneEngulfingSignal(zone, { ...signal, direction: 'bullish' }, 'M15'), false);
+  assert.equal(isCurrentZoneEngulfingSignal({ ...missingFib, dayFibStatus: 'a-plus',
+    dayFibBand: '0.71-0.79' }, signal, 'M15'), false,
+  'an unrelated Day Fib badge cannot validate the stored structure T4');
+  assert.equal(isCurrentZoneEngulfingSignal({ ...missingFib, dayFibStatus: 'a-plus',
+    dayFibBand: '0.71-0.79', dayEngulfingType: signal.type,
+    dayEngulfingTime: signal.time, dayEngulfingDirection: signal.direction,
+    dayEngulfingCandleCount: signal.candleCount }, signal, 'M15'), true,
+  'a matching qualified Day Fib route remains permitted');
   const pending = calculateTradeLevels({ sourceCandles: candles, executionCandles: candles,
     signal, rule: { ...getDirectTradeRule('M15', 'M15')!, maximumRiskPips: 50 } });
   assert.equal(pending?.status, 'pending', 'the cached signal can calculate a pending order');

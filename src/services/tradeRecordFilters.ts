@@ -1,5 +1,6 @@
 import type { ChartTimeZone } from './chartTime';
 import type { TradeResult, TradeTimeframe } from './tradeLevels';
+import { isCurrentZoneEngulfingSignal, resolveZoneEngulfingSignal, type ZoneEntryQualification } from './tradeLevels';
 import { detectEngulfingPatternAt, type StructureCandle, type StructureZone } from './marketStructure';
 import { reconcileTradeRecords } from './tradeRecordDeduplication';
 import { goldIntradayMtfTradeRule, isGoldIntradayCandleRoute,
@@ -19,6 +20,8 @@ export interface CanonicalTradeRecord extends FilterableTradeRecord {
   entry: number; stopLoss: number; takeProfit: number; rewardRisk: number; riskPips: number;
   tradeStyle?: 'SCALPING' | 'INTRADAY' | 'SCALP_1_1' | 'BOLLINGER_M5'; fibSource?: string; fibBand?: string;
   brokerTicket?: number; mt5Managed?: boolean;
+  zoneId?: string;
+  entryQualification?: ZoneEntryQualification;
   scalpEntry?: import('./mt5Automation').ScalpPullbackEntry;
   intradayEntry?: import('./intradayPullback').IntradayPullbackEntry;
 }
@@ -447,6 +450,32 @@ export function accuracyResultMatchesCandles(
   return false;
 }
 
+/** Preserve entry-time evidence; current Fib changes cannot rewrite a verified entry. */
+function directEntryQualification(record: CanonicalTradeRecord, options: TradeRecordVerification): ZoneEntryQualification | boolean {
+  if (record.source !== 'ENGULFING' || record.tradeStyle === 'SCALPING'
+    || record.tradeStyle === 'SCALP_1_1' || record.tradeStyle === 'BOLLINGER_M5') return true;
+  const zoneId = record.zoneId ?? (record.id.startsWith('DIRECT:') && record.signalAt !== undefined
+    ? record.id.slice(7, record.id.lastIndexOf(`:${record.signalAt}:`)) : undefined);
+  const matches = (proof: ZoneEntryQualification): boolean => proof.version === 1 && !!proof.zone && !!proof.signal
+    && proof.zoneTimeframe === record.zoneTimeframe
+    && (zoneId === undefined || proof.zone.id === zoneId)
+    && (proof.zone.name === record.zoneName || record.zoneName === '1MG QML' && proof.zone.name === 'QML')
+    && proof.signal.time === record.signalAt && proof.signal.type === record.engulfingType
+    && proof.signal.direction === record.direction && proof.signal.timeframe === record.signalTimeframe
+    && (record.engulfingCandleCount === undefined || proof.signal.candleCount === record.engulfingCandleCount)
+    && isCurrentZoneEngulfingSignal(proof.zone, proof.signal, proof.zoneTimeframe);
+  if (record.entryQualification && matches(record.entryQualification)) return record.entryQualification;
+  // DB/DT are explicitly Fib-independent in the strategy. A bare Fib label is
+  // not entry evidence for TJL1 or any other Fib-dependent direct zone.
+  if (record.zoneName === 'DB' || record.zoneName === 'DT') return true;
+  const zone = options.timeframeData[record.zoneTimeframe]?.structure.zones.find(zone => zone.id === zoneId);
+  const signal = zone && resolveZoneEngulfingSignal(zone, record.zoneTimeframe);
+  if (!zone || !signal) return false;
+  const proof: ZoneEntryQualification = { version: 1, zoneTimeframe: record.zoneTimeframe, zone,
+    signal };
+  return matches(proof) ? proof : false;
+}
+
 /** Shared validated record set for the journal, accuracy rows and historical entry arrows. */
 export function buildCanonicalTradeRecords<T extends CanonicalTradeRecord>(
   saved: readonly T[], current: readonly T[], options: TradeRecordVerification,
@@ -484,9 +513,21 @@ export function buildCanonicalTradeRecords<T extends CanonicalTradeRecord>(
       || !Number.isFinite(record.riskPips) || record.riskPips <= 0) return false;
     return marketSymbol !== 'XAUUSD' || isGoldTradeRecordRoute(record, requireLtfFib);
   });
-  return candidates.flatMap((record): T[] => {
+  return candidates.flatMap((candidate): T[] => {
     // Broker executions are facts; another feed must not rewrite their fill or result.
-    if (brokerRecord(record)) return [record];
+    if (brokerRecord(candidate)) return [candidate];
+    const qualification = directEntryQualification(candidate, options);
+    if (!qualification) return [];
+    const record = typeof qualification === 'object' && candidate.entryQualification !== qualification
+      ? { ...candidate, entryQualification: qualification } : candidate;
+    // Pullback legs must qualify before either the current-record or saved-history shortcut.
+    if (record.intradayEntry && record.source === 'MTF') {
+      const source = timeframeData[record.signalTimeframe]?.candles;
+      if (source && record.signalAt !== undefined && candleIndexAtTime(source, record.signalAt) >= 0
+        && !qualifyMtf({ id: record.id.replace(/:INTRA:P(?:10|25)$/, ''), signalTime: record.signalAt,
+          direction: record.direction, engulfingType: record.engulfingType as 'T1' | 'T2' | 'T3' | 'T4',
+          zoneName: record.zoneName })) return [];
+    }
     if (record.intradayEntry) {
       if (currentIntradayIds.has(record.id)) return [record];
       const leg = record.intradayEntry;
@@ -556,8 +597,8 @@ export function buildCanonicalTradeRecords<T extends CanonicalTradeRecord>(
       || !accuracyResultMatchesCandles(verified, executionCandles,
         tradeTimeframeSeconds(executionTimeframe), 0,
         tradeTimeframeSeconds(verified.signalTimeframe))
-      || !savedDirectZoneMatchesStructure(verified, signalCandles,
-        timeframeData[verified.zoneTimeframe]?.structure.zones)
+      || (!verified.entryQualification && !savedDirectZoneMatchesStructure(verified, signalCandles,
+        timeframeData[verified.zoneTimeframe]?.structure.zones))
       || !savedGoldScalpMatchesReversal(verified,
         timeframeData[verified.zoneTimeframe]?.structure.zones, signalCandles)) return [];
     return [verified];

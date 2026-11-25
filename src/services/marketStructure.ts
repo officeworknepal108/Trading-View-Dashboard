@@ -1011,6 +1011,13 @@ export function detectEngulfingPatternAt(
   return undefined;
 }
 
+/** A later move extreme cannot qualify an earlier engulfing retrospectively. */
+export function isStructureFibAvailableAt(zone: StructureZone, signalTime: number): boolean {
+  if (usesMajorLiquidityTradingRules(zone) || zone.name === 'DB' || zone.name === 'DT') return true;
+  return (zone.fibSourceTime === undefined || zone.fibSourceTime <= signalTime)
+    && (zone.fibZeroTime === undefined || zone.fibZeroTime <= signalTime);
+}
+
 export function findZoneEngulfingPattern(
   candles: StructureCandle[],
   zone: StructureZone,
@@ -1039,6 +1046,7 @@ export function findZoneEngulfingPattern(
   for (let endIndex = 1; endIndex < candles.length; endIndex += 1) {
     const finalCandle = candles[endIndex];
     if (finalCandle.complete === false || finalCandle.time < validFrom) continue;
+    if (!isStructureFibAvailableAt(zone, finalCandle.time)) continue;
     const pattern = patternAt(endIndex);
     if (!pattern || pattern.direction !== requiredDirection) continue;
     const patternCandles = candles.slice(pattern.startIndex, pattern.endIndex + 1);

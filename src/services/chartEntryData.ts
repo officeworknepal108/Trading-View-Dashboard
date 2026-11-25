@@ -28,3 +28,16 @@ export function buildChartPullbackSetups(options: Parameters<typeof buildPullbac
     signals: chartOnlyTradeRecords(options.signals), positions: [], context: {},
   });
 }
+
+/** Replay tables must use the same chart facts as replay drawings and arrows. */
+export function buildZoneTablePullbackSetups(options: Omit<Parameters<typeof buildPullbackChartSetups>[0], 'signals'> & {
+  replay: boolean;
+  chartSignals: Parameters<typeof buildPullbackChartSetups>[0]['signals'];
+  brokerSignals: Parameters<typeof buildPullbackChartSetups>[0]['signals'];
+}) {
+  const { replay, chartSignals, brokerSignals, ...display } = options;
+  return buildPullbackChartSetups({ ...display,
+    signals: replay ? chartOnlyTradeRecords(chartSignals) : [...chartSignals, ...brokerSignals],
+    positions: replay ? [] : display.positions, context: replay ? {} : display.context,
+  });
+}

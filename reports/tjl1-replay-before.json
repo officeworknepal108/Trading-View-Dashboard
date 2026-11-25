@@ -1,0 +1,22 @@
+{
+  "mode": "before",
+  "rows": [
+    {
+      "row": "TJL115mTAP 1SELL3,533.815 – 3,540.13763.22 PIPST4 BEAR · OBSERVED4 bars · TRADE",
+      "invalidEntryDetails": []
+    },
+    {
+      "row": "TJL115mTAP 1SELL3,533.815 – 3,540.13763.22 PIPST4 BEAR · OBSERVED5 bars · TRADE",
+      "invalidEntryDetails": []
+    },
+    {
+      "row": "TJL115mTAP 1SELL3,533.815 – 3,540.13763.22 PIPST4 BEAR · OBSERVED0 bars · TRADE",
+      "invalidEntryDetails": []
+    },
+    {
+      "row": "TJL115mTAP 1SELL3,533.815 – 3,540.13763.22 PIPST4 BEAR · OBSERVED1 bar · TRADE",
+      "invalidEntryDetails": []
+    }
+  ],
+  "errors": []
+}

@@ -4,7 +4,7 @@ import type {
   StructureCandle,
   StructureZone,
 } from './marketStructure';
-import { detectEngulfingPatternAt, isGoldZoneEntryBlocked, isZoneEligibleForEngulfingEntry } from './marketStructure';
+import { detectEngulfingPatternAt, isGoldZoneEntryBlocked, isZoneEligibleForEngulfingEntry, isStructureFibAvailableAt } from './marketStructure';
 export type TradeTimeframe = 'M1' | 'M5' | 'M15' | 'M30' | 'H1' | 'H4' | 'D';
 export type TradeStatus = 'pending' | 'active' | 'risk-free' | 'tp-hit' | 'sl-hit';
 export type TradeResult = 'sl' | 'rf' | 'tp';
@@ -335,7 +335,8 @@ export function resolveZoneEngulfingSignal(
   // chart-timeframe engulfing (for example, 1H entries confirmed on 15M/30M).
   if (isZoneEngulfingFibQualified(zone, 'structure')
     && zone.fallbackEngulfingType && zone.fallbackEngulfingDirection
-    && zone.fallbackEngulfingTime !== undefined && zone.fallbackEngulfingTimeframe) {
+    && zone.fallbackEngulfingTime !== undefined && zone.fallbackEngulfingTimeframe
+    && isStructureFibAvailableAt(zone, zone.fallbackEngulfingTime)) {
     return {
       type: zone.fallbackEngulfingType,
       direction: zone.fallbackEngulfingDirection,
@@ -345,7 +346,8 @@ export function resolveZoneEngulfingSignal(
     };
   }
   if (isZoneEngulfingFibQualified(zone, 'structure')
-    && zone.engulfingType && zone.engulfingDirection && zone.engulfingTime !== undefined) {
+    && zone.engulfingType && zone.engulfingDirection && zone.engulfingTime !== undefined
+    && isStructureFibAvailableAt(zone, zone.engulfingTime)) {
     return {
       type: zone.engulfingType,
       direction: zone.engulfingDirection,
@@ -454,6 +456,24 @@ export function inspectZoneEntryEvidence(
   return evidence;
 }
 
+/** A cached signal cannot supply Fib qualification that its source zone lacks. */
+export interface ZoneEntryQualification {
+  version: 1;
+  zoneTimeframe: TradeTimeframe;
+  zone: StructureZone;
+  signal: EngulfingTradeSignal;
+}
+
+export function isCurrentZoneEngulfingSignal(
+  zone: StructureZone | undefined, signal: EngulfingTradeSignal, zoneTimeframe: TradeTimeframe,
+): boolean {
+  if (!zone || (zone.isBuy ? 'bullish' : 'bearish') !== signal.direction) return false;
+  const current = resolveZoneEngulfingSignal(zone, zoneTimeframe);
+  return current !== undefined && current.type === signal.type
+    && current.direction === signal.direction && current.time === signal.time
+    && current.timeframe === signal.timeframe && current.candleCount === signal.candleCount;
+}
+
 /** Revalidate an unfilled cached setup against the current source zone and candles. */
 export function isUnfilledDirectSetupQualified(options: {
   zone: StructureZone | undefined;
@@ -464,11 +484,7 @@ export function isUnfilledDirectSetupQualified(options: {
 }): boolean {
   const { zone, signal, zoneTimeframe, sourceCandles, goldZone } = options;
   if (!zone || !isZoneEligibleForEngulfingEntry(zone)) return false;
-  const currentSignal = resolveZoneEngulfingSignal(zone, zoneTimeframe);
-  if (!currentSignal || currentSignal.type !== signal.type
-    || currentSignal.direction !== signal.direction || currentSignal.time !== signal.time
-    || currentSignal.timeframe !== signal.timeframe || currentSignal.candleCount !== signal.candleCount
-    || (zone.isBuy ? 'bullish' : 'bearish') !== signal.direction) return false;
+  if (!isCurrentZoneEngulfingSignal(zone, signal, zoneTimeframe)) return false;
   const signalIndex = sourceCandles.findIndex((candle) => candle.time === signal.time);
   if (signalIndex < 0 || sourceCandles[signalIndex].complete === false) return false;
   const pattern = detectEngulfingPatternAt(sourceCandles, signalIndex);

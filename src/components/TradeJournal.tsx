@@ -65,6 +65,7 @@ export interface JournalTradeRecord {
   volume2?: number;
   volume3?: number;
   fibSource?: string;
+  entryQualification?: import('../services/tradeLevels').ZoneEntryQualification;
   fibBand?: string;
   fibLevels?: Array<{ label: string; price: number }>;
   snapshotCandles?: Array<{

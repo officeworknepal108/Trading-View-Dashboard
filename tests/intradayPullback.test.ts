@@ -5,12 +5,14 @@ import { buildIntradayPullbackSignals, intradayPullbackSignalError,
 import { applySignalOppositePositionTarget, priorGoldMt5ZoneExecution, mt5SignalDisabledReason,
   type Mt5SignalInput, type Mt5SignalStatus } from '../src/services/mt5Automation';
 import type { StructureCandle } from '../src/services/marketStructure';
+import type { ZoneEntryQualification } from '../src/services/tradeLevels';
 import { calculateJournalPerformance, type JournalTradeRecord } from '../src/components/TradeJournal';
 import { buildCanonicalTradeRecords, DEFAULT_TRADE_RECORD_FILTERS, filterAccuracyTradeRecords,
   selectTradeChartRecords, selectTwoMonthAccuracyRecords, selectTwoMonthJournalRecords,
   type TradeRecordVerification } from '../src/services/tradeRecordFilters';
 import { deduplicateTradeRecords, mergeTradeRecordAnnotations } from '../src/services/tradeRecordDeduplication';
 import { isGoldTradeRecordRoute } from '../src/services/goldScalping';
+import { buildChartEntryHistory } from '../src/services/chartEntryData';
 
 const base: Mt5SignalInput = { id: 'ENGULFING:M15:900:BUY:3010', setupId: 'DIRECT:M15:zone-one', zoneId: 'zone-one',
   symbol: 'XAUUSD', direction: 'BUY', orderType: 'MARKET', source: 'ENGULFING', tradeStyle: 'INTRADAY',
@@ -22,11 +24,57 @@ const candles: StructureCandle[] = [
   { time: 1800, open: 3010, high: 3012, low: 3007, close: 3011, complete: true },
   { time: 2700, open: 3011, high: 3051, low: 3009, close: 3050, complete: true },
 ];
-const reference: JournalTradeRecord = { id: 'DIRECT:zone-one:900:3010', zoneId: 'zone-one',
+const entryQualification: ZoneEntryQualification = { version: 1, zoneTimeframe: 'M15',
+  signal: { type: 'T1', direction: 'bullish', time: 900, candleCount: 2, timeframe: 'M15' },
+  zone: { id: 'zone-one', name: 'TJL1', category: 'mg', isBuy: true,
+    startTime: 0, endTime: 9000, bottom: 2990, top: 3000, active: true, status: 'valid',
+    fibStatus: 'a-plus', fibBand: '0.71-0.79', fibSourcePrice: 2990, fibZeroPrice: 3020,
+    engulfingType: 'T1', engulfingDirection: 'bullish', engulfingTime: 900, engulfingCandleCount: 2 } };
+const reference: JournalTradeRecord = { id: 'DIRECT:zone-one:900:3010', zoneId: 'zone-one', entryQualification,
   symbol: 'XAUUSD', zoneName: 'TJL1', zoneTimeframe: 'M15', source: 'ENGULFING', tradeStyle: 'INTRADAY',
   signalAt: 900, signalTimeframe: 'M15', engulfingType: 'T1', engulfingCandleCount: 2,
   direction: 'bullish', entry: 3010, stopLoss: 2990, takeProfit: 3050, riskPips: 200, rewardRisk: 2,
   openedAt: 1800, completedAt: 2700, result: 'tp' };
+
+test('TJL1 pullbacks require the same Fib evidence in saved/current history, arrows, accuracy and journal', () => {
+  const rows = intradayPullbackChartRecords(reference, candles, candles, 3600);
+  const unverified: JournalTradeRecord[] = rows.map(row => ({ ...row, entryQualification: undefined,
+    fibSource: 'ZONE FIB', fibBand: '0.71-0.79' }));
+  const noFib = { ...entryQualification.zone, fibStatus: 'not-valid' as const, fibBand: undefined };
+  const options: TradeRecordVerification = { marketSymbol: 'XAUUSD', pipSize: 0.1,
+    requireLtfFib: false, qualifyMtf: () => undefined,
+    timeframeData: { M15: { candles, structure: { zones: [noFib] } } } };
+  for (const [saved, current] of [[unverified, []], [[], unverified], [unverified, unverified]]) {
+    const canonical = buildCanonicalTradeRecords(saved, current, options);
+    assert.deepEqual(canonical, [], 'neither an old fill nor a bare Fib badge proves qualification');
+    assert.deepEqual(buildChartEntryHistory(saved, current, options), []);
+    assert.deepEqual(selectTradeChartRecords(canonical, 'M15', candles), []);
+    assert.deepEqual(selectTwoMonthAccuracyRecords(canonical, 3600), []);
+    const journal = mergeTradeRecordAnnotations(canonical, rows);
+    assert.deepEqual(journal, [], 'saved annotations cannot restore rejected trades');
+    assert.equal(calculateJournalPerformance(journal).completed, 0);
+    assert.equal(calculateJournalPerformance(journal).totalR, 0);
+  }
+  assert.deepEqual(buildCanonicalTradeRecords(unverified, [], { ...options, timeframeData: {} }), [],
+    'missing feeds cannot promote an unverified entry');
+  const recovered = buildCanonicalTradeRecords(unverified, [], { ...options,
+    timeframeData: { M15: { candles, structure: { zones: [entryQualification.zone] } } } });
+  assert.equal(recovered.length, 2, 'matching loaded qualification can recover a legacy entry');
+  assert.ok(recovered.every(row => row.entryQualification?.signal.time === row.signalAt));
+  assert.equal(buildCanonicalTradeRecords(recovered, [], { ...options, timeframeData: {} }).length, 2,
+    'recovered entry evidence survives refresh');
+  assert.equal(buildCanonicalTradeRecords(rows, [], options).length, 2,
+    'later Fib changes cannot erase a qualified entry-time snapshot');
+  const badProof = rows.map(row => ({ ...row, entryQualification: { ...entryQualification,
+    zone: noFib } }));
+  assert.deepEqual(buildCanonicalTradeRecords(badProof, [], options), []);
+  const wrongSignal = rows.map(row => ({ ...row, entryQualification: { ...entryQualification,
+    signal: { ...entryQualification.signal, time: 0 } } }));
+  assert.deepEqual(buildCanonicalTradeRecords(wrongSignal, [], options), []);
+  const broker = { ...unverified[0], id: 'MT5:actual-fill', brokerTicket: 77, mt5Managed: true };
+  assert.deepEqual(buildCanonicalTradeRecords([broker], [], options), [broker],
+    'actual broker executions remain recorded even when their setup was unqualified');
+});
 
 test('Intraday admits a later in-window fill and cancels untouched entries at the 75-minute deadline', () => {
   const quiet = [1800, 2700, 3600, 4500, 5400].map(time => ({ time, open: 3010, high: 3012, low: 3009.5, close: 3010, complete: true }));
@@ -218,7 +266,7 @@ test('saved legacy Intraday versions retain their shorter expiry when candle his
   }
 });
 
-test('November 16 08:30 Nepal SELL stays in accuracy and journal after its zone disappears', () => {
+test('an old SELL without matching Fib evidence is withheld from arrows, accuracy and journal', () => {
   const history: StructureCandle[] = [
     [1794796200, 3885.425, 3887.765, 3877.525, 3878.935],
     [1794797100, 3879.05, 3880.02, 3871.86, 3874.67],
@@ -237,7 +285,7 @@ test('November 16 08:30 Nepal SELL stays in accuracy and journal after its zone 
   ].map(([time, open, high, low, close]) => ({ time, open, high, low, close, complete: true }));
   const saved: JournalTradeRecord = { ...reference,
     id: 'DIRECT:Internal TJL1-1794569400-3886.58:1794796200:3879.05:INTRA:P10',
-    zoneId: undefined, zoneName: 'Internal QML A+', direction: 'bearish',
+    zoneId: undefined, entryQualification: undefined, zoneName: 'Internal QML A+', direction: 'bearish',
     signalAt: 1794796200, openedAt: 1794797100, completedAt: 1794807900,
     entry: 3879.699, stopLoss: 3889.765, takeProfit: 3857.620000000001,
     rewardRisk: 2.193423405523515, riskPips: 100.65999999999804,
@@ -249,7 +297,7 @@ test('November 16 08:30 Nepal SELL stays in accuracy and journal after its zone 
   const canonical = buildCanonicalTradeRecords([saved], [], { marketSymbol: 'XAUUSD', pipSize: 0.1,
     requireLtfFib: false, qualifyMtf: () => undefined,
     timeframeData: { M15: { candles: history, structure: { zones: [] } } } });
-  assert.deepEqual(canonical, [saved]);
+  assert.deepEqual(canonical, []);
   const asOf = Date.parse('2026-11-18T12:00:00Z') / 1000;
   const filters = { ...DEFAULT_TRADE_RECORD_FILTERS, datePeriod: 'MONTH' as const,
     date: '2026-11-01', tradeStyle: ['INTRADAY'] as ['INTRADAY'] };
@@ -259,11 +307,11 @@ test('November 16 08:30 Nepal SELL stays in accuracy and journal after its zone 
     const journal = filterAccuracyTradeRecords(selectTwoMonthJournalRecords(
       mergeTradeRecordAnnotations(canonical, [saved]), asOf), { ...filters, timeframes: [timeframe] },
       'Asia/Kathmandu', 'XAUUSD');
-    assert.deepEqual(accuracy.map(row => row.id), [saved.id]);
+    assert.deepEqual(accuracy, []);
     assert.deepEqual(journal, accuracy);
-    assert.equal(calculateJournalPerformance(journal).completed, 1);
+    assert.equal(calculateJournalPerformance(journal).completed, 0);
   }
-  assert.deepEqual(selectTradeChartRecords(canonical, 'M15', history), [saved]);
+  assert.deepEqual(selectTradeChartRecords(canonical, 'M15', history), []);
   assert.equal(JSON.stringify(saved), before, 'the saved trade is not rewritten');
 });
 
@@ -294,6 +342,11 @@ test('original TP before any fill prevents later pullback entries; ambiguous fil
 
 test('M30 replay tracks each M15 fill and excludes a sibling with ambiguous fill-before-TP ordering', () => {
   const original = { ...reference, signalAt: 1800, signalTimeframe: 'M30' as const,
+    entryQualification: { ...entryQualification,
+      signal: { ...entryQualification.signal, time: 1800, timeframe: 'M30' as const },
+      zone: { ...entryQualification.zone, fallbackEngulfingType: 'T1' as const,
+        fallbackEngulfingDirection: 'bullish' as const, fallbackEngulfingTime: 1800,
+        fallbackEngulfingTimeframe: 'M30', fallbackEngulfingCandleCount: 2 } },
     takeProfit: 3030, rewardRisk: 1, openedAt: 3600, completedAt: 5400 };
   const source = [{ ...candles[0], time: 1800 }, { ...candles[1], time: 3600 }];
   const execution = [{ ...candles[1], time: 3600, low: 3008.5 },
