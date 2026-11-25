@@ -36,8 +36,12 @@ export function LoginPanel({ onLogin }: { onLogin: (user: DashboardUser) => void
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   const [setupRequired, setSetupRequired] = useState(false);
+  const [clientOnly, setClientOnly] = useState(false);
   useEffect(() => {
-    void authRequest('/config').then(config => setSetupRequired(config.ownerSetupRequired === true))
+    void authRequest('/config').then(config => {
+      setSetupRequired(config.ownerSetupRequired === true);
+      setClientOnly(config.clientOnly === true);
+    })
       .catch(() => setError('Unable to reach the login service. Please retry.'));
   }, []);
   const submit = async (event: React.FormEvent) => {
@@ -50,7 +54,7 @@ export function LoginPanel({ onLogin }: { onLogin: (user: DashboardUser) => void
   };
   return <div className="auth-page"><section className="auth-card">
     <div className="auth-brand">TRADING DASHBOARD</div>
-    <h1>Sign in</h1>
+    <h1>{clientOnly ? 'Client sign in' : 'Sign in'}</h1>
     <p className="auth-muted">Use the username and password assigned to you.</p>
     {setupRequired && <p className="auth-notice">The owner must finish the private local account setup before managing users.</p>}
     {error && <p className="auth-error" role="alert">{error}</p>}

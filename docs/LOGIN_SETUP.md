@@ -20,9 +20,19 @@ served as static content. Setup cannot replace an owner who already has username
 and password credentials. Do not put passwords in command arguments, environment
 files, source code, or chat.
 
-`AUTH_PUBLIC_URL` must exactly match the browser origin, including localhost
-versus 127.0.0.1. Hosted dashboards require HTTPS. Google and Resend credentials
-are no longer needed.
+`AUTH_LOCAL_URL=http://127.0.0.1:3002` is the local management address for
+admins and the super admin. The matching localhost address is also accepted.
+Set `AUTH_PUBLIC_URL` to the exact public HTTPS address used by students. When
+this is a separate public hostname, it accepts client accounts only; admin and
+super-admin sign-in and sessions are blocked there. Both addresses use the same
+accounts, so local managers can create and update accounts for public clients.
+
+Writes must match both the approved origin and the requested host. Forwarded
+tunnel requests cannot claim local management access by spoofing localhost.
+Public cookies are Secure; local HTTP cookies work on the loopback address.
+New sessions are bound to the address where they were issued. Google and Resend
+credentials are no longer needed. If a temporary tunnel address changes, update
+`AUTH_PUBLIC_URL` and restart the dashboard.
 
 ## Roles and account management
 

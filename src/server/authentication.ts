@@ -47,14 +47,16 @@ interface User extends Omit<DashboardUser, 'canAccess' | 'accessMessage' | 'cred
   passwordHash?: string;
   googleSubject?: string;
 }
-interface Session { digest: string; userId: string; expiresAt: number; verifiedAt?: number; deviceDigest?: string }
+interface Session { digest: string; userId: string; expiresAt: number; verifiedAt?: number; deviceDigest?: string; origin?: string }
 interface Audit { id: string; at: number; actor: string; action: string; target?: string; details?: string }
 interface Store { users: User[]; sessions: Session[]; challenges: unknown[]; resets: unknown[]; oauth: unknown[]; audit: Audit[] }
-export interface AuthOptions { directory?: string; publicUrl?: string; now?: () => number }
+export interface AuthOptions { directory?: string; publicUrl?: string; localUrl?: string; now?: () => number }
 
 export class DashboardAuth {
   readonly router = express.Router();
   readonly origin: string;
+  readonly localOrigin: string;
+  private localOrigins: Set<string>;
   private store!: Store;
   private ready: Promise<void>;
   private file: string;
@@ -68,6 +70,16 @@ export class DashboardAuth {
     if (!this.origin.startsWith('https:') && !['127.0.0.1', 'localhost'].includes(new URL(this.origin).hostname)) {
       throw new Error('AUTH_PUBLIC_URL must use HTTPS outside localhost.');
     }
+    const publicIsLocal = ['127.0.0.1', 'localhost'].includes(new URL(this.origin).hostname);
+    const local = new URL(options.localUrl ?? process.env.AUTH_LOCAL_URL
+      ?? (publicIsLocal ? this.origin : `http://127.0.0.1:${process.env.PORT || 3002}`));
+    if (!['http:', 'https:'].includes(local.protocol) || !['127.0.0.1', 'localhost'].includes(local.hostname)) {
+      throw new Error('AUTH_LOCAL_URL must be a loopback HTTP or HTTPS address.');
+    }
+    this.localOrigin = local.origin;
+    this.localOrigins = new Set(['127.0.0.1', 'localhost'].map(hostname => {
+      const alias = new URL(local); alias.hostname = hostname; return alias.origin;
+    }));
     this.file = path.join(options.directory ?? path.resolve('.dashboard-auth'), 'accounts.json');
     this.setupFile = path.join(path.dirname(this.file), 'owner-setup.json');
     this.now = options.now ?? Date.now;
@@ -87,10 +99,9 @@ export class DashboardAuth {
       || this.store.users.some(u => u.id === s.userId && u.role !== 'client'));
     if (!this.ownerReady()) {
       this.setupToken = secret();
-      const hostname = new URL(this.origin).hostname;
-      const url = ['localhost', '127.0.0.1'].includes(hostname) ? this.origin : `http://127.0.0.1:${process.env.PORT || 3000}`;
+      const url = this.localOrigin;
       await mkdir(path.dirname(this.file), { recursive: true });
-      await writeFile(this.setupFile, JSON.stringify({ token: this.setupToken, origin: this.origin, url }), { mode: 0o600 });
+      await writeFile(this.setupFile, JSON.stringify({ token: this.setupToken, origin: url, url }), { mode: 0o600 });
     } else await unlink(this.setupFile).catch(error => { if (error.code !== 'ENOENT') throw error; });
     await this.save();
   }
@@ -117,8 +128,28 @@ export class DashboardAuth {
       });
     };
   }
-  private cookieOptions() {
-    return { httpOnly: true, secure: this.origin.startsWith('https:'), sameSite: 'lax' as const, path: '/' };
+  private isLocalRequest(req: express.Request): boolean {
+    // A tunnel also connects from loopback; forwarded requests must never gain
+    // local management rights by supplying a localhost Host header.
+    return ['127.0.0.1', '::1', '::ffff:127.0.0.1'].includes(req.socket.remoteAddress ?? '')
+      && !['forwarded', 'x-forwarded-for', 'x-forwarded-host', 'x-forwarded-proto', 'cf-connecting-ip', 'cf-ray'].some(header => req.get(header));
+  }
+  private requestOrigin(req: express.Request): string | undefined {
+    const host = req.get('host')?.toLowerCase();
+    const local = [...this.localOrigins].find(origin => new URL(origin).host === host);
+    if (local) return this.isLocalRequest(req) ? local : undefined;
+    return new URL(this.origin).host === host ? this.origin : undefined;
+  }
+  private clientOnlyRequest(req: express.Request): boolean {
+    const origin = this.requestOrigin(req);
+    return !!origin && !this.localOrigins.has(origin);
+  }
+  private allowedWriteOrigin(req: express.Request): boolean {
+    const origin = this.requestOrigin(req);
+    return !!origin && req.get('origin') === origin;
+  }
+  private cookieOptions(req: express.Request) {
+    return { httpOnly: true, secure: (this.requestOrigin(req) ?? this.origin).startsWith('https:'), sameSite: 'lax' as const, path: '/' };
   }
   private cookie(req: express.Request, name: string) {
     return (req.headers.cookie ?? '').split(';').map(part => part.trim()).find(part => part.startsWith(`${name}=`))?.slice(name.length + 1) ?? '';
@@ -144,9 +175,12 @@ export class DashboardAuth {
     return { ...safe, credentialsReady: !!(user.username && user.passwordHash), canAccess, accessMessage };
   }
   private findSession(req: express.Request): User | undefined {
+    const origin = this.requestOrigin(req);
+    if (!origin) return;
     const session = this.store.sessions.find(s => s.digest === hash(this.cookie(req, SESSION_COOKIE)) && s.expiresAt > this.now());
-    if (!session) return;
+    if (!session || session.origin && session.origin !== origin) return;
     const user = this.store.users.find(u => u.id === session.userId);
+    if (user && user.role !== 'client' && this.clientOnlyRequest(req)) return;
     if (user?.role === 'client' && session.deviceDigest !== hash(this.cookie(req, DEVICE_COOKIE))) return;
     return user;
   }
@@ -169,9 +203,9 @@ export class DashboardAuth {
       && s.digest !== hash(this.cookie(req, SESSION_COOKIE))
       && !(user.role === 'client' && s.userId === user.id));
     const verifiedAt = this.now();
-    this.store.sessions.push({ digest: hash(raw), userId: user.id, deviceDigest, verifiedAt, expiresAt: verifiedAt + SESSION_LIFETIME });
-    res.cookie(DEVICE_COOKIE, device, { ...this.cookieOptions(), maxAge: SESSION_LIFETIME });
-    res.cookie(SESSION_COOKIE, raw, { ...this.cookieOptions(), maxAge: SESSION_LIFETIME });
+    this.store.sessions.push({ digest: hash(raw), userId: user.id, deviceDigest, verifiedAt, expiresAt: verifiedAt + SESSION_LIFETIME, origin: this.requestOrigin(req) });
+    res.cookie(DEVICE_COOKIE, device, { ...this.cookieOptions(req), maxAge: SESSION_LIFETIME });
+    res.cookie(SESSION_COOKIE, raw, { ...this.cookieOptions(req), maxAge: SESSION_LIFETIME });
   }
   private uniqueUsername(input: unknown, exceptId?: string) {
     const username = normalizeUsername(input);
@@ -181,14 +215,15 @@ export class DashboardAuth {
   private routes() {
     this.router.use((req, res, next) => {
       res.setHeader('Cache-Control', 'no-store'); res.setHeader('Referrer-Policy', 'no-referrer');
-      if (!['GET', 'HEAD'].includes(req.method) && req.get('origin') !== this.origin) {
+      if (!this.requestOrigin(req) || !['GET', 'HEAD'].includes(req.method) && !this.allowedWriteOrigin(req)) {
         res.status(403).json({ ok: false, error: 'Same-origin requests only.' }); return;
       }
       next();
     });
-    this.router.get('/config', this.run((_req, res) => res.json({ ok: true, passwordLogin: true, ownerSetupRequired: !this.ownerReady() })));
+    this.router.get('/config', this.run((req, res) => res.json({ ok: true, passwordLogin: true,
+      clientOnly: this.clientOnlyRequest(req), ownerSetupRequired: !this.ownerReady() })));
     this.router.post('/owner-setup', this.run(async (req, res) => {
-      const local = ['127.0.0.1', '::1', '::ffff:127.0.0.1'].includes(req.socket.remoteAddress ?? '');
+      const local = this.isLocalRequest(req) && this.localOrigins.has(this.requestOrigin(req) ?? '');
       if (!local || this.ownerReady() || !this.setupToken || !equal(req.get('authorization') ?? '', `Bearer ${this.setupToken}`)) {
         throw new AuthError(403, 'Owner setup requires the private local setup prompt.');
       }
@@ -215,6 +250,7 @@ export class DashboardAuth {
       this.limit(`login:ip:${req.ip}`, 60); this.limit(`login:user:${username}`, 12);
       const user = this.store.users.find(u => u.username === username);
       if (!await passwordMatches(req.body?.password, user?.passwordHash) || !user) throw new AuthError(401, 'Username or password is incorrect.');
+      if (user.role !== 'client' && this.clientOnlyRequest(req)) throw new AuthError(403, 'Admins and super admin must sign in through the local dashboard.');
       if (!this.view(user).canAccess) throw new AuthError(403, this.view(user).accessMessage);
       this.rates.delete(`login:user:${username}`); this.rates.delete(`login:ip:${req.ip}`);
       this.issueSession(req, res, user); this.audit(username, 'login.password', username);
@@ -223,7 +259,7 @@ export class DashboardAuth {
     this.router.post('/logout', this.run(async (req, res) => {
       const digest = hash(this.cookie(req, SESSION_COOKIE));
       this.store.sessions = this.store.sessions.filter(s => s.digest !== digest);
-      await this.save(); res.clearCookie(SESSION_COOKIE, this.cookieOptions()); res.json({ ok: true });
+      await this.save(); res.clearCookie(SESSION_COOKIE, this.cookieOptions(req)); res.json({ ok: true });
     }));
     // Explicitly disable the old authorization paths, including old reset links.
     for (const route of ['/register', '/verify', '/resend', '/forgot', '/reset', '/google', '/google/callback']) {
@@ -304,7 +340,7 @@ export class DashboardAuth {
       if (machineRoute && bridgeToken && equal(req.get('authorization') ?? '', `Bearer ${bridgeToken}`)) { next(); return; }
       const user = this.requireUser(req);
       res.locals.dashboardUser = this.view(user);
-      if (!['GET', 'HEAD'].includes(req.method) && req.get('origin') !== this.origin) throw new AuthError(403, 'Same-origin requests only.');
+      if (!['GET', 'HEAD'].includes(req.method) && !this.allowedWriteOrigin(req)) throw new AuthError(403, 'Same-origin requests only.');
       if (machineWrite) throw new AuthError(403, 'Bridge machine authentication required.');
       if (user.role === 'client') {
         const allowed = req.method === 'GET' && ['/mt5/status', '/mt5/market-data', '/tradingview/market-data', '/journal/trades'].includes(req.path)

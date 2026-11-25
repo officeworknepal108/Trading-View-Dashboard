@@ -1,24 +1,39 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import express from 'express';
-import { createServer } from 'node:http';
+import { createServer, request as httpRequest } from 'node:http';
 import { mkdtemp, readFile, writeFile, rm } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { DashboardAuth, normalizeUsername } from '../src/server/authentication';
+import { DashboardAuth, normalizeUsername, hashPassword } from '../src/server/authentication';
 import { clientVisibleTrades } from '../src/server/clientJournal';
 import { denyPrivateFiles } from '../src/server/privateFiles';
 
 class Browser {
   cookies = new Map<string, string>();
-  constructor(readonly base: string) {}
-  async request(route: string, body?: unknown, method?: string, origin = this.base) {
-    const response = await fetch(`${this.base}${route}`, {
+  constructor(readonly base: string, readonly defaultOrigin = base, readonly host?: string) {}
+  async request(route: string, body?: unknown, method?: string, origin = this.defaultOrigin) {
+    const options = {
       method: method ?? (body === undefined ? 'GET' : 'POST'), redirect: 'manual',
-      headers: { Origin: origin, Cookie: [...this.cookies].map(([name, value]) => `${name}=${value}`).join('; '), 'Content-Type': 'application/json' },
+      headers: { ...(this.host ? { Host: this.host } : {}), Origin: origin, Cookie: [...this.cookies].map(([name, value]) => `${name}=${value}`).join('; '), 'Content-Type': 'application/json' },
       ...(body === undefined ? {} : { body: JSON.stringify(body) }),
-    });
+    };
+    // Node's fetch normalizes Host to the URL. Use raw HTTP to emulate the Host
+    // that Cloudflare forwards while connecting to the isolated loopback server.
+    const response = this.host ? await new Promise<Response>((resolve, reject) => {
+      const request = httpRequest(`${this.base}${route}`, { method: options.method, headers: options.headers }, incoming => {
+        const chunks: Buffer[] = [];
+        incoming.on('data', chunk => chunks.push(Buffer.from(chunk)));
+        incoming.on('error', reject);
+        incoming.on('end', () => {
+          const headers = new Headers();
+          for (let i = 0; i < incoming.rawHeaders.length; i += 2) headers.append(incoming.rawHeaders[i], incoming.rawHeaders[i + 1]);
+          resolve(new Response(Buffer.concat(chunks), { status: incoming.statusCode, headers }));
+        });
+      });
+      request.on('error', reject); request.end(options.body);
+    }) : await fetch(`${this.base}${route}`, { ...options, redirect: 'manual' });
     for (const cookie of response.headers.getSetCookie()) {
       const [name, value] = cookie.split(';')[0].split('=');
       if (value) this.cookies.set(name, value); else this.cookies.delete(name);
@@ -262,4 +277,72 @@ test('client journal excludes broker identifiers, executions and money results',
   const trades = [{ id: 'chart' }, { id: 'MT5:42' }, { id: 'a', mt5Managed: true },
     { id: 'b', mt5SignalId: 'signal' }, { id: 'c', brokerTicket: 42 }, { id: 'd', realizedProfit: 5 }];
   assert.deepEqual(clientVisibleTrades(trades), [{ id: 'chart' }]);
+});
+
+
+test('local management and public client login have separate origins, roles and cookie security', { timeout: 60_000 }, async () => {
+  const directory = await mkdtemp(path.join(tmpdir(), 'dashboard-dual-origin-'));
+  const app = express(); app.use(express.json());
+  const server = createServer(app);
+  await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve));
+  const address = server.address(); assert.ok(address && typeof address !== 'string');
+  const local = `http://127.0.0.1:${address.port}`, publicOrigin = 'https://students.example.com';
+  const password = 'Dual-origin-test-password-123';
+  const passwordHash = await hashPassword(password);
+  await writeFile(path.join(directory, 'accounts.json'), JSON.stringify({
+    users: ['super_admin', 'admin', 'client'].map(role => ({ id: role, username: role,
+      email: role === 'super_admin' ? 'tradingviewfx108@gmail.com' : role, role,
+      passwordHash, verified: true, status: 'approved', createdAt: Date.now() })),
+    sessions: [{ digest: createHash('sha256').update('legacy-owner-session').digest('hex'), userId: 'super_admin', expiresAt: Date.now() + 86_400_000 }],
+    challenges: [], resets: [], oauth: [], audit: [],
+  }));
+  const auth = new DashboardAuth({ directory, publicUrl: publicOrigin, localUrl: local });
+  app.use('/api/auth', auth.router); app.use('/api', auth.guard);
+  app.get('/api/tradingview/market-data', (_req, res) => res.json({ ok: true }));
+  app.put('/api/mt5/config', (_req, res) => res.json({ ok: true }));
+  const owner = new Browser(local), manager = new Browser(local);
+  const student = new Browser(local, publicOrigin, 'students.example.com');
+  const publicOwner = new Browser(local, publicOrigin, 'students.example.com');
+  try {
+    assert.equal((await (await owner.request('/api/auth/config')).json()).clientOnly, false);
+    assert.equal((await (await student.request('/api/auth/config')).json()).clientOnly, true);
+    publicOwner.cookies.set('dashboard_session', 'legacy-owner-session');
+    assert.equal((await (await publicOwner.request('/api/auth/me')).json()).user, null, 'old owner sessions are not accepted publicly');
+    for (const username of ['super_admin', 'admin']) {
+      assert.equal((await publicOwner.request('/api/auth/login', { username, password })).status, 403);
+    }
+    const login = await owner.request('/api/auth/login', { username: 'super_admin', password });
+    assert.equal(login.status, 200);
+    assert.ok(login.headers.getSetCookie().every(cookie => !/; Secure/i.test(cookie)), 'loopback HTTP cookies are usable without HTTPS');
+    assert.equal((await manager.request('/api/auth/login', { username: 'admin', password })).status, 200);
+    const creation = await owner.request('/api/auth/users', { username: 'new_local_client', password, role: 'client' });
+    assert.equal(creation.status, 201, await creation.clone().text());
+    const createdId = (await creation.json()).user.id;
+    assert.equal((await manager.request(`/api/auth/users/${createdId}`, { expiresAt: Date.now() + 86_400_000 }, 'PATCH')).status, 200);
+    assert.equal((await owner.request('/api/mt5/config', {}, 'PUT')).status, 200);
+    const publicLogin = await student.request('/api/auth/login', { username: 'client', password });
+    assert.equal(publicLogin.status, 200);
+    assert.ok(publicLogin.headers.getSetCookie().every(cookie => /; Secure/i.test(cookie)), 'public HTTPS cookies remain Secure');
+    assert.equal((await student.request('/api/tradingview/market-data')).status, 200);
+    assert.equal((await student.request('/api/auth/users')).status, 403);
+    assert.equal((await student.request('/api/mt5/config', {}, 'PUT')).status, 403);
+    publicOwner.cookies = new Map(owner.cookies);
+    assert.equal((await (await publicOwner.request('/api/auth/me')).json()).user, null, 'local owner session cannot cross into public access');
+    const localStudent = new Browser(local); localStudent.cookies = new Map(student.cookies);
+    assert.equal((await (await localStudent.request('/api/auth/me')).json()).user, null, 'new sessions are origin-bound');
+    assert.equal((await owner.request('/api/auth/users', {}, 'POST', publicOrigin)).status, 403, 'an allowed public origin cannot write to the local host');
+    assert.equal((await student.request('/api/auth/login', { username: 'client', password }, 'POST', local)).status, 403);
+    const spoof = await fetch(local + '/api/auth/users', { method: 'POST',
+      headers: { Host: new URL(local).host, Origin: local, 'X-Forwarded-Host': new URL(local).host,
+        'CF-Connecting-IP': '203.0.113.5', Cookie: [...owner.cookies].map(([k,v]) => `${k}=${v}`).join('; '), 'Content-Type': 'application/json' }, body: '{}' });
+    assert.equal(spoof.status, 403, 'tunnel forwarding cannot masquerade as local management');
+    const unknown = new Browser(local, 'https://unknown.example', 'unknown.example');
+    assert.equal((await unknown.request('/api/auth/config')).status, 403);
+    const logout = await student.request('/api/auth/logout', {});
+    assert.equal(logout.status, 200); assert.ok(logout.headers.getSetCookie().every(cookie => /; Secure/i.test(cookie)));
+    assert.equal((await owner.request(`/api/auth/users/${createdId}`, {}, 'DELETE')).status, 200);
+  } finally {
+    await new Promise<void>(resolve => server.close(() => resolve()));
+    await rm(directory, { recursive: true, force: true });
+  }
 });
