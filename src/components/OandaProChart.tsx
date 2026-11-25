@@ -1,5 +1,5 @@
 import { telegramAlertEventKey } from '../services/telegramMessages';
-import { buildChartEntryHistory, buildChartPullbackSetups, buildZoneTablePullbackSetups, chartOnlyTradeRecords, isBrokerChartRecord } from '../services/chartEntryData';
+import { buildChartEntryHistory, buildChartPullbackSetups, buildZoneTablePullbackSetups, chartArrowRecordLinks, chartOnlyTradeRecords, isBrokerChartRecord } from '../services/chartEntryData';
 import { BollingerStudy } from './BollingerStudy';
 import { detectAutoTrendlines, type AutoTrendline } from '../services/autoTrendlines';
 import { buildIntradayPullbackSignals, intradayPullbackChartRecords } from '../services/intradayPullback';
@@ -19,6 +19,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom';
 import type { UserRole } from '../services/authTypes';
 import { userStorage } from '../services/userStorage';
+import { fibBadgeTiming, type FibBadgeTiming } from '../services/fibBadgeTiming';
 import {
   CandlestickSeries,
   ColorType,
@@ -123,6 +124,7 @@ import {
   twoMonthAccuracyWindow,
   tradeRecordDatePeriodKey,
   tradeRecordPeriodLabel,
+  countTradeSetups,
   type TradeRecordFilters,
 } from '../services/tradeRecordFilters';
 import { deduplicateTradeRecords } from '../services/tradeRecordDeduplication';
@@ -1286,7 +1288,7 @@ function zoneEntryStory(options: Parameters<typeof explainZoneEntry>[0],
     : `This zone has ${fib.join(' and ')} alignment. ${fib.length === 1 ? 'That alignment condition has' : 'Those alignment conditions have'} passed.`);
   if (options.barsAgo !== undefined && Number.isFinite(options.barsAgo) && zone.tapTime !== undefined && zone.tapTime <= now) {
     const windowRule = (options.symbol ?? 'XAUUSD') === 'XAUUSD'
-      ? 'Each new tap restarts the table window: 50 bars for Tap 1 and 10 bars for Tap 2 and later taps.'
+      ? 'Each new tap restarts the table window: 20 bars for Tap 1 and 10 bars for Tap 2 and later taps.'
       : "Each new tap restarts the table's 50-bar window.";
     narrative.push(`Price last touched this zone ${options.barsAgo} ${options.barsAgo === 1 ? 'bar' : 'bars'} ago. ${windowRule} Touching the zone alone does not open a trade.`);
   }
@@ -2076,7 +2078,7 @@ export function tradeDisplayExpired(
 
 /** Zone rows use tap age, independently of the five-candle drawing expiry. */
 export function zoneTableTapBarLimit(tapCount = 1, symbol = 'XAUUSD'): number {
-  return symbol === 'XAUUSD' && tapCount > 1 ? 10 : 50;
+  return symbol === 'XAUUSD' ? (tapCount > 1 ? 10 : 20) : 50;
 }
 
 export function zoneTableTradeExpired(
@@ -2085,7 +2087,7 @@ export function zoneTableTradeExpired(
   tapCount = 1, symbol = 'XAUUSD',
 ): boolean {
   const limit = zoneTableTapBarLimit(tapCount, symbol);
-  if (limit === 10 && tapBarsAgo > limit) return true;
+  if (symbol === 'XAUUSD' && tapBarsAgo > limit) return true;
   return isSlTpTradeDisplayFinished(trade) ? tapBarsAgo > limit : tradeDisplayExpired(trade, candles, asOf);
 }
 
@@ -2449,6 +2451,33 @@ function readPendingJournalScreenshot(tradeId: string): string | undefined {
   }
 }
 
+export const FibZoneBadge: React.FC<{
+  label: string; alignedLater?: boolean; tone?: 'sky' | 'violet' | 'fuchsia';
+}> = ({ label, alignedLater = false, tone = 'fuchsia' }) => {
+  const color = tone === 'sky' ? 'bg-sky-100 text-sky-800'
+    : tone === 'violet' ? 'bg-violet-100 text-violet-800' : 'bg-fuchsia-100 text-fuchsia-800';
+  return <span className="ml-1 inline-flex flex-col items-center align-middle">
+    <span className={`rounded px-1 py-0.5 text-[8px] font-black ${color}`}>
+      {label}
+    </span>
+    {alignedLater && <span className="text-[6px] font-bold leading-[8px] text-slate-600"
+      title={`${label} was not aligned when this engulfing was observed; it aligned later.`}>
+      ALIGNED LATER
+    </span>}
+  </span>;
+};
+
+function deepDiscountAlignedLater(zone: StructureZone, timing: FibBadgeTiming | undefined): boolean {
+  if (!timing || isDefaultDeepDiscountZoneName(zone.name)) return false;
+  const deep = (band: string | undefined) => band === 'deep' || band === '0.71-0.79';
+  const sources: Array<boolean | undefined> = [];
+  if (zone.fibStatus === 'a-plus' && deep(zone.fibBand)) sources.push(timing.structure);
+  if (zone.swingFibStatus === 'a-plus' && deep(zone.swingFibBand)) sources.push(timing.swing);
+  if (zone.h1SwingFibStatus === 'aligned' && deep(zone.h1SwingFibBand)) sources.push(timing.h1Swing);
+  if (zone.dayFibStatus === 'a-plus' && deep(zone.dayFibBand)) sources.push(timing.day);
+  return sources.length > 0 && sources.every(value => value === true);
+}
+
 function journalFibMetadata(
   zone: StructureZone,
   signal: EngulfingTradeSignal,
@@ -2492,8 +2521,9 @@ function journalVolumeMetadata(
   };
 }
 
-const EngulfingAccuracyTable: React.FC<{
+export const EngulfingAccuracyTable: React.FC<{
   records: AccuracyTradeRecord[];
+  entryArrows: Array<{ id: string; memberIds?: readonly string[] }>;
   allRecords: AccuracyTradeRecord[];
   mt5Records: AccuracyTradeRecord[];
   canViewMt5?: boolean;
@@ -2506,7 +2536,7 @@ const EngulfingAccuracyTable: React.FC<{
   onClose: () => void;
   selectedStrategies: TradeStrategy[];
   onStrategiesChange: (selected: TradeStrategy[]) => void;
-}> = ({ records, allRecords, mt5Records, canViewMt5 = false, timeframe, showAllTrades, historyAsOf, timeZone, marketSymbol, entryArrowsVisible, onClose, selectedStrategies, onStrategiesChange }) => {
+}> = ({ records, entryArrows, allRecords, mt5Records, canViewMt5 = false, timeframe, showAllTrades, historyAsOf, timeZone, marketSymbol, entryArrowsVisible, onClose, selectedStrategies, onStrategiesChange }) => {
   const [activeTab, setActiveTab] = useState<'SETUPS' | 'MT5'>('SETUPS');
   const [filters, setFilters] = useState<TradeRecordFilters>(() => ({
     ...DEFAULT_TRADE_RECORD_FILTERS,
@@ -2532,11 +2562,14 @@ const EngulfingAccuracyTable: React.FC<{
   const summaryRecords = useMemo(() => filteredAllRecords.filter((record) => (
     record.result === 'tp' || record.result === 'sl' || record.result === 'rf'
   )), [filteredAllRecords]);
-  const visibleChartIds = useMemo(() => {
+  const visibleChartLinks = useMemo(() => {
     const selectedIds = new Set(summaryRecords.map((record) => record.id));
-    return new Set(records.filter((record) => selectedIds.has(record.id)).map((record) => record.id));
-  }, [records, summaryRecords]);
+    return chartArrowRecordLinks(entryArrows, records.filter(record => selectedIds.has(record.id)));
+  }, [records, entryArrows, summaryRecords]);
+  const visibleChartIds = new Set(visibleChartLinks.keys());
+  const visibleArrowIds = new Set([...visibleChartLinks.values()].flatMap(ids => [...ids]));
   const timeframeCounts = accuracyCounts(summaryRecords);
+  const summarySetupCount = countTradeSetups(summaryRecords);
   const availableTimeframes = useMemo(() => Array.from(new Set<TradeTimeframe>(
     [...TIMEFRAMES.map(({ value }) => value),
       ...allRecords.map((record) => record.signalTimeframe),
@@ -2550,12 +2583,16 @@ const EngulfingAccuracyTable: React.FC<{
   ))
     .filter((zoneName) => !ACCURACY_ZONE_ROWS.includes(zoneName));
   const zoneRows = [...ACCURACY_ZONE_ROWS, ...extraZoneRows];
-  const resultRow = (title: string, counts: ReturnType<typeof accuracyCounts>) => {
+  const resultRow = (title: string, counts: ReturnType<typeof accuracyCounts>, setupRecords?: AccuracyTradeRecord[]) => {
     const total = counts.sl + counts.rf + counts.tp;
     const accuracy = total > 0 ? `${Math.round((counts.tp * 10_000) / total) / 100}%` : '—';
     return (
       <tr key={title} className="border-t border-slate-200 bg-white/95">
-        <td className="whitespace-nowrap px-1.5 py-0.5 text-left font-bold text-slate-700">{title}</td>
+        <td className="whitespace-nowrap px-1.5 py-0.5 text-left font-bold text-slate-700">
+          {title}{setupRecords && <div className="text-[7px] font-semibold text-slate-500">
+            {countTradeSetups(setupRecords)} {countTradeSetups(setupRecords) === 1 ? 'setup' : 'setups'} / {setupRecords.length} {setupRecords.length === 1 ? 'entry' : 'entries'}
+          </div>}
+        </td>
         <td className="px-1.5 py-0.5 font-black text-rose-700">{counts.sl}</td>
         <td className="px-1.5 py-0.5 font-black text-amber-600">{counts.rf}</td>
         <td className="px-1.5 py-0.5 font-black text-emerald-700">{counts.tp}</td>
@@ -2584,7 +2621,7 @@ const EngulfingAccuracyTable: React.FC<{
     }`}>
       <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-slate-300 bg-indigo-50 px-2 py-1 text-[9px] font-black uppercase tracking-wide text-indigo-700">
         <span>
-          {marketSymbol} trade accuracy · {entryArrowsVisible ? visibleChartIds.size : 0} arrow{visibleChartIds.size === 1 && entryArrowsVisible ? '' : 's'}
+          {marketSymbol} trade accuracy · {summarySetupCount} {summarySetupCount === 1 ? 'setup' : 'setups'} / {summaryRecords.length} {summaryRecords.length === 1 ? 'entry' : 'entries'} · {entryArrowsVisible ? visibleArrowIds.size : 0} {visibleArrowIds.size === 1 ? 'arrow' : 'arrows'}
         </span>
         <TradeMultiSelect
           allLabel="ALL TIMEFRAMES"
@@ -2652,11 +2689,11 @@ const EngulfingAccuracyTable: React.FC<{
                 : filters.timeframes.map((value) => GRANULARITY_LABELS[value].toUpperCase()).join(', ') || 'NONE', timeframeCounts)}
               {marketSymbol === 'XAUUSD' && <>
                 {header('Trade style')}
-                {resultRow('INTRADAY ENTRIES', accuracyCounts(summaryRecords.filter((record) => record.tradeStyle === 'INTRADAY')))}
-                {resultRow('SCALPING', accuracyCounts(summaryRecords.filter((record) => record.tradeStyle === 'SCALPING')))}
-                {resultRow('ABHI SCALP ENTRIES', accuracyCounts(summaryRecords.filter((record) => record.tradeStyle === 'SCALP_1_1')))}
-                {resultRow('BB M5 CHART STUDY', accuracyCounts(summaryRecords.filter(record => record.tradeStyle === 'BOLLINGER_M5' && !record.mt5Managed && record.brokerTicket === undefined)))}
-                {resultRow('BB M5 MT5 FILLS', accuracyCounts(summaryRecords.filter(record => record.tradeStyle === 'BOLLINGER_M5' && (record.mt5Managed || record.brokerTicket !== undefined))))}
+                {(() => { const rows = summaryRecords.filter((record) => record.tradeStyle === 'INTRADAY'); return resultRow('INTRADAY ENTRIES', accuracyCounts(rows), rows); })()}
+                {(() => { const rows = summaryRecords.filter((record) => record.tradeStyle === 'SCALPING'); return resultRow('SCALPING', accuracyCounts(rows), rows); })()}
+                {(() => { const rows = summaryRecords.filter((record) => record.tradeStyle === 'SCALP_1_1'); return resultRow('ABHI SCALP', accuracyCounts(rows), rows); })()}
+                {(() => { const rows = summaryRecords.filter(record => record.tradeStyle === 'BOLLINGER_M5' && !record.mt5Managed && record.brokerTicket === undefined); return resultRow('BB M5 CHART STUDY', accuracyCounts(rows), rows); })()}
+                {(() => { const rows = summaryRecords.filter(record => record.tradeStyle === 'BOLLINGER_M5' && (record.mt5Managed || record.brokerTicket !== undefined)); return resultRow('BB M5 MT5 FILLS', accuracyCounts(rows), rows); })()}
               </>}
               {header('Trade source')}
               {resultRow('ENGULFING', accuracyCounts(
@@ -2677,7 +2714,7 @@ const EngulfingAccuracyTable: React.FC<{
           <div className="min-w-0 max-w-[calc(100vw-338px)] flex-1 overflow-auto">
             <div className="sticky left-0 top-0 z-20 border-b border-indigo-200 bg-indigo-50">
               <div className="bg-indigo-100 px-2 py-1 text-[9px] font-black uppercase tracking-wide text-indigo-800">
-                {activeTab === 'MT5' ? 'MT5 broker executions' : 'All completed setups'} · {filteredAllRecords.length}/{activeTab === 'MT5' ? mt5Records.length : allRecords.length} shown · {entryArrowsVisible ? visibleChartIds.size : 0} chart arrows · newest first
+                {activeTab === 'MT5' ? 'MT5 broker executions' : 'All completed setups'} · {filteredAllRecords.length}/{activeTab === 'MT5' ? mt5Records.length : allRecords.length} shown · {entryArrowsVisible ? visibleArrowIds.size : 0} chart arrows · newest first
               </div>
               <div className="flex flex-wrap items-center gap-1 border-t border-indigo-100 px-1.5 py-1">
                 <select value={filters.datePeriod} onChange={(event) => setFilters((current) => ({
@@ -2977,11 +3014,9 @@ export const OandaProChart: React.FC<{
   const [telegramMessagesEnabled, setTelegramMessagesEnabled] = useState(true);
   const [showInvalidZones, setShowInvalidZones] = useState(false);
   const [showTradeLevels, setShowTradeLevels] = useState(true);
-  const [arrowStrategies, setArrowStrategies] = useState<TradeStrategy[]>([]);
-  const [accuracyStrategies, setAccuracyStrategies] = useState<TradeStrategy[]>([...TRADE_STRATEGIES]);
-  const [journalStrategies, setJournalStrategies] = useState<TradeStrategy[]>([...TRADE_STRATEGIES]);
-  const showScalpOneToOneArrows = arrowStrategies.includes('SCALP_1_1');
-  const showEntryArrows = arrowStrategies.length > 0;
+  const [historyStrategies, setHistoryStrategies] = useState<TradeStrategy[]>([...TRADE_STRATEGIES]);
+  const [showEntryArrows, setShowEntryArrows] = useState(false);
+  const showScalpOneToOneArrows = showEntryArrows && historyStrategies.includes('SCALP_1_1');
   const [showAccuracyTable, setShowAccuracyTable] = useState(false);
   const [showTrendlineStudy, setShowTrendlineStudy] = useState(false);
   const [showVolumeStudy, setShowVolumeStudy] = useState(false);
@@ -4936,10 +4971,10 @@ export const OandaProChart: React.FC<{
   const replayResultCutoff = replayIndex === null ? undefined
     : displayCandles.length === 0 ? Number.NEGATIVE_INFINITY
       : marketCandleCloseTime(displayCandles[displayCandles.length - 1].time, granularity);
-  const replayVisibleAccuracyRecords = useMemo(() => replayResultCutoff === undefined
-    ? allSavedAccuracyRecords
-    : allSavedAccuracyRecords.filter((record) => record.completedAt <= replayResultCutoff),
-  [allSavedAccuracyRecords, replayResultCutoff]);
+  const replayVisibleAccuracyRecords = useMemo(() => sharedChartEntryHistory.filter(record => (
+    (record.result === 'tp' || record.result === 'sl' || record.result === 'rf')
+    && (replayResultCutoff === undefined || record.completedAt <= replayResultCutoff)
+  )), [sharedChartEntryHistory, replayResultCutoff]);
   const timeframeAccuracyRecords = useMemo(() => selectTradeChartRecords(
     replayVisibleAccuracyRecords, granularity, displayCandles, marketSymbol === 'XAUUSD',
   ), [
@@ -5726,10 +5761,6 @@ export const OandaProChart: React.FC<{
     { includeActive: true, asOf: replayResultCutoff },
   ), [sharedChartEntryHistory,
     granularity, displayCandles, marketSymbol, replayResultCutoff]);
-  const brokerChartEntryRecords = useMemo(() => selectTradeChartRecords(
-    visibleCanonicalTradeRecords.filter(isBrokerChartRecord), granularity, displayCandles, marketSymbol === 'XAUUSD',
-    { includeActive: true, asOf: replayResultCutoff },
-  ), [visibleCanonicalTradeRecords, granularity, displayCandles, marketSymbol, replayResultCutoff]);
   const hoveredTradeZones = useMemo(() => {
     const record = chartEntryRecords.find((candidate) => candidate.id === hoveredEntry?.entry.id);
     if (!record) return undefined;
@@ -5840,24 +5871,17 @@ export const OandaProChart: React.FC<{
         trade, source, zone, fib, style, tradingTimeBlocked, display,
       });
     };
-    for (const item of scalpChartDisplays) {
-      if (item.markerOnly && chartEntryRecords.some(record => record.tradeStyle === 'SCALP_1_1'
-        && (record.mt5Managed || record.brokerTicket !== undefined) && record.signalAt === item.trade.signal.time
-        && record.signalTimeframe === item.trade.signal.timeframe && record.direction === item.trade.signal.direction
-        && record.scalpEntry?.leg === item.entryLeg)) continue;
-      add(item.id, item.trade, `MT5 BROKER ${item.statusText}`, 'Scalp setup', 'Not recorded', item.style, false, item.markerTime, item);
-    }
     const historyDisplays = marketSymbol === 'XAUUSD' && granularity === 'M15'
       ? scalpHistoryFillDisplays(scalpOneToOneChartFills, tradeDisplayAsOf) : [];
     for (const item of historyDisplays) {
       add(item.id, item.trade, item.statusText, 'Scalp 1:1 chart fill', 'Not recorded', item.style, false, item.markerTime, item);
     }
-    for (const record of [...chartEntryRecords, ...brokerChartEntryRecords]) {
+    for (const record of chartEntryRecords) {
+      if (isBrokerChartRecord(record)) continue;
       if (record.tradeStyle === 'BOLLINGER_M5' && !record.mt5Managed && record.brokerTicket === undefined) continue; // Dedicated study overlay.
       if (record.tradeStyle === 'SCALP_1_1' && historyDisplays.some(item => entries.has(item.id)
         && item.trade.signal.time === record.signalAt && item.trade.signal.direction === record.direction
         && item.entryLeg === record.scalpEntry?.leg)) continue;
-      if (isBrokerChartRecord(record) && scalpChartDisplays.some(item => item.kind === 'live' && record.brokerTicket === item.brokerTicket)) continue;
       if (blockedGoldHistoricalTrade(record)) continue;
       const active = record.result === 'open' || record.result === 'risk-free';
       const signalAt = record.signalAt!;
@@ -5888,7 +5912,7 @@ export const OandaProChart: React.FC<{
         },
       };
       add(record.id, trade,
-        isBrokerChartRecord(record) ? 'MT5 BROKER ENTRY' : projected ? `${record.signalTimeframe} ${record.tradeStyle === 'SCALPING' ? 'SCALPING' : 'INTRADAY'} ENTRY`
+        projected ? `${record.signalTimeframe} ${record.tradeStyle === 'SCALPING' ? 'SCALPING' : 'INTRADAY'} ENTRY`
           : record.source === 'MTF'
           ? `${record.zoneTimeframe} → ${record.signalTimeframe} MTF` : 'CANDLE CONFIRMATION',
         record.zoneName,
@@ -5936,17 +5960,14 @@ export const OandaProChart: React.FC<{
         fib: [fib?.fibSource, fib?.fibBand].filter(Boolean).join(' · ') || 'Not recorded',
         tradingTimeBlocked: false, pullbackSetup: setup }];
     });
-    const brokerEntries = Array.from(entries.values()).filter(entry => entry.source.startsWith('MT5 BROKER') || entry.display?.brokerTicket !== undefined);
-    const brokerIds = new Set(brokerEntries.map(entry => entry.id));
-    const sharedEntries = Array.from(entries.values()).filter(entry => !brokerIds.has(entry.id)
-      && !chartPullbackSetups.some(setup => belongsToPullbackSetup(setup, entry.trade, entry.style, entry)));
-    // Shared chart details have hover priority when an MT5 fill occupies the same candle.
-    return [...sharedEntries, ...grouped, ...brokerEntries];
-  }, [chartPullbackSetups, scalpOneToOneChartFills, tradeDisplayAsOf, scalpChartDisplays, blockedGoldHistoricalTrade, chartEntryRecords, brokerChartEntryRecords, displayCandles, granularity, marketSymbol, replayIndex,
+    const sharedEntries = Array.from(entries.values()).filter(entry =>
+      !chartPullbackSetups.some(setup => belongsToPullbackSetup(setup, entry.trade, entry.style, entry)));
+    return [...sharedEntries, ...grouped];
+  }, [chartPullbackSetups, scalpOneToOneChartFills, tradeDisplayAsOf, blockedGoldHistoricalTrade, chartEntryRecords, displayCandles, granularity, marketSymbol, replayIndex,
     directTradeStyleEnabled, directZoneEntryDecisions, displayZones, retainedDirectChartTradesForTimeframe, tradingTimeEnabled]);
   const visibleEntryHovers = useMemo(() => entryHovers.filter(entry => (
-    matchesTradeStrategies(entry.style, arrowStrategies)
-  )), [entryHovers, arrowStrategies]);
+    matchesTradeStrategies(entry.style, historyStrategies)
+  )), [entryHovers, historyStrategies]);
   const trendlineSetupLabel = useMemo(() => {
     const records = new Map<string, JournalTradeRecord>(chartEntryRecords.map(record => [record.id, record] as const));
     const key = (trade: TradeLevels) => `${trade.signal.time}:${tradeOverlayExecutionKey(trade)}`;
@@ -6167,8 +6188,7 @@ export const OandaProChart: React.FC<{
       position: bullish ? 'belowBar' as const : 'aboveBar' as const,
       color: display?.referenceOnly && !display.chartFilled ? '#b45309' : bullish ? '#059669' : '#e11d48',
       shape: display?.referenceOnly && !display.chartFilled ? 'circle' as const : bullish ? 'arrowUp' as const : 'arrowDown' as const,
-      text: source.startsWith('MT5 BROKER') || display?.brokerTicket !== undefined
-        ? `MT5 ${trade.result?.toUpperCase() ?? 'ENTRY'}` : pullbackSetup ? pullbackSetup.markerText : marketSymbol === 'XAUUSD' && (style === 'SCALP_1_1' || style === 'INTRADAY')
+      text: pullbackSetup ? pullbackSetup.markerText : marketSymbol === 'XAUUSD' && (style === 'SCALP_1_1' || style === 'INTRADAY')
         ? trade.result === 'tp' || trade.result === 'sl' ? trade.result.toUpperCase() : ''
         : display?.markerText ?? (style === 'SCALP_1_1' ? trade.result?.toUpperCase()
         : secondSetupLabel ? [trade.result?.toUpperCase(), secondSetupLabel].filter(Boolean).join(' · ')
@@ -9300,6 +9320,21 @@ export const OandaProChart: React.FC<{
     }
     return evidence;
   }, [zoneTableRows, doubleChochRows, displayCandles, granularity]);
+  const fibTimingByZone = useMemo(() => {
+    const timing = new Map<string, FibBadgeTiming>();
+    const context = { candles: displayCandles, timeframe: granularity,
+      h4Candles: h4SwingSource.candles, h1Candles: h1SwingSource.candles, lines: structure.lines };
+    for (const zone of [...zoneTableRows, ...doubleChochRows]) {
+      timing.set(zone.id, fibBadgeTiming({ ...context, zone,
+        observedTime: zoneEntryEvidenceById.get(zone.id)?.evidence.observedSignal?.time }));
+    }
+    for (const row of retainedDirectZoneTableRows) if (row.sourceZone) {
+      timing.set(`retained:${row.overlay.id}`, fibBadgeTiming({ ...context, zone: row.sourceZone,
+        observedTime: row.trade.signal.time }));
+    }
+    return timing;
+  }, [displayCandles, granularity, h4SwingSource.candles, h1SwingSource.candles,
+    structure.lines, zoneTableRows, doubleChochRows, zoneEntryEvidenceById, retainedDirectZoneTableRows]);
   const zoneEntryMissed = (zone: DisplayStructureZone) => replayIndex === null && mt5Status
     && displayZoneMembers(zone).some(member => findMissedZoneEntry({ symbol: marketSymbol,
       zoneTimeframe: granularity, zoneId: member.id }, mt5Status.missedEntries ?? mt5Status.recentSignals, mt5Status.bridge));
@@ -9496,14 +9531,13 @@ export const OandaProChart: React.FC<{
               </>}
               {(sourceZone ? isDeepDiscountZoneDisplay(sourceZone, trade.signal)
                 : isDefaultDeepDiscountZoneName(zoneLabel)) && (
-                <span className="ml-1 rounded bg-fuchsia-100 px-1 py-0.5 text-[8px] font-black text-fuchsia-800">
-                  DEEP DISCOUNT
-                </span>
+                <FibZoneBadge label="DEEP DISCOUNT" alignedLater={sourceZone
+                  && deepDiscountAlignedLater(sourceZone, fibTimingByZone.get(`retained:${overlay.id}`))} />
               )}
               {fibLabels.map((label) => (
-                <span key={label} className="ml-1 rounded bg-fuchsia-100 px-1 py-0.5 text-[8px] font-black text-fuchsia-800">
-                  {label}
-                </span>
+                <FibZoneBadge key={label} label={label} alignedLater={fibTimingByZone.get(`retained:${overlay.id}`)?.[
+                  label.startsWith('DAY') ? 'day' : label.startsWith('1H') ? 'h1Swing'
+                    : label.startsWith('SWING') ? 'swing' : 'structure']} />
               ))}
             </td>
             <td className={`px-2 py-1 font-bold ${bullish ? 'text-emerald-700' : 'text-rose-700'}`}>
@@ -9590,9 +9624,7 @@ export const OandaProChart: React.FC<{
               DOUBLE CHoCH
             </span>
             {displayZoneMembers(zone).some(member => isDeepDiscountZoneDisplay(member, displayedTrade?.signal)) && (
-              <span className="ml-1 rounded bg-fuchsia-100 px-1 py-0.5 text-[8px] font-black text-fuchsia-800">
-                DEEP DISCOUNT
-              </span>
+              <FibZoneBadge label="DEEP DISCOUNT" alignedLater={deepDiscountAlignedLater(zone, fibTimingByZone.get(zone.id))} />
             )}
             <span className={`ml-1 rounded px-1 py-0.5 text-[8px] font-black ${
               pending ? 'bg-amber-100 text-amber-800' : 'bg-emerald-100 text-emerald-800'
@@ -9605,19 +9637,16 @@ export const OandaProChart: React.FC<{
               </span>
             )}
             {showFib && zone.swingFibStatus === 'a-plus' && zone.swingFibBand && (
-              <span className="ml-1 rounded bg-violet-100 px-1 py-0.5 text-[8px] font-black text-violet-800">
-                SWING A+ FIB {zone.swingFibBand}
-              </span>
+              <FibZoneBadge label={`SWING A+ FIB ${zone.swingFibBand}`} tone="violet"
+                alignedLater={fibTimingByZone.get(zone.id)?.swing} />
             )}
             {zone.h1SwingFibStatus === 'aligned' && zone.h1SwingFibBand && (
-              <span className="ml-1 rounded bg-violet-100 px-1 py-0.5 text-[8px] font-black text-violet-800">
-                1H SWING FIB ALIGNED {zone.h1SwingFibBand}
-              </span>
+              <FibZoneBadge label={`1H SWING FIB ALIGNED ${zone.h1SwingFibBand}`} tone="violet"
+                alignedLater={fibTimingByZone.get(zone.id)?.h1Swing} />
             )}
             {showFib && zone.dayFibStatus === 'a-plus' && zone.dayFibBand && (
-              <span className="ml-1 rounded bg-sky-100 px-1 py-0.5 text-[8px] font-black text-sky-800">
-                DAY FIB A+ {zone.dayFibBand}
-              </span>
+              <FibZoneBadge label={`DAY FIB A+ ${zone.dayFibBand}`} tone="sky"
+                alignedLater={fibTimingByZone.get(zone.id)?.day} />
             )}
           </td>
           <td className={`px-2 py-1 font-bold ${zone.isBuy ? 'text-emerald-700' : 'text-rose-700'}`}>
@@ -9758,9 +9787,7 @@ export const OandaProChart: React.FC<{
             </span>
           )}
           {deepDiscount && (
-            <span className="ml-1 rounded bg-fuchsia-100 px-1 py-0.5 text-[8px] font-black text-fuchsia-800">
-              DEEP DISCOUNT
-            </span>
+            <FibZoneBadge label="DEEP DISCOUNT" alignedLater={deepDiscountAlignedLater(zone, fibTimingByZone.get(zone.id))} />
           )}
           {confluenceLabels.map((label) => (
             <span key={`${zone.id}-confluence-${label}`} className="ml-1 rounded bg-slate-100 px-1 py-0.5 text-[8px] font-black text-slate-700">
@@ -9795,24 +9822,19 @@ export const OandaProChart: React.FC<{
           )}
           {showFib && zone.fibStatus === 'a-plus'
             && zone.fibBand && zone.fibBand !== 'DB/DT' && (
-            <span className="ml-1 rounded bg-fuchsia-100 px-1 py-0.5 text-[8px] font-black text-fuchsia-800">
-              {displayFibLabel(zone)}
-            </span>
+            <FibZoneBadge label={displayFibLabel(zone)} alignedLater={fibTimingByZone.get(zone.id)?.structure} />
           )}
           {showFib && zone.swingFibStatus === 'a-plus' && zone.swingFibBand && (
-            <span className="ml-1 rounded bg-violet-100 px-1 py-0.5 text-[8px] font-black text-violet-800">
-              SWING A+ FIB {zone.swingFibBand}
-            </span>
+            <FibZoneBadge label={`SWING A+ FIB ${zone.swingFibBand}`} tone="violet"
+              alignedLater={fibTimingByZone.get(zone.id)?.swing} />
           )}
           {zone.h1SwingFibStatus === 'aligned' && zone.h1SwingFibBand && (
-            <span className="ml-1 rounded bg-violet-100 px-1 py-0.5 text-[8px] font-black text-violet-800">
-              1H SWING FIB ALIGNED {zone.h1SwingFibBand}
-            </span>
+            <FibZoneBadge label={`1H SWING FIB ALIGNED ${zone.h1SwingFibBand}`} tone="violet"
+              alignedLater={fibTimingByZone.get(zone.id)?.h1Swing} />
           )}
           {showFib && zone.dayFibStatus === 'a-plus' && zone.dayFibBand && (
-            <span className="ml-1 rounded bg-sky-100 px-1 py-0.5 text-[8px] font-black text-sky-800">
-              DAY FIB A+ {zone.dayFibBand}
-            </span>
+            <FibZoneBadge label={`DAY FIB A+ ${zone.dayFibBand}`} tone="sky"
+              alignedLater={fibTimingByZone.get(zone.id)?.day} />
           )}
         </td>
         <td className={`px-2 py-1 font-bold ${zone.isBuy ? 'text-emerald-700' : 'text-rose-700'}`}>
@@ -10828,10 +10850,15 @@ export const OandaProChart: React.FC<{
                 title="Choose which entry arrows to display"
                 aria-label="Entry arrow options"
               >
-                ENTRY HISTORY {arrowStrategies.length === TRADE_STRATEGIES.length ? 'ALL' : showEntryArrows ? `${arrowStrategies.length} SELECTED` : 'OFF'} ▾
+                ENTRY ARROWS {showEntryArrows ? 'ON' : 'OFF'} · {historyStrategies.length === TRADE_STRATEGIES.length ? 'ALL SETUPS' : `${historyStrategies.length} STRATEGIES`} ▾
               </summary>
               <div className="absolute left-0 top-full z-50 mt-1 w-44 rounded-md border border-emerald-200 bg-white p-2 text-[10px] shadow-lg">
-                <TradeStrategyCheckboxes label="Entry arrow strategies" selected={arrowStrategies} onChange={setArrowStrategies} />
+                <label className="mb-2 flex cursor-pointer items-center gap-2 border-b border-slate-100 pb-2 font-bold text-slate-700">
+                  <input type="checkbox" aria-label="Show entry arrows" checked={showEntryArrows}
+                    onChange={event => setShowEntryArrows(event.target.checked)} />
+                  Show chart arrows
+                </label>
+                <TradeStrategyCheckboxes label="Shared history strategies" selected={historyStrategies} onChange={setHistoryStrategies} />
               </div>
             </details>
             {canAdmin && <details ref={backtestingMenuRef} className="relative" onKeyDown={event => {
@@ -11346,8 +11373,8 @@ export const OandaProChart: React.FC<{
         >
           <div ref={hostRef} className="absolute inset-0" />
           {marketSymbol === 'XAUUSD' && <BollingerStudy open={canAdmin && showBollingerStudy}
-            enabled={showBollingerStudy || arrowStrategies.includes('BOLLINGER_M5') || showAccuracyTable || showJournal || bollingerM5Enabled}
-            showArrows={arrowStrategies.includes('BOLLINGER_M5')} timeframe={granularity} symbol={marketSymbol}
+            enabled={showBollingerStudy || (showEntryArrows && historyStrategies.includes('BOLLINGER_M5')) || showAccuracyTable || showJournal || bollingerM5Enabled}
+            showArrows={historyStrategies.includes('BOLLINGER_M5') && showEntryArrows} timeframe={granularity} symbol={marketSymbol}
             candles={bollingerCandles} cutoff={tradeDisplayAsOf}
             historySeed={liveChartDataSource === 'OANDA' ? bollingerCandles : {}}
             chartRef={chartRef} seriesRef={candleSeriesRef} onClose={() => setShowBollingerStudy(false)}
@@ -11809,7 +11836,8 @@ export const OandaProChart: React.FC<{
           {showAccuracyTable && (
             <EngulfingAccuracyTable
               canViewMt5={canAdmin}
-              records={timeframeAccuracyRecords.filter(record => matchesTradeStrategies(record.tradeStyle, arrowStrategies))}
+              records={timeframeAccuracyRecords.filter(record => matchesTradeStrategies(record.tradeStyle, historyStrategies))}
+              entryArrows={visibleEntryHovers.map(entry => ({ id: entry.id, memberIds: entry.pullbackSetup?.memberIds }))}
               allRecords={replayVisibleAccuracyRecords}
               mt5Records={executedMt5Trades.filter((trade) => (
                 (trade.symbol ?? 'XAUUSD') === marketSymbol
@@ -11822,8 +11850,8 @@ export const OandaProChart: React.FC<{
               timeZone={chartTimeZone}
               marketSymbol={marketSymbol}
               entryArrowsVisible={showEntryArrows}
-              selectedStrategies={accuracyStrategies}
-              onStrategiesChange={setAccuracyStrategies}
+              selectedStrategies={historyStrategies}
+              onStrategiesChange={setHistoryStrategies}
               onClose={() => {
                 setShowAccuracyTable(false);
                 setShowAccuracyOptions(false);
@@ -11832,11 +11860,11 @@ export const OandaProChart: React.FC<{
           )}
           {showJournal && (
             <TradeJournal
-              selectedStrategies={journalStrategies}
-              onStrategiesChange={setJournalStrategies}
+              selectedStrategies={historyStrategies}
+              onStrategiesChange={setHistoryStrategies}
               canManageCapital={canAdmin}
               terminalId={terminalId}
-              records={visibleCanonicalTradeRecords}
+              records={sharedChartEntryHistory}
               timeframe={granularity}
               marketSymbol={marketSymbol}
               historyAsOf={replayResultCutoff ?? Math.floor(Date.now() / 1000)}

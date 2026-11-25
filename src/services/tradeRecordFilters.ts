@@ -60,6 +60,23 @@ export function matchesTradeStrategies(style: string | undefined, selected: read
   return selected.includes((style === 'ALL' ? 'INTRADAY' : style ?? 'INTRADAY') as TradeStrategy);
 }
 
+/** Count logical setups while keeping every filled entry leg as its own trade row. */
+export function countTradeSetups(records: readonly {
+  id: string; setupId?: string; symbol?: string; source?: string;
+  zoneTimeframe?: TradeTimeframe; signalTimeframe?: TradeTimeframe; tradeStyle?: string;
+  scalpEntry?: { setupKey?: string }; intradayEntry?: { setupKey?: string };
+}[]): number {
+  const setups = new Set<string>();
+  for (const record of records) {
+    const entrySetupKey = record.scalpEntry?.setupKey ?? record.intradayEntry?.setupKey;
+    const storedSetupId = record.setupId?.replace(/:P(?:10|25)$/, '');
+    const identity = entrySetupKey ?? storedSetupId ?? record.id;
+    setups.add([record.symbol ?? '', record.tradeStyle ?? '', record.source ?? '',
+      record.zoneTimeframe ?? '', record.signalTimeframe ?? '', identity].join(':'));
+  }
+  return setups.size;
+}
+
 export interface TradeRecordFilters {
   timeframes: 'ALL' | TradeTimeframe[];
   datePeriod: TradeDatePeriod;

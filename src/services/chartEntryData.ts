@@ -16,6 +16,24 @@ export function chartOnlyTradeRecords<T extends ChartRecordIdentity>(records: re
   return records.filter(record => !isBrokerChartRecord(record));
 }
 
+/** Both pullback legs can belong to one rendered arrow; count that marker once. */
+export function chartArrowRecordLinks(
+  arrows: readonly { id: string; memberIds?: readonly string[] }[],
+  records: readonly ChartRecordIdentity[],
+): Map<string, Set<string>> {
+  const eligible = new Set(chartOnlyTradeRecords(records).map(record => record.id));
+  const links = new Map<string, Set<string>>();
+  for (const arrow of arrows) {
+    for (const id of new Set([arrow.id, ...(arrow.memberIds ?? [])])) {
+      if (!eligible.has(id)) continue;
+      const markers = links.get(id) ?? new Set<string>();
+      markers.add(arrow.id);
+      links.set(id, markers);
+    }
+  }
+  return links;
+}
+
 export function buildChartEntryHistory<T extends Parameters<typeof buildCanonicalTradeRecords>[0][number]>(
   saved: readonly T[], current: readonly T[], options: Parameters<typeof buildCanonicalTradeRecords>[2],
 ): T[] {

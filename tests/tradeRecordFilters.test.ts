@@ -14,6 +14,7 @@ import {
   selectTwoMonthAccuracyRecords,
   selectTwoMonthJournalRecords,
   twoMonthAccuracyWindow,
+  countTradeSetups,
   tradeRecordDateKey,
   tradeRecordDatePeriodKey,
   tradeRecordPeriodKey,
@@ -50,6 +51,20 @@ test('strategy checkboxes support every combination, including none, for rows an
       ...DEFAULT_TRADE_RECORD_FILTERS, tradeStyle: selected, side: 'SELL',
     }, 'Asia/Kathmandu'), [], 'strategy selection must preserve other filters');
   }
+});
+
+test('setup counts group pullback legs without merging their individual trade records', () => {
+  const { scalp } = synchronizedFixture();
+  const first = { ...scalp, id: 'abhi:P10', setupId: 'abhi:P10', tradeStyle: 'SCALP_1_1',
+    scalpEntry: { ...scalp.scalpEntry!, setupKey: 'abhi-setup', leg: 10 } };
+  const second = { ...first, id: 'abhi:P25', setupId: 'abhi:P25',
+    scalpEntry: { ...first.scalpEntry!, leg: 25 } };
+  const other = { ...first, id: 'abhi-next:P10', setupId: 'abhi-next:P10',
+    scalpEntry: { ...first.scalpEntry!, setupKey: 'abhi-next', leg: 10 } };
+  assert.equal(countTradeSetups([first, second, other]), 2);
+  assert.equal([first, second, other].length, 3, 'entry legs remain three separate result rows');
+  assert.equal(countTradeSetups([{ ...scalp, id: 'scalp-a', setupId: 'SCALP:A' },
+    { ...scalp, id: 'scalp-b', setupId: 'SCALP:B' }]), 2, 'independent scalping signals stay separate setups');
 });
 
 test('legacy records without a strategy are grouped as Intraday in checkbox filters', () => {
@@ -682,6 +697,20 @@ test('shared scalping and intraday arrows ignore broker overrides for every filt
   const client = buildChartEntryHistory([], current, options);
   const admin = buildChartEntryHistory(broker, [...current, ...broker], options);
   assert.deepEqual(admin, client); assert.equal(client.length, 2);
+  const journal = mergeTradeRecordAnnotations(admin, broker);
+  assert.deepEqual(journal, admin, 'private broker history cannot replace or reappear in the chart journal');
+  for (const asOf of [181, 2701]) for (const timeframe of ['M1', 'M15'] as const) {
+    for (const tradeStyle of [['SCALPING'], ['INTRADAY'], ['SCALPING', 'INTRADAY']] as const) {
+      const filters = { ...DEFAULT_TRADE_RECORD_FILTERS, timeframes: [timeframe], tradeStyle: [...tradeStyle] };
+      const accuracy = filterAccuracyTradeRecords(selectTwoMonthAccuracyRecords(admin, asOf), filters, 'UTC', 'XAUUSD');
+      const journalRows = filterAccuracyTradeRecords(selectTwoMonthJournalRecords(journal, asOf), filters, 'UTC', 'XAUUSD');
+      const arrows = selectTradeChartRecords(admin, timeframe, options.timeframeData[timeframe]!.candles, true, { asOf })
+        .filter(record => matchesTradeStrategies(record.tradeStyle, tradeStyle));
+      const ids = (rows: typeof admin) => rows.map(record => record.id).sort();
+      assert.deepEqual(ids(journalRows), ids(accuracy));
+      assert.deepEqual(ids(arrows), ids(accuracy), 'same source, timeframe, strategy and replay cutoff produce matching entries');
+    }
+  }
   for (const strategy of TRADE_STRATEGIES) for (const timeframe of ['M1', 'M15', 'H1'] as const) {
     const candles = options.timeframeData[timeframe]?.candles ?? options.timeframeData.M15!.candles;
     for (const asOf of [119, 181, 2701]) {

@@ -9,12 +9,64 @@ import { buildCanonicalTradeRecords, selectTradeChartRecords, selectTwoMonthAccu
 import { buildChartEntryHistory, buildZoneTablePullbackSetups } from '../src/services/chartEntryData';
 import { chartSignalFromRecord } from '../src/services/pullbackChartSetup';
 import { calculateJournalPerformance, type JournalTradeRecord } from '../src/components/TradeJournal';
-import { compactZoneTableStatus, explainZoneEntry, findZoneTablePullbackSetup, ZonePullbackTradeStatus, ZonePullbackDetailsRow } from '../src/components/OandaProChart';
+import { compactZoneTableStatus, FibZoneBadge, explainZoneEntry, findZoneTablePullbackSetup, ZonePullbackTradeStatus, ZonePullbackDetailsRow } from '../src/components/OandaProChart';
+import { fibBadgeTiming } from '../src/services/fibBadgeTiming';
+import { applyDayFibConfluence } from '../src/services/dayFibConfluence';
+import { buildDayFibs, selectDayFibForTime } from '../src/services/dayFib';
 
 const fixture = JSON.parse(readFileSync(new URL('./fixtures/tjl1-future-fib-2026-11-25.json', import.meta.url), 'utf8')) as {
   candles: StructureCandle[]; records: JournalTradeRecord[];
 };
 const original = fixture.records[0];
+
+test('Day Fib badge labels alignment after the observed T4 with a six-pixel note', () => {
+  const asOf = fixture.candles.at(-1)!.time;
+  const structure = analyzeMarketStructure(fixture.candles, {
+    sourceBarSeconds: 900, confirmationBarSeconds: 3600, zoneVisualBars: 30,
+  });
+  const move = selectDayFibForTime(buildDayFibs(fixture.candles), asOf);
+  const zone = applyDayFibConfluence(fixture.candles, structure.zones, move, 10, asOf)
+    .zones.find(zone => zone.id === original.zoneId)!;
+  assert.equal(zone.dayFibStatus, 'a-plus');
+  const render = (observedTime?: number) => renderToStaticMarkup(React.createElement(FibZoneBadge,
+    { label: `DAY FIB A+ ${zone.dayFibBand}`, tone: 'sky', alignedLater: fibBadgeTiming({
+      zone, candles: fixture.candles, timeframe: 'M15', observedTime }).day }));
+  assert.match(render(original.signalAt), /ALIGNED LATER/);
+  assert.match(render(original.signalAt), /text-\[6px\]/);
+  assert.doesNotMatch(render(asOf), /ALIGNED LATER/, 'alignment already existed at this observation');
+  assert.doesNotMatch(render(), /ALIGNED LATER/, 'no timing claim without an observed pattern');
+});
+
+test('all Fib badges use the same six-pixel annotation without changing their eight-pixel label', () => {
+  for (const label of ['A+ FIB 0.5-0.618', 'FIB DEEP DISCOUNT', 'DEEP DISCOUNT',
+    'SWING A+ FIB 0.71-0.79', '1H SWING FIB ALIGNED 0.5-0.618', 'DAY FIB A+ 0.71-0.79']) {
+    const render = (alignedLater: boolean) => renderToStaticMarkup(React.createElement(FibZoneBadge, { label, alignedLater }));
+    assert.match(render(true), /text-\[8px\]/);
+    assert.match(render(true), /text-\[6px\]/);
+    assert.match(render(true), /ALIGNED LATER/);
+    assert.doesNotMatch(render(false), /ALIGNED LATER/);
+  }
+});
+
+test('Fib timing uses each source separately and never treats missing H1/H4 history as later alignment', () => {
+  const zone = { ...original.entryQualification!.zone,
+    swingFibStatus: 'a-plus' as const, swingFibBand: '0.5-0.618' as const,
+    h1SwingFibStatus: 'aligned' as const, h1SwingFibBand: '0.5-0.618' as const };
+  const options = { zone, candles: fixture.candles, timeframe: 'M15' as const, observedTime: original.signalAt };
+  const early = fibBadgeTiming(options);
+  assert.equal(early.structure, true, 'the structure Fib was absent at the actual T4');
+  assert.equal(early.swing, undefined);
+  assert.equal(early.h1Swing, undefined);
+  assert.deepEqual(fibBadgeTiming({ ...options, observedTime: undefined }), {});
+  assert.equal(fibBadgeTiming({ ...options, observedTime: original.completedAt }).structure, false,
+    'the structure Fib is aligned by the later observation');
+  const flatHistory = (seconds: number) => Array.from({ length: 20 }, (_, i) => ({
+    time: original.signalAt! - (20 - i) * seconds, open: 100, high: 101, low: 99, close: 100, complete: true,
+  }));
+  const known = fibBadgeTiming({ ...options, h4Candles: flatHistory(14400), h1Candles: flatHistory(3600), lines: [] });
+  assert.equal(known.swing, true, 'the captured earlier H4 feed had no aligned swing');
+  assert.equal(known.h1Swing, true, 'the captured earlier H1 feed had no post-CHoCH swing');
+});
 
 test('the exact November 25 TJL1 T4 cannot borrow a Fib low formed 150 minutes later', () => {
   assert.equal(original.entry, 3525.7110000000002);

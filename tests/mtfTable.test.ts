@@ -19,7 +19,7 @@ import type { TradeLevels } from '../src/services/tradeLevels';
 
 const bar = (time: number, complete = true) => ({ time, open: 100, high: 102, low: 99, close: 101, volume: 1, complete });
 
-test('Gold tap windows reset with 50 bars for Tap 1 and 10 bars for later taps', () => {
+test('Gold tap windows reset with 20 bars for Tap 1 and 10 bars for later taps', () => {
   const candles = Array.from({ length: 200 }, (_, i) => bar(i * 900));
   const zone: StructureZone = { id: 'repeat-taps', name: 'QML', category: 'mg', isBuy: true,
     active: true, status: 'valid', startTime: -900, endTime: 999999, bottom: 100, top: 102,
@@ -28,14 +28,14 @@ test('Gold tap windows reset with 50 bars for Tap 1 and 10 bars for later taps',
   for (let tap = 1; tap <= 5; tap++) {
     const tapIndex = (tap - 1) * 20;
     const current = { ...zone, tapCount: tap, lastTapTime: candles[tapIndex].time };
-    for (const age of [0, 1, 9, 10, 11, 49, 50, 51]) {
+    for (const age of [0, 1, 9, 10, 11, 19, 20, 21, 49, 50, 51]) {
       const visibleCandles = candles.slice(0, tapIndex + age + 1);
       const actualAge = latestZoneTapBarsAgo(current, visibleCandles);
       assert.equal(actualAge, age, `TAP ${tap} must count from its own touch`);
-      for (const trade of [undefined, { status: 'pending' as const }, { status: 'tp-hit' as const }]) {
+      for (const trade of [undefined, { status: 'pending' as const }, { status: 'active' as const }, { status: 'tp-hit' as const }]) {
         const expired = zoneTableTradeExpired(trade, actualAge!, visibleCandles,
           visibleCandles.at(-1)!.time, tap, 'XAUUSD');
-        if (tap > 1 || trade?.status === 'tp-hit') assert.equal(expired, age > (tap === 1 ? 50 : 10));
+        assert.equal(expired, age > (tap === 1 ? 20 : 10));
       }
       assert.equal(zoneTableTradeExpired({ status: 'tp-hit' }, actualAge!, visibleCandles,
         visibleCandles.at(-1)!.time, tap, 'EURUSD'), age > 50, 'Forex retains its 50-bar window');
@@ -710,13 +710,13 @@ test('zone status uses broker SL/TP without bars-ago text or changing active sta
   assert.equal(zoneTableCompletedStatus({ status: 'active' }), undefined);
 });
 
-test('completed zone rows outlive drawings and expire only beyond 50 candles from the tap', () => {
+test('Gold completed zone rows outlive drawings and expire beyond 20 candles from the first tap', () => {
   const candles = Array.from({ length: 52 }, (_, i) => bar(1000 + i * 900));
   for (const result of ['sl', 'tp'] as const) {
     const trade = { result, resolvedAt: 1000,
       signal: { timeframe: 'M15' as const, direction: 'bullish' as const } };
     const before = JSON.stringify(trade);
-    for (const tapAge of [5, 6, 49, 50]) {
+    for (const tapAge of [5, 6, 19, 20]) {
       const asOf = 1000 + (tapAge + 1) * 900;
       assert.equal(tradeDrawingExpired(trade, candles, asOf), true);
       assert.equal(zoneTableTradeExpired(trade, tapAge, candles, asOf), false);
@@ -726,13 +726,17 @@ test('completed zone rows outlive drawings and expire only beyond 50 candles fro
       assert.ok(html.includes(`${result.toUpperCase()} HIT`));
       assert.ok(!html.includes('CHART ACTIVE') && !html.includes('ENTRY'));
     }
-    assert.equal(zoneTableTradeExpired(trade, 51, candles, 47800), true);
+    assert.equal(zoneTableTradeExpired(trade, 21, candles, 47800), true);
     assert.equal(zoneTableTradeExpired(trade, 2, candles, 47800), false,
-      'a later tap retains its own 50-candle window without restarting drawing expiry');
+      'a fresh first tap retains its own 20-candle window without restarting drawing expiry');
     assert.equal(JSON.stringify(trade), before);
   }
-  assert.equal(zoneTableTradeExpired({ status: 'active' }, 51, candles, 47800), false,
-    'active trades keep their existing retention rules');
+  assert.equal(zoneTableTradeExpired({ status: 'active' }, 21, candles, 47800), true,
+    'Gold table rows hide after 20 bars even when the position remains open');
+  assert.equal(tradeDrawingExpired({ status: 'active' }, candles, 47800), false,
+    'the table window never hides an open trade drawing');
+  assert.equal(zoneTableTradeExpired({ status: 'active' }, 51, candles, 47800, 1, 'EURUSD'), false,
+    'Forex active trades keep their existing retention rules');
 });
 
 test('completed rows show only zone, exit outcome and bars since exit without entry levels', () => {

@@ -7,6 +7,9 @@ import http from 'node:http';
 import { spawn } from 'node:child_process';
 const mode = process.argv[2] ?? 'after';
 const fixture = JSON.parse(fs.readFileSync('tests/fixtures/tjl1-future-fib-2026-11-25.json'));
+if (mode === 'broker-arrows') fixture.records = fixture.records.map((record, index) => ({
+  ...record, id: `MT5:isolated-arrow-test-${index}`, mt5Managed: true, brokerTicket: 7700 + index,
+}));
 const root = path.resolve('dist');
 const server = http.createServer((req, res) => {
   const file = path.resolve(root, '.' + new URL(req.url, 'http://localhost').pathname.replace(/\/$/, '/index.html'));
@@ -34,6 +37,12 @@ try {
   await call('Runtime.enable'); await call('Page.enable');
   await call('Page.addScriptToEvaluateOnNewDocument', { source: `
     const fixture=${JSON.stringify(fixture)};
+    window.__brokerArrowTexts=[];
+    const originalFillText=CanvasRenderingContext2D.prototype.fillText;
+    CanvasRenderingContext2D.prototype.fillText=function(text,...args){
+      if(/^MT5 (SL|TP|ENTRY)$/.test(String(text)))window.__brokerArrowTexts.push(String(text));
+      return originalFillText.call(this,text,...args);
+    };
     const originalFetch=window.fetch.bind(window);
     window.fetch=async(input,options)=>{
       const url=new URL(typeof input==='string'?input:input.url,location.href);
@@ -55,6 +64,18 @@ try {
   const rowExpression = `[...document.querySelectorAll('tr')].find(e=>e.textContent.includes('3,533.815')&&e.textContent.includes('3,540.137'))?.textContent`;
   for (let i = 0; i < 150; i++) { if (await evaluate(rowExpression)) break; await pause(100); }
   if (errors.length) throw new Error(errors.join('\n'));
+  if (mode === 'broker-arrows') {
+    await click('Show indicator controls');
+    await evaluate(`document.querySelector('[aria-label="Entry arrow options"]').click()`);
+    for (let i = 0; i < 4; i++) {
+      await evaluate(`(()=>{const input=document.querySelectorAll('fieldset[aria-label="Shared history strategies"] input')[${i}];if(!input.checked)input.click()})()`);
+      await pause(100);
+    }
+    const enabled = await evaluate(`document.querySelectorAll('fieldset[aria-label="Shared history strategies"] input:checked').length`);
+    if (enabled !== 4) throw Error('History verification requires all four strategies enabled');
+    await evaluate(`(()=>{const input=document.querySelector('[aria-label="Show entry arrows"]');if(!input.checked)input.click()})()`);
+    await evaluate(`document.querySelector('[aria-label="Close indicator controls"]').click()`);
+  }
   await click('Choose a chart bar, then start candle-by-candle replay from that point'); await pause(300);
   await click('START'); await pause(2000);
   const snapshots = [];
@@ -69,11 +90,37 @@ try {
   }
   await click('Show indicator controls'); await pause(200);
   await click('Show or hide completed engulfing SL, RF, TP, total, and accuracy results'); await pause(500);
-  const accuracyHasInvalidEntry = await evaluate(`/3,525\\.711|3,526\\.673/.test(document.body.innerText)`);
+  const accuracyText = `document.querySelector('[title="Close accuracy table"]').closest('[data-journal-exclude]').innerText`;
+  const accuracyHasInvalidEntry = await evaluate(`/3,525\\.711|3,526\\.673/.test(${accuracyText})`);
+  let brokerHistoryVisible;
+  if (mode === 'broker-arrows') {
+    await evaluate(`document.querySelectorAll('fieldset[aria-label="Accuracy strategies"] input')[1].click()`);
+    await pause(200);
+    const accuracySelected = await evaluate(`document.querySelectorAll('fieldset[aria-label="Accuracy strategies"] input:checked').length`);
+    if (accuracySelected !== 3) throw Error('Accuracy strategy change did not update the shared filter');
+    await click('Exit replay and return to the live chart'); await pause(500);
+    if (await evaluate(`/3,525\\.711|3,526\\.673/.test(${accuracyText})`)) throw Error('Broker records leaked into completed chart Setups');
+    await click('EXECUTED IN MT5'); await pause(500);
+    brokerHistoryVisible = await evaluate(`/3,525\\.711|3,526\\.673/.test(${accuracyText})`);
+    if (!brokerHistoryVisible) throw Error('Separate MT5 execution history lost its records');
+    await click('ALL SETUPS'); await pause(200);
+  }
   await click('Open the saved trading journal and export Excel or Word reports'); await pause(500);
-  const journalHasInvalidEntry = await evaluate(`/3,525\\.711|3,526\\.673/.test(document.body.innerText)`);
+  if (mode === 'broker-arrows') {
+    const journalSelected = await evaluate(`document.querySelectorAll('fieldset[aria-label="Journal strategies"] input:checked').length`);
+    if (journalSelected !== 3) throw Error('Journal strategy filter did not follow the accuracy selection');
+    const chartOptionsOpen = await evaluate(`!!document.querySelector('[aria-label="Entry arrow options"]')`);
+    if (!chartOptionsOpen) { await click('Show indicator controls'); await pause(200); }
+    await evaluate(`document.querySelector('[aria-label="Entry arrow options"]').click()`);
+    const chartSelected = await evaluate(`document.querySelectorAll('fieldset[aria-label="Shared history strategies"] input:checked').length`);
+    if (chartSelected !== 3) throw Error('Chart arrow filter did not follow the accuracy selection');
+  }
+  const journalHasInvalidEntry = await evaluate(`/3,525\\.711|3,526\\.673/.test(document.querySelector('[title="Close journal"]').closest('[data-journal-exclude]').innerText)`);
   if (mode === 'after' && (accuracyHasInvalidEntry || journalHasInvalidEntry)) throw Error('The invalid prices remain in accuracy or journal');
-  const results = { mode, rows: snapshots.map(s => ({ row: s.row, invalidEntryDetails: s.details })), accuracyHasInvalidEntry, journalHasInvalidEntry, errors };
+  const brokerArrowTexts = await evaluate('window.__brokerArrowTexts');
+  if (mode === 'broker-arrows' && brokerArrowTexts.length) throw Error('MT5 broker history painted chart arrows: '+brokerArrowTexts.join(','));
+  if (mode === 'broker-arrows' && journalHasInvalidEntry) throw Error('Broker records leaked into the chart journal');
+  const results = { mode, rows: snapshots.map(s => ({ row: s.row, invalidEntryDetails: s.details })), accuracyHasInvalidEntry, journalHasInvalidEntry, brokerHistoryVisible, brokerArrowTexts, errors };
   fs.writeFileSync(`reports/tjl1-replay-${mode}.json`, JSON.stringify(results, null, 2));
   console.log(JSON.stringify(results));
 } finally { ws?.close(); browser.kill(); server.close(); }

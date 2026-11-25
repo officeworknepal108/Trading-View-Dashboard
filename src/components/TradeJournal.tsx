@@ -17,6 +17,7 @@ import type { OandaMarketSymbol } from '../services/marketSymbols';
 import {
   filterAccuracyTradeRecords,
   selectTwoMonthJournalRecords,
+  countTradeSetups,
   twoMonthAccuracyWindow,
   tradeRecordDatePeriodKey,
   tradeRecordPeriodLabel,
@@ -698,6 +699,7 @@ export const TradeJournal: React.FC<TradeJournalProps> = ({ records, timeframe, 
   const accuracy = completedTrades.length > 0 ? Math.round((counts.tp * 10_000) / completedTrades.length) / 100 : 0;
   const totalR = calculateTotalR(completedTrades);
   const performance = useMemo(() => calculateJournalPerformance(filteredTrades), [filteredTrades]);
+  const setupCount = countTradeSetups(filteredTrades);
   const runningTrades = useMemo(
     () => filteredTrades.filter((trade) => trade.result === 'open' || trade.result === 'risk-free'),
     [filteredTrades],
@@ -1043,13 +1045,14 @@ export const TradeJournal: React.FC<TradeJournalProps> = ({ records, timeframe, 
             )}
           </section>
 
-          <section className="mb-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-5">
+          <section className="mb-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-6">
             {[
               ['REALIZED P/L', performance.realizedTradeCount > 0 ? formatMoney(performance.realizedProfit) : '—', performance.realizedProfit >= 0 ? 'text-emerald-700' : 'text-rose-700', performance.realizedTradeCount > 0 ? `${performance.realizedTradeCount} MT5 trades` : 'Broker cash data unavailable'],
               ['PROFIT FACTOR', formatMetric(performance.profitFactor), 'text-slate-900', 'Calculated from normalized R'],
               ['WIN RATE', `${performance.winRate.toFixed(2)}%`, 'text-indigo-700', `${performance.completed} completed trades`],
               ['AVG WIN / AVG LOSS', formatMetric(performance.averageWinLoss), 'text-slate-900', 'Calculated from normalized R'],
-              ['TOTAL TRADES', String(filteredTrades.length), 'text-slate-900', `${runningTrades.length} currently running`],
+              ['TOTAL ENTRIES', String(filteredTrades.length), 'text-slate-900', `${setupCount} ${setupCount === 1 ? 'setup' : 'setups'} · ${runningTrades.length} currently running`],
+              ['TOTAL SETUPS', String(setupCount), 'text-indigo-700', 'Pullback legs sharing a setup count once'],
             ].map(([label, value, color, hint]) => (
               <div key={label} className="rounded-lg border border-slate-200 bg-white p-3 shadow-sm">
                 <div className="text-[8px] font-black uppercase tracking-wide text-slate-500">{label}</div>

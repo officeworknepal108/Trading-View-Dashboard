@@ -1,10 +1,14 @@
-import { buildChartPullbackSetups } from '../src/services/chartEntryData';
+import { buildChartPullbackSetups, chartArrowRecordLinks } from '../src/services/chartEntryData';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { buildPullbackChartSetups, belongsToPullbackSetup, chartSignalFromRecord, chartSignalFromHistoryFill } from '../src/services/pullbackChartSetup';
 import type { ScalpOneToOneChartFill } from '../src/services/scalpOneToOne';
 import type { PullbackTableSignal } from '../src/services/pullbackEntryDisplay';
 import type { StructureCandle } from '../src/services/marketStructure';
+import React from 'react';
+import { renderToStaticMarkup } from 'react-dom/server';
+import { EngulfingAccuracyTable } from '../src/components/OandaProChart';
+import type { JournalTradeRecord } from '../src/components/TradeJournal';
 
 const first: PullbackTableSignal = { id: 'setup:P10', setupId: 'setup:P10', symbol: 'XAUUSD',
   source: 'ENGULFING', tradeStyle: 'INTRADAY', direction: 'BUY', orderType: 'LIMIT', zoneName: 'TJL1',
@@ -20,6 +24,36 @@ const candle = (time: number, low: number, high = 3012, open = 3010): StructureC
   ({ time, open, high, low, close: 3011, complete: true });
 const build = (signals: PullbackTableSignal[], bars: StructureCandle[], asOf = 3600) =>
   buildPullbackChartSetups({ signals, candles: { M15: bars }, asOf });
+
+test('accuracy links both pullback legs to one rendered chart arrow and excludes broker history', () => {
+  const [setup] = build([first, second], [candle(1800, 3007), candle(2700, 3008)]);
+  const records = [{ id: first.id }, { id: second.id }, { id: 'MT5:77', brokerTicket: 77 }];
+  const arrows = [{ id: setup.id, memberIds: setup.memberIds }, { id: 'MT5:77' }];
+  const before = JSON.stringify(records);
+  const links = chartArrowRecordLinks(arrows, records);
+  assert.deepEqual([...links.keys()].sort(), [first.id, second.id].sort());
+  assert.equal(new Set([...links.values()].flatMap(ids => [...ids])).size, 1,
+    'the arrow count represents the actual grouped marker, not the two filled entries');
+  assert.equal(chartArrowRecordLinks(arrows, [records[1]]).get(second.id)?.has(setup.id), true,
+    'a result filter retaining one leg still links it to the same visible arrow');
+  assert.equal(chartArrowRecordLinks([], records).size, 0, 'no ARROW label when no marker is rendered');
+  assert.equal(JSON.stringify(records), before, 'journal records are never rewritten by display mapping');
+  const completed: JournalTradeRecord[] = [first, second].map(signal => ({
+    id: signal.id, symbol: 'XAUUSD', zoneName: signal.zoneName, zoneTimeframe: signal.zoneTimeframe,
+    source: 'ENGULFING', tradeStyle: 'INTRADAY', signalTimeframe: signal.signalTimeframe,
+    signalAt: signal.signalAt, openedAt: 1800, completedAt: 2700, result: 'tp', direction: 'bullish',
+    engulfingType: signal.engulfingType, entry: signal.entry, stopLoss: signal.stopLoss,
+    takeProfit: signal.takeProfit, riskPips: signal.riskPips, rewardRisk: signal.rewardRisk,
+    intradayEntry: signal.intradayEntry,
+  }));
+  const html = renderToStaticMarkup(React.createElement(EngulfingAccuracyTable, {
+    records: completed, allRecords: completed, mt5Records: [], entryArrows: arrows,
+    timeframe: 'M15', showAllTrades: true, historyAsOf: 3600, timeZone: 'UTC', marketSymbol: 'XAUUSD',
+    entryArrowsVisible: true, selectedStrategies: ['INTRADAY'], onStrategiesChange: () => {}, onClose: () => {},
+  }));
+  assert.match(html, /trade accuracy · 1 setup \/ 2 entries · 1 arrow/);
+  assert.equal((html.match(/>ARROW</g) ?? []).length, 2, 'both filled accuracy rows link to that one chart marker');
+});
 
 for (const style of ['INTRADAY', 'SCALP_1_1'] as const) test(`${style}: one setup anchored to first fill with two distinct entries and fixed exits`, () => {
   const signals = [first, second].map(s => style === 'INTRADAY' ? s : ({ ...s, tradeStyle: style,
