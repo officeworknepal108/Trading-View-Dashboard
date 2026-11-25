@@ -6,7 +6,7 @@ import { mkdtemp, readFile, writeFile, rm } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { DashboardAuth, normalizeLoginEmail } from '../src/server/authentication';
+import { DashboardAuth, normalizeUsername } from '../src/server/authentication';
 import { clientVisibleTrades } from '../src/server/clientJournal';
 import { denyPrivateFiles } from '../src/server/privateFiles';
 
@@ -27,283 +27,235 @@ class Browser {
   }
 }
 
-test('Google/password login, approval, roles, OTP, expiry, resets and session revocation', { timeout: 60_000 }, async t => {
+test('managed username/password accounts and client device isolation', { timeout: 60_000 }, async t => {
   const directory = await mkdtemp(path.join(tmpdir(), 'dashboard-auth-test-'));
-  const emails: { to: string; subject: string; text: string }[] = [];
   let now = Date.now();
-  const app = express();
-  app.use(denyPrivateFiles);
-  app.use(express.json());
+  const ownerPassword = 'Owner-test-password-123';
+  const password = 'Managed-test-password-123';
+  const app = express(); app.use(denyPrivateFiles); app.use(express.json());
   const server = createServer(app);
   await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve));
-  const address = server.address();
-  assert.ok(address && typeof address !== 'string');
+  const address = server.address(); assert.ok(address && typeof address !== 'string');
   const base = `http://127.0.0.1:${address.port}`;
-  const previousId = process.env.GOOGLE_CLIENT_ID;
-  const previousSecret = process.env.GOOGLE_CLIENT_SECRET;
-  process.env.GOOGLE_CLIENT_ID = 'test-client-id';
-  process.env.GOOGLE_CLIENT_SECRET = 'test-client-secret';
-  const identities: Record<string, string> = { owner: 'tradingviewfx108@gmail.com', 'former-owner': 'cabhishek64@gmail.com', admin: 'manager@gmail.com', client: 'approvedclient@gmail.com' };
-  const oldOwnerToken = 'former-owner-test-session';
-  const pendingOwnerToken = 'pending-owner-test-session';
+  // Preserve old user IDs, permissions, history and approval data during migration.
   await writeFile(path.join(directory, 'accounts.json'), JSON.stringify({
     users: [
-      { id: 'former-owner', email: 'cabhishek64@gmail.com', googleSubject: 'google:former-owner', role: 'super_admin', status: 'approved', verified: true, createdAt: now },
-      { id: 'pending-owner', email: identities.owner, role: 'client', status: 'pending', verified: true, createdAt: now },
-    ],
-    sessions: [
-      { userId: 'former-owner', digest: createHash('sha256').update(oldOwnerToken).digest('hex'), expiresAt: now + 8 * 60 * 60_000 },
-      { userId: 'pending-owner', digest: createHash('sha256').update(pendingOwnerToken).digest('hex'), expiresAt: now + 8 * 60 * 60_000 },
-    ], challenges: [], resets: [], oauth: [], audit: [],
+      { id: 'owner-id', email: 'tradingviewfx108@gmail.com', role: 'super_admin', status: 'approved', verified: true, createdAt: now },
+      { id: 'legacy-client', email: 'oldclient@gmail.com', role: 'client', status: 'approved', verified: true, createdAt: now },
+    ], sessions: [{ userId: 'legacy-client', digest: createHash('sha256').update('legacy-cookie').digest('hex'), expiresAt: now + 86_400_000 }],
+    challenges: [{ digest: 'old-otp' }], resets: [{ digest: 'old-reset' }], oauth: [], audit: [],
   }));
-  const auth = new DashboardAuth({ directory, publicUrl: base, now: () => now,
-    sendEmail: async (to, subject, text) => { emails.push({ to, subject, text }); },
-    googleIdentity: async code => ({ email: identities[code] ?? 'newclient@gmail.com', subject: `google:${code}`, verified: code !== 'unverified' }),
-  });
-  app.use('/api/auth', auth.router);
-  app.use('/api', auth.guard);
+  let auth = new DashboardAuth({ directory, publicUrl: base, now: () => now });
+  // Indirection lets us reload the service against persisted accounts in a test.
+  app.use('/api/auth', (req, res, next) => auth.router(req, res, next));
+  app.use('/api', (req, res, next) => auth.guard(req, res, next));
   app.get('/api/health', (_req, res) => res.json({ ok: true }));
   app.get('/api/tradingview/market-data', (_req, res) => res.json({ ok: true }));
   app.put('/api/mt5/config', (_req, res) => res.json({ ok: true }));
   app.post('/api/telegram/alerts', (_req, res) => res.json({ ok: true }));
   app.post('/api/mt5/heartbeat', (_req, res) => res.json({ ok: true }));
-  const anon = new Browser(base);
-  const owner = new Browser(base);
-  owner.cookies.set('dashboard_session', pendingOwnerToken);
-  const formerOwner = new Browser(base);
-  formerOwner.cookies.set('dashboard_session', oldOwnerToken);
-  const admin = new Browser(base);
-  const client = new Browser(base);
-  const codeFor = (email: string) => emails.filter(message => message.to === email && message.subject.includes('verification')).at(-1)!.text.match(/\b\d{6}\b/)![0];
-  const googleStart = async (browser: Browser, code: string) => {
-    const start = await browser.request('/api/auth/google');
-    assert.equal(start.status, 302);
-    const location = new URL(start.headers.get('location')!);
-    assert.equal(location.searchParams.get('code_challenge_method'), 'S256');
-    const callback = await browser.request(`/api/auth/google/callback?code=${code}&state=${location.searchParams.get('state')}`);
-    assert.equal(callback.headers.get('location'), '/?auth=verify');
+  const owner = new Browser(base), admin = new Browser(base), client = new Browser(base), anon = new Browser(base);
+  const login = async (browser: Browser, username: string, suppliedPassword = password) => browser.request('/api/auth/login', { username, password: suppliedPassword });
+  const getUser = async (browser: Browser) => (await (await browser.request('/api/auth/me')).json()).user;
+  const create = async (browser: Browser, username: string, role = 'client') => {
+    const response = await browser.request('/api/auth/users', { username, password, role });
+    assert.equal(response.status, 201, await response.clone().text()); return (await response.json()).user;
   };
-  const verify = async (browser: Browser, email: string) => {
-    const response = await browser.request('/api/auth/verify', { code: codeFor(email) });
-    assert.equal(response.status, 200, await response.clone().text());
-    const cookie = response.headers.getSetCookie().find(value => value.startsWith('dashboard_session='))!;
-    assert.match(cookie, /Max-Age=2592000/);
-    assert.match(cookie, /HttpOnly/);
-    const stored = JSON.parse(await readFile(path.join(directory, 'accounts.json'), 'utf8'));
-    const digest = createHash('sha256').update(browser.cookies.get('dashboard_session')!).digest('hex');
-    const session = stored.sessions.find((entry: any) => entry.digest === digest);
-    assert.equal(session.expiresAt - session.verifiedAt, 30 * 86_400_000);
-    return (await response.json()).user;
-  };
+  let managerId = '', clientId = '';
   try {
-    await t.test('default is locked, cross-origin writes fail and owner cannot register a password', async () => {
-      for (const route of ['/.dashboard-auth/accounts.json', '/@fs/C:/project/.dashboard-auth/accounts.json', '/%252edashboard-auth/accounts.json', '/data/trade-journal.json', '/.env.mt5']) {
+    await t.test('private files, anonymous APIs and cross-origin requests stay protected', async () => {
+      for (const route of ['/.dashboard-auth/accounts.json', '/.dashboard-auth/owner-setup.json', '/@fs/C:/project/.dashboard-auth/accounts.json', '/%252edashboard-auth/accounts.json', '/data/trade-journal.json', '/.env.mt5']) {
         assert.equal((await anon.request(route)).status, 404);
       }
       assert.equal((await anon.request('/api/tradingview/market-data')).status, 401);
-      assert.equal((await anon.request('/api/mt5/heartbeat', {})).status, 401);
-      assert.equal((await anon.request('/api/auth/register', { email: identities.owner, password: 'test-password-123' })).status, 403);
-      assert.equal((await anon.request('/api/auth/register', {}, 'POST', 'https://other.example')).status, 403);
-      const callback = await anon.request('/api/auth/google/callback?code=owner&state=forged');
-      assert.ok(callback.headers.get('location')!.includes('auth_error='));
-    });
-    await t.test('an active legacy session upgrades to 30 days without another code', async () => {
-      const sentBefore = emails.length;
-      const response = await formerOwner.request('/api/auth/me');
-      assert.equal((await response.json()).user.role, 'super_admin');
-      assert.match(response.headers.getSetCookie()[0], /Max-Age=2592000/);
-      assert.equal(emails.length, sentBefore);
-    });
-    await t.test('ownership transfers only after Google and OTP, including resend, and the old owner cannot reclaim it', async () => {
-      await googleStart(owner, 'owner');
-      assert.equal((await owner.request('/api/mt5/config', {}, 'PUT')).status, 403);
-      assert.equal((await (await owner.request('/api/auth/me')).json()).user.role, 'client', 'Google sign-in alone cannot promote an existing session');
-      assert.equal((await formerOwner.request('/api/mt5/config', {}, 'PUT')).status, 200, 'the previous owner stays active until the new code succeeds');
-      assert.equal((await owner.request('/api/auth/verify', { code: '000000' })).status, 400);
-      assert.equal((await formerOwner.request('/api/mt5/config', {}, 'PUT')).status, 200, 'an incorrect code cannot revoke the previous owner');
-      now += 61_000;
-      assert.equal((await owner.request('/api/auth/resend', {})).status, 200);
-      const user = await verify(owner, identities.owner);
-      assert.equal(user.role, 'super_admin');
-      assert.equal(user.canAccess, true);
-      assert.equal((await formerOwner.request('/api/mt5/config', {}, 'PUT')).status, 401, 'handover revokes the previous owner session');
-      const members = (await (await owner.request('/api/auth/users')).json()).users;
-      assert.equal(members.filter((member: any) => member.role === 'super_admin').length, 1);
-      const old = members.find((member: any) => member.email === 'cabhishek64@gmail.com');
-      assert.equal(old.role, 'client');
-      assert.equal(old.status, 'removed');
-      assert.equal((await owner.request('/api/auth/verify', { code: codeFor(identities.owner) })).status, 400, 'one-time code cannot be reused');
-      assert.equal((await owner.request('/api/mt5/config', {}, 'PUT')).status, 200);
-      assert.equal((await owner.request('/api/auth/users', { email: 'manager@gmail.com', role: 'admin' })).status, 201);
-      await googleStart(formerOwner, 'former-owner');
-      const former = await verify(formerOwner, identities['former-owner']);
-      assert.equal(former.role, 'client');
-      assert.equal(former.canAccess, false);
-      assert.equal((await formerOwner.request('/api/mt5/config', {}, 'PUT')).status, 403);
-    });
-    await t.test('clients prove email ownership, then wait for approval', async () => {
-      assert.equal((await client.request('/api/auth/register', { email: identities.client, password: 'client-password-123' })).status, 200);
-      const pending = await verify(client, identities.client);
-      assert.equal(pending.status, 'pending');
-      assert.equal(pending.canAccess, false);
-      assert.equal((await client.request('/api/tradingview/market-data')).status, 403);
-    });
-    await t.test('admin approves clients but cannot manage admins or super admin', async () => {
-      await googleStart(admin, 'admin');
-      assert.equal((await verify(admin, identities.admin)).role, 'admin');
-      assert.equal((await admin.request('/api/auth/login', { email: identities.admin, password: 'anything' })).status, 401);
-      const members = (await (await owner.request('/api/auth/users')).json()).users;
-      const clientUser = members.find((member: any) => member.email === identities.client);
-      const ownerUser = members.find((member: any) => member.role === 'super_admin');
-      assert.equal((await admin.request(`/api/auth/users/${ownerUser.id}`, { status: 'suspended' }, 'PATCH')).status, 403);
-      assert.equal((await admin.request('/api/auth/users', { email: 'rogueadmin@gmail.com', role: 'admin' })).status, 403);
-      assert.equal((await admin.request(`/api/auth/users/${clientUser.id}`, { role: 'admin' }, 'PATCH')).status, 403);
-      const result = await admin.request(`/api/auth/users/${clientUser.id}`, { status: 'approved', expiresAt: now + 60 * 60_000 }, 'PATCH');
-      assert.equal(result.status, 200);
-      assert.equal((await result.json()).user.approvedBy, identities.admin);
-      assert.equal((await client.request('/api/auth/me').then(r => r.json())).user, null, 'approval changes revoke existing sessions');
-    });
-    await t.test('approved clients have charts but cannot access bridge, Telegram or user management', async () => {
-      now += 61_000;
-      assert.equal((await client.request('/api/auth/login', { email: identities.client, password: 'client-password-123' })).status, 200);
-      assert.equal((await verify(client, identities.client)).canAccess, true);
-      assert.equal((await client.request('/api/tradingview/market-data')).status, 200);
-      for (const route of ['/api/mt5/bridge/start', '/api/telegram/alerts']) assert.equal((await client.request(route, {})).status, 403);
-      assert.equal((await client.request('/api/mt5/config', {}, 'PUT')).status, 403);
-      assert.equal((await client.request('/api/mt5/accounts')).status, 403);
-      assert.equal((await client.request('/api/auth/users')).status, 403);
-      assert.equal((await client.request('/api/auth/activity')).status, 403);
-    });
-    await t.test('Google and password login resolve to one account and do not expose hashes', async () => {
-      now += 61_000;
-      const before = (await (await owner.request('/api/auth/users')).json()).users;
-      await googleStart(client, 'client');
-      const account = await verify(client, identities.client);
-      assert.equal(account.id, before.find((u: any) => u.email === identities.client).id);
-      assert.equal(account.passwordHash, undefined);
-      assert.equal(account.googleSubject, undefined);
-      assert.equal((await (await owner.request('/api/auth/users')).json()).users.length, before.length);
-    });
-    await t.test('single-use reset link expires in 15 minutes and resetting revokes sessions', async () => {
-      assert.equal((await anon.request('/api/auth/forgot-password', { email: identities.client })).status, 200);
-      const reset = emails.filter(message => message.subject.includes('Reset')).at(-1)!;
-      const token = reset.text.match(/#reset=([^\s]+)/)![1];
-      assert.equal((await anon.request('/api/auth/reset-password', { token, password: 'new-client-password-123' })).status, 200);
-      assert.equal((await client.request('/api/tradingview/market-data')).status, 401);
-      assert.equal((await anon.request('/api/auth/reset-password', { token, password: 'other-password-123' })).status, 400);
-      assert.equal((await anon.request('/api/auth/login', { email: identities.client, password: 'client-password-123' })).status, 401);
-      await anon.request('/api/auth/forgot-password', { email: identities.client });
-      const later = emails.filter(message => message.subject.includes('Reset')).at(-1)!.text.match(/#reset=([^\s]+)/)![1];
-      now += 15 * 60_000 + 1;
-      assert.equal((await anon.request('/api/auth/reset-password', { token: later, password: 'other-password-123' })).status, 400);
-    });
-    await t.test('OTP expires, retries are bounded and suspension/expiry deny active users', async () => {
-      const other = new Browser(base);
-      await other.request('/api/auth/register', { email: 'expiredcode@gmail.com', password: 'client-password-123' });
-      const old = codeFor('expiredcode@gmail.com');
-      now += 5 * 60_000 + 1;
-      assert.equal((await other.request('/api/auth/verify', { code: old })).status, 400);
-      await other.request('/api/auth/register', { email: 'wrongcode@gmail.com', password: 'client-password-123' });
-      for (let count = 0; count < 5; count++) assert.equal((await other.request('/api/auth/verify', { code: '000000' })).status, 400);
-      assert.equal((await other.request('/api/auth/verify', { code: codeFor('wrongcode@gmail.com') })).status, 400);
-      await client.request('/api/auth/login', { email: identities.client, password: 'new-client-password-123' });
-      const account = await verify(client, identities.client);
-      assert.equal(account.canAccess, true);
-      assert.equal((await admin.request(`/api/auth/users/${account.id}`, { status: 'suspended' }, 'PATCH')).status, 200);
-      assert.equal((await client.request('/api/tradingview/market-data')).status, 401);
-      await admin.request(`/api/auth/users/${account.id}`, { status: 'approved', expiresAt: now + 2_000 }, 'PATCH');
-      now += 61_000;
-      await client.request('/api/auth/login', { email: identities.client, password: 'new-client-password-123' });
-      assert.equal((await verify(client, identities.client)).canAccess, false);
-      assert.equal((await client.request('/api/tradingview/market-data')).status, 403);
-    });
-    await t.test('resending invalidates the earlier code and repeated password failures are limited', async () => {
-      const browser = new Browser(base);
-      await browser.request('/api/auth/register', { email: 'resendclient@gmail.com', password: 'client-password-123' });
-      const oldCode = codeFor('resendclient@gmail.com');
-      assert.equal((await browser.request('/api/auth/resend', {})).status, 429);
-      now += 61_000;
-      assert.equal((await browser.request('/api/auth/resend', {})).status, 200);
-      const newCode = codeFor('resendclient@gmail.com');
-      if (newCode !== oldCode) assert.equal((await browser.request('/api/auth/verify', { code: oldCode })).status, 400);
-      assert.equal((await verify(browser, 'resendclient@gmail.com')).status, 'pending');
-      for (let attempt = 0; attempt < 8; attempt++) {
-        assert.equal((await anon.request('/api/auth/login', { email: 'nonexistent@gmail.com', password: 'incorrect-password' })).status, 401);
+      assert.equal((await anon.request('/api/auth/login', {}, 'POST', 'https://other.example')).status, 403);
+      assert.equal((await anon.request('/api/health')).status, 200);
+      assert.equal((await anon.request('/api/auth/owner-setup', { username: 'attacker', password })).status, 403);
+      for (const route of ['/google', '/google/callback', '/register', '/verify', '/resend', '/forgot', '/reset']) {
+        assert.equal((await anon.request('/api/auth' + route, {})).status, 410);
       }
-      assert.equal((await anon.request('/api/auth/login', { email: 'nonexistent@gmail.com', password: 'incorrect-password' })).status, 429);
     });
-    await t.test('super admin sees approval history; admin activity is restricted; secrets stay hashed', async () => {
-      const all = (await (await owner.request('/api/auth/activity')).json()).activity;
-      assert.ok(all.some((entry: any) => entry.actor === identities.admin && entry.action === 'user.updated'));
-      const own = (await (await admin.request('/api/auth/activity')).json()).activity;
-      assert.ok(own.every((entry: any) => entry.actor === identities.admin));
-      const saved = await readFile(path.join(directory, 'accounts.json'), 'utf8');
-      assert.ok(!saved.includes('new-client-password-123'));
-      assert.ok(!saved.includes(owner.cookies.get('dashboard_session')!));
-      assert.ok(!saved.includes('test-client-secret'));
-      assert.equal(normalizeLoginEmail('Approved.Client+alias@googlemail.com'), identities.client);
+    await t.test('owner credentials require the local token once; no Google or mail dependency', async () => {
+      assert.equal((await (await anon.request('/api/auth/config')).json()).ownerSetupRequired, true);
+      const setup = JSON.parse(await readFile(path.join(directory, 'owner-setup.json'), 'utf8'));
+      const response = await fetch(base + '/api/auth/owner-setup', { method: 'POST',
+        headers: { Origin: base, 'Content-Type': 'application/json', Authorization: `Bearer ${setup.token}` },
+        body: JSON.stringify({ username: 'Owner', password: ownerPassword }) });
+      assert.equal(response.status, 200);
+      assert.equal((await (await anon.request('/api/auth/config')).json()).ownerSetupRequired, false);
+      await assert.rejects(readFile(path.join(directory, 'owner-setup.json')));
+      const replay = await fetch(base + '/api/auth/owner-setup', { method: 'POST',
+        headers: { Origin: base, 'Content-Type': 'application/json', Authorization: `Bearer ${setup.token}` },
+        body: JSON.stringify({ username: 'hijack', password }) });
+      assert.equal(replay.status, 403);
+      assert.equal((await login(owner, 'OWNER', ownerPassword)).status, 200);
+      assert.equal((await getUser(owner)).id, 'owner-id');
+      const stored = JSON.parse(await readFile(path.join(directory, 'accounts.json'), 'utf8'));
+      assert.ok(stored.users.some((u: any) => u.id === 'legacy-client'));
+      assert.deepEqual(stored.challenges, []); assert.deepEqual(stored.resets, []);
+      const legacy = new Browser(base); legacy.cookies.set('dashboard_session', 'legacy-cookie');
+      assert.equal(await getUser(legacy), null);
     });
-    await t.test('a new super-admin device requires a code without logging out the already verified device', async () => {
-      const device = new Browser(base);
-      assert.equal((await device.request('/api/mt5/config', {}, 'PUT')).status, 401);
-      await googleStart(device, 'owner');
-      assert.equal((await device.request('/api/mt5/config', {}, 'PUT')).status, 401);
-      assert.equal((await owner.request('/api/mt5/config', {}, 'PUT')).status, 200);
-      await verify(device, identities.owner);
-      assert.equal((await device.request('/api/mt5/config', {}, 'PUT')).status, 200);
-      assert.equal((await owner.request('/api/mt5/config', {}, 'PUT')).status, 200);
+    await t.test('super admin creates admins; admins create clients and cannot escalate roles', async () => {
+      managerId = (await create(owner, 'Manager', 'admin')).id;
+      assert.equal((await login(admin, 'manager')).status, 200);
+      clientId = (await create(admin, 'client_one')).id;
+      assert.equal((await login(client, 'client_one')).status, 200);
+      assert.equal((await client.request('/api/auth/users')).status, 403);
+      assert.equal((await admin.request('/api/auth/users', { username: 'admin_two', password, role: 'admin' })).status, 403);
+      assert.equal((await admin.request(`/api/auth/users/${clientId}`, { role: 'admin' }, 'PATCH')).status, 403);
+      assert.equal((await admin.request(`/api/auth/users/${managerId}`, { password }, 'PATCH')).status, 403);
+      assert.equal((await owner.request('/api/auth/users/owner-id', { password }, 'PATCH')).status, 403);
+      const list = (await (await admin.request('/api/auth/users')).json()).users;
+      assert.ok(list.every((u: any) => u.role === 'client'));
+      assert.equal((await owner.request('/api/auth/users', { username: ' CLIENT_ONE ', password, role: 'client' })).status, 409);
+      assert.equal((await owner.request('/api/auth/users', { username: 'bad user', password, role: 'client' })).status, 400);
+      assert.equal((await owner.request('/api/auth/users', { username: 'short_password', password: 'short', role: 'client' })).status, 400);
     });
-    await t.test('all roles retain verified sessions after reopening; polling does not renew the 30-day deadline', async () => {
-      const start = now;
-      const sentBefore = emails.length;
-      const persisted = JSON.parse(await readFile(path.join(directory, 'accounts.json'), 'utf8'));
-      const reopen = [owner, admin, client].map(browser => {
-        const reopened = new Browser(base);
-        reopened.cookies = new Map(browser.cookies);
-        return reopened;
-      });
+    await t.test('client reads charts but cannot control bridge or Telegram', async () => {
+      assert.equal((await client.request('/api/tradingview/market-data')).status, 200);
+      assert.equal((await client.request('/api/mt5/config', {}, 'PUT')).status, 403);
+      assert.equal((await client.request('/api/telegram/alerts', {})).status, 403);
+      assert.equal((await admin.request('/api/mt5/config', {}, 'PUT')).status, 200);
+      assert.equal((await owner.request('/api/mt5/heartbeat', {})).status, 403);
+      const previousToken = process.env.MT5_BRIDGE_TOKEN;
+      process.env.MT5_BRIDGE_TOKEN = 'isolated-machine-token';
       try {
-        now += 86_400_000;
-        for (const browser of reopen) {
-          const response = await browser.request('/api/auth/me');
-          assert.ok((await response.json()).user, 'the verified browser still has its session after 24 hours');
-          assert.doesNotMatch(response.headers.getSetCookie()[0], /Max-Age=2592000;/, 'session polling does not restart the period');
-        }
-        assert.equal(emails.length, sentBefore, 'reopening does not send any verification emails');
-        const afterPolling = JSON.parse(await readFile(path.join(directory, 'accounts.json'), 'utf8'));
-        assert.deepEqual(afterPolling.sessions.map((entry: any) => entry.expiresAt), persisted.sessions.map((entry: any) => entry.expiresAt));
-        now = start + 31 * 86_400_000;
-        for (const browser of reopen) assert.equal((await (await browser.request('/api/auth/me')).json()).user, null);
-      } finally { now = start; }
+        const response = await fetch(base + '/api/mt5/heartbeat', { method: 'POST', headers: { Authorization: 'Bearer isolated-machine-token' } });
+        assert.equal(response.status, 200);
+      } finally { if (previousToken === undefined) delete process.env.MT5_BRIDGE_TOKEN; else process.env.MT5_BRIDGE_TOKEN = previousToken; }
     });
-    await t.test('only the super admin can create or restore admin access with no expiry', async () => {
-      const members = (await (await owner.request('/api/auth/users')).json()).users;
-      const manager = members.find((member: any) => member.email === identities.admin);
-      assert.equal((await admin.request(`/api/auth/users/${manager.id}`, { expiresAt: null }, 'PATCH')).status, 403);
-      const creation = await owner.request('/api/auth/users', { email: 'permanentadmin@gmail.com', role: 'admin', expiresAt: null });
-      assert.equal(creation.status, 201);
-      assert.equal((await creation.json()).user.expiresAt, undefined);
-      const start = now;
-      try {
-        const dated = await owner.request(`/api/auth/users/${manager.id}`, { expiresAt: now + 86_400_000 }, 'PATCH');
-        assert.equal(dated.status, 200);
-        assert.equal((await dated.json()).user.expiresAt, now + 86_400_000);
-        const cleared = await owner.request(`/api/auth/users/${manager.id}`, { expiresAt: null }, 'PATCH');
-        assert.equal(cleared.status, 200);
-        assert.equal((await cleared.json()).user.expiresAt, undefined);
-        now += 2 * 86_400_000;
-        const after = (await (await owner.request('/api/auth/users')).json()).users.find((member: any) => member.id === manager.id);
-        assert.equal(after.canAccess, true, 'admin access remains active after its former expiry date');
-        const saved = JSON.parse(await readFile(path.join(directory, 'accounts.json'), 'utf8'));
-        assert.equal(saved.users.find((member: any) => member.id === manager.id).expiresAt, undefined);
-      } finally { now = start; }
+    await t.test('wrong password never kicks out the active client; new login revokes old device without cooldown', async () => {
+      const second = new Browser(base);
+      assert.equal((await login(second, 'client_one', 'wrong-password')).status, 401);
+      assert.ok(await getUser(client));
+      assert.equal((await login(second, 'client_one')).status, 200);
+      assert.equal(await getUser(client), null);
+      assert.equal((await client.request('/api/tradingview/market-data')).status, 401);
+      // The old device may immediately sign back in; no timed account block.
+      assert.equal((await login(client, 'client_one')).status, 200);
+      assert.equal(await getUser(second), null);
+      for (let i = 0; i < 15; i++) assert.equal((await login(client, 'client_one')).status, 200);
+      const stored = JSON.parse(await readFile(path.join(directory, 'accounts.json'), 'utf8'));
+      assert.equal(stored.sessions.filter((s: any) => s.userId === clientId).length, 1);
+    });
+    await t.test('same-browser tabs share a login; another client replaces the previous account on that device', async () => {
+      const tab = new Browser(base); tab.cookies = client.cookies;
+      assert.equal((await getUser(tab)).id, clientId);
+      const oldTab = new Browser(base); oldTab.cookies = new Map(client.cookies);
+      await create(admin, 'client_two');
+      assert.equal((await login(client, 'client_two')).status, 200);
+      assert.equal((await getUser(tab)).username, 'client_two');
+      assert.equal(await getUser(oldTab), null);
+      const stolenSession = new Browser(base);
+      stolenSession.cookies.set('dashboard_session', client.cookies.get('dashboard_session')!);
+      assert.equal(await getUser(stolenSession), null, 'client session requires its device cookie');
+      assert.equal((await login(client, 'client_one')).status, 200);
+    });
+    await t.test('simultaneous device logins leave exactly one active session', async () => {
+      const devices = [new Browser(base), new Browser(base)];
+      const responses = await Promise.all(devices.map(browser => login(browser, 'client_one')));
+      assert.ok(responses.every(response => response.status === 200));
+      const users = await Promise.all(devices.map(getUser));
+      assert.equal(users.filter(Boolean).length, 1);
+      assert.equal((await login(client, 'client_one')).status, 200);
+    });
+    await t.test('password resets revoke all old sessions; credentials never appear in user lists or audit', async () => {
+      const nextPassword = 'Replacement-password-456';
+      const response = await admin.request(`/api/auth/users/${clientId}`, { password: nextPassword }, 'PATCH');
+      assert.equal(response.status, 200); assert.equal(await getUser(client), null);
+      assert.equal((await login(client, 'client_one')).status, 401);
+      assert.equal((await login(client, 'client_one', nextPassword)).status, 200);
+      const users = await (await owner.request('/api/auth/users')).text();
+      const activity = await (await owner.request('/api/auth/activity')).text();
+      for (const text of [users, activity]) {
+        assert.ok(!text.includes(nextPassword)); assert.ok(!text.includes(ownerPassword)); assert.ok(!text.includes('passwordHash'));
+      }
+      // Invalid edits must not partially change a username in memory.
+      assert.equal((await admin.request(`/api/auth/users/${clientId}`, { username: 'bad_partial', password: 'short' }, 'PATCH')).status, 400);
+      assert.equal((await login(client, 'client_one', nextPassword)).status, 200);
+      assert.equal((await admin.request(`/api/auth/users/${clientId}`, { password }, 'PATCH')).status, 200);
+      assert.equal((await login(client, 'client_one')).status, 200);
+    });
+    await t.test('legacy users receive credentials without losing their ID; role changes keep passwords', async () => {
+      const response = await admin.request('/api/auth/users/legacy-client', { username: 'migrated_client', password }, 'PATCH');
+      assert.equal(response.status, 200);
+      const migrated = new Browser(base); assert.equal((await login(migrated, 'migrated_client')).status, 200);
+      assert.equal((await getUser(migrated)).id, 'legacy-client');
+      assert.equal((await owner.request('/api/auth/users/legacy-client', { role: 'admin' }, 'PATCH')).status, 200);
+      assert.equal(await getUser(migrated), null);
+      assert.equal((await login(migrated, 'migrated_client')).status, 200);
+      assert.equal((await getUser(migrated)).role, 'admin');
+    });
+    await t.test('suspension, removal and expiry still deny access; admins cannot change admin expiry', async () => {
+      for (const status of ['suspended', 'removed', 'pending']) {
+        assert.equal((await admin.request(`/api/auth/users/${clientId}`, { status }, 'PATCH')).status, 200);
+        assert.equal(await getUser(client), null);
+        assert.equal((await login(client, 'client_one')).status, 403);
+        await admin.request(`/api/auth/users/${clientId}`, { status: 'approved' }, 'PATCH');
+        assert.equal((await login(client, 'client_one')).status, 200);
+      }
+      assert.equal((await admin.request(`/api/auth/users/${managerId}`, { expiresAt: null }, 'PATCH')).status, 403);
+      assert.equal((await admin.request(`/api/auth/users/${clientId}`, { expiresAt: now + 1000 }, 'PATCH')).status, 200);
+      now += 2000;
+      assert.equal((await login(client, 'client_one')).status, 403);
+      await admin.request(`/api/auth/users/${clientId}`, { status: 'approved' }, 'PATCH');
+      assert.equal((await login(client, 'client_one')).status, 403, 'approval alone cannot extend expiry');
+      await admin.request(`/api/auth/users/${clientId}`, { expiresAt: null }, 'PATCH');
+      assert.equal((await login(client, 'client_one')).status, 200);
+    });
+    await t.test('delete user enforces roles, revokes sessions and removes both new and legacy accounts', async () => {
+      const disposableAdmin = await create(owner, 'delete_manager', 'admin');
+      const disposableClient = await create(admin, 'delete_client');
+      const adminBrowser = new Browser(base), clientBrowser = new Browser(base);
+      assert.equal((await login(adminBrowser, 'delete_manager')).status, 200);
+      assert.equal((await login(clientBrowser, 'delete_client')).status, 200);
+      assert.equal((await anon.request(`/api/auth/users/${disposableClient.id}`, {}, 'DELETE')).status, 401);
+      assert.equal((await clientBrowser.request(`/api/auth/users/${clientId}`, {}, 'DELETE')).status, 403);
+      assert.equal((await admin.request(`/api/auth/users/${disposableAdmin.id}`, {}, 'DELETE')).status, 403);
+      assert.equal((await owner.request('/api/auth/users/owner-id', {}, 'DELETE')).status, 403);
+      assert.equal((await owner.request(`/api/auth/users/${disposableAdmin.id}`, {}, 'DELETE', 'https://other.example')).status, 403);
+      assert.equal((await admin.request(`/api/auth/users/${disposableClient.id}`, {}, 'DELETE')).status, 200);
+      assert.equal(await getUser(clientBrowser), null);
+      assert.equal((await login(clientBrowser, 'delete_client')).status, 401);
+      assert.equal((await owner.request(`/api/auth/users/${disposableAdmin.id}`, {}, 'DELETE')).status, 200);
+      assert.equal(await getUser(adminBrowser), null);
+      // Older email-only users can be deleted without first assigning credentials.
+      const stored = JSON.parse(await readFile(path.join(directory, 'accounts.json'), 'utf8'));
+      const legacyId = stored.users.find((u: any) => u.id === 'legacy-client').id;
+      assert.equal((await owner.request(`/api/auth/users/${legacyId}`, {}, 'DELETE')).status, 200);
+      const users = (await (await owner.request('/api/auth/users')).json()).users;
+      assert.ok(!users.some((u: any) => [legacyId, disposableAdmin.id, disposableClient.id].includes(u.id)));
+      const saved = JSON.parse(await readFile(path.join(directory, 'accounts.json'), 'utf8'));
+      assert.ok(!saved.sessions.some((session: any) => [legacyId, disposableAdmin.id, disposableClient.id].includes(session.userId)));
+      const audit = (await (await owner.request('/api/auth/activity')).json()).activity;
+      assert.ok(audit.some((entry: any) => entry.action === 'user.deleted' && entry.target === 'delete_client'));
+      assert.equal((await owner.request(`/api/auth/users/${disposableAdmin.id}`, {}, 'DELETE')).status, 404);
+    });
+    await t.test('sessions persist across restart for 30 days, polling cannot extend them, and logout revokes them', async () => {
+      const before = JSON.parse(await readFile(path.join(directory, 'accounts.json'), 'utf8'));
+      const digest = createHash('sha256').update(client.cookies.get('dashboard_session')!).digest('hex');
+      const session = before.sessions.find((s: any) => s.digest === digest);
+      assert.equal(session.expiresAt - session.verifiedAt, 30 * 86_400_000);
+      now += 86_400_000;
+      auth = new DashboardAuth({ directory, publicUrl: base, now: () => now });
+      assert.ok(await getUser(client));
+      const after = JSON.parse(await readFile(path.join(directory, 'accounts.json'), 'utf8'));
+      assert.equal(after.sessions.find((s: any) => s.digest === digest).expiresAt, session.expiresAt);
+      assert.equal((await client.request('/api/auth/logout', {})).status, 200); assert.equal(await getUser(client), null);
+      assert.equal((await login(client, 'client_one')).status, 200);
+      now += 31 * 86_400_000;
+      assert.equal(await getUser(client), null); assert.equal(await getUser(admin), null);
     });
   } finally {
-    if (previousId === undefined) delete process.env.GOOGLE_CLIENT_ID; else process.env.GOOGLE_CLIENT_ID = previousId;
-    if (previousSecret === undefined) delete process.env.GOOGLE_CLIENT_SECRET; else process.env.GOOGLE_CLIENT_SECRET = previousSecret;
     await new Promise<void>(resolve => server.close(() => resolve()));
     await rm(directory, { recursive: true, force: true });
   }
+});
+
+test('usernames are normalized and invalid identifiers are rejected', () => {
+  assert.equal(normalizeUsername(' Client_One '), 'client_one');
+  for (const name of ['', 'ab', 'a b', '../owner', 'test@gmail.com', 'x'.repeat(33)]) assert.throws(() => normalizeUsername(name));
 });
 
 test('client journal excludes broker identifiers, executions and money results', () => {

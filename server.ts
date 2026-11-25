@@ -23,7 +23,7 @@ import {
   reserveTelegramTradeNumber, bindTelegramAlertAliases, telegramSignalKey, mergeTelegramAlertHistories,
   type SentTelegramAlerts, type TelegramTradeNumber,
 } from './src/services/telegramTradeNumbers';
-import { formatTelegramTradeMessage, countDailyTrades, countTelegramSetups, formatDailyTradeSummary, previousNepalDay,
+import { formatTelegramTradeMessage, telegramAlertEventKey, validAbhiLegResult, countDailyTrades, countTelegramSetups, formatDailyTradeSummary, previousNepalDay,
   telegramDemoMessages, type TelegramTradeAlert } from './src/services/telegramMessages';
 import {
   MT5_DEFAULT_ENABLED_TIMEFRAMES,
@@ -1622,11 +1622,14 @@ function validTelegramTradeAlert(value: any): value is TelegramTradeAlert {
   return value && typeof value.id === 'string' && value.id.length > 0 && value.id.length <= 300
     && (value.tradeKey === undefined || typeof value.tradeKey === 'string'
       && value.tradeKey.length > 0 && value.tradeKey.length <= 300)
-    && ['pending', 'cancelled', 'entry', 'entry2', 'rf', 'tp', 'sl'].includes(value.kind)
+    && ['pending', 'cancelled', 'entry', 'entry2', 'leg-result', 'rf', 'tp', 'sl'].includes(value.kind)
+    && (value.kind !== 'leg-result' || validAbhiLegResult(value))
     && (value.chartSetup === undefined || value.chartSetup === true && value.tradeKey?.startsWith('CHART_SETUP:')
       && ['SCALP_1_1', 'INTRADAY'].includes(value.tradeStyle) && value.pullback
       && typeof value.pullback.secondOnly === 'boolean'
       && (value.pullback.abhi === undefined || typeof value.pullback.abhi === 'boolean')
+      && [value.pullback.firstStatus, value.pullback.secondStatus].every(status => status === undefined
+        || ['open', 'waiting', 'expired', 'skipped', 'uncertain', 'tp', 'sl'].includes(status))
       && (!value.pullback.abhi || value.tradeStyle === 'SCALP_1_1'
         && [value.pullback.firstTarget, value.pullback.secondTarget].every(v=>Number.isFinite(v)&&v>0)
         && (value.pullback.netReturnR === undefined || Number.isFinite(value.pullback.netReturnR)
@@ -1734,7 +1737,7 @@ async function deliverTelegramAlerts(
       if (!config.telegramMessagesEnabled || !isTradeStyleEnabled(config, alert)
         || (MT5_ENTRY_TIMEFRAME_OPTIONS.some(timeframe => timeframe === alert.signalTimeframe)
           && !isMt5EntryTimeframeEnabled(config.enabledTimeframes, alert.signalTimeframe))) {
-        acknowledged.push(`${alert.id}:${alert.kind}`);
+        acknowledged.push(telegramAlertEventKey(alert));
         continue;
       }
       const aliases = bindTelegramAlertAliases(sent, alert.id, alert.tradeKey);
@@ -1742,16 +1745,20 @@ async function deliverTelegramAlerts(
       if (alert.kind === 'pending' ? state.pending
         : alert.kind === 'cancelled' ? state.cancelled
         : alert.kind === 'rf' ? state.rf
-        : alert.kind === 'entry' ? state.entry : alert.kind === 'entry2' ? state.entry2 : state.result === alert.kind) {
-        acknowledged.push(`${alert.id}:${alert.kind}`);
+        : alert.kind === 'entry' ? state.entry : alert.kind === 'entry2' ? state.entry2
+          : alert.kind === 'leg-result' ? !!state.result || !!state.legResults?.[alert.legResult!.leg] : state.result === alert.kind) {
+        acknowledged.push(telegramAlertEventKey(alert));
         continue;
       }
+      if (alert.kind === 'leg-result' && !state.entry) {
+        acknowledged.push(telegramAlertEventKey(alert)); continue;
+      }
       if (alert.kind === 'entry2' && (!state.entry || state.result)) {
-        acknowledged.push(`${alert.id}:${alert.kind}`); continue;
+        acknowledged.push(telegramAlertEventKey(alert)); continue;
       }
       if ((alert.kind === 'tp' || alert.kind === 'sl')
         && ((!state.entry && !allowResultWithoutEntry) || state.result)) {
-        acknowledged.push(`${alert.id}:${alert.kind}`);
+        acknowledged.push(telegramAlertEventKey(alert));
         continue;
       }
       const number = reserveTelegramTradeNumber(sent, alert.id, aliases[0]);
@@ -1762,14 +1769,18 @@ async function deliverTelegramAlerts(
         : alert.kind === 'cancelled' ? { ...numberedState, cancelled: true }
         : alert.kind === 'rf' ? { ...numberedState, rf: true }
         : alert.kind === 'entry' ? { ...numberedState, entry: true }
-        : alert.kind === 'entry2' ? { ...numberedState, entry2: true } : { ...numberedState, result: alert.kind as 'tp' | 'sl' };
+        : alert.kind === 'entry2' ? { ...numberedState, entry2: true }
+        : alert.kind === 'leg-result' ? { ...numberedState, legResults: { ...numberedState.legResults, [alert.legResult!.leg]: alert.legResult!.outcome } }
+        : { ...numberedState, result: alert.kind as 'tp' | 'sl' };
       Object.assign(sent[alert.id], { tradeStyle: alert.tradeStyle ?? (['M1', 'M5'].includes(alert.zoneTimeframe) ? 'SCALPING' : 'INTRADAY'),
         openedAt: numberedState.openedAt ?? alert.openedAt,
         ...(alert.kind === 'rf' ? { rfAt: alert.rfAt } : {}),
-        ...((alert.kind === 'tp' || alert.kind === 'sl') ? { closedAt: alert.closedAt, entry: true } : {}) });
+        ...((alert.kind === 'tp' || alert.kind === 'sl') ? { closedAt: alert.closedAt, entry: true,
+          ...(Number.isFinite(alert.pullback?.netReturnR ?? alert.returnR)
+            ? { returnR: alert.pullback?.netReturnR ?? alert.returnR } : {}) } : {}) });
       for (const alias of aliases) sent[alias] = sent[alert.id];
       await saveSent();
-      acknowledged.push(`${alert.id}:${alert.kind}`);
+      acknowledged.push(telegramAlertEventKey(alert));
     }
     return acknowledged;
   });
@@ -1934,6 +1945,9 @@ async function startServer() {
         return res.json({ ok: true, config: {
           enabled: false, dryRun: true, scalpingEnabled: config.scalpingEnabled,
           intradayEnabled: config.intradayEnabled, tradingTimeEnabled: config.tradingTimeEnabled,
+          scalpOneToOneEnabled: config.scalpOneToOneEnabled === true,
+          bollingerM5Enabled: config.bollingerM5Enabled === true,
+          pendingExpiryMinutes: config.pendingExpiryMinutes,
           telegramMessagesEnabled: config.telegramMessagesEnabled,
           mtfLtfFibRequired: config.mtfLtfFibRequired, enabledTimeframes: config.enabledTimeframes,
         }, bridge: { connected: false }, positions: [], recentSignals: [], counts: {},
@@ -2495,7 +2509,12 @@ async function startServer() {
 
   app.get('/api/journal/trades', async (req, res) => {
     try {
-      const allTrades = deduplicateTradeRecords(await readJournalTrades());
+      const journalTrades = await readJournalTrades();
+      const allTrades = deduplicateTradeRecords(journalTrades);
+      if (req.query.view === 'chart') {
+        res.setHeader('Cache-Control', 'no-store');
+        return res.json({ ok: true, trades: journalDashboardTrades(deduplicateTradeRecords(clientVisibleTrades(journalTrades))) });
+      }
       let trades = allTrades;
       if (res.locals.dashboardUser?.role === 'client') {
         let personal: StoredJournalTrade[] = [];
@@ -2598,7 +2617,7 @@ async function startServer() {
     try {
       const config = await readMt5Config();
       if (!config.telegramMessagesEnabled) {
-        return res.json({ ok: true, acknowledged: alerts.map((alert: TelegramTradeAlert) => `${alert.id}:${alert.kind}`) });
+        return res.json({ ok: true, acknowledged: alerts.map((alert: TelegramTradeAlert) => telegramAlertEventKey(alert)) });
       }
       const acknowledged = await deliverTelegramAlerts(alerts);
       return res.json({ ok: true, acknowledged });

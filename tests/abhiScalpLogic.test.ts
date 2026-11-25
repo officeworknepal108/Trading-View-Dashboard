@@ -1,3 +1,4 @@
+import { buildChartPullbackSetups } from '../src/services/chartEntryData';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { scalpOneToOnePullbackSignals, scalpOneToOneChartHistory } from '../src/services/scalpOneToOne';
@@ -5,7 +6,7 @@ import { scalpPullbackSignalError, selectSecondOnlyPullback, type Mt5StoredSigna
 import { buildPullbackChartSetups, chartSignalFromHistoryFill } from '../src/services/pullbackChartSetup';
 import { groupPullbackTableSignals } from '../src/services/pullbackEntryDisplay';
 import { pullbackTelegramAlerts } from '../src/services/pullbackTelegram';
-import { formatTelegramTradeMessage } from '../src/services/telegramMessages';
+import { formatTelegramTradeMessage, telegramAlertEventKey, validAbhiLegResult } from '../src/services/telegramMessages';
 import { pullbackExpirySeconds } from '../src/services/pullbackExpiry';
 import type { VolumeStudyRecord } from '../src/services/volumeEngulfingStudy';
 
@@ -88,7 +89,76 @@ test('Abhi chart messages show individual targets and classify a mixed setup by 
   assert.ok(Math.abs(setup.netReturnR!-.35)<1e-7);
   const alerts=pullbackTelegramAlerts(setup,4500),entry=alerts.find(a=>a.kind==='entry')!;
   const text=formatTelegramTradeMessage(entry,{tradeNumber:1,tradeDate:'2026-11-21'});
-  assert.match(text,/ABHI SCALP LOGIC/);assert.match(text,/1st TP: 110.250/);assert.match(text,/2nd TP: 106.875/);
+  assert.match(text,/ABHI SCALP LOGIC/);assert.match(text,/TP: 110.250/);assert.match(text,/TP: 106.875/);
   const result=alerts.find(a=>a.kind==='tp')!;
-  assert.match(formatTelegramTradeMessage(result,{tradeNumber:1,tradeDate:'2026-11-21'}),/SETUP CLOSED.*\+0.35R/);
+  assert.match(formatTelegramTradeMessage(result,{tradeNumber:1,tradeDate:'2026-11-21'}),/SETUP CLOSED[\s\S]*\+0.35R/);
+});
+
+
+test('Abhi v4 chart marker and both entry outcomes match across roles despite broker fills', () => {
+  const chartSignals = signals().map(s => ({ ...s, status: 'SIMULATED' as const, preview: true, createdAt: 1800, updatedAt: 1800 }));
+  const brokerSignals = stored().map((s, i) => ({ ...s, id: `MT5:${i}`, brokerTicket: i + 1,
+    status: 'SL' as const, openedAt: 1800, closedAt: 2700 }));
+  for (const asOf of [2700, 3600, 4500]) {
+    const client = buildChartPullbackSetups({ signals: chartSignals, candles: { M15: [confirmation, ...bars] }, asOf });
+    const admin = buildChartPullbackSetups({ signals: [...chartSignals, ...brokerSignals],
+      candles: { M15: [confirmation, ...bars] }, asOf, context: { account: 'test', server: 'demo', brokerSymbol: 'GOLD' } });
+    assert.equal(client.length, 1); assert.equal(client[0].abhi, true);
+    assert.deepEqual(admin, client);
+    assert.deepEqual(client[0].legs.map(leg => leg.entry), [99, 97.5]);
+    assert.deepEqual(client[0].legs.map(leg => leg.takeProfit), [110.25, 106.875]);
+  }
+});
+
+
+test('Abhi entry blocks keep each SL, bracketed pips, target and risk share together', () => {
+  const history = scalpOneToOneChartHistory(record, { M15: [confirmation, ...bars] }, 2700);
+  const setup = buildPullbackChartSetups({ signals: history.fills.map(chartSignalFromHistoryFill).filter(s => !!s),
+    asOf: 2700, candles: { M15: [confirmation, ...bars] } })[0];
+  const initial = pullbackTelegramAlerts(setup, 2700).find(a => a.kind === 'entry')!;
+  const text = formatTelegramTradeMessage(initial, { tradeNumber: 8, tradeDate: '2026-11-21' });
+  const [firstBlock, secondBlock] = text.slice(text.indexOf('1st Entry:')).split('\n\n');
+  assert.match(firstBlock, /1st Entry: 99.000/); assert.match(firstBlock, /SL: 90.000 \(90.00 pips\)/);
+  assert.match(firstBlock, /TP: 110.250/); assert.match(firstBlock, /Risk: 40%/);
+  assert.match(secondBlock, /2nd Entry: 97.500/); assert.match(secondBlock, /SL: 90.000 \(75.00 pips\)/);
+  assert.match(secondBlock, /TP: 106.875/); assert.match(secondBlock, /Risk: 60%/);
+});
+
+test('Abhi sends the closed leg result while its sibling remains open and keeps distinct event identities', () => {
+  const candles = { M15: [confirmation, ...bars] };
+  const history = scalpOneToOneChartHistory(record, candles, 3600);
+  const setup = buildPullbackChartSetups({ signals: history.fills.map(chartSignalFromHistoryFill).filter(s => !!s), asOf: 3600, candles })[0];
+  const partial = pullbackTelegramAlerts(setup, 3600).filter(a => a.kind === 'leg-result');
+  assert.equal(partial.length, 1); assert.equal(partial[0].legResult!.leg, 25);
+  assert.equal(validAbhiLegResult(partial[0]), true);
+  const text = formatTelegramTradeMessage(partial[0], { tradeNumber: 8, tradeDate: '2026-11-21' });
+  assert.match(text, /2nd Entry:.*TP HIT/); assert.match(text, /Result: \+1.25R/);
+  assert.match(text, /Setup contribution: \+0.75R/); assert.match(text, /1st Entry:.*Still open/);
+  assert.doesNotMatch(text, /Entry: [0-9]|TP: [0-9]|SL: [0-9]/);
+  const firstResult = { ...partial[0], legResult: { leg: 10 as const, outcome: 'tp' as const },
+    pullback: { ...partial[0].pullback!, firstStatus: 'tp' as const, secondStatus: 'open' as const } };
+  assert.notEqual(telegramAlertEventKey(firstResult), telegramAlertEventKey(partial[0]));
+  const firstText = formatTelegramTradeMessage(firstResult, { tradeNumber: 8, tradeDate: '2026-11-21' });
+  assert.match(firstText, /1st Entry:.*TP HIT/); assert.match(firstText, /Setup contribution: \+0.50R/);
+  assert.match(firstText, /2nd Entry:.*Still open/);
+  assert.equal(validAbhiLegResult({ ...firstResult, returnR: 2 }), false);
+  const fallback = { ...partial[0], pullback: { ...partial[0].pullback!, secondOnly: true, firstStatus: 'skipped' as const } };
+  assert.match(formatTelegramTradeMessage(fallback, { tradeNumber: 8, tradeDate: '2026-11-21' }), /Setup contribution: \+1.25R/);
+});
+
+
+test('an unfilled Abhi sibling stays waiting until expiry, while the first result sends immediately', () => {
+  const candles = { M15: [confirmation, ...bars] };
+  const history = scalpOneToOneChartHistory(record, candles, 3600);
+  const setup = buildPullbackChartSetups({ signals: history.fills.map(chartSignalFromHistoryFill).filter(s => !!s), asOf: 3600, candles })[0];
+  const firstOnly = { ...setup, netReturnR: .5, legs: setup.legs.map(leg => leg.leg === 10
+    ? { ...leg, filled: true, chartConfirmed: true, chartOutcome: 'tp' as const, chartResolvedAt: 2700 }
+    : { ...leg, filled: false, chartConfirmed: false, chartOutcome: undefined, chartResolvedAt: undefined, uncertain: false }) };
+  const partial = pullbackTelegramAlerts(firstOnly, 3600);
+  assert.equal(partial.filter(a => a.kind === 'leg-result').length, 1);
+  assert.ok(!partial.some(a => a.kind === 'tp' || a.kind === 'sl'));
+  assert.equal(partial.find(a => a.kind === 'leg-result')!.pullback!.secondStatus, 'waiting');
+  const closed = pullbackTelegramAlerts(firstOnly, 5400).find(a => a.kind === 'tp')!;
+  assert.ok(closed); assert.equal(closed.pullback!.secondStatus, 'expired');
+  assert.equal(closed.returnR, .5);
 });

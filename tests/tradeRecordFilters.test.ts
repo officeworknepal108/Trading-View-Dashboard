@@ -1,3 +1,4 @@
+import { buildChartEntryHistory, chartOnlyTradeRecords } from '../src/services/chartEntryData';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
@@ -670,4 +671,25 @@ test('two-month completed outcomes and verification arrows keep identical IDs th
     .map((record) => record.id).sort(), [...ids].sort());
   assert.equal(selectTwoMonthAccuracyRecords(history, from - 1).some((record) => record.id === 'boundary-tp'), false,
     'replay must not count outcomes completed after its current time');
+});
+
+
+test('shared scalping and intraday arrows ignore broker overrides for every filter and replay cutoff', () => {
+  const { scalp, intraday, options } = synchronizedFixture();
+  const current = [scalp, intraday];
+  const broker = current.map((record, index) => ({ ...record, id: `MT5:${index + 1}`,
+    mt5Managed: true, brokerTicket: index + 1, result: 'sl' as const, takeProfit: 4999 }));
+  const client = buildChartEntryHistory([], current, options);
+  const admin = buildChartEntryHistory(broker, [...current, ...broker], options);
+  assert.deepEqual(admin, client); assert.equal(client.length, 2);
+  for (const strategy of TRADE_STRATEGIES) for (const timeframe of ['M1', 'M15', 'H1'] as const) {
+    const candles = options.timeframeData[timeframe]?.candles ?? options.timeframeData.M15!.candles;
+    for (const asOf of [119, 181, 2701]) {
+      const select = (rows: typeof client) => selectTradeChartRecords(rows.filter(r => matchesTradeStrategies(r.tradeStyle, [strategy])),
+        timeframe, candles, true, { includeActive: true, asOf });
+      assert.deepEqual(select(admin), select(client));
+    }
+  }
+  const allStyles = TRADE_STRATEGIES.map((tradeStyle, i) => ({ ...scalp, id: `chart:${i}`, tradeStyle }));
+  assert.deepEqual(chartOnlyTradeRecords([...allStyles, ...allStyles.map(r => ({ ...r, mt5SignalId: 'private' }))]), allStyles);
 });

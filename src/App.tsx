@@ -60,7 +60,7 @@ export default function App() {
   if (!user) return <LoginPanel onLogin={next => { acceptUser(next); setPage('chart'); }} />;
   if (!user.canAccess) return <div className="auth-page"><section className="auth-card">
     <div className="auth-brand">TRADING DASHBOARD</div><h1>Account access</h1>
-    <p>{user.email}</p><p className="auth-notice">{user.accessMessage}</p>
+    <p>{user.username ?? user.email}</p><p className="auth-notice">{user.accessMessage}</p>
     <p className="auth-muted">An admin can review your access. This page updates automatically.</p>
     <button className="auth-primary" onClick={() => void logout()}>Sign out</button>
   </section></div>;
@@ -81,7 +81,7 @@ export default function App() {
           className="absolute right-0 top-full mt-2 w-64 max-w-[calc(100vw_-_24px)] overflow-hidden rounded-xl border border-slate-200 bg-white p-1.5 shadow-xl">
           <div className="mb-1 border-b border-slate-100 px-2.5 py-2">
             <div className="text-[10px] font-bold uppercase tracking-wide text-indigo-700">{user.role.replace('_', ' ')}</div>
-            <div className="mt-1 break-all text-xs text-slate-500">{user.email}</div>
+            <div className="mt-1 break-all text-xs text-slate-500">{user.username ?? user.email}</div>
           </div>
           <button type="button" aria-current={page === 'chart' ? 'page' : undefined} onClick={() => navigate('chart')}
             className={`flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-xs ${page === 'chart' ? 'bg-indigo-50 text-indigo-700' : 'text-slate-700 hover:bg-slate-50'}`}>

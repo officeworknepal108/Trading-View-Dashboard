@@ -1,3 +1,4 @@
+import { buildChartPullbackSetups } from '../src/services/chartEntryData';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { buildPullbackChartSetups, belongsToPullbackSetup, chartSignalFromRecord, chartSignalFromHistoryFill } from '../src/services/pullbackChartSetup';
@@ -178,5 +179,21 @@ test('known historical TP/SL survives conversion, reload and missing candle hist
     assert.equal(beforeExitClose.markerText, '', 'future exit candle must not leak into replay');
     const [beforeFillClose] = build([evidence], [], 2000);
     assert.equal(beforeFillClose.markerTime, undefined, 'an unfinished historical fill candle must not create an arrow');
+  }
+});
+
+
+for (const style of ['INTRADAY', 'SCALP_1_1'] as const) test(`${style}: chart arrows and both entry legs cannot be overridden by broker records`, () => {
+  const signals = [first, second].map(s => style === 'INTRADAY' ? s : ({ ...s, tradeStyle: style,
+    scalpEntry: s.intradayEntry, intradayEntry: undefined }));
+  const broker = signals.map((s, i) => ({ ...s, id: `MT5:${i + 1}`, brokerTicket: i + 1,
+    status: 'SL' as const, openedAt: 1800, closedAt: 2700 }));
+  for (const bars of [[candle(1800, 3008)], [candle(1800, 3007), candle(2700, 3008, 3051)],
+    [candle(1800, 3007), candle(2700, 2989)]]) for (const asOf of [1800, 2700, 3600]) {
+    const client = buildChartPullbackSetups({ signals, candles: { M15: bars }, asOf });
+    const admin = buildChartPullbackSetups({ signals: [...signals, ...broker], candles: { M15: bars }, asOf,
+      context: { account: 'private', server: 'private', brokerSymbol: 'XAUUSD' } });
+    assert.deepEqual(admin, client);
+    for (const setup of client) assert.ok(setup.legs.every(leg => !leg.executed));
   }
 });

@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useId, useState } from 'react';
 import type { DashboardUser } from '../services/authTypes';
 import './Authentication.css';
 
@@ -14,100 +14,88 @@ export async function authRequest(route: string, body?: unknown, method = 'POST'
   return payload;
 }
 
+function PasswordField({ label, ...props }: Omit<React.InputHTMLAttributes<HTMLInputElement>, 'type'> & { label: string }) {
+  const [visible, setVisible] = useState(false);
+  const id = useId();
+  return <div style={{ margin: '16px 0' }}>
+    <label htmlFor={id} style={{ margin: '0 0 7px' }}>{label}</label>
+    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+      <input {...props} id={id} type={visible ? 'text' : 'password'} style={{ minWidth: 0, flex: 1 }} />
+      <button type="button" aria-controls={id} aria-pressed={visible}
+        aria-label={`${visible ? 'Hide' : 'Show'} ${label.toLowerCase()}`}
+        onClick={() => setVisible(value => !value)} style={{ padding: '8px', whiteSpace: 'nowrap' }}>
+        {visible ? 'Hide' : 'Show'}
+      </button>
+    </div>
+  </div>;
+}
+
 export function LoginPanel({ onLogin }: { onLogin: (user: DashboardUser) => void }) {
-  const query = new URLSearchParams(window.location.search);
-  const resetToken = new URLSearchParams(window.location.hash.slice(1)).get('reset');
-  const [role, setRole] = useState<'admin' | 'client'>('client');
-  const [screen, setScreen] = useState<'login' | 'register' | 'forgot' | 'reset' | 'verify'>(
-    resetToken ? 'reset' : query.get('auth') === 'verify' ? 'verify' : 'login');
-  const [email, setEmail] = useState('');
+  const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
-  const [confirmation, setConfirmation] = useState('');
-  const [code, setCode] = useState('');
-  const [error, setError] = useState(query.get('auth_error') ?? '');
-  const [message, setMessage] = useState('');
+  const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
-  const [config, setConfig] = useState<{ googleReady: boolean; emailReady: boolean } | null>(null);
+  const [setupRequired, setSetupRequired] = useState(false);
   useEffect(() => {
-    void authRequest('/config').then(setConfig).catch(() => setError('Unable to reach the login service.'));
-    if (query.has('auth') || query.has('auth_error')) window.history.replaceState(null, '', window.location.pathname);
+    void authRequest('/config').then(config => setSetupRequired(config.ownerSetupRequired === true))
+      .catch(() => setError('Unable to reach the login service. Please retry.'));
   }, []);
-  const changeScreen = (next: typeof screen) => {
-    setScreen(next); setError(''); setMessage(''); setPassword(''); setConfirmation('');
-    if (next !== 'reset') window.history.replaceState(null, '', window.location.pathname);
-  };
   const submit = async (event: React.FormEvent) => {
-    event.preventDefault(); setBusy(true); setError(''); setMessage('');
+    event.preventDefault(); setBusy(true); setError('');
     try {
-      if ((screen === 'register' || screen === 'reset') && password !== confirmation) throw new Error('The passwords do not match.');
-      if (screen === 'verify') {
-        const result = await authRequest('/verify', { code });
-        onLogin(result.user); return;
-      }
-      if (screen === 'forgot') {
-        const result = await authRequest('/forgot-password', { email }); setMessage(result.message); return;
-      }
-      if (screen === 'reset') {
-        const result = await authRequest('/reset-password', { token: resetToken, password });
-        changeScreen('login'); setMessage(result.message); return;
-      }
-      await authRequest(screen === 'register' ? '/register' : '/login', { email, password });
-      setPassword(''); setConfirmation(''); setScreen('verify');
-      setMessage('A verification code has been sent to your Gmail. It expires in 5 minutes.');
-    } catch (failure) { setError((failure as Error).message); }
+      const result = await authRequest('/login', { username, password });
+      setPassword(''); onLogin(result.user);
+    } catch (e) { setError((e as Error).message); }
     finally { setBusy(false); }
   };
-  const resend = async () => {
-    setBusy(true); setError('');
-    try { await authRequest('/resend', {}); setCode(''); setMessage('A new code has been sent. It expires in 5 minutes.'); }
-    catch (failure) { setError((failure as Error).message); }
-    finally { setBusy(false); }
-  };
-  const title = screen === 'verify' ? 'Check your Gmail' : screen === 'forgot' ? 'Reset your password'
-    : screen === 'reset' ? 'Choose a new password' : screen === 'register' ? 'Request client access' : 'Welcome to your dashboard';
   return <div className="auth-page"><section className="auth-card">
     <div className="auth-brand">TRADING DASHBOARD</div>
-    <h1>{title}</h1>
-    <p className="auth-muted">Secure access for your trading workspace</p>
-    {screen === 'login' && <div className="auth-tabs">
-      <button className={role === 'admin' ? 'selected' : ''} onClick={() => { setRole('admin'); setError(''); }}>Admin Login</button>
-      <button className={role === 'client' ? 'selected' : ''} onClick={() => { setRole('client'); setError(''); }}>Client Login</button>
-    </div>}
+    <h1>Sign in</h1>
+    <p className="auth-muted">Use the username and password assigned to you.</p>
+    {setupRequired && <p className="auth-notice">The owner must finish the private local account setup before managing users.</p>}
     {error && <p className="auth-error" role="alert">{error}</p>}
-    {message && <p className="auth-message" role="status">{message}</p>}
-    {config && (!config.emailReady || !config.googleReady) && <p className="auth-notice">
-      The owner must finish {(!config.googleReady && !config.emailReady) ? 'Google sign-in and verification email' : !config.emailReady ? 'verification email' : 'Google sign-in'} setup before those login options can be used.
-    </p>}
-    {(screen === 'login' || screen === 'register') && <>
-      <a className={`auth-google ${!config?.googleReady || !config?.emailReady ? 'unavailable' : ''}`}
-        href={config?.googleReady && config?.emailReady ? '/api/auth/google' : undefined}
-        aria-disabled={!config?.googleReady || !config?.emailReady}>
-        <span aria-hidden="true">G</span> Sign in with Google
-      </a>
-      {role === 'admin' && screen === 'login' && <p className="auth-muted">Admins and the super admin use Google sign-in, followed by an email verification code.</p>}
-      {(role === 'client' || screen === 'register') && <div className="auth-divider">or use your dashboard password</div>}
-    </>}
-    {(screen !== 'login' || role === 'client') && <form onSubmit={submit}>
-      {!['verify', 'reset'].includes(screen) && <label>Gmail address<input required type="email" autoComplete="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="you@gmail.com" /></label>}
-      {!['verify', 'forgot'].includes(screen) && <label>{screen === 'reset' ? 'New dashboard password' : 'Dashboard password'}
-        <input required type="password" autoComplete={screen === 'login' ? 'current-password' : 'new-password'}
-          minLength={screen === 'login' ? undefined : 12} maxLength={128} value={password} onChange={e => setPassword(e.target.value)} />
-      </label>}
-      {['register', 'reset'].includes(screen) && <label>Confirm dashboard password<input required type="password" autoComplete="new-password" minLength={12} maxLength={128} value={confirmation} onChange={e => setConfirmation(e.target.value)} /></label>}
-      {screen === 'verify' && <label>6-digit verification code<input required inputMode="numeric" autoComplete="one-time-code" pattern="[0-9]{6}" maxLength={6} value={code} onChange={e => setCode(e.target.value.replace(/\D/g, ''))} />
-        <small>Expires 5 minutes after it was sent. Each code works once.</small></label>}
-      <button className="auth-primary" disabled={busy || (screen !== 'reset' && !config?.emailReady)}>
-        {busy ? 'Please wait…' : screen === 'verify' ? 'Verify and continue' : screen === 'register' ? 'Verify email and request access'
-          : screen === 'forgot' ? 'Send reset link' : screen === 'reset' ? 'Save new password' : 'Sign in'}
-      </button>
-    </form>}
-    <div className="auth-links">
-      {screen === 'login' && role === 'client' && <><button onClick={() => changeScreen('forgot')}>Forgot Password?</button><button onClick={() => changeScreen('register')}>Request access</button></>}
-      {screen === 'verify' && <button disabled={busy} onClick={() => void resend()}>Send a new code</button>}
-      {screen !== 'login' && <button onClick={() => changeScreen('login')}>Back to login</button>}
-    </div>
-    <p className="auth-footer">After verification, this browser stays signed in for 30 days unless you sign out. Client access requires admin approval. Your dashboard password is separate from your Google password.</p>
+    <form onSubmit={submit}>
+      <label>Username<input required autoComplete="username" autoCapitalize="none" spellCheck={false}
+        minLength={3} maxLength={32} value={username} onChange={e => setUsername(e.target.value)} /></label>
+      <PasswordField label="Password" required autoComplete="current-password" maxLength={128}
+        value={password} onChange={e => setPassword(e.target.value)} />
+      <button className="auth-primary" disabled={busy}>{busy ? 'Signing in...' : 'Sign in'}</button>
+    </form>
+    <p className="auth-footer">For a new account or password reset, contact your admin. Client accounts can be used on one browser/device at a time. Signing in elsewhere signs out the previous device.</p>
   </section></div>;
+}
+
+function AccountCredentials({ member, busy, onSave }: {
+  member: DashboardUser; busy: boolean;
+  onSave: (changes: Record<string, unknown>) => Promise<boolean>;
+}) {
+  const [open, setOpen] = useState(false);
+  const [username, setUsername] = useState(member.username ?? '');
+  const [password, setPassword] = useState('');
+  const [confirmation, setConfirmation] = useState('');
+  const [error, setError] = useState('');
+  return <div>
+    <button disabled={busy} onClick={() => { setOpen(value => !value); setPassword(''); setConfirmation(''); setError(''); }}>
+      {open ? 'Cancel login change' : member.credentialsReady ? 'Edit login / reset password' : 'Set username and password'}
+    </button>
+    {open && <form onSubmit={async event => {
+      event.preventDefault(); setError('');
+      if (password !== confirmation) { setError('Passwords do not match.'); return; }
+      if (await onSave({ username, ...(password ? { password } : {}) })) {
+        setPassword(''); setConfirmation(''); setOpen(false);
+      }
+    }}>
+      <label>Username<input required autoComplete="off" autoCapitalize="none" spellCheck={false} minLength={3} maxLength={32}
+        value={username} onChange={e => setUsername(e.target.value)} /></label>
+      <PasswordField label={member.credentialsReady ? 'New password (leave blank to keep)' : 'Password'}
+        required={!member.credentialsReady} autoComplete="new-password" minLength={12} maxLength={128}
+        value={password} onChange={e => setPassword(e.target.value)} />
+      <PasswordField label="Confirm password" required={!!password} autoComplete="new-password" maxLength={128}
+        value={confirmation} onChange={e => setConfirmation(e.target.value)} />
+      {error && <p role="alert">{error}</p>}
+      <button disabled={busy}>Save login</button>
+    </form>}
+  </div>;
 }
 
 function adminExpiryValue(expiresAt?: number) {
@@ -157,7 +145,9 @@ function AdminExpiryControl({ member, busy, onSave }: {
 export function UserManagement({ user }: { user: DashboardUser }) {
   const [users, setUsers] = useState<DashboardUser[]>([]);
   const [activity, setActivity] = useState<{ id: string; actor: string; action: string; target?: string; at: number; details?: string }[]>([]);
-  const [email, setEmail] = useState('');
+  const [username, setUsername] = useState('');
+  const [password, setPassword] = useState('');
+  const [confirmation, setConfirmation] = useState('');
   const [role, setRole] = useState<'client' | 'admin'>('client');
   const [expires, setExpires] = useState('');
   const [adminNoExpiry, setAdminNoExpiry] = useState(true);
@@ -174,12 +164,19 @@ export function UserManagement({ user }: { user: DashboardUser }) {
     catch (e) { setError((e as Error).message); return false; }
     finally { setBusy(false); }
   };
+  const deleteUser = async (id: string) => {
+    setBusy(true); setError('');
+    try { await authRequest(`/users/${encodeURIComponent(id)}`, {}, 'DELETE'); await refresh(); }
+    catch (e) { setError((e as Error).message); }
+    finally { setBusy(false); }
+  };
   const create = async (event: React.FormEvent) => {
     event.preventDefault(); setBusy(true); setError('');
+    if (password !== confirmation) { setError('Passwords do not match.'); setBusy(false); return; }
     try {
-      await authRequest('/users', { email, role, expiresAt: role === 'admin' && adminNoExpiry
+      await authRequest('/users', { username, password, role, expiresAt: role === 'admin' && adminNoExpiry
         ? null : expires ? new Date(expires).getTime() : null });
-      setEmail(''); setExpires(''); setAdminNoExpiry(true); await refresh();
+      setUsername(''); setPassword(''); setConfirmation(''); setExpires(''); setAdminNoExpiry(true); await refresh();
     } catch (e) { setError((e as Error).message); }
     finally { setBusy(false); }
   };
@@ -188,7 +185,9 @@ export function UserManagement({ user }: { user: DashboardUser }) {
     <p className="auth-muted">Manage approved access, suspensions, and expiry dates. Every change is recorded.</p>
     {error && <p className="auth-error" role="alert">{error}</p>}
     <form className="auth-create" onSubmit={create}>
-      <label>Gmail address<input required type="email" value={email} onChange={e => setEmail(e.target.value)} /></label>
+      <label>Username<input required autoComplete="off" autoCapitalize="none" spellCheck={false} minLength={3} maxLength={32} value={username} onChange={e => setUsername(e.target.value)} /></label>
+      <PasswordField label="Password" required autoComplete="new-password" minLength={12} maxLength={128} value={password} onChange={e => setPassword(e.target.value)} />
+      <PasswordField label="Confirm password" required autoComplete="new-password" minLength={12} maxLength={128} value={confirmation} onChange={e => setConfirmation(e.target.value)} />
       {user.role === 'super_admin' && <label>Role<select value={role} onChange={e => setRole(e.target.value as typeof role)}><option value="client">Client</option><option value="admin">Admin</option></select></label>}
       {role === 'admin' && <label style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
         <input type="checkbox" checked={adminNoExpiry} style={{ width: 16, height: 16, padding: 0 }}
@@ -201,7 +200,7 @@ export function UserManagement({ user }: { user: DashboardUser }) {
     </form>
     <div className="auth-table-wrap"><table><thead><tr><th>Account</th><th>Role / status</th><th>Approved by</th><th>Expiry</th><th>Actions</th></tr></thead>
       <tbody>{users.map(member => <tr key={member.id}>
-        <td>{member.email}<small>{member.verified ? 'Email verified' : 'Email verification required'}</small></td>
+        <td>{member.username ?? member.email}<small>{member.credentialsReady ? 'Username/password ready' : 'Login credentials need setup'}</small></td>
         <td>{member.role.replace('_', ' ')}<small>{member.accessMessage}</small></td>
         <td>{member.approvedBy ?? '—'}<small>{member.approvedAt ? new Date(member.approvedAt).toLocaleString() : ''}</small></td>
         <td>{member.role === 'super_admin' ? 'No expiry' : member.role === 'admin'
@@ -213,9 +212,11 @@ export function UserManagement({ user }: { user: DashboardUser }) {
             if (next !== (member.expiresAt ?? null)) void update(member.id, { expiresAt: next });
           }} />}</td>
         <td>{member.role !== 'super_admin' && <div className="auth-actions">
+          <AccountCredentials member={member} busy={busy} onSave={changes => update(member.id, changes)} />
           <button disabled={busy} onClick={() => void update(member.id, { status: 'approved' })}>{member.status === 'approved' ? 'Renew approval' : 'Approve / restore'}</button>
           <button disabled={busy} onClick={() => void update(member.id, { status: 'suspended' })}>Suspend</button>
           <button disabled={busy} onClick={() => void update(member.id, { status: 'removed' })}>Remove access</button>
+          <button disabled={busy} onClick={() => void deleteUser(member.id)} title="Delete this login account and revoke its sessions">Delete user</button>
           {user.role === 'super_admin' && <button disabled={busy} onClick={() => void update(member.id, { role: member.role === 'admin' ? 'client' : 'admin' })}>{member.role === 'admin' ? 'Remove admin role' : 'Make admin'}</button>}
         </div>}</td>
       </tr>)}</tbody></table></div>

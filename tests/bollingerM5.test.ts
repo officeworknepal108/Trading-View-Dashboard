@@ -1,3 +1,4 @@
+import { buildChartEntryHistory } from '../src/services/chartEntryData';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { BOLLINGER_M5_MAX_SL_PIPS, BOLLINGER_STUDY_DEFAULTS, bollingerIndicators, bollingerH4Bias, runBollingerStudy,
@@ -157,4 +158,14 @@ test('Bollinger chart history has its own identity and survives canonical accura
     requireLtfFib: false, timeframeData: {}, qualifyMtf: () => undefined });
   assert.equal(canonical.length, records.length);
   assert.equal(filterTradeRecords(canonical, { timeframes: 'ALL', datePeriod: 'MONTH', date: 'ALL', source: 'ALL', side: 'ALL', result: 'ALL', zones: 'ALL', tradeStyle: 'BOLLINGER_M5' }, 'UTC').length, records.length);
+});
+
+
+test('Bollinger chart arrows stay identical when admin history contains conflicting MT5 outcomes', () => {
+  const result = runBollingerStudy(fixture());
+  const records = result.records.flatMap(r => bollingerChartRecord(r) ?? []);
+  assert.ok(records.length);
+  const broker = records.map((r, i) => ({ ...r, id: `MT5:${i}`, brokerTicket: i + 1, result: 'sl' as const }));
+  const options = { marketSymbol: 'XAUUSD', pipSize: .1, requireLtfFib: false, timeframeData: {}, qualifyMtf: () => undefined };
+  assert.deepEqual(buildChartEntryHistory(broker, [...records, ...broker], options), buildChartEntryHistory([], records, options));
 });

@@ -8,9 +8,11 @@ automation is disabled and in Dry Run mode by default.
 
 ## Setup
 
-The dashboard now opens with a login panel. Configure Google sign-in and the
-verification email sender using [Login setup](docs/LOGIN_SETUP.md) before signing
-in. The super-admin account is `tradingviewfx108@gmail.com`; clients need admin approval.
+The dashboard opens with username/password login. Start the server, then create
+super-admin credentials privately with `npx tsx scripts/setup-dashboard-owner.ts`.
+The super admin creates admin accounts; admins and the super admin create client
+accounts and reset passwords. Google and email verification are no longer used.
+See [Login setup](docs/LOGIN_SETUP.md) for setup and client device rules.
 Trading calculations and the MT5 execution engine retain their existing rules.
 
 1. Run `npm install` and `npm run dev`.

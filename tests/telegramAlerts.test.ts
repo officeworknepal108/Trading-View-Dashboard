@@ -113,6 +113,8 @@ test('Telegram numbering covers all alert kinds, shared styles, retries, restart
     await send([entry('intraday', { kind: 'tp', closedAt: beforeMidnight, exitPrice: 102, returnR: 2 })]);
     await send([entry('cancel-order', { kind: 'pending' })]);
     await send([entry('cancel-order', { kind: 'cancelled', closedAt: beforeMidnight })]);
+    const resultHistory = JSON.parse(await readFile(path.join(workspace, 'data', 'telegram-alerts.json'), 'utf8'));
+    assert.equal(resultHistory.intraday.returnR, 2, 'delivered result R is saved for daily reporting');
     const lifecycle = await messages();
     assert.match(lifecycle[4], /^Trade #5 \u2014/);
     assert.match(lifecycle[5], /^Trade #5 \u2014/);
@@ -389,6 +391,43 @@ test('Telegram numbering covers all alert kinds, shared styles, retries, restart
     await send([nextChart]);
     const firstNumber = Number(firstChartText.match(/TRADE #(\d+)/)![1]);
     assert.match((await messages()).at(-1)!, new RegExp(`TRADE #${firstNumber + 1}`));
+    // Abhi leg outcomes share the setup number but have independent delivery keys.
+    const enableAbhi = await dashboardFetch(`${base}/api/mt5/config`, { method: 'PUT',
+      headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ scalpOneToOneEnabled: true }) });
+    assert.equal(enableAbhi.status, 200);
+    const abhi = { ...chart, id: 'CHART_SETUP:SCALP_1_1:abhi', tradeKey: 'CHART_SETUP:SCALP_1_1:abhi',
+      tradeStyle: 'SCALP_1_1', zoneName: 'Abhi Scalp Logic', entry: 99, stopLoss: 90, takeProfit: 110.25,
+      riskPips: 90, rewardRisk: 1.25,
+      pullback: { abhi: true, firstEntry: 99, secondEntry: 97.5, firstRiskPips: 90, secondRiskPips: 75,
+        firstTarget: 110.25, secondTarget: 106.875, secondOnly: false, firstStatus: 'open', secondStatus: 'open' } };
+    const beforeAbhi = (await messages()).length;
+    await send([abhi]);
+    const firstResult = { ...abhi, kind: 'leg-result', legResult: { leg: 10, outcome: 'sl' },
+      closedAt: beforeMidnight + 62, exitPrice: 90, returnR: -1,
+      pullback: { ...abhi.pullback, firstStatus: 'sl' } };
+    await writeFile(failOnceFile, 'fail');
+    await send([firstResult], 502); await send([firstResult]); await send([firstResult], 200, 'secondary');
+    const firstResultText = (await messages()).at(-1)!;
+    assert.match(firstResultText, /1st Entry:.*SL HIT/); assert.match(firstResultText, /Setup contribution: -0.40R/);
+    assert.doesNotMatch(firstResultText, /Entry: [0-9]|TP: [0-9]|SL: [0-9]/);
+    const partialState = JSON.parse(await readFile(reportFile, 'utf8'))[abhi.id];
+    assert.equal(partialState.legResults['10'], 'sl'); assert.equal(partialState.result, undefined);
+    assert.equal(partialState.returnR, undefined, 'a leg result cannot close or double-count the setup');
+    await stop(); await start();
+    await send([firstResult]); assert.equal((await messages()).length, beforeAbhi + 2);
+    const secondResult = { ...abhi, kind: 'leg-result', legResult: { leg: 25, outcome: 'tp' },
+      closedAt: beforeMidnight + 62, exitPrice: 106.875, returnR: 1.25,
+      pullback: { ...abhi.pullback, firstStatus: 'sl', secondStatus: 'tp' } };
+    await send([secondResult]); await send([secondResult], 200, 'secondary');
+    assert.match((await messages()).at(-1)!, /Setup contribution: \+0.75R/);
+    await send([{ ...secondResult, kind: 'tp', legResult: undefined, returnR: .35,
+      pullback: { ...secondResult.pullback, netReturnR: .35 } }]);
+    await send([firstResult, secondResult]);
+    assert.equal((await messages()).length, beforeAbhi + 4);
+    const closedState = JSON.parse(await readFile(reportFile, 'utf8'))[abhi.id];
+    assert.equal(closedState.result, 'tp'); assert.equal(closedState.returnR, .35);
+    assert.ok((await messages()).slice(beforeAbhi).every(text => text.startsWith(`TRADE #${partialState.tradeNumber}`)));
+    await send([{ ...firstResult, legResult: { leg: 25, outcome: 'sl' } }], 400);
     const allocationBody = JSON.stringify({ id: 'absent', bridgeId: 'absent', account: 'account-C', server: 'Broker' });
     const browserAllocation = await dashboardFetch(`${base}/api/mt5/pullback-allocation`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: allocationBody });

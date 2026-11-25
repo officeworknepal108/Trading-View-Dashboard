@@ -1,104 +1,85 @@
 # Dashboard login setup
 
-Login is always required. Until Google sign-in and email delivery are configured,
-the app shows the login panel and denies access to protected data. There is no
-development login or password bypass.
+All roles sign in with an assigned username and password. Google sign-in, email
+verification codes, public registration, and email reset links are disabled.
 
-## Owner and roles
+## Set up the owner
 
-The super-admin account is **tradingviewfx108@gmail.com**. This role is activated only
-after Google verifies that identity and the owner enters the separate email code.
-Super admins and admins use Google sign-in only. Clients can use Google or their
-own dashboard password; this password is separate from their Google password.
+1. Start the updated dashboard server with `npm run dev`.
+2. In another local terminal in this repository, run:
+   `npx tsx scripts/setup-dashboard-owner.ts`.
+3. Enter a username and password privately. Password entry is masked. Passwords
+   must contain 12 to 128 characters; usernames use 3 to 32 letters, numbers,
+   dots, underscores or hyphens and are case-insensitive.
+4. Sign in at `http://127.0.0.1:3002` and open Account > User Management.
 
-Only the super admin can add, remove, or change admins. Any admin can approve,
-suspend, remove, restore, or renew clients. All users must verify email. New users
-remain pending until approved. Preapproved users must still verify ownership of
-their Gmail address. Gmail dot/plus aliases map to one account.
+This one-time setup requires an unpredictable token in the private
+`.dashboard-auth/owner-setup.json` file and a loopback connection to the running
+server. The token is deleted after setup. It is never returned by an API or
+served as static content. Setup cannot replace an owner who already has username
+and password credentials. Do not put passwords in command arguments, environment
+files, source code, or chat.
 
-When adding an admin, **No expiry** is selected by default. The super admin can
-uncheck it and choose an access expiry date. Existing admin rows always show an
-**Expiry option** selector with **No expiry** and **Set expiry date**. Choosing
-No expiry removes a saved date and hides the date field; choosing Set expiry
-date shows the field and saves the selected date when leaving it. The new-admin
-form also hides its date field while No expiry is checked. This controls account access; browser
-sign-in sessions still last 30 days.
+`AUTH_PUBLIC_URL` must exactly match the browser origin, including localhost
+versus 127.0.0.1. Hosted dashboards require HTTPS. Google and Resend credentials
+are no longer needed.
 
-For an ownership handover, the previous super admin retains access until the
-new configured owner completes Google sign-in and the email code. Completing
-that verification revokes the previous owner's sessions and removes their
-dashboard access. A Google callback alone cannot grant the new owner privileges.
+## Roles and account management
 
-Clients cannot control MT5, Telegram, shared strategy settings, or shared memory.
-MT5 accounts, money balances/profits, positions, signals, logs, and broker trade
-history are excluded from client responses. Clients can use chart features and
-keep a personal journal; their journal writes never modify the shared journal.
-Browser chart/drawing/chat storage is separated by account.
+- The super admin creates admins and clients, changes admin/client roles, and
+  controls approval, suspension, removal, restoration and access expiry.
+- Admins manage all clients. They cannot manage admins or promote clients.
+- Both managers create accounts with usernames and passwords. New managed accounts
+  are already approved and can sign in immediately. Neither role can view an
+  existing password. Use Edit login / reset password to assign a replacement.
+- Show/Hide controls reveal only the password currently being entered on login,
+  account creation or reset forms. Saved password hashes cannot be displayed.
+- Remove access blocks login but retains the row. Delete user removes the login
+  account and revokes its sessions. Super admins may delete admins or clients;
+  admins may delete clients only. The owner is protected. Activity and journal
+  history are retained; recreating a username creates a new account ID.
+- The super-admin account is protected from ordinary user-management edits and
+  has no access expiry. Admins can have a dated expiry or no expiry. Clients can
+  also have an optional expiry. Restoring approval does not extend an expired date.
+- Clients can view charts, use the assistant and maintain their personal journals.
+  They cannot manage users or control MT5, Telegram or shared strategy settings.
+  Broker-sensitive records are excluded from client responses.
 
-## Configure Google
+## Client devices and sessions
 
-1. In Google Cloud Console, create an OAuth client of type **Web application**.
-2. Configure the consent screen with the app name and support contact. If the
-   Google app is in testing, add the intended accounts as test users.
-3. Add the exact authorized redirect URI:
-   `http://127.0.0.1:3002/api/auth/google/callback` for the current local app.
-4. In the local `.env` file, set `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, and
-   `AUTH_PUBLIC_URL=http://127.0.0.1:3002`.
-5. For hosted access, use the public HTTPS origin for `AUTH_PUBLIC_URL` and add
-   its `/api/auth/google/callback` address to the OAuth client. Open the app at
-   that exact origin; localhost and 127.0.0.1 are different origins.
+A client account has one active browser/device session. A successful login on
+another device immediately revokes its old session. There is no five-minute
+block or cooldown. A wrong password never revokes the current session.
 
-Google setup reference:
-https://developers.google.com/identity/openid-connect/openid-connect
+A browser profile has one active account at a time. Switching accounts revokes
+its previous session. Tabs in the same browser share cookies and the same account.
+The device cookie is generated by the server and is HttpOnly. Another browser,
+incognito profile, or cleared cookies counts as another device; this is browser
+identity, not physical hardware identification.
 
-## Configure verification emails
+Revoked sessions cannot read protected APIs. An open dashboard checks its session
+every 15 seconds and when focused, so its visible screen updates on that check.
+Sessions last 30 days without renewal from polling. Password resets, role changes,
+approval changes, suspension and expiry edits revoke existing sessions. Repeated
+failed login attempts are rate-limited; this is separate from device switching.
 
-The implementation sends transactional mail through Resend. Create an API key,
-verify your sending domain, and set these server-only values in `.env`:
+## Migrating existing accounts
 
-```dotenv
-RESEND_API_KEY=your-private-api-key
-AUTH_EMAIL_FROM=Trading Dashboard <login@your-verified-domain.example>
-```
+Existing user IDs, roles, approvals, expiry dates, journals and activity remain.
+The one-time owner setup attaches credentials to the existing owner record.
+For each older admin/client, use Set username and password on its existing row;
+do not create a duplicate account. Old clients must sign in again because their
+legacy sessions were not bound to a device. Pending email codes, OAuth flows and
+email reset links no longer authorize access.
 
-Keep credentials local; never commit them or send passwords in chat. No password,
-verification code, reset link, Google token, or session token is logged. The app
-does not send messages while running its automated tests.
+## Storage and bridge access
 
-Resend reference: https://resend.com/docs/api-reference/emails/send-email
+The private `.dashboard-auth/` directory stores scrypt password hashes, hashed
+sessions/device identifiers, user metadata, personal journals and activity.
+Preserve this directory when moving the dashboard. Use a single server process
+with persistent private storage; this file store is not a shared database.
 
-Restart the dashboard after configuration. Sign in with the owner's Google
-account, enter the emailed six-digit code, then open **User Management**.
-
-## Sessions and storage
-
-- Codes expire after 5 minutes, are single use, and allow at most 5 incorrect
-  attempts. Resending invalidates the previous code and has a 60-second cooldown.
-- Reset links expire after 15 minutes, are single use, and invalidate existing
-  sessions and pending codes when used. Only clients can reset a dashboard
-  password. A Google-only client can set a dashboard password via this same flow.
-- Login/code requests have IP and account limits. All roles stay signed in on
-  the verified browser for 30 days. New browsers/devices, cleared cookies,
-  explicit sign-out, or expired sessions require sign-in and a new email code.
-  Refreshing, reopening the browser, and changing networks do not reset the
-  verification deadline. Session checks never extend it beyond 30 days from
-  verification. Active legacy eight-hour sessions are upgraded on the next
-  session check, without requesting another code.
-  Approval, suspension, role, and expiry changes revoke sessions; every protected
-  API request checks current access. The interface rechecks every 15 seconds and
-  when the tab regains focus. Expired/suspended users receive no protected data.
-- Auth cookies are HttpOnly, SameSite=Lax, and Secure on HTTPS. Writes require the
-  configured origin. Google authorization uses a cookie-bound state and PKCE;
-  identity comes from Google's authenticated userinfo endpoint.
-- The private `.dashboard-auth/` directory stores account metadata, scrypt password
-  hashes, hashed sessions/codes/reset tokens, personal journals and activity. It
-  is excluded from Git and never served as static content. Preserve this directory
-  when moving the app. Use one running server process with persistent private
-  storage; this file store is not a shared multi-instance database.
-- The Python bridge continues using its existing `MT5_BRIDGE_TOKEN` for its exact
-  machine endpoints, including its status/configuration read. That token cannot
-  authorize user management, account listings, or configuration writes. A token must
-  be configured in both `.env` and `.env.mt5`; loopback alone is insufficient.
-
-The system intentionally has no separate super-admin recovery flow, extra
-confirmation dialogs, or deleted-record recycle bin, as requested.
+Auth cookies are HttpOnly, SameSite=Lax and Secure on HTTPS. Browser writes require
+the configured origin. Passwords and credential hashes are never returned in user
+lists or activity records. The Python bridge retains its existing machine-token
+routes; that token cannot manage users or change dashboard configuration.

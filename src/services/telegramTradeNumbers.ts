@@ -5,6 +5,7 @@ export interface TelegramTradeNumber {
 
 export interface SentTelegramTradeState extends Partial<TelegramTradeNumber> {
   entry2?: boolean;
+  legResults?: Partial<Record<10 | 25, 'tp' | 'sl'>>;
   tradeStyle?: 'SCALPING' | 'INTRADAY' | 'SCALP_1_1' | 'BOLLINGER_M5';
   openedAt?: number;
   closedAt?: number;
@@ -15,6 +16,7 @@ export interface SentTelegramTradeState extends Partial<TelegramTradeNumber> {
   entry?: boolean;
   rf?: boolean;
   result?: 'tp' | 'sl';
+  returnR?: number;
 }
 
 export type SentTelegramAlerts = Record<string, SentTelegramTradeState>;
@@ -35,8 +37,11 @@ export function mergeTelegramAlertHistories(histories: SentTelegramAlerts[]): Se
         cancelled: previous?.cancelled || state.cancelled,
         entry: previous?.entry || state.entry,
         entry2: previous?.entry2 || state.entry2,
+        legResults: { ...state.legResults, ...previous?.legResults },
         rf: previous?.rf || state.rf,
         result: previous?.result ?? state.result,
+        returnR: previous?.result ? previous.returnR ?? (previous.result === state.result ? state.returnR : undefined) : state.returnR,
+        closedAt: previous?.result ? previous.closedAt ?? (previous.result === state.result ? state.closedAt : undefined) : state.closedAt,
       };
     }
   }
@@ -65,8 +70,11 @@ export function bindTelegramAlertAliases(sent: SentTelegramAlerts, id: string, t
     cancelled: states.some(state => state.cancelled),
     entry: states.some(state => state.entry),
     entry2: states.some(state => state.entry2),
+    legResults: states.reduce((results, state) => ({ ...state.legResults, ...results }), {} as NonNullable<SentTelegramTradeState['legResults']>),
     rf: states.some(state => state.rf),
     result: states.find(state => state.result)?.result,
+    returnR: states.find(state => state.result === states.find(s => s.result)?.result && Number.isFinite(state.returnR))?.returnR,
+    closedAt: states.find(state => state.result)?.closedAt,
   };
   for (const alias of aliases) Object.defineProperty(sent, alias, {
     value: merged, enumerable: true, configurable: true, writable: true,

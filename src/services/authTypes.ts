@@ -3,6 +3,8 @@ export type AccessState = 'pending' | 'approved' | 'suspended' | 'removed';
 export interface DashboardUser {
   id: string;
   email: string;
+  username?: string;
+  credentialsReady?: boolean;
   role: UserRole;
   status: AccessState;
   verified: boolean;

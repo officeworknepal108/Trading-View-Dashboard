@@ -1,3 +1,5 @@
+import { telegramAlertEventKey } from '../services/telegramMessages';
+import { buildChartEntryHistory, buildChartPullbackSetups, chartOnlyTradeRecords, isBrokerChartRecord } from '../services/chartEntryData';
 import { BollingerStudy } from './BollingerStudy';
 import { detectAutoTrendlines, type AutoTrendline } from '../services/autoTrendlines';
 import { buildIntradayPullbackSignals, intradayPullbackChartRecords } from '../services/intradayPullback';
@@ -2983,6 +2985,7 @@ export const OandaProChart: React.FC<{
   const [visitedStudies, setVisitedStudies] = useState({ trendline: false, volume: false });
   const backtestingMenuRef = useRef<HTMLDetailsElement | null>(null);
   const openBacktestingStudy = (study: 'trendline' | 'volume' | 'bollinger') => {
+    if (!canAdmin) return;
     if (study !== 'bollinger') setVisitedStudies(current => ({ ...current, [study]: true }));
     setShowTrendlineStudy(study === 'trendline');
     setShowVolumeStudy(study === 'volume');
@@ -2997,6 +3000,7 @@ export const OandaProChart: React.FC<{
   const [showJournal, setShowJournal] = useState(() => (
     new URLSearchParams(window.location.search).get('journal') === '1'
   ));
+  const [sharedChartJournalTrades, setSharedChartJournalTrades] = useState<AccuracyTradeRecord[]>([]);
   const [loadedJournalTrades, setSavedJournalTrades] = useState<AccuracyTradeRecord[]>([]);
   const savedJournalTrades = useMemo(() => loadedJournalTrades.filter(record => (
     record.mt5Managed || record.brokerTicket !== undefined || record.mt5SignalId || record.id.startsWith('MT5:')
@@ -3176,6 +3180,21 @@ export const OandaProChart: React.FC<{
       .catch(() => undefined);
     return () => { cancelled = true; };
   }, []);
+
+  // Shared chart facts exclude personal edits and broker executions for every role.
+  useEffect(() => {
+    let cancelled = false;
+    const refresh = async () => {
+      try {
+        const response = await terminalFetch('/api/journal/trades?view=chart', { cache: 'no-store' });
+        const payload = await response.json();
+        if (!cancelled && response.ok && payload.ok && Array.isArray(payload.trades)) setSharedChartJournalTrades(payload.trades);
+      } catch { /* Retain the last shared chart history during reconnects. */ }
+    };
+    setSharedChartJournalTrades([]); void refresh();
+    const timer = window.setInterval(() => void refresh(), 15_000);
+    return () => { cancelled = true; window.clearInterval(timer); };
+  }, [terminalFetch]);
 
   useEffect(() => {
     if (!showAccuracyTable) return;
@@ -3733,11 +3752,9 @@ export const OandaProChart: React.FC<{
       .map((overlay) => overlay.id),
   ), [consolidatedDisplayZones, displayCandles, granularity, marketSymbol, retainedChartTradeOverlays]);
 
-  const zoneEntryRecords = useMemo<ZoneTradeRecord[]>(() => [
-    ...visibleSavedJournalTrades.filter(confirmedBrokerZoneEntry),
-    ...(mt5Status?.recentSignals ?? []).filter(confirmedBrokerZoneEntry)
-      .map((signal) => ({ ...signal, signalAt: signal.signalAt })),
-  ], [visibleSavedJournalTrades, mt5Status?.recentSignals]);
+  // Private execution history cannot suppress a chart simulation. The server
+  // and bridge continue enforcing the real one-entry-per-zone execution rule.
+  const zoneEntryRecords = useMemo<ZoneTradeRecord[]>(() => [], []);
 
   // Preserve Gold's original tracking identity exactly. Currency pairs receive
   // their own symbol-prefixed scopes without changing Gold's entry lifecycle.
@@ -3893,7 +3910,7 @@ export const OandaProChart: React.FC<{
       }
       const adjusted = applyOppositePositionRewardRisk(
         policy.rule,
-        replayIndex === null && marketSymbol !== 'XAUUSD' ? mt5Status?.positions : undefined,
+        undefined, // Chart targets are independent of private account positions.
         setup.signal.direction,
       );
       const trade = calculateTradeLevels({
@@ -4833,6 +4850,17 @@ export const OandaProChart: React.FC<{
     },
   ), [accuracyTradeRecords, openChartJournalTrades, scalpOneToOneChartRecords, bollingerChartRecords, marketConfig.pipSize, marketSymbol, mtfLtfFibRequired,
     savedChartMtfEntryQualification, reconciledMtfJournalTrades, tableTimeframeData]);
+  const sharedChartEntryHistory = useMemo(() => buildChartEntryHistory(
+    sharedChartJournalTrades, [...openChartJournalTrades, ...accuracyTradeRecords,
+      ...scalpOneToOneChartRecords, ...bollingerChartRecords], {
+      marketSymbol, pipSize: marketConfig.pipSize, requireLtfFib: mtfLtfFibRequired,
+      timeframeData: tableTimeframeData, qualifyMtf: savedChartMtfEntryQualification,
+    },
+  ).filter(record => tradeStyleEnabled(record) && !blockedGoldHistoricalTrade(record)),
+  [sharedChartJournalTrades, openChartJournalTrades, accuracyTradeRecords, scalpOneToOneChartRecords,
+    bollingerChartRecords, marketSymbol, marketConfig.pipSize, mtfLtfFibRequired, tableTimeframeData,
+    savedChartMtfEntryQualification, tradeStyleEnabled, blockedGoldHistoricalTrade]);
+
   const visibleCanonicalTradeRecords = useMemo(() => canonicalTradeRecords.filter((record) => (
     tradeStyleEnabled(record) && !blockedGoldHistoricalTrade(record)
   )), [blockedGoldHistoricalTrade, canonicalTradeRecords, tradeStyleEnabled]);
@@ -5362,13 +5390,34 @@ export const OandaProChart: React.FC<{
   }, [marketSymbol, granularity, scalpOneToOneChartFills, visibleCanonicalTradeRecords, scalpOneToOnePreview,
     intradayPullbackPreview, mt5Status, replayIndex, tradeDisplayAsOf, tableTimeframeData, scalpOneToOneEnabled, intradayEnabled]);
 
+  const chartPullbackSetups = useMemo(() => {
+    if (marketSymbol !== 'XAUUSD') return [];
+    const history: PullbackTableSignal[] = scalpOneToOneChartFills.flatMap(fill => {
+      if (!fill.signal || fill.trade.filledAt === undefined || fill.trade.filledAt + 900 > tradeDisplayAsOf) return [];
+      const signal = chartSignalFromHistoryFill(fill);
+      return signal ? [signal] : [];
+    });
+    const records = sharedChartEntryHistory.flatMap(record => {
+      const signal = chartSignalFromRecord(record); return signal ? [signal] : [];
+    });
+    const previews: PullbackTableSignal[] = [...scalpOneToOnePreview, ...intradayPullbackPreview].map(signal => ({
+      ...signal, status: 'SIMULATED', preview: true, createdAt: signal.calculatedAt, updatedAt: signal.calculatedAt,
+    }));
+    return buildChartPullbackSetups({ signals: [...history, ...records, ...previews], asOf: tradeDisplayAsOf,
+      candles: Object.fromEntries(Object.keys(tableTimeframeData).map(tf => [tf, tableTimeframeData[tf as TradeTimeframe]?.candles ?? []])),
+      positions: [], context: {},
+    }).filter(setup => setup.chartTimeframe === granularity
+      && (setup.style === 'SCALP_1_1' ? scalpOneToOneEnabled || setup.alwaysVisible : intradayEnabled || setup.alwaysVisible));
+  }, [marketSymbol, granularity, scalpOneToOneChartFills, sharedChartEntryHistory, scalpOneToOnePreview,
+    intradayPullbackPreview, tradeDisplayAsOf, tableTimeframeData, scalpOneToOneEnabled, intradayEnabled]);
+
   const chartFillAlertBusy = useRef(false);
   const chartFillAlertSent = useRef(new Set<string>());
   useEffect(() => {
     if (terminalId !== 'primary' || !canAdmin || replayIndex !== null || chartFillAlertBusy.current || !telegramMessagesEnabled
       || mt5Status?.config?.telegramMessagesEnabled === false) return;
     const alerts = pullbackChartSetups.flatMap(setup => pullbackTelegramAlerts(setup, tradeDisplayAsOf))
-      .filter(alert => !chartFillAlertSent.current.has(`${alert.id}:${alert.kind}`)).slice(0, 40);
+      .filter(alert => !chartFillAlertSent.current.has(telegramAlertEventKey(alert))).slice(0, 40);
     if (!alerts.length) return;
     chartFillAlertBusy.current = true;
     void fetch('/api/telegram/alerts', { method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -5655,17 +5704,19 @@ export const OandaProChart: React.FC<{
   }, [allSavedAccuracyRecords, directZoneEntryDecisions, displayZones, goldScalpingAccuracyTrades, granularity, marketSymbol, mt5Status?.config?.telegramMessagesEnabled, mtfRows, replayIndex, telegramMessagesEnabled, tradeOverlays, scalpingEnabled, intradayEnabled, scalpOneToOneEnabled]);
 
   const chartEntryRecords = useMemo(() => selectTradeChartRecords(
-    deduplicateTradeRecords([
-      ...openChartJournalTrades.filter(tradeStyleEnabled),
-      ...visibleCanonicalTradeRecords,
-    ]), granularity, displayCandles, marketSymbol === 'XAUUSD',
+    deduplicateTradeRecords([...chartOnlyTradeRecords(openChartJournalTrades).filter(tradeStyleEnabled),
+      ...sharedChartEntryHistory]), granularity, displayCandles, marketSymbol === 'XAUUSD',
     { includeActive: true, asOf: replayResultCutoff },
-  ), [openChartJournalTrades, tradeStyleEnabled, visibleCanonicalTradeRecords,
+  ), [openChartJournalTrades, tradeStyleEnabled, sharedChartEntryHistory,
     granularity, displayCandles, marketSymbol, replayResultCutoff]);
+  const brokerChartEntryRecords = useMemo(() => selectTradeChartRecords(
+    visibleCanonicalTradeRecords.filter(isBrokerChartRecord), granularity, displayCandles, marketSymbol === 'XAUUSD',
+    { includeActive: true, asOf: replayResultCutoff },
+  ), [visibleCanonicalTradeRecords, granularity, displayCandles, marketSymbol, replayResultCutoff]);
   const hoveredTradeZones = useMemo(() => {
     const record = chartEntryRecords.find((candidate) => candidate.id === hoveredEntry?.entry.id);
     if (!record) return undefined;
-    return resolveArrowTradeZones(record, mt5Status?.recentSignals ?? [], (id) => (
+    return resolveArrowTradeZones(record, [], (id) => (
       savedChartMtfEntryQualification({
         id, signalTime: record.signalAt!, direction: record.direction,
         engulfingType: record.engulfingType as EngulfingTradeSignal['type'],
@@ -5777,29 +5828,19 @@ export const OandaProChart: React.FC<{
         && (record.mt5Managed || record.brokerTicket !== undefined) && record.signalAt === item.trade.signal.time
         && record.signalTimeframe === item.trade.signal.timeframe && record.direction === item.trade.signal.direction
         && record.scalpEntry?.leg === item.entryLeg)) continue;
-      add(item.id, item.trade, item.statusText, 'Scalp setup', 'Not recorded', item.style, false, item.markerTime, item);
+      add(item.id, item.trade, `MT5 BROKER ${item.statusText}`, 'Scalp setup', 'Not recorded', item.style, false, item.markerTime, item);
     }
     const historyDisplays = marketSymbol === 'XAUUSD' && granularity === 'M15'
       ? scalpHistoryFillDisplays(scalpOneToOneChartFills, tradeDisplayAsOf) : [];
     for (const item of historyDisplays) {
-      if (scalpChartDisplays.some(current => current.chartFilled && entries.has(current.id)
-        && current.trade.signal.time === item.trade.signal.time && current.trade.signal.direction === item.trade.signal.direction
-        && (current.entryLeg === undefined || current.entryLeg === item.entryLeg))) continue;
-      if (chartEntryRecords.some(record => record.tradeStyle === 'SCALP_1_1' && (record.mt5Managed || record.brokerTicket !== undefined)
-        && record.signalAt === item.trade.signal.time && record.direction === item.trade.signal.direction
-        && (record.scalpEntry === undefined || record.scalpEntry.leg === item.entryLeg))) continue;
       add(item.id, item.trade, item.statusText, 'Scalp 1:1 chart fill', 'Not recorded', item.style, false, item.markerTime, item);
     }
-    for (const record of chartEntryRecords) {
+    for (const record of [...chartEntryRecords, ...brokerChartEntryRecords]) {
       if (record.tradeStyle === 'BOLLINGER_M5' && !record.mt5Managed && record.brokerTicket === undefined) continue; // Dedicated study overlay.
       if (record.tradeStyle === 'SCALP_1_1' && historyDisplays.some(item => entries.has(item.id)
         && item.trade.signal.time === record.signalAt && item.trade.signal.direction === record.direction
         && item.entryLeg === record.scalpEntry?.leg)) continue;
-      if (record.tradeStyle === 'SCALP_1_1' && scalpChartDisplays.some(item => entries.has(item.id) && item.chartFilled
-        && item.trade.signal.time === record.signalAt && item.trade.signal.timeframe === record.signalTimeframe
-        && item.trade.signal.direction === record.direction
-        && (item.entryLeg === undefined || item.entryLeg === record.scalpEntry?.leg))) continue;
-      if (scalpChartDisplays.some(item => item.kind === 'live' && record.brokerTicket === item.brokerTicket)) continue;
+      if (isBrokerChartRecord(record) && scalpChartDisplays.some(item => item.kind === 'live' && record.brokerTicket === item.brokerTicket)) continue;
       if (blockedGoldHistoricalTrade(record)) continue;
       const active = record.result === 'open' || record.result === 'risk-free';
       const signalAt = record.signalAt!;
@@ -5830,7 +5871,7 @@ export const OandaProChart: React.FC<{
         },
       };
       add(record.id, trade,
-        record.tradeStyle === 'BOLLINGER_M5' ? 'BOLLINGER M5 BROKER ENTRY' : projected ? `${record.signalTimeframe} ${record.tradeStyle === 'SCALPING' ? 'SCALPING' : 'INTRADAY'} ENTRY`
+        isBrokerChartRecord(record) ? 'MT5 BROKER ENTRY' : projected ? `${record.signalTimeframe} ${record.tradeStyle === 'SCALPING' ? 'SCALPING' : 'INTRADAY'} ENTRY`
           : record.source === 'MTF'
           ? `${record.zoneTimeframe} → ${record.signalTimeframe} MTF` : 'CANDLE CONFIRMATION',
         record.zoneName,
@@ -5866,7 +5907,7 @@ export const OandaProChart: React.FC<{
           trade.signal.timeframe === granularity ? trade.signal.time : trade.filledAt);
       }
     }
-    const grouped: EntryHover[] = pullbackChartSetups.flatMap(setup => {
+    const grouped: EntryHover[] = chartPullbackSetups.flatMap(setup => {
       if (setup.markerTime === undefined) return [];
       const candle = displayCandles.find(c => setup.markerTime! >= c.time && setup.markerTime! < c.time + TIMEFRAME_SECONDS[granularity]);
       if (!candle) return [];
@@ -5874,9 +5915,13 @@ export const OandaProChart: React.FC<{
         trade: setup.trade, style: setup.style, source: 'CHART ENTRY', zone: 'Pullback setup',
         fib: 'Not recorded', tradingTimeBlocked: false, pullbackSetup: setup }];
     });
-    return [...Array.from(entries.values()).filter(entry => !pullbackChartSetups.some(setup =>
-      belongsToPullbackSetup(setup, entry.trade, entry.style, entry))), ...grouped];
-  }, [pullbackChartSetups, scalpOneToOneChartFills, tradeDisplayAsOf, scalpChartDisplays, blockedGoldHistoricalTrade, chartEntryRecords, displayCandles, granularity, marketSymbol, replayIndex,
+    const brokerEntries = Array.from(entries.values()).filter(entry => entry.source.startsWith('MT5 BROKER') || entry.display?.brokerTicket !== undefined);
+    const brokerIds = new Set(brokerEntries.map(entry => entry.id));
+    const sharedEntries = Array.from(entries.values()).filter(entry => !brokerIds.has(entry.id)
+      && !chartPullbackSetups.some(setup => belongsToPullbackSetup(setup, entry.trade, entry.style, entry)));
+    // Shared chart details have hover priority when an MT5 fill occupies the same candle.
+    return [...sharedEntries, ...grouped, ...brokerEntries];
+  }, [chartPullbackSetups, scalpOneToOneChartFills, tradeDisplayAsOf, scalpChartDisplays, blockedGoldHistoricalTrade, chartEntryRecords, brokerChartEntryRecords, displayCandles, granularity, marketSymbol, replayIndex,
     directTradeStyleEnabled, directZoneEntryDecisions, displayZones, retainedDirectChartTradesForTimeframe, tradingTimeEnabled]);
   const visibleEntryHovers = useMemo(() => entryHovers.filter(entry => (
     matchesTradeStrategies(entry.style, arrowStrategies)
@@ -5884,7 +5929,7 @@ export const OandaProChart: React.FC<{
   const trendlineSetupLabel = useMemo(() => {
     const records = new Map<string, JournalTradeRecord>(chartEntryRecords.map(record => [record.id, record] as const));
     const key = (trade: TradeLevels) => `${trade.signal.time}:${tradeOverlayExecutionKey(trade)}`;
-    const entries = new Map<string, EntryHover>(entryHovers.map(entry => [key(entry.trade), entry] as const));
+    const entries = new Map<string, EntryHover>(entryHovers.filter(entry => !entry.source.startsWith('MT5 BROKER') && entry.display?.brokerTicket === undefined).map(entry => [key(entry.trade), entry] as const));
     const labels = new Map<string, string | undefined>();
     const trendCache = new Map<string, AutoTrendline[]>();
     const candles = { ...vipCandles, [granularity]: displayCandles };
@@ -6101,7 +6146,8 @@ export const OandaProChart: React.FC<{
       position: bullish ? 'belowBar' as const : 'aboveBar' as const,
       color: display?.referenceOnly && !display.chartFilled ? '#b45309' : bullish ? '#059669' : '#e11d48',
       shape: display?.referenceOnly && !display.chartFilled ? 'circle' as const : bullish ? 'arrowUp' as const : 'arrowDown' as const,
-      text: pullbackSetup ? pullbackSetup.markerText : marketSymbol === 'XAUUSD' && (style === 'SCALP_1_1' || style === 'INTRADAY')
+      text: source.startsWith('MT5 BROKER') || display?.brokerTicket !== undefined
+        ? `MT5 ${trade.result?.toUpperCase() ?? 'ENTRY'}` : pullbackSetup ? pullbackSetup.markerText : marketSymbol === 'XAUUSD' && (style === 'SCALP_1_1' || style === 'INTRADAY')
         ? trade.result === 'tp' || trade.result === 'sl' ? trade.result.toUpperCase() : ''
         : display?.markerText ?? (style === 'SCALP_1_1' ? trade.result?.toUpperCase()
         : secondSetupLabel ? [trade.result?.toUpperCase(), secondSetupLabel].filter(Boolean).join(' · ')
@@ -8150,6 +8196,9 @@ export const OandaProChart: React.FC<{
     chart.priceScale('volume').applyOptions({ scaleMargins: { top: 0.84, bottom: 0 } });
 
     chart.subscribeCrosshairMove((parameter: any) => {
+      // Moving into the scrollable details card must not dismiss it and
+      // immediately expose the arrow beneath it again.
+      if (chartPaneRef.current?.querySelector('[data-entry-hover]:hover')) return;
       const point = parameter.seriesData?.get(candleSeries);
       if (!point || typeof point.open !== 'number') {
         updateHeaderCandleRef.current();
@@ -8173,7 +8222,6 @@ export const OandaProChart: React.FC<{
         return;
       }
       setHoveredEntry((current) => current?.entry.id === entry.id
-        && Math.abs(current.x - cursor.x) < 3 && Math.abs(current.y - cursor.y) < 3
         ? current : { entry, x: cursor.x, y: cursor.y });
     });
 
@@ -10718,7 +10766,7 @@ export const OandaProChart: React.FC<{
             >
               TRADING TIME {tradingTimeEnabled ? 'ON' : 'OFF'}
             </button>
-            <button
+            {canAdmin && <button
               onClick={() => {
                 const enabled = !telegramMessagesEnabled;
                 setTelegramMessagesEnabled(enabled);
@@ -10733,7 +10781,7 @@ export const OandaProChart: React.FC<{
               title="Send or pause Telegram trade messages"
             >
               TELEGRAM {telegramMessagesEnabled ? 'ON' : 'OFF'}
-            </button>
+            </button>}
             {(Object.keys(zoneLengthModes).length > 0 || hiddenComparisonZoneKeys.length > 0) && (
               <button
                 type="button"
@@ -10757,13 +10805,13 @@ export const OandaProChart: React.FC<{
                 title="Choose which entry arrows to display"
                 aria-label="Entry arrow options"
               >
-                ENTRY HISTORY {arrowStrategies.length === 3 ? 'ALL' : showEntryArrows ? `${arrowStrategies.length} SELECTED` : 'OFF'} ▾
+                ENTRY HISTORY {arrowStrategies.length === TRADE_STRATEGIES.length ? 'ALL' : showEntryArrows ? `${arrowStrategies.length} SELECTED` : 'OFF'} ▾
               </summary>
               <div className="absolute left-0 top-full z-50 mt-1 w-44 rounded-md border border-emerald-200 bg-white p-2 text-[10px] shadow-lg">
                 <TradeStrategyCheckboxes label="Entry arrow strategies" selected={arrowStrategies} onChange={setArrowStrategies} />
               </div>
             </details>
-            <details ref={backtestingMenuRef} className="relative" onKeyDown={event => {
+            {canAdmin && <details ref={backtestingMenuRef} className="relative" onKeyDown={event => {
               if (event.key === 'Escape') { event.preventDefault(); event.currentTarget.open = false;
                 event.currentTarget.querySelector('summary')?.focus(); }
             }}>
@@ -10785,7 +10833,7 @@ export const OandaProChart: React.FC<{
                   Bollinger M5 Study {showBollingerStudy && <span className="text-[9px]">OPEN</span>}
                 </button>
               </div>
-            </details>
+            </details>}
             <div className="relative flex">
               <button
                 type="button"
@@ -11274,7 +11322,7 @@ export const OandaProChart: React.FC<{
           }}
         >
           <div ref={hostRef} className="absolute inset-0" />
-          {marketSymbol === 'XAUUSD' && <BollingerStudy open={showBollingerStudy}
+          {marketSymbol === 'XAUUSD' && <BollingerStudy open={canAdmin && showBollingerStudy}
             enabled={showBollingerStudy || arrowStrategies.includes('BOLLINGER_M5') || showAccuracyTable || showJournal || bollingerM5Enabled}
             showArrows={arrowStrategies.includes('BOLLINGER_M5')} timeframe={granularity} symbol={marketSymbol}
             candles={bollingerCandles} cutoff={tradeDisplayAsOf}
@@ -11282,13 +11330,13 @@ export const OandaProChart: React.FC<{
             chartRef={chartRef} seriesRef={candleSeriesRef} onClose={() => setShowBollingerStudy(false)}
             onShowM5={() => changeTimeframe('M5')}
             onRecords={setBollingerChartRecords} />}
-          {visitedStudies.volume && <div hidden={!showVolumeStudy}><VolumeEngulfingStudy active={showVolumeStudy}
+          {canAdmin && visitedStudies.volume && <div hidden={!showVolumeStudy}><VolumeEngulfingStudy active={showVolumeStudy}
             symbol={marketSymbol} timeframe={granularity}
             chartCandles={displayCandles} candles={vipCandles}
             chartRef={chartRef} seriesRef={candleSeriesRef}
             onClose={() => setShowVolumeStudy(false)}
           /></div>}
-          {visitedStudies.trendline && <div hidden={!showTrendlineStudy}><TrendlineStudy active={showTrendlineStudy}
+          {canAdmin && visitedStudies.trendline && <div hidden={!showTrendlineStudy}><TrendlineStudy active={showTrendlineStudy}
             symbol={marketSymbol} pipSize={marketConfig.pipSize} timeframe={granularity}
             entryArrows={entryArrowStudyEntries}
             chartCandles={displayCandles} candles={vipCandles} tradingTimeEnabled={tradingTimeEnabled}
@@ -11313,12 +11361,20 @@ export const OandaProChart: React.FC<{
               : trade.status === 'risk-free' ? '🛡️ RISK-FREE HIT'
               : trade.status === 'pending' ? '⏳ WAITING FOR ENTRY' : '⏳ TRADE OPEN');
             const timeZoneLabel = chartTimeZone === 'Asia/Kathmandu' ? 'Nepal' : chartTimeZone;
+            const paneWidth = chartPaneRef.current?.clientWidth ?? 340;
+            const paneHeight = chartPaneRef.current?.clientHeight ?? 440;
+            const cardWidth = Math.min(320, Math.max(0, paneWidth - 16));
+            const cardTop = Math.max(8, Math.min(y + 16, paneHeight - 420));
+            const cardLeft = x + 16 + cardWidth <= paneWidth - 8
+              ? x + 16 : Math.max(8, x - cardWidth - 16);
             return (
             <div
+              data-entry-hover="true"
               className="pointer-events-auto absolute z-40 max-h-[calc(100%_-_16px)] w-80 max-w-[calc(100%_-_16px)] overflow-y-auto rounded-xl border border-slate-200 bg-white/95 p-3 text-[11px] leading-relaxed text-slate-700 shadow-xl"
               style={{
-                left: Math.max(8, Math.min(x + 16, (chartPaneRef.current?.clientWidth ?? 340) - 328)),
-                top: Math.max(8, Math.min(y + 16, (chartPaneRef.current?.clientHeight ?? 440) - 420)),
+                left: Math.min(cardLeft, Math.max(8, paneWidth - cardWidth - 8)),
+                top: cardTop,
+                maxHeight: Math.max(0, paneHeight - cardTop - 8),
               }}
             >
               <div className={`text-xs font-black ${bullish ? 'text-emerald-700' : 'text-rose-700'}`}>
@@ -11333,7 +11389,7 @@ export const OandaProChart: React.FC<{
                   <div><b>{leg.leg === 10 ? '1st Entry' : '2nd Entry'} ({leg.leg}%): {formatPrice(leg.entry)}</b></div>
                   <div>SL: {leg.riskPips.toFixed(2)} pips · TP: {formatPrice(leg.takeProfit ?? trade.takeProfit)} · Risk share: {entry.pullbackSetup!.secondOnly ? leg.leg === 25 ? '100%' : '0%' : `${Math.round((leg.riskShare ?? (leg.leg === 10 ? .6 : .4))*100)}%`}</div>
                   <div>CHART: {entry.pullbackSetup!.secondOnly && leg.leg === 10 ? 'Skipped — split lot below minimum' : leg.filled ? '✓ Filled' : leg.uncertain ? 'Fill uncertain — insufficient candle evidence' : 'Not filled'}</div>
-                  <div>MT5: {leg.executed ? 'Executed' : 'Not executed'}</div>
+                  <div>Execution: Chart simulation</div>
                   {leg.outcome && <div>Outcome: {leg.outcome === 'both' ? 'SL / TP order uncertain' : leg.outcome.toUpperCase()}</div>}
                   {leg.filledAt !== undefined && <div>Filled: {formatAccuracyTradeTime(leg.filledAt, chartTimeZone)}</div>}
                 </div>)}

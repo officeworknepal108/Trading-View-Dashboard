@@ -97,3 +97,30 @@ test('number label includes the original Nepal date for overnight updates', () =
   assert.equal(telegramTradeNumberLabel({ tradeNumber: 4, tradeDate: '2026-10-26' }),
     'Trade #4 | 2026-10-26 (Nepal)');
 });
+
+
+test('result R survives legacy history merges and alias binding without applying the wrong outcome', () => {
+  const prefix = 'XAUUSD:bullish:M15:1793034120';
+  const entry = { tradeNumber: 1, tradeDate: '2026-10-26', entry: true };
+  const closed = { ...entry, result: 'tp' as const, returnR: .35, closedAt: beforeMidnight };
+  const sent = mergeTelegramAlertHistories([{ [prefix]: entry }, { [prefix]: closed }]);
+  assert.equal(sent[prefix].returnR, .35);
+  const restarted = JSON.parse(JSON.stringify(sent));
+  restarted[prefix + ':4000.00'] = { ...entry };
+  bindTelegramAlertAliases(restarted, prefix + ':4000.00', prefix);
+  assert.equal(restarted[prefix + ':4000.00'].returnR, .35);
+  assert.equal(restarted[prefix + ':4000.00'].closedAt, beforeMidnight);
+  const conflict = mergeTelegramAlertHistories([{ [prefix]: closed }, { [prefix]: { ...closed, result: 'sl', returnR: -1 } }]);
+  assert.equal(conflict[prefix].result, 'tp'); assert.equal(conflict[prefix].returnR, .35);
+});
+
+
+test('each Abhi leg result keeps its delivery evidence through alias merging and restarts', () => {
+  const prefix = 'CHART_SETUP:SCALP_1_1:example';
+  const one: SentTelegramAlerts = { [prefix]: { tradeNumber: 1, tradeDate: '2026-11-21', entry: true, legResults: { 10: 'sl' } } };
+  const two: SentTelegramAlerts = { [prefix]: { tradeNumber: 1, tradeDate: '2026-11-21', entry: true, legResults: { 25: 'tp' } } };
+  const merged = JSON.parse(JSON.stringify(mergeTelegramAlertHistories([one, two])));
+  bindTelegramAlertAliases(merged, prefix, prefix);
+  assert.deepEqual(merged[prefix].legResults, { 10: 'sl', 25: 'tp' });
+  assert.equal(merged[prefix].result, undefined); assert.equal(merged[prefix].returnR, undefined);
+});

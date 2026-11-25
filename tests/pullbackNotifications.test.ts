@@ -92,3 +92,37 @@ test('daily setup summary deduplicates aliases, includes all styles, and exclude
     tradeStyle: 'SCALPING', rf: true, rfAt: day.end - 1 } }, now);
   assert.equal(rf.total, 1); assert.equal(rf.open, 1); assert.equal(rf.riskFree, 1, 'partially closed Scalping setup remains open');
 });
+
+
+test('daily R sums each strategy once, uses weighted Abhi R, and excludes open and future outcomes', () => {
+  const now = Date.parse('2026-11-16T18:16:00Z') / 1000, day = previousNepalDay(now);
+  const base = { tradeDate: day.date, entry: true, result: 'tp' as const, closedAt: day.end - 1 };
+  const abhi = { ...base, tradeNumber: 1, tradeStyle: 'SCALP_1_1' as const, returnR: .35 };
+  const sent: SentTelegramAlerts = {
+    abhi, alias: { ...abhi },
+    intraday: { ...base, tradeNumber: 2, tradeStyle: 'INTRADAY', returnR: 2 },
+    scalp: { ...base, tradeNumber: 3, tradeStyle: 'SCALPING', result: 'sl', returnR: -1 },
+    bollinger: { ...base, tradeNumber: 4, tradeStyle: 'BOLLINGER_M5', returnR: 1.5 },
+    open: { ...abhi, tradeNumber: 5, result: undefined, closedAt: undefined, returnR: 99 },
+    future: { ...abhi, tradeNumber: 6, closedAt: day.end, returnR: 99 },
+    otherDay: { ...abhi, tradeNumber: 7, tradeDate: '2026-11-14', returnR: 99 },
+  };
+  const counts = countTelegramSetups(sent, now);
+  assert.equal(counts.total, 6); assert.equal(counts.open, 2);
+  assert.equal(counts.netR, 2.85); assert.equal(counts.missingR, 0);
+  assert.equal(counts.strategies!.SCALP_1_1.netR, .35);
+  const text = formatDailyTradeSummary(counts);
+  assert.match(text, /Total R: \+2.85R/); assert.match(text, /Result: \+0.35R/);
+  assert.match(text, /Result: -1.00R/); assert.match(text, /before costs/);
+  const replayed = countTelegramSetups(JSON.parse(JSON.stringify(sent)), now);
+  assert.deepEqual(replayed, counts);
+});
+
+test('older closed trades without stored R are marked unavailable rather than invented', () => {
+  const now = Date.parse('2026-11-16T18:16:00Z') / 1000, day = previousNepalDay(now);
+  const base = { tradeDate: day.date, entry: true, result: 'tp' as const, closedAt: day.end - 1, tradeStyle: 'INTRADAY' as const };
+  const counts = countTelegramSetups({ old: { ...base, tradeNumber: 1 }, good: { ...base, tradeNumber: 2, returnR: 2 } }, now);
+  assert.equal(counts.netR, 2); assert.equal(counts.missingR, 1);
+  assert.match(formatDailyTradeSummary(counts), /Total R: \+2.00R \(1 results unavailable\)/);
+  assert.match(formatDailyTradeSummary(countTelegramSetups({ old: { ...base, tradeNumber: 1 } }, now)), /Total R: Unavailable/);
+});

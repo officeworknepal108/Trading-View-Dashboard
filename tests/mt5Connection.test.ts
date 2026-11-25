@@ -384,7 +384,7 @@ test('MT5 account handshake resets old candles and queues while preserving autom
 
     const clientRequest = (route: string, body?: unknown, method?: string) => fetch(`${base}${route}`, {
       method: method ?? (body === undefined ? 'GET' : 'POST'),
-      headers: { Cookie: 'dashboard_session=isolated-client-test-session', Origin: base, 'Content-Type': 'application/json' },
+      headers: { Cookie: 'dashboard_session=isolated-client-test-session; dashboard_device=isolated-client-test-device', Origin: base, 'Content-Type': 'application/json' },
       ...(body === undefined ? {} : { body: JSON.stringify(body) }),
     });
     const clientStatus = await (await clientRequest('/api/mt5/status')).json();
@@ -392,6 +392,11 @@ test('MT5 account handshake resets old candles and queues while preserving autom
     assert.equal(clientStatus.bridge.equity, undefined);
     assert.equal(clientStatus.bridge.account, undefined);
     assert.equal(clientStatus.config.riskPercent, undefined);
+    const adminConfig = (await (await request('/api/mt5/status')).json()).config;
+    for (const key of ['scalpingEnabled', 'intradayEnabled', 'scalpOneToOneEnabled', 'bollingerM5Enabled',
+      'tradingTimeEnabled', 'pendingExpiryMinutes', 'mtfLtfFibRequired', 'enabledTimeframes']) {
+      assert.deepEqual(clientStatus.config[key], adminConfig[key], `shared chart setting ${key}`);
+    }
     assert.deepEqual(clientStatus.recentSignals, []);
     assert.deepEqual(clientStatus.positions, []);
     assert.equal((await clientRequest('/api/mt5/accounts')).status, 403);
@@ -411,6 +416,12 @@ test('MT5 account handshake resets old candles and queues while preserving autom
     assert.deepEqual(clientJournal.trades.map((trade: any) => trade.id), ['chart-only']);
     assert.equal((await clientRequest('/api/journal/trades', { trades: [{ id: 'chart-only', completedAt: now, reason: 'My personal note' }] })).status, 200);
     assert.equal((await (await clientRequest('/api/journal/trades')).json()).trades[0].reason, 'My personal note');
+
+    const clientChart = await (await clientRequest('/api/journal/trades?view=chart')).json();
+    const adminChart = await (await request('/api/journal/trades?view=chart')).json();
+    assert.deepEqual(clientChart, adminChart, 'chart history is independent of role and personal journal edits');
+    assert.deepEqual(clientChart.trades.map((trade: any) => trade.id), ['chart-only']);
+    assert.equal(clientChart.trades[0].reason, undefined, 'private annotations cannot alter chart entries');
     const shared = await (await request('/api/journal/trades')).json();
     assert.equal(shared.trades.find((trade: any) => trade.id === 'chart-only').reason, undefined, 'client notes never change the shared journal');
     assert.ok(shared.trades.some((trade: any) => trade.id === 'MT5:private'), 'admins retain broker history');

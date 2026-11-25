@@ -2,12 +2,15 @@ import type { TradeTimeframe } from './tradeLevels';
 import type { TelegramTradeNumber } from './telegramTradeNumbers';
 import type { SentTelegramAlerts } from './telegramTradeNumbers';
 
+export type AbhiEntryStatus = 'open' | 'waiting' | 'expired' | 'skipped' | 'uncertain' | 'tp' | 'sl';
 export interface TelegramTradeAlert {
   id: string; tradeKey?: string;
-  kind: 'pending' | 'cancelled' | 'entry' | 'entry2' | 'rf' | 'tp' | 'sl';
+  kind: 'pending' | 'cancelled' | 'entry' | 'entry2' | 'leg-result' | 'rf' | 'tp' | 'sl';
+  legResult?: { leg: 10 | 25; outcome: 'tp' | 'sl' };
   chartSetup?: boolean;
   pullback?: { firstEntry: number; firstRiskPips: number; secondEntry: number; secondRiskPips: number; secondOnly: boolean;
-    abhi?: boolean; firstTarget?: number; secondTarget?: number; netReturnR?: number };
+    abhi?: boolean; firstTarget?: number; secondTarget?: number; netReturnR?: number;
+    firstStatus?: AbhiEntryStatus; secondStatus?: AbhiEntryStatus };
   outsideTradingTime?: boolean;
   symbol: string; direction: 'BUY' | 'SELL'; zoneName: string;
   zoneTimeframe: TradeTimeframe; signalTimeframe: TradeTimeframe; engulfingType: string;
@@ -32,7 +35,60 @@ const entryTime = (seconds: number) => new Intl.DateTimeFormat('en-GB', {
   hour: 'numeric', minute: '2-digit', hour12: true,
 }).format(seconds * 1000) + ' Nepal';
 
+export function telegramAlertEventKey(alert: TelegramTradeAlert): string {
+  return `${alert.id}:${alert.kind}${alert.kind === 'leg-result' ? `:${alert.legResult?.leg}` : ''}`;
+}
+
+export function validAbhiLegResult(alert: TelegramTradeAlert): boolean {
+  const leg = alert.legResult;
+  const p = alert.pullback;
+  return alert.chartSetup === true && p?.abhi === true && alert.tradeStyle === 'SCALP_1_1'
+    && !!leg && (leg.leg === 10 || leg.leg === 25) && !(p.secondOnly && leg.leg === 10)
+    && (leg.outcome === 'tp' || leg.outcome === 'sl')
+    && (leg.leg === 10 ? p.firstStatus : p.secondStatus) === leg.outcome
+    && alert.returnR === (leg.outcome === 'tp' ? 1.25 : -1);
+}
+
+const signedR = (value: number) => `${value > 0 ? '+' : ''}${value.toFixed(2)}R`;
+const abhiStatus = (status?: AbhiEntryStatus) => status === 'tp' ? '🟢 TP HIT'
+  : status === 'sl' ? '🔴 SL HIT' : status === 'open' ? '⏳ Still open'
+  : status === 'expired' ? 'Expired without a fill' : status === 'skipped' ? 'Skipped'
+  : status === 'uncertain' ? 'Fill / outcome uncertain' : '⏳ Waiting';
+
+function formatAbhiMessage(alert: TelegramTradeAlert, number: TelegramTradeNumber): string | undefined {
+  const p = alert.pullback;
+  if (!alert.chartSetup || !p?.abhi) return;
+  const header = [`TRADE #${number.tradeNumber} · ABHI SCALP LOGIC`, `${alert.symbol} · ${alert.direction} · ${alert.signalTimeframe}`, ''];
+  const entry = (leg: 10 | 25) => {
+    const first = leg === 10;
+    const name = first ? '1st Entry' : '2nd Entry';
+    if (first && p.secondOnly) return [`${name}: Skipped — split lot below broker minimum`];
+    const state = first ? p.firstStatus ?? 'open' : p.secondStatus ?? (p.secondOnly ? 'open' : 'waiting');
+    const filled = state === 'open' || state === 'tp' || state === 'sl';
+    return [`${name}: ${price(first ? p.firstEntry : p.secondEntry)} ${filled ? '✓ Filled' : abhiStatus(state)}`,
+      `🔴 SL: ${price(alert.stopLoss)} (${(first ? p.firstRiskPips : p.secondRiskPips).toFixed(2)} pips)`,
+      `🟢 TP: ${price((first ? p.firstTarget : p.secondTarget)!)}`,
+      `Risk: ${p.secondOnly ? 100 : first ? 40 : 60}% · R:R: 1:1.25`];
+  };
+  if (alert.kind === 'entry') return [...header, ...entry(10), '', ...entry(25)].join('\n');
+  if (alert.kind === 'entry2') return [...header, ...entry(25)].join('\n');
+  if (alert.kind === 'leg-result' && alert.legResult) {
+    const first = alert.legResult.leg === 10;
+    const r = alert.legResult.outcome === 'tp' ? 1.25 : -1;
+    const contribution = r * (p.secondOnly ? 1 : first ? .4 : .6);
+    return [...header, `${first ? '1st' : '2nd'} Entry: ${abhiStatus(alert.legResult.outcome)}`,
+      `Result: ${signedR(r)}`, `Setup contribution: ${signedR(contribution)}`, '',
+      `${first ? '2nd' : '1st'} Entry: ${abhiStatus(first ? p.secondStatus : p.firstStatus)}`].join('\n');
+  }
+  if ((alert.kind === 'tp' || alert.kind === 'sl') && p.netReturnR !== undefined) {
+    return [...header, `1st Entry: ${abhiStatus(p.firstStatus)}`, `2nd Entry: ${abhiStatus(p.secondStatus)}`, '',
+      '✅ SETUP CLOSED', `Net result: ${signedR(p.netReturnR)} before costs`].join('\n');
+  }
+}
+
 export function formatTelegramTradeMessage(alert: TelegramTradeAlert, number: TelegramTradeNumber): string {
+  const abhi = formatAbhiMessage(alert, number);
+  if (abhi !== undefined) return abhi;
   if (alert.kind === 'entry2' && alert.pullback) return `2nd Entry: ${price(alert.pullback.secondEntry)} ✓ Filled${alert.pullback.abhi ? ` · TP: ${price(alert.pullback.secondTarget!)} · 60% setup risk` : ''}`;
   const style = alert.pullback?.abhi || alert.zoneName === 'Abhi Scalp Logic' ? 'ABHI SCALP LOGIC' : alert.tradeStyle === 'BOLLINGER_M5' ? 'BOLLINGER M5' : alert.tradeStyle === 'SCALP_1_1' ? 'SCALP 1:1'
     : alert.tradeStyle ?? (['M1', 'M5'].includes(alert.zoneTimeframe) ? 'SCALPING' : 'INTRADAY');
@@ -85,25 +141,33 @@ export function formatTelegramTradeMessage(alert: TelegramTradeAlert, number: Te
 }
 
 export interface DailyTradeCounts { date: string; total: number; wins: number; losses: number; riskFree: number;
-  open?: number; strategies?: Record<string, { total: number; wins: number; losses: number; riskFree: number; open: number }> }
+  open?: number; netR?: number; missingR?: number;
+  strategies?: Record<string, { total: number; wins: number; losses: number; riskFree: number; open: number; netR?: number; missingR?: number }> }
 
 export function countTelegramSetups(sent: SentTelegramAlerts, now: number): DailyTradeCounts {
   const day = previousNepalDay(now);
   const unique = new Map<string, typeof sent[string]>();
   for (const state of Object.values(sent)) {
     if (!state.entry || !state.tradeNumber || state.tradeDate !== day.date || !state.tradeStyle) continue;
-    unique.set(`${state.tradeDate}:${state.tradeNumber}`, state);
+    const key = `${state.tradeDate}:${state.tradeNumber}`;
+    const previous = unique.get(key);
+    if (!previous || !previous.result && state.result
+      || previous.result === state.result && !Number.isFinite(previous.returnR) && Number.isFinite(state.returnR)) unique.set(key, state);
   }
-  const summary: DailyTradeCounts = { date: day.date, total: unique.size, wins: 0, losses: 0, riskFree: 0, open: 0, strategies: {} };
-  for (const style of ['SCALP_1_1', 'INTRADAY', 'SCALPING', 'BOLLINGER_M5']) summary.strategies![style] = { total: 0, wins: 0, losses: 0, riskFree: 0, open: 0 };
+  const summary: DailyTradeCounts = { date: day.date, total: unique.size, wins: 0, losses: 0, riskFree: 0, open: 0, netR: 0, missingR: 0, strategies: {} };
+  for (const style of ['SCALP_1_1', 'INTRADAY', 'SCALPING', 'BOLLINGER_M5']) summary.strategies![style] = { total: 0, wins: 0, losses: 0, riskFree: 0, open: 0, netR: 0, missingR: 0 };
   for (const state of unique.values()) {
     const row = summary.strategies![state.tradeStyle!];
     if (!row) continue;
     row.total++;
-    // Classify the setup at the reporting day's end, even if it closed later.
+    // Preserve the existing entry-day grouping and day-end result cutoff.
     const result = (state.closedAt ?? Infinity) < day.end ? state.result : undefined;
     const category = result === 'tp' ? 'wins' : result === 'sl' ? 'losses' : 'open';
     row[category]++; summary[category]!++;
+    if (result) {
+      if (Number.isFinite(state.returnR)) { row.netR! += state.returnR!; summary.netR! += state.returnR!; }
+      else { row.missingR!++; summary.missingR!++; }
+    }
     if (state.rf && (state.rfAt ?? 0) < day.end) { row.riskFree++; summary.riskFree++; }
   }
   return summary;
@@ -133,14 +197,23 @@ export function countDailyTrades(signals: readonly {
     losses: rows.filter(row => row.status === 'SL').length, riskFree: rows.filter(row => row.status === 'RF').length };
 }
 
+function summaryR(value = 0, missing = 0, closed = 0): string {
+  if (missing && missing === closed) return `Unavailable (${missing} closed trades missing R)`;
+  const rounded = Math.round((value + Number.EPSILON) * 100) / 100;
+  return `${rounded > 0 ? '+' : ''}${rounded.toFixed(2)}R${missing ? ` (${missing} results unavailable)` : ''}`;
+}
+
 export function formatDailyTradeSummary(summary: DailyTradeCounts): string {
   const date = new Intl.DateTimeFormat('en-GB', { timeZone: 'UTC', day: 'numeric', month: 'short', year: 'numeric' })
     .format(new Date(`${summary.date}T12:00:00Z`));
   if (summary.strategies) return [`📊 DAILY SUMMARY · ${date}`, '', `Total trades: ${summary.total}`,
     `🟢 TP: ${summary.wins}`, `🔴 SL: ${summary.losses}`, `⏳ Open: ${summary.open ?? 0}`,
     ...(summary.riskFree ? [`🟡 Risk-free: ${summary.riskFree}`] : []),
+    `📈 Total R: ${summaryR(summary.netR, summary.missingR, summary.wins + summary.losses)}`,
     ...Object.entries(summary.strategies).flatMap(([style, row]) => ['', style === 'SCALP_1_1' ? 'SCALP 1:1' : style,
-      `Trades: ${row.total} · TP: ${row.wins} · SL: ${row.losses} · Open: ${row.open}${row.riskFree ? ` · RF: ${row.riskFree}` : ''}`])].join('\n');
+      `Trades: ${row.total} · TP: ${row.wins} · SL: ${row.losses} · Open: ${row.open}${row.riskFree ? ` · RF: ${row.riskFree}` : ''}`,
+      `Result: ${summaryR(row.netR, row.missingR, row.wins + row.losses)}`]), '',
+    'R results before costs · Nepal time'].join('\n');
   return [`DAILY TRADE SUMMARY — ${date}`, '', `Total trades: ${summary.total}`,
     `✅ Wins: ${summary.wins}`, `❌ Losses: ${summary.losses}`, `🟡 Risk-free: ${summary.riskFree}`].join('\n');
 }
