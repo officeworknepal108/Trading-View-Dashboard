@@ -17,7 +17,6 @@ import type { OandaMarketSymbol } from '../services/marketSymbols';
 import {
   filterAccuracyTradeRecords,
   selectTwoMonthJournalRecords,
-  countTradeSetups,
   twoMonthAccuracyWindow,
   tradeRecordDatePeriodKey,
   tradeRecordPeriodLabel,
@@ -36,6 +35,8 @@ import { TradeMultiSelect, TradeStrategyCheckboxes } from './TradeMultiSelect';
 import { Mt5CapitalPanel } from './Mt5CapitalPanel';
 
 export interface JournalTradeRecord {
+  setupEntries?: JournalTradeRecord[];
+  setupNetR?: number;
   pullbackFallback?: 'SECOND_ONLY';
   mtfContext?: import('../services/mtf').MtfRow;
   id: string;
@@ -235,6 +236,7 @@ export function calculateJournalCashSummary(trades: JournalTradeRecord[]): Journ
 
 function tradeResultR(trade: JournalTradeRecord): number | undefined {
   if (!['tp', 'sl', 'rf'].includes(trade.result)) return undefined;
+  if (trade.setupNetR !== undefined) return trade.setupNetR;
   if (trade.tradeStyle === 'BOLLINGER_M5' && Number.isFinite(trade.closePrice)
     && Math.abs(trade.entry - trade.stopLoss) > 0) return (trade.closePrice! - trade.entry)
       * (trade.direction === 'bullish' ? 1 : -1) / Math.abs(trade.entry - trade.stopLoss);
@@ -247,7 +249,50 @@ function tradeResultR(trade: JournalTradeRecord): number | undefined {
   return calculateHalfAtOneRResult(trade.result as TradeResult, trade.rewardRisk) * share;
 }
 
+/** Presentation only: retain the original executions for notes and broker history. */
+export function combineJournalTradeSetups(trades: JournalTradeRecord[]): JournalTradeRecord[] {
+  const groups = new Map<string, JournalTradeRecord[]>();
+  for (const trade of trades) {
+    const setup = trade.scalpEntry?.setupKey ?? trade.intradayEntry?.setupKey
+      ?? ((trade.scalpEntry || trade.intradayEntry || trade.setupId?.match(/:P(?:10|25)$/))
+        ? trade.setupId?.replace(/:P(?:10|25)$/, '') : undefined);
+    const key = setup ? JSON.stringify([trade.symbol, trade.tradeStyle, trade.source,
+      trade.zoneTimeframe, trade.signalTimeframe, trade.direction, !!(trade.mt5Managed || trade.brokerTicket !== undefined), setup])
+      : JSON.stringify(['entry', trade.id]);
+    const group = groups.get(key) ?? [];
+    group.push(trade);
+    groups.set(key, group);
+  }
+  return [...groups.values()].map((entries): JournalTradeRecord => {
+    if (entries.length === 1) return entries[0];
+    const first = entries[0];
+    const active = entries.filter(entry => entry.result === 'open' || entry.result === 'risk-free');
+    const netR = entries.reduce((sum, entry) => sum + (tradeResultR(entry) ?? 0), 0);
+    const weights = entries.map(entry => entry.pullbackFallback === 'SECOND_ONLY' ? 1
+      : entry.scalpEntry?.riskShare ?? entry.intradayEntry?.riskShare ?? 1);
+    const weight = weights.reduce((sum, value) => sum + value, 0);
+    const average = (field: 'entry' | 'stopLoss' | 'takeProfit' | 'rewardRisk' | 'riskPips') =>
+      entries.reduce((sum, entry, index) => sum + entry[field] * weights[index], 0) / weight;
+    const sumOptional = (field: 'volume' | 'realizedProfit') => entries.some(entry => Number.isFinite(entry[field]))
+      ? entries.reduce((sum, entry) => sum + (entry[field] ?? 0), 0) : undefined;
+    const opened = entries.flatMap(entry => entry.openedAt === undefined ? [] : [entry.openedAt]);
+    return { ...first, setupEntries: entries, setupNetR: netR,
+      result: active.length ? (active.every(entry => entry.result === 'risk-free') ? 'risk-free' : 'open')
+        : netR > 1e-9 ? 'tp' : netR < -1e-9 ? 'sl' : 'rf',
+      completedAt: Math.max(...entries.map(entry => entry.completedAt)),
+      openedAt: opened.length ? Math.min(...opened) : undefined,
+      entry: average('entry'), stopLoss: average('stopLoss'), takeProfit: average('takeProfit'),
+      rewardRisk: average('rewardRisk'), riskPips: average('riskPips'),
+      volume: sumOptional('volume'), realizedProfit: sumOptional('realizedProfit'),
+      closePrice: entries.every(entry => Number.isFinite(entry.closePrice))
+        ? entries.reduce((sum, entry, index) => sum + entry.closePrice! * weights[index], 0) / weight : undefined,
+      outsideTradingTime: entries.some(entry => entry.outsideTradingTime),
+    };
+  }).sort((a, b) => b.completedAt - a.completedAt);
+}
+
 export function calculateJournalPerformance(trades: JournalTradeRecord[]): JournalPerformance {
+  trades = combineJournalTradeSetups(trades);
   const completed = trades.filter((trade) => tradeResultR(trade) !== undefined);
   const values = completed.map((trade) => tradeResultR(trade) ?? 0);
   const wins = values.filter((value) => value > 0);
@@ -641,7 +686,8 @@ export const TradeJournal: React.FC<TradeJournalProps> = ({ records, timeframe, 
     return () => window.clearInterval(timer);
   }, [journalLoaded, records]);
 
-  const selectedTrade = trades.find((trade) => trade.id === selectedId);
+  const setupTrades = useMemo(() => combineJournalTradeSetups(trades), [trades]);
+  const selectedTrade = setupTrades.find((trade) => trade.id === selectedId);
   useEffect(() => {
     if (!selectedTrade) return;
     setDraft({
@@ -663,7 +709,7 @@ export const TradeJournal: React.FC<TradeJournalProps> = ({ records, timeframe, 
   )).sort(), [trades]);
   const filteredTrades = useMemo(() => {
     const query = search.trim().toLowerCase();
-    const coreFiltered = filterAccuracyTradeRecords<JournalTradeRecord>(selectTwoMonthJournalRecords<JournalTradeRecord>(trades, historyAsOf), {
+    const coreFiltered = filterAccuracyTradeRecords<JournalTradeRecord>(selectTwoMonthJournalRecords<JournalTradeRecord>(combineJournalTradeSetups(trades), historyAsOf), {
       timeframes: timeframeFilter,
       datePeriod,
       date: dateFilter,
@@ -699,7 +745,7 @@ export const TradeJournal: React.FC<TradeJournalProps> = ({ records, timeframe, 
   const accuracy = completedTrades.length > 0 ? Math.round((counts.tp * 10_000) / completedTrades.length) / 100 : 0;
   const totalR = calculateTotalR(completedTrades);
   const performance = useMemo(() => calculateJournalPerformance(filteredTrades), [filteredTrades]);
-  const setupCount = countTradeSetups(filteredTrades);
+  const setupCount = filteredTrades.length;
   const runningTrades = useMemo(
     () => filteredTrades.filter((trade) => trade.result === 'open' || trade.result === 'risk-free'),
     [filteredTrades],
@@ -749,16 +795,16 @@ export const TradeJournal: React.FC<TradeJournalProps> = ({ records, timeframe, 
     if (!selectedTrade) return;
     setSaving(true);
     try {
-      const updated = { ...selectedTrade, ...draft };
+      const updated = (selectedTrade.setupEntries ?? [selectedTrade]).map(trade => ({ ...trade, ...draft }));
       const response = await terminalFetch('/api/journal/trades', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ trades: [updated] }),
+        body: JSON.stringify({ trades: updated }),
       });
       const payload = await response.json() as JournalResponse;
       if (!response.ok || !payload.ok) throw new Error(payload.error || 'Unable to save journal notes.');
       setTrades(mergeTradeRecordAnnotations(records,
-        payload.trades ?? trades.map((trade) => trade.id === updated.id ? updated : trade)));
+        payload.trades ?? trades.map((trade) => updated.find(entry => entry.id === trade.id) ?? trade)));
       setMessage('Trade review saved');
     } catch (error) {
       setMessage(error instanceof Error ? error.message : 'Unable to save journal notes.');
@@ -1051,7 +1097,7 @@ export const TradeJournal: React.FC<TradeJournalProps> = ({ records, timeframe, 
               ['PROFIT FACTOR', formatMetric(performance.profitFactor), 'text-slate-900', 'Calculated from normalized R'],
               ['WIN RATE', `${performance.winRate.toFixed(2)}%`, 'text-indigo-700', `${performance.completed} completed trades`],
               ['AVG WIN / AVG LOSS', formatMetric(performance.averageWinLoss), 'text-slate-900', 'Calculated from normalized R'],
-              ['TOTAL ENTRIES', String(filteredTrades.length), 'text-slate-900', `${setupCount} ${setupCount === 1 ? 'setup' : 'setups'} · ${runningTrades.length} currently running`],
+              ['TOTAL TRADES', String(filteredTrades.length), 'text-slate-900', `${setupCount} ${setupCount === 1 ? 'setup' : 'setups'} · ${runningTrades.length} currently running`],
               ['TOTAL SETUPS', String(setupCount), 'text-indigo-700', 'Pullback legs sharing a setup count once'],
             ].map(([label, value, color, hint]) => (
               <div key={label} className="rounded-lg border border-slate-200 bg-white p-3 shadow-sm">
@@ -1178,12 +1224,13 @@ export const TradeJournal: React.FC<TradeJournalProps> = ({ records, timeframe, 
                   <td className="whitespace-nowrap px-2 py-1.5 font-bold">{trade.session || inferTradingSession(trade.completedAt)}</td>
                   <td className="px-2 py-1.5 font-bold">{displayTimeframe(trade.zoneTimeframe)}</td>
                   <td className="whitespace-nowrap px-2 py-1.5 text-left font-bold">{trade.scalpEntry?.version === 4 ? 'Abhi Scalp Logic' : trade.zoneName}
-                    {trade.intradayEntry && <div className="text-[8px] text-slate-500">
+                    {trade.setupEntries && <div className="text-[8px] text-slate-500">Combined entries · weighted prices</div>}
+                    {!trade.setupEntries && trade.intradayEntry && <div className="text-[8px] text-slate-500">
                       {trade.intradayEntry.leg}% pullback / {Math.round(trade.intradayEntry.riskShare * 100)}% setup risk
                     </div>}
                     {(trade.tradeStyle === 'SCALP_1_1' || trade.tradeStyle === 'BOLLINGER_M5') && <div className="text-[8px] text-slate-500">
                       {trade.mt5Managed || trade.brokerTicket !== undefined ? 'MT5' : 'CHART ONLY'}
-                      {trade.scalpEntry && ` · ${trade.scalpEntry.leg}% pullback / ${trade.pullbackFallback === 'SECOND_ONLY' ? 100 : Math.round(trade.scalpEntry.riskShare * 100)}% risk`}
+                      {!trade.setupEntries && trade.scalpEntry && ` · ${trade.scalpEntry.leg}% pullback / ${trade.pullbackFallback === 'SECOND_ONLY' ? 100 : Math.round(trade.scalpEntry.riskShare * 100)}% risk`}
                     </div>}
                   </td>
                   <td className={`px-2 py-1.5 font-black ${trade.direction === 'bullish' ? 'text-emerald-700' : 'text-rose-700'}`}>{trade.direction === 'bullish' ? 'BUY' : 'SELL'}</td>

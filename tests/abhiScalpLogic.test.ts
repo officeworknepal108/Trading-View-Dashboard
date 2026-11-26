@@ -1,7 +1,8 @@
 import { buildChartPullbackSetups } from '../src/services/chartEntryData';
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { scalpOneToOnePullbackSignals, scalpOneToOneChartHistory } from '../src/services/scalpOneToOne';
+import { scalpOneToOnePullbackSignals as pullbackSignals, scalpOneToOneChartHistory as chartHistory } from '../src/services/scalpOneToOne';
+import { withScalpFibHistory } from './helpers/scalpFibHistory';
 import { scalpPullbackSignalError, selectSecondOnlyPullback, type Mt5StoredSignal } from '../src/services/mt5Automation';
 import { buildPullbackChartSetups, chartSignalFromHistoryFill } from '../src/services/pullbackChartSetup';
 import { groupPullbackTableSignals } from '../src/services/pullbackEntryDisplay';
@@ -9,6 +10,9 @@ import { pullbackTelegramAlerts } from '../src/services/pullbackTelegram';
 import { formatTelegramTradeMessage, telegramAlertEventKey, validAbhiLegResult } from '../src/services/telegramMessages';
 import { pullbackExpirySeconds } from '../src/services/pullbackExpiry';
 import type { VolumeStudyRecord } from '../src/services/volumeEngulfingStudy';
+
+const scalpOneToOnePullbackSignals: typeof pullbackSignals = (record, candles, ...args) => pullbackSignals(record, withScalpFibHistory(candles), ...args);
+const scalpOneToOneChartHistory: typeof chartHistory = (record, candles, ...args) => chartHistory(record, withScalpFibHistory(candles), ...args);
 
 const record: VolumeStudyRecord={id:'fixture',signal:{type:'T1',direction:'bullish',time:900,timeframe:'M15',candleCount:2},
   confirmedAt:1800,bias:'bullish',group:'V2 < V1',v1:1300,v2:1000,v3:750,

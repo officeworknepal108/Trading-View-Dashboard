@@ -3,6 +3,7 @@ import test from 'node:test';
 import {
   calculateJournalCashSummary,
   calculateJournalPerformance,
+  combineJournalTradeSetups,
   inferTradingSession,
   journalDateKey,
   type JournalTradeRecord,
@@ -11,6 +12,65 @@ import {
 function unixTime(isoTime: string): number {
   return Date.parse(isoTime) / 1000;
 }
+
+function setupLeg(leg: 10 | 25, result: JournalTradeRecord['result']): JournalTradeRecord {
+  return {
+    id: `setup-${leg}`, setupId: `DIRECT:M15:zone:P${leg}`, symbol: 'XAUUSD',
+    zoneName: 'DB', zoneTimeframe: 'M15', signalTimeframe: 'M5', source: 'ENGULFING',
+    tradeStyle: 'INTRADAY', direction: 'bullish', engulfingType: 'T1', result,
+    completedAt: leg === 10 ? 100 : 200, openedAt: leg === 10 ? 50 : 60,
+    entry: leg === 10 ? 100 : 99, stopLoss: 98, takeProfit: 104, rewardRisk: 2, riskPips: 20,
+    intradayEntry: { version: 3, leg, riskShare: leg === 10 ? .6 : .4,
+      setupKey: 'same-confirmation', referenceEntry: 101, nextOpen: 100, confirmationBody: 2 },
+  };
+}
+
+test('two filled legs become one setup with combined R, cash, volume and weighted prices', () => {
+  const first = { ...setupLeg(10, 'tp'), realizedProfit: 60, volume: .03 };
+  const second = { ...setupLeg(25, 'sl'), realizedProfit: -20, volume: .02 };
+  const grouped = combineJournalTradeSetups([first, second]);
+  assert.equal(grouped.length, 1);
+  assert.equal(grouped[0].result, 'tp');
+  assert.ok(Math.abs(grouped[0].setupNetR! - .8) < 1e-9);
+  assert.equal(grouped[0].realizedProfit, 40);
+  assert.equal(grouped[0].volume, .05);
+  assert.equal(grouped[0].entry, 99.6);
+  assert.equal(grouped[0].completedAt, 200);
+  assert.equal(grouped[0].openedAt, 50);
+  assert.deepEqual(grouped[0].setupEntries, [first, second]);
+  assert.deepEqual(combineJournalTradeSetups(grouped), grouped);
+  const performance = calculateJournalPerformance([first, second]);
+  assert.equal(performance.completed, 1);
+  assert.equal(performance.winRate, 100);
+  assert.ok(Math.abs(performance.totalR - .8) < 1e-9);
+  assert.equal(first.entry, 100);
+});
+
+test('setup results use combined risk and stay open until every filled leg closes', () => {
+  assert.equal(combineJournalTradeSetups([setupLeg(10, 'sl'), setupLeg(25, 'sl')])[0].result, 'sl');
+  const even = { ...setupLeg(10, 'tp'), rewardRisk: 2 / 3 };
+  assert.equal(combineJournalTradeSetups([even, setupLeg(25, 'sl')])[0].result, 'rf');
+  const running = [setupLeg(10, 'tp'), setupLeg(25, 'open')];
+  assert.equal(combineJournalTradeSetups(running)[0].result, 'open');
+  assert.equal(calculateJournalPerformance(running).completed, 0);
+  assert.deepEqual(combineJournalTradeSetups([setupLeg(25, 'tp')]), [setupLeg(25, 'tp')]);
+});
+
+test('different setups and chart versus broker records remain distinct', () => {
+  const first = setupLeg(10, 'tp');
+  const other = { ...setupLeg(25, 'tp'), intradayEntry: { ...first.intradayEntry!, setupKey: 'other' } };
+  assert.equal(combineJournalTradeSetups([first, other]).length, 2);
+  assert.equal(combineJournalTradeSetups([first, { ...setupLeg(25, 'tp'), brokerTicket: 123 }]).length, 2);
+});
+
+test('legacy scalp legs can group by their stored setup ID without an entry setup key', () => {
+  const entries = [setupLeg(10, 'tp'), setupLeg(25, 'tp')].map((entry): JournalTradeRecord => ({
+    ...entry, tradeStyle: 'SCALP_1_1', setupId: 'SCALP:A', intradayEntry: undefined,
+    scalpEntry: { ...entry.intradayEntry!, setupKey: undefined },
+  }));
+  assert.equal(combineJournalTradeSetups(entries).length, 1);
+  assert.equal(calculateJournalPerformance(entries).totalR, 2);
+});
 
 test('journal infers sessions from Nepal-local trade time', () => {
   assert.equal(inferTradingSession(unixTime('2024-07-09T04:00:00Z')), 'ASIAN');

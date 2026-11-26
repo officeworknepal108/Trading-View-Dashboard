@@ -1,0 +1,4361 @@
+{
+  "sourceHash": "6ea58b3a9ecc261be13624cb175c63f8e61f007f1445095c40eee460fdfa2df1",
+  "sample": {
+    "abhi": 85,
+    "legacyNov25": 2,
+    "originalVsReplayExactMatches": 77,
+    "originalVsReplayMismatches": 8
+  },
+  "preEntrySavedOutcomeComparisons": [
+    {
+      "period": "Oct 7\u201331",
+      "rule": "skip_same_fib_tp",
+      "label": "Skip: same-chart opposing Fib zone before TP",
+      "baselineSavedR": 20.85,
+      "pairedDifferenceR": -0.10000000000000142,
+      "dayBootstrapDifference95": [
+        -10.6,
+        10.0
+      ],
+      "setups": 48,
+      "retained": 31,
+      "skipped": 17,
+      "netR": 20.75,
+      "skippedRecordedLosses": 9,
+      "skippedRecordedWinners": 8,
+      "fullReplayStops": null,
+      "cost20R": null,
+      "cost50R": null,
+      "ambiguous": 0
+    },
+    {
+      "period": "Oct 7\u201331",
+      "rule": "skip_same_any_tp",
+      "label": "Skip: same-chart opposing zone before TP",
+      "baselineSavedR": 20.85,
+      "pairedDifferenceR": -5.100000000000001,
+      "dayBootstrapDifference95": [
+        -16.7,
+        6.4
+      ],
+      "setups": 48,
+      "retained": 27,
+      "skipped": 21,
+      "netR": 15.75,
+      "skippedRecordedLosses": 9,
+      "skippedRecordedWinners": 12,
+      "fullReplayStops": null,
+      "cost20R": null,
+      "cost50R": null,
+      "ambiguous": 0
+    },
+    {
+      "period": "Oct 7\u201331",
+      "rule": "skip_all_fib_tp",
+      "label": "Skip: any studied timeframe opposing Fib zone before TP",
+      "baselineSavedR": 20.85,
+      "pairedDifferenceR": -10.100000000000001,
+      "dayBootstrapDifference95": [
+        -24.25,
+        2.95
+      ],
+      "setups": 48,
+      "retained": 14,
+      "skipped": 34,
+      "netR": 10.75,
+      "skippedRecordedLosses": 14,
+      "skippedRecordedWinners": 20,
+      "fullReplayStops": null,
+      "cost20R": null,
+      "cost50R": null,
+      "ambiguous": 0
+    },
+    {
+      "period": "Oct 7\u201331",
+      "rule": "skip_all_fib_1r",
+      "label": "Skip: any opposing Fib zone within 1R",
+      "baselineSavedR": 20.85,
+      "pairedDifferenceR": -8.600000000000001,
+      "dayBootstrapDifference95": [
+        -22.75,
+        4.3
+      ],
+      "setups": 48,
+      "retained": 17,
+      "skipped": 31,
+      "netR": 12.25,
+      "skippedRecordedLosses": 13,
+      "skippedRecordedWinners": 18,
+      "fullReplayStops": null,
+      "cost20R": null,
+      "cost50R": null,
+      "ambiguous": 0
+    },
+    {
+      "period": "Oct 7\u201331",
+      "rule": "skip_confirmed_tp",
+      "label": "Skip: already-confirmed opposing reversal before TP",
+      "baselineSavedR": 20.85,
+      "pairedDifferenceR": -1.8500000000000014,
+      "dayBootstrapDifference95": [
+        -16.25,
+        10.55
+      ],
+      "setups": 48,
+      "retained": 26,
+      "skipped": 22,
+      "netR": 19.0,
+      "skippedRecordedLosses": 11,
+      "skippedRecordedWinners": 11,
+      "fullReplayStops": null,
+      "cost20R": null,
+      "cost50R": null,
+      "ambiguous": 0
+    },
+    {
+      "period": "Nov 1\u201324",
+      "rule": "skip_same_fib_tp",
+      "label": "Skip: same-chart opposing Fib zone before TP",
+      "baselineSavedR": 15.6,
+      "pairedDifferenceR": 2.7500000000000018,
+      "dayBootstrapDifference95": [
+        -2.5,
+        8.0
+      ],
+      "setups": 33,
+      "retained": 28,
+      "skipped": 5,
+      "netR": 18.35,
+      "skippedRecordedLosses": 4,
+      "skippedRecordedWinners": 1,
+      "fullReplayStops": null,
+      "cost20R": null,
+      "cost50R": null,
+      "ambiguous": 0
+    },
+    {
+      "period": "Nov 1\u201324",
+      "rule": "skip_same_any_tp",
+      "label": "Skip: same-chart opposing zone before TP",
+      "baselineSavedR": 15.6,
+      "pairedDifferenceR": 2.7500000000000018,
+      "dayBootstrapDifference95": [
+        -2.5,
+        8.0
+      ],
+      "setups": 33,
+      "retained": 28,
+      "skipped": 5,
+      "netR": 18.35,
+      "skippedRecordedLosses": 4,
+      "skippedRecordedWinners": 1,
+      "fullReplayStops": null,
+      "cost20R": null,
+      "cost50R": null,
+      "ambiguous": 0
+    },
+    {
+      "period": "Nov 1\u201324",
+      "rule": "skip_all_fib_tp",
+      "label": "Skip: any studied timeframe opposing Fib zone before TP",
+      "baselineSavedR": 15.6,
+      "pairedDifferenceR": -0.5999999999999996,
+      "dayBootstrapDifference95": [
+        -6.75,
+        6.25
+      ],
+      "setups": 33,
+      "retained": 21,
+      "skipped": 12,
+      "netR": 15.0,
+      "skippedRecordedLosses": 6,
+      "skippedRecordedWinners": 6,
+      "fullReplayStops": null,
+      "cost20R": null,
+      "cost50R": null,
+      "ambiguous": 0
+    },
+    {
+      "period": "Nov 1\u201324",
+      "rule": "skip_all_fib_1r",
+      "label": "Skip: any opposing Fib zone within 1R",
+      "baselineSavedR": 15.6,
+      "pairedDifferenceR": -1.5999999999999996,
+      "dayBootstrapDifference95": [
+        -7.35,
+        4.9
+      ],
+      "setups": 33,
+      "retained": 22,
+      "skipped": 11,
+      "netR": 14.0,
+      "skippedRecordedLosses": 5,
+      "skippedRecordedWinners": 6,
+      "fullReplayStops": null,
+      "cost20R": null,
+      "cost50R": null,
+      "ambiguous": 0
+    },
+    {
+      "period": "Nov 1\u201324",
+      "rule": "skip_confirmed_tp",
+      "label": "Skip: already-confirmed opposing reversal before TP",
+      "baselineSavedR": 15.6,
+      "pairedDifferenceR": 1.5000000000000018,
+      "dayBootstrapDifference95": [
+        -3.0,
+        6.75
+      ],
+      "setups": 33,
+      "retained": 27,
+      "skipped": 6,
+      "netR": 17.1,
+      "skippedRecordedLosses": 4,
+      "skippedRecordedWinners": 2,
+      "fullReplayStops": null,
+      "cost20R": null,
+      "cost50R": null,
+      "ambiguous": 0
+    },
+    {
+      "period": "Nov 25",
+      "rule": "skip_same_fib_tp",
+      "label": "Skip: same-chart opposing Fib zone before TP",
+      "baselineSavedR": -1.75,
+      "pairedDifferenceR": 0.75,
+      "dayBootstrapDifference95": [
+        0.75,
+        0.75
+      ],
+      "setups": 4,
+      "retained": 1,
+      "skipped": 3,
+      "netR": -1,
+      "skippedRecordedLosses": 2,
+      "skippedRecordedWinners": 1,
+      "fullReplayStops": null,
+      "cost20R": null,
+      "cost50R": null,
+      "ambiguous": 0
+    },
+    {
+      "period": "Nov 25",
+      "rule": "skip_same_any_tp",
+      "label": "Skip: same-chart opposing zone before TP",
+      "baselineSavedR": -1.75,
+      "pairedDifferenceR": 0.75,
+      "dayBootstrapDifference95": [
+        0.75,
+        0.75
+      ],
+      "setups": 4,
+      "retained": 1,
+      "skipped": 3,
+      "netR": -1,
+      "skippedRecordedLosses": 2,
+      "skippedRecordedWinners": 1,
+      "fullReplayStops": null,
+      "cost20R": null,
+      "cost50R": null,
+      "ambiguous": 0
+    },
+    {
+      "period": "Nov 25",
+      "rule": "skip_all_fib_tp",
+      "label": "Skip: any studied timeframe opposing Fib zone before TP",
+      "baselineSavedR": -1.75,
+      "pairedDifferenceR": 0.75,
+      "dayBootstrapDifference95": [
+        0.75,
+        0.75
+      ],
+      "setups": 4,
+      "retained": 1,
+      "skipped": 3,
+      "netR": -1,
+      "skippedRecordedLosses": 2,
+      "skippedRecordedWinners": 1,
+      "fullReplayStops": null,
+      "cost20R": null,
+      "cost50R": null,
+      "ambiguous": 0
+    },
+    {
+      "period": "Nov 25",
+      "rule": "skip_all_fib_1r",
+      "label": "Skip: any opposing Fib zone within 1R",
+      "baselineSavedR": -1.75,
+      "pairedDifferenceR": 0.75,
+      "dayBootstrapDifference95": [
+        0.75,
+        0.75
+      ],
+      "setups": 4,
+      "retained": 1,
+      "skipped": 3,
+      "netR": -1,
+      "skippedRecordedLosses": 2,
+      "skippedRecordedWinners": 1,
+      "fullReplayStops": null,
+      "cost20R": null,
+      "cost50R": null,
+      "ambiguous": 0
+    },
+    {
+      "period": "Nov 25",
+      "rule": "skip_confirmed_tp",
+      "label": "Skip: already-confirmed opposing reversal before TP",
+      "baselineSavedR": -1.75,
+      "pairedDifferenceR": 0.0,
+      "dayBootstrapDifference95": [
+        0.0,
+        0.0
+      ],
+      "setups": 4,
+      "retained": 4,
+      "skipped": 0,
+      "netR": -1.75,
+      "skippedRecordedLosses": 0,
+      "skippedRecordedWinners": 0,
+      "fullReplayStops": null,
+      "cost20R": null,
+      "cost50R": null,
+      "ambiguous": 0
+    },
+    {
+      "period": "All 85 setups",
+      "rule": "skip_same_fib_tp",
+      "label": "Skip: same-chart opposing Fib zone before TP",
+      "baselineSavedR": 34.7,
+      "pairedDifferenceR": 3.3999999999999986,
+      "dayBootstrapDifference95": [
+        -8.5,
+        14.65
+      ],
+      "setups": 85,
+      "retained": 60,
+      "skipped": 25,
+      "netR": 38.1,
+      "skippedRecordedLosses": 15,
+      "skippedRecordedWinners": 10,
+      "fullReplayStops": null,
+      "cost20R": null,
+      "cost50R": null,
+      "ambiguous": 0
+    },
+    {
+      "period": "All 85 setups",
+      "rule": "skip_same_any_tp",
+      "label": "Skip: same-chart opposing zone before TP",
+      "baselineSavedR": 34.7,
+      "pairedDifferenceR": -1.6000000000000014,
+      "dayBootstrapDifference95": [
+        -15.0,
+        11.15
+      ],
+      "setups": 85,
+      "retained": 56,
+      "skipped": 29,
+      "netR": 33.1,
+      "skippedRecordedLosses": 15,
+      "skippedRecordedWinners": 14,
+      "fullReplayStops": null,
+      "cost20R": null,
+      "cost50R": null,
+      "ambiguous": 0
+    },
+    {
+      "period": "All 85 setups",
+      "rule": "skip_all_fib_tp",
+      "label": "Skip: any studied timeframe opposing Fib zone before TP",
+      "baselineSavedR": 34.7,
+      "pairedDifferenceR": -9.950000000000003,
+      "dayBootstrapDifference95": [
+        -25.85,
+        4.65
+      ],
+      "setups": 85,
+      "retained": 36,
+      "skipped": 49,
+      "netR": 24.75,
+      "skippedRecordedLosses": 22,
+      "skippedRecordedWinners": 27,
+      "fullReplayStops": null,
+      "cost20R": null,
+      "cost50R": null,
+      "ambiguous": 0
+    },
+    {
+      "period": "All 85 setups",
+      "rule": "skip_all_fib_1r",
+      "label": "Skip: any opposing Fib zone within 1R",
+      "baselineSavedR": 34.7,
+      "pairedDifferenceR": -9.450000000000003,
+      "dayBootstrapDifference95": [
+        -25.3,
+        4.7
+      ],
+      "setups": 85,
+      "retained": 40,
+      "skipped": 45,
+      "netR": 25.25,
+      "skippedRecordedLosses": 20,
+      "skippedRecordedWinners": 25,
+      "fullReplayStops": null,
+      "cost20R": null,
+      "cost50R": null,
+      "ambiguous": 0
+    },
+    {
+      "period": "All 85 setups",
+      "rule": "skip_confirmed_tp",
+      "label": "Skip: already-confirmed opposing reversal before TP",
+      "baselineSavedR": 34.7,
+      "pairedDifferenceR": -0.3500000000000014,
+      "dayBootstrapDifference95": [
+        -15.25,
+        13.15
+      ],
+      "setups": 85,
+      "retained": 57,
+      "skipped": 28,
+      "netR": 34.35,
+      "skippedRecordedLosses": 15,
+      "skippedRecordedWinners": 13,
+      "fullReplayStops": null,
+      "cost20R": null,
+      "cost50R": null,
+      "ambiguous": 0
+    }
+  ],
+  "brokerReplayComparisons": [
+    {
+      "period": "Oct 7\u201331",
+      "rule": "baseline",
+      "label": "Original SL and target",
+      "setups": 48,
+      "retained": 48,
+      "skipped": 0,
+      "netR": 15.1,
+      "skippedRecordedLosses": 0,
+      "skippedRecordedWinners": 0,
+      "fullReplayStops": 17,
+      "cost20R": 14.280839581997647,
+      "cost50R": 13.05209895499412,
+      "ambiguous": 0
+    },
+    {
+      "period": "Oct 7\u201331",
+      "rule": "skip_same_fib_tp",
+      "label": "Skip: same-chart opposing Fib zone before TP",
+      "setups": 48,
+      "retained": 31,
+      "skipped": 17,
+      "netR": 17.5,
+      "skippedRecordedLosses": 9,
+      "skippedRecordedWinners": 8,
+      "fullReplayStops": 8,
+      "cost20R": 16.95805039811987,
+      "cost50R": 16.145125995299676,
+      "ambiguous": 0
+    },
+    {
+      "period": "Oct 7\u201331",
+      "rule": "skip_same_any_tp",
+      "label": "Skip: same-chart opposing zone before TP",
+      "setups": 48,
+      "retained": 27,
+      "skipped": 21,
+      "netR": 13.75,
+      "skippedRecordedLosses": 9,
+      "skippedRecordedWinners": 12,
+      "fullReplayStops": 8,
+      "cost20R": 13.260415307063619,
+      "cost50R": 12.526038267659048,
+      "ambiguous": 0
+    },
+    {
+      "period": "Oct 7\u201331",
+      "rule": "skip_all_fib_tp",
+      "label": "Skip: any studied timeframe opposing Fib zone before TP",
+      "setups": 48,
+      "retained": 14,
+      "skipped": 34,
+      "netR": 8.5,
+      "skippedRecordedLosses": 14,
+      "skippedRecordedWinners": 20,
+      "fullReplayStops": 4,
+      "cost20R": 8.226003973548654,
+      "cost50R": 7.815009933871634,
+      "ambiguous": 0
+    },
+    {
+      "period": "Oct 7\u201331",
+      "rule": "skip_all_fib_1r",
+      "label": "Skip: any opposing Fib zone within 1R",
+      "setups": 48,
+      "retained": 17,
+      "skipped": 31,
+      "netR": 10.0,
+      "skippedRecordedLosses": 13,
+      "skippedRecordedWinners": 18,
+      "fullReplayStops": 5,
+      "cost20R": 9.669748632765266,
+      "cost50R": 9.174371581913167,
+      "ambiguous": 0
+    },
+    {
+      "period": "Oct 7\u201331",
+      "rule": "skip_confirmed_tp",
+      "label": "Skip: already-confirmed opposing reversal before TP",
+      "setups": 48,
+      "retained": 26,
+      "skipped": 22,
+      "netR": 16.5,
+      "skippedRecordedLosses": 11,
+      "skippedRecordedWinners": 11,
+      "fullReplayStops": 6,
+      "cost20R": 16.019651032340583,
+      "cost50R": 15.299127580851456,
+      "ambiguous": 0
+    },
+    {
+      "period": "Oct 7\u201331",
+      "rule": "cap_same_fib",
+      "label": "TP before same-chart Fib zone; skip if reward below 0.75R",
+      "setups": 48,
+      "retained": 35,
+      "skipped": 13,
+      "netR": 18.551289855178954,
+      "skippedRecordedLosses": 7,
+      "skippedRecordedWinners": 6,
+      "fullReplayStops": 9,
+      "cost20R": 17.94530071870619,
+      "cost50R": 17.036317013997046,
+      "ambiguous": 0
+    },
+    {
+      "period": "Oct 7\u201331",
+      "rule": "cap_all_fib",
+      "label": "TP before nearest Fib zone; skip if reward below 0.75R",
+      "setups": 48,
+      "retained": 17,
+      "skipped": 31,
+      "netR": 9.625791641155098,
+      "skippedRecordedLosses": 13,
+      "skippedRecordedWinners": 18,
+      "fullReplayStops": 5,
+      "cost20R": 9.295540273920365,
+      "cost50R": 8.800163223068266,
+      "ambiguous": 0
+    },
+    {
+      "period": "Oct 7\u201331",
+      "rule": "exit_m5_opposite",
+      "label": "Exit after closed opposite M5 engulfing",
+      "setups": 48,
+      "retained": 48,
+      "skipped": 0,
+      "netR": -9.828176832905491,
+      "skippedRecordedLosses": 0,
+      "skippedRecordedWinners": 0,
+      "fullReplayStops": 3,
+      "cost20R": -10.647337250907844,
+      "cost50R": -11.87607787791137,
+      "ambiguous": 0
+    },
+    {
+      "period": "Oct 7\u201331",
+      "rule": "exit_m5_fib_rejection",
+      "label": "Exit after opposite M5 engulfing touching a known opposing Fib zone",
+      "setups": 48,
+      "retained": 48,
+      "skipped": 0,
+      "netR": 5.983581740904363,
+      "skippedRecordedLosses": 0,
+      "skippedRecordedWinners": 0,
+      "fullReplayStops": 12,
+      "cost20R": 5.164421322902011,
+      "cost50R": 3.935680695898483,
+      "ambiguous": 0
+    },
+    {
+      "period": "Oct 7\u201331",
+      "rule": "exit_m15_failure",
+      "label": "Exit after M15 closes beyond confirmation open against trade",
+      "setups": 48,
+      "retained": 48,
+      "skipped": 0,
+      "netR": -7.475516728699236,
+      "skippedRecordedLosses": 0,
+      "skippedRecordedWinners": 0,
+      "fullReplayStops": 4,
+      "cost20R": -8.294677146701588,
+      "cost50R": -9.523417773705116,
+      "ambiguous": 0
+    },
+    {
+      "period": "Oct 7\u201331",
+      "rule": "be_05",
+      "label": "Breakeven after +0.5R",
+      "setups": 48,
+      "retained": 48,
+      "skipped": 0,
+      "netR": 3.6,
+      "skippedRecordedLosses": 0,
+      "skippedRecordedWinners": 0,
+      "fullReplayStops": 13,
+      "cost20R": 2.780839581997648,
+      "cost50R": 1.5520989549941202,
+      "ambiguous": 0
+    },
+    {
+      "period": "Oct 7\u201331",
+      "rule": "partial_05",
+      "label": "Take half at +0.5R; stop remainder at entry",
+      "setups": 48,
+      "retained": 48,
+      "skipped": 0,
+      "netR": 2.6,
+      "skippedRecordedLosses": 0,
+      "skippedRecordedWinners": 0,
+      "fullReplayStops": 13,
+      "cost20R": 1.7808395819976481,
+      "cost50R": 0.5520989549941203,
+      "ambiguous": 0
+    },
+    {
+      "period": "Nov 1\u201324",
+      "rule": "baseline",
+      "label": "Original SL and target",
+      "setups": 33,
+      "retained": 33,
+      "skipped": 0,
+      "netR": 14.85,
+      "skippedRecordedLosses": 0,
+      "skippedRecordedWinners": 0,
+      "fullReplayStops": 11,
+      "cost20R": 14.262753609626543,
+      "cost50R": 13.381884024066357,
+      "ambiguous": 0
+    },
+    {
+      "period": "Nov 1\u201324",
+      "rule": "skip_same_fib_tp",
+      "label": "Skip: same-chart opposing Fib zone before TP",
+      "setups": 33,
+      "retained": 28,
+      "skipped": 5,
+      "netR": 17.6,
+      "skippedRecordedLosses": 4,
+      "skippedRecordedWinners": 1,
+      "fullReplayStops": 7,
+      "cost20R": 17.112593584536015,
+      "cost50R": 16.38148396134004,
+      "ambiguous": 0
+    },
+    {
+      "period": "Nov 1\u201324",
+      "rule": "skip_same_any_tp",
+      "label": "Skip: same-chart opposing zone before TP",
+      "setups": 33,
+      "retained": 28,
+      "skipped": 5,
+      "netR": 17.6,
+      "skippedRecordedLosses": 4,
+      "skippedRecordedWinners": 1,
+      "fullReplayStops": 7,
+      "cost20R": 17.112593584536015,
+      "cost50R": 16.38148396134004,
+      "ambiguous": 0
+    },
+    {
+      "period": "Nov 1\u201324",
+      "rule": "skip_all_fib_tp",
+      "label": "Skip: any studied timeframe opposing Fib zone before TP",
+      "setups": 33,
+      "retained": 21,
+      "skipped": 12,
+      "netR": 14.25,
+      "skippedRecordedLosses": 6,
+      "skippedRecordedWinners": 6,
+      "fullReplayStops": 5,
+      "cost20R": 13.879947962872142,
+      "cost50R": 13.324869907180355,
+      "ambiguous": 0
+    },
+    {
+      "period": "Nov 1\u201324",
+      "rule": "skip_all_fib_1r",
+      "label": "Skip: any opposing Fib zone within 1R",
+      "setups": 33,
+      "retained": 22,
+      "skipped": 11,
+      "netR": 13.25,
+      "skippedRecordedLosses": 5,
+      "skippedRecordedWinners": 6,
+      "fullReplayStops": 6,
+      "cost20R": 12.871010351108552,
+      "cost50R": 12.302525877771382,
+      "ambiguous": 0
+    },
+    {
+      "period": "Nov 1\u201324",
+      "rule": "skip_confirmed_tp",
+      "label": "Skip: already-confirmed opposing reversal before TP",
+      "setups": 33,
+      "retained": 27,
+      "skipped": 6,
+      "netR": 16.35,
+      "skippedRecordedLosses": 4,
+      "skippedRecordedWinners": 2,
+      "fullReplayStops": 7,
+      "cost20R": 15.890231565829934,
+      "cost50R": 15.200578914574837,
+      "ambiguous": 0
+    },
+    {
+      "period": "Nov 1\u201324",
+      "rule": "cap_same_fib",
+      "label": "TP before same-chart Fib zone; skip if reward below 0.75R",
+      "setups": 33,
+      "retained": 29,
+      "skipped": 4,
+      "netR": 16.6,
+      "skippedRecordedLosses": 3,
+      "skippedRecordedWinners": 1,
+      "fullReplayStops": 8,
+      "cost20R": 16.102067862713735,
+      "cost50R": 15.35516965678434,
+      "ambiguous": 0
+    },
+    {
+      "period": "Nov 1\u201324",
+      "rule": "cap_all_fib",
+      "label": "TP before nearest Fib zone; skip if reward below 0.75R",
+      "setups": 33,
+      "retained": 23,
+      "skipped": 10,
+      "netR": 12.25,
+      "skippedRecordedLosses": 4,
+      "skippedRecordedWinners": 6,
+      "fullReplayStops": 7,
+      "cost20R": 11.860484629286272,
+      "cost50R": 11.276211573215683,
+      "ambiguous": 0
+    },
+    {
+      "period": "Nov 1\u201324",
+      "rule": "exit_m5_opposite",
+      "label": "Exit after closed opposite M5 engulfing",
+      "setups": 33,
+      "retained": 33,
+      "skipped": 0,
+      "netR": 0.025535925435406573,
+      "skippedRecordedLosses": 0,
+      "skippedRecordedWinners": 0,
+      "fullReplayStops": 0,
+      "cost20R": -0.5617104649380505,
+      "cost50R": -1.4425800504982358,
+      "ambiguous": 0
+    },
+    {
+      "period": "Nov 1\u201324",
+      "rule": "exit_m5_fib_rejection",
+      "label": "Exit after opposite M5 engulfing touching a known opposing Fib zone",
+      "setups": 33,
+      "retained": 33,
+      "skipped": 0,
+      "netR": 16.852410579616816,
+      "skippedRecordedLosses": 0,
+      "skippedRecordedWinners": 0,
+      "fullReplayStops": 8,
+      "cost20R": 16.26516418924336,
+      "cost50R": 15.384294603683175,
+      "ambiguous": 0
+    },
+    {
+      "period": "Nov 1\u201324",
+      "rule": "exit_m15_failure",
+      "label": "Exit after M15 closes beyond confirmation open against trade",
+      "setups": 33,
+      "retained": 33,
+      "skipped": 0,
+      "netR": 6.4112065894802335,
+      "skippedRecordedLosses": 0,
+      "skippedRecordedWinners": 0,
+      "fullReplayStops": 2,
+      "cost20R": 5.823960199106776,
+      "cost50R": 4.943090613546591,
+      "ambiguous": 0
+    },
+    {
+      "period": "Nov 1\u201324",
+      "rule": "be_05",
+      "label": "Breakeven after +0.5R",
+      "setups": 33,
+      "retained": 33,
+      "skipped": 0,
+      "netR": 11.1,
+      "skippedRecordedLosses": 0,
+      "skippedRecordedWinners": 0,
+      "fullReplayStops": 7,
+      "cost20R": 10.512753609626543,
+      "cost50R": 9.631884024066357,
+      "ambiguous": 0
+    },
+    {
+      "period": "Nov 1\u201324",
+      "rule": "partial_05",
+      "label": "Take half at +0.5R; stop remainder at entry",
+      "setups": 33,
+      "retained": 33,
+      "skipped": 0,
+      "netR": 8.1,
+      "skippedRecordedLosses": 0,
+      "skippedRecordedWinners": 0,
+      "fullReplayStops": 7,
+      "cost20R": 7.512753609626543,
+      "cost50R": 6.631884024066358,
+      "ambiguous": 0
+    },
+    {
+      "period": "Nov 25",
+      "rule": "baseline",
+      "label": "Original SL and target",
+      "setups": 4,
+      "retained": 4,
+      "skipped": 0,
+      "netR": -1.75,
+      "skippedRecordedLosses": 0,
+      "skippedRecordedWinners": 0,
+      "fullReplayStops": 3,
+      "cost20R": -1.807989415576786,
+      "cost50R": -1.8949735389419644,
+      "ambiguous": 0
+    },
+    {
+      "period": "Nov 25",
+      "rule": "skip_same_fib_tp",
+      "label": "Skip: same-chart opposing Fib zone before TP",
+      "setups": 4,
+      "retained": 1,
+      "skipped": 3,
+      "netR": -1,
+      "skippedRecordedLosses": 2,
+      "skippedRecordedWinners": 1,
+      "fullReplayStops": 1,
+      "cost20R": -1.0235984431707161,
+      "cost50R": -1.0589961079267902,
+      "ambiguous": 0
+    },
+    {
+      "period": "Nov 25",
+      "rule": "skip_same_any_tp",
+      "label": "Skip: same-chart opposing zone before TP",
+      "setups": 4,
+      "retained": 1,
+      "skipped": 3,
+      "netR": -1,
+      "skippedRecordedLosses": 2,
+      "skippedRecordedWinners": 1,
+      "fullReplayStops": 1,
+      "cost20R": -1.0235984431707161,
+      "cost50R": -1.0589961079267902,
+      "ambiguous": 0
+    },
+    {
+      "period": "Nov 25",
+      "rule": "skip_all_fib_tp",
+      "label": "Skip: any studied timeframe opposing Fib zone before TP",
+      "setups": 4,
+      "retained": 1,
+      "skipped": 3,
+      "netR": -1,
+      "skippedRecordedLosses": 2,
+      "skippedRecordedWinners": 1,
+      "fullReplayStops": 1,
+      "cost20R": -1.0235984431707161,
+      "cost50R": -1.0589961079267902,
+      "ambiguous": 0
+    },
+    {
+      "period": "Nov 25",
+      "rule": "skip_all_fib_1r",
+      "label": "Skip: any opposing Fib zone within 1R",
+      "setups": 4,
+      "retained": 1,
+      "skipped": 3,
+      "netR": -1,
+      "skippedRecordedLosses": 2,
+      "skippedRecordedWinners": 1,
+      "fullReplayStops": 1,
+      "cost20R": -1.0235984431707161,
+      "cost50R": -1.0589961079267902,
+      "ambiguous": 0
+    },
+    {
+      "period": "Nov 25",
+      "rule": "skip_confirmed_tp",
+      "label": "Skip: already-confirmed opposing reversal before TP",
+      "setups": 4,
+      "retained": 4,
+      "skipped": 0,
+      "netR": -1.75,
+      "skippedRecordedLosses": 0,
+      "skippedRecordedWinners": 0,
+      "fullReplayStops": 3,
+      "cost20R": -1.807989415576786,
+      "cost50R": -1.8949735389419644,
+      "ambiguous": 0
+    },
+    {
+      "period": "Nov 25",
+      "rule": "cap_same_fib",
+      "label": "TP before same-chart Fib zone; skip if reward below 0.75R",
+      "setups": 4,
+      "retained": 3,
+      "skipped": 1,
+      "netR": -1.00497592437072,
+      "skippedRecordedLosses": 1,
+      "skippedRecordedWinners": 0,
+      "fullReplayStops": 2,
+      "cost20R": -1.0487976964931616,
+      "cost50R": -1.1145303546768244,
+      "ambiguous": 0
+    },
+    {
+      "period": "Nov 25",
+      "rule": "cap_all_fib",
+      "label": "TP before nearest Fib zone; skip if reward below 0.75R",
+      "setups": 4,
+      "retained": 1,
+      "skipped": 3,
+      "netR": -1,
+      "skippedRecordedLosses": 2,
+      "skippedRecordedWinners": 1,
+      "fullReplayStops": 1,
+      "cost20R": -1.0235984431707161,
+      "cost50R": -1.0589961079267902,
+      "ambiguous": 0
+    },
+    {
+      "period": "Nov 25",
+      "rule": "exit_m5_opposite",
+      "label": "Exit after closed opposite M5 engulfing",
+      "setups": 4,
+      "retained": 4,
+      "skipped": 0,
+      "netR": -1.6847336668019781,
+      "skippedRecordedLosses": 0,
+      "skippedRecordedWinners": 0,
+      "fullReplayStops": 0,
+      "cost20R": -1.742723082378764,
+      "cost50R": -1.8297072057439425,
+      "ambiguous": 0
+    },
+    {
+      "period": "Nov 25",
+      "rule": "exit_m5_fib_rejection",
+      "label": "Exit after opposite M5 engulfing touching a known opposing Fib zone",
+      "setups": 4,
+      "retained": 4,
+      "skipped": 0,
+      "netR": 0.16928695214074824,
+      "skippedRecordedLosses": 0,
+      "skippedRecordedWinners": 0,
+      "fullReplayStops": 1,
+      "cost20R": 0.11129753656396224,
+      "cost50R": 0.02431341319878383,
+      "ambiguous": 0
+    },
+    {
+      "period": "Nov 25",
+      "rule": "exit_m15_failure",
+      "label": "Exit after M15 closes beyond confirmation open against trade",
+      "setups": 4,
+      "retained": 4,
+      "skipped": 0,
+      "netR": -2.064092353566519,
+      "skippedRecordedLosses": 0,
+      "skippedRecordedWinners": 0,
+      "fullReplayStops": 1,
+      "cost20R": -2.122081769143305,
+      "cost50R": -2.209065892508484,
+      "ambiguous": 0
+    },
+    {
+      "period": "Nov 25",
+      "rule": "be_05",
+      "label": "Breakeven after +0.5R",
+      "setups": 4,
+      "retained": 4,
+      "skipped": 0,
+      "netR": 0.25,
+      "skippedRecordedLosses": 0,
+      "skippedRecordedWinners": 0,
+      "fullReplayStops": 1,
+      "cost20R": 0.19201058442321406,
+      "cost50R": 0.10502646105803572,
+      "ambiguous": 0
+    },
+    {
+      "period": "Nov 25",
+      "rule": "partial_05",
+      "label": "Take half at +0.5R; stop remainder at entry",
+      "setups": 4,
+      "retained": 4,
+      "skipped": 0,
+      "netR": 0.375,
+      "skippedRecordedLosses": 0,
+      "skippedRecordedWinners": 0,
+      "fullReplayStops": 1,
+      "cost20R": 0.31701058442321417,
+      "cost50R": 0.23002646105803562,
+      "ambiguous": 0
+    },
+    {
+      "period": "All 85 setups",
+      "rule": "baseline",
+      "label": "Original SL and target",
+      "setups": 85,
+      "retained": 85,
+      "skipped": 0,
+      "netR": 28.2,
+      "skippedRecordedLosses": 0,
+      "skippedRecordedWinners": 0,
+      "fullReplayStops": 31,
+      "cost20R": 26.735603776047405,
+      "cost50R": 24.539009440118512,
+      "ambiguous": 0
+    },
+    {
+      "period": "All 85 setups",
+      "rule": "skip_same_fib_tp",
+      "label": "Skip: same-chart opposing Fib zone before TP",
+      "setups": 85,
+      "retained": 60,
+      "skipped": 25,
+      "netR": 34.1,
+      "skippedRecordedLosses": 15,
+      "skippedRecordedWinners": 10,
+      "fullReplayStops": 16,
+      "cost20R": 33.04704553948517,
+      "cost50R": 31.467613848712926,
+      "ambiguous": 0
+    },
+    {
+      "period": "All 85 setups",
+      "rule": "skip_same_any_tp",
+      "label": "Skip: same-chart opposing zone before TP",
+      "setups": 85,
+      "retained": 56,
+      "skipped": 29,
+      "netR": 30.35,
+      "skippedRecordedLosses": 15,
+      "skippedRecordedWinners": 14,
+      "fullReplayStops": 16,
+      "cost20R": 29.34941044842892,
+      "cost50R": 27.848526121072297,
+      "ambiguous": 0
+    },
+    {
+      "period": "All 85 setups",
+      "rule": "skip_all_fib_tp",
+      "label": "Skip: any studied timeframe opposing Fib zone before TP",
+      "setups": 85,
+      "retained": 36,
+      "skipped": 49,
+      "netR": 21.75,
+      "skippedRecordedLosses": 22,
+      "skippedRecordedWinners": 27,
+      "fullReplayStops": 10,
+      "cost20R": 21.08235349325008,
+      "cost50R": 20.080883733125198,
+      "ambiguous": 0
+    },
+    {
+      "period": "All 85 setups",
+      "rule": "skip_all_fib_1r",
+      "label": "Skip: any opposing Fib zone within 1R",
+      "setups": 85,
+      "retained": 40,
+      "skipped": 45,
+      "netR": 22.25,
+      "skippedRecordedLosses": 20,
+      "skippedRecordedWinners": 25,
+      "fullReplayStops": 12,
+      "cost20R": 21.517160540703102,
+      "cost50R": 20.41790135175776,
+      "ambiguous": 0
+    },
+    {
+      "period": "All 85 setups",
+      "rule": "skip_confirmed_tp",
+      "label": "Skip: already-confirmed opposing reversal before TP",
+      "setups": 85,
+      "retained": 57,
+      "skipped": 28,
+      "netR": 31.1,
+      "skippedRecordedLosses": 15,
+      "skippedRecordedWinners": 13,
+      "fullReplayStops": 16,
+      "cost20R": 30.10189318259373,
+      "cost50R": 28.60473295648433,
+      "ambiguous": 0
+    },
+    {
+      "period": "All 85 setups",
+      "rule": "cap_same_fib",
+      "label": "TP before same-chart Fib zone; skip if reward below 0.75R",
+      "setups": 85,
+      "retained": 67,
+      "skipped": 18,
+      "netR": 34.14631393080823,
+      "skippedRecordedLosses": 11,
+      "skippedRecordedWinners": 7,
+      "fullReplayStops": 19,
+      "cost20R": 32.998570884926764,
+      "cost50R": 31.276956316104563,
+      "ambiguous": 0
+    },
+    {
+      "period": "All 85 setups",
+      "rule": "cap_all_fib",
+      "label": "TP before nearest Fib zone; skip if reward below 0.75R",
+      "setups": 85,
+      "retained": 41,
+      "skipped": 44,
+      "netR": 20.8757916411551,
+      "skippedRecordedLosses": 19,
+      "skippedRecordedWinners": 25,
+      "fullReplayStops": 13,
+      "cost20R": 20.132426460035923,
+      "cost50R": 19.01737868835716,
+      "ambiguous": 0
+    },
+    {
+      "period": "All 85 setups",
+      "rule": "exit_m5_opposite",
+      "label": "Exit after closed opposite M5 engulfing",
+      "setups": 85,
+      "retained": 85,
+      "skipped": 0,
+      "netR": -11.487374574272064,
+      "skippedRecordedLosses": 0,
+      "skippedRecordedWinners": 0,
+      "fullReplayStops": 3,
+      "cost20R": -12.951770798224658,
+      "cost50R": -15.148365134153549,
+      "ambiguous": 0
+    },
+    {
+      "period": "All 85 setups",
+      "rule": "exit_m5_fib_rejection",
+      "label": "Exit after opposite M5 engulfing touching a known opposing Fib zone",
+      "setups": 85,
+      "retained": 85,
+      "skipped": 0,
+      "netR": 23.00527927266193,
+      "skippedRecordedLosses": 0,
+      "skippedRecordedWinners": 0,
+      "fullReplayStops": 21,
+      "cost20R": 21.540883048709333,
+      "cost50R": 19.34428871278044,
+      "ambiguous": 0
+    },
+    {
+      "period": "All 85 setups",
+      "rule": "exit_m15_failure",
+      "label": "Exit after M15 closes beyond confirmation open against trade",
+      "setups": 85,
+      "retained": 85,
+      "skipped": 0,
+      "netR": -3.128402492785521,
+      "skippedRecordedLosses": 0,
+      "skippedRecordedWinners": 0,
+      "fullReplayStops": 7,
+      "cost20R": -4.592798716738117,
+      "cost50R": -6.789393052667009,
+      "ambiguous": 0
+    },
+    {
+      "period": "All 85 setups",
+      "rule": "be_05",
+      "label": "Breakeven after +0.5R",
+      "setups": 85,
+      "retained": 85,
+      "skipped": 0,
+      "netR": 14.95,
+      "skippedRecordedLosses": 0,
+      "skippedRecordedWinners": 0,
+      "fullReplayStops": 21,
+      "cost20R": 13.485603776047405,
+      "cost50R": 11.289009440118514,
+      "ambiguous": 0
+    },
+    {
+      "period": "All 85 setups",
+      "rule": "partial_05",
+      "label": "Take half at +0.5R; stop remainder at entry",
+      "setups": 85,
+      "retained": 85,
+      "skipped": 0,
+      "netR": 11.075,
+      "skippedRecordedLosses": 0,
+      "skippedRecordedWinners": 0,
+      "fullReplayStops": 21,
+      "cost20R": 9.610603776047405,
+      "cost50R": 7.414009440118514,
+      "ambiguous": 0
+    }
+  ],
+  "reconciledReplayComparisons": [
+    {
+      "rule": "baseline",
+      "setups": 77,
+      "retained": 77,
+      "skipped": 0,
+      "netR": 29.2,
+      "skippedRecordedLosses": 0,
+      "skippedRecordedWinners": 0,
+      "fullReplayStops": 29,
+      "cost20R": 27.795348840300097,
+      "cost50R": 25.688372100750243,
+      "ambiguous": 0
+    },
+    {
+      "rule": "skip_same_fib_tp",
+      "setups": 77,
+      "retained": 55,
+      "skipped": 22,
+      "netR": 34.1,
+      "skippedRecordedLosses": 14,
+      "skippedRecordedWinners": 8,
+      "fullReplayStops": 15,
+      "cost20R": 33.08259811786252,
+      "cost50R": 31.556495294656298,
+      "ambiguous": 0
+    },
+    {
+      "rule": "skip_same_any_tp",
+      "setups": 77,
+      "retained": 52,
+      "skipped": 25,
+      "netR": 30.35,
+      "skippedRecordedLosses": 14,
+      "skippedRecordedWinners": 11,
+      "fullReplayStops": 15,
+      "cost20R": 29.38496302680627,
+      "cost50R": 27.937407567015672,
+      "ambiguous": 0
+    },
+    {
+      "rule": "skip_all_fib_tp",
+      "setups": 77,
+      "retained": 34,
+      "skipped": 43,
+      "netR": 22.25,
+      "skippedRecordedLosses": 20,
+      "skippedRecordedWinners": 23,
+      "fullReplayStops": 9,
+      "cost20R": 21.606712563861933,
+      "cost50R": 20.641781409654833,
+      "ambiguous": 0
+    },
+    {
+      "rule": "skip_all_fib_1r",
+      "setups": 77,
+      "retained": 38,
+      "skipped": 39,
+      "netR": 22.75,
+      "skippedRecordedLosses": 18,
+      "skippedRecordedWinners": 21,
+      "fullReplayStops": 11,
+      "cost20R": 22.041519611314957,
+      "cost50R": 20.97879902828739,
+      "ambiguous": 0
+    },
+    {
+      "rule": "skip_confirmed_tp",
+      "setups": 77,
+      "retained": 53,
+      "skipped": 24,
+      "netR": 31.6,
+      "skippedRecordedLosses": 14,
+      "skippedRecordedWinners": 10,
+      "fullReplayStops": 15,
+      "cost20R": 30.626252253205585,
+      "cost50R": 29.16563063301396,
+      "ambiguous": 0
+    },
+    {
+      "rule": "cap_same_fib",
+      "setups": 77,
+      "retained": 61,
+      "skipped": 16,
+      "netR": 34.14631393080823,
+      "skippedRecordedLosses": 11,
+      "skippedRecordedWinners": 5,
+      "fullReplayStops": 18,
+      "cost20R": 33.03412346330411,
+      "cost50R": 31.36583776204794,
+      "ambiguous": 0
+    },
+    {
+      "rule": "cap_all_fib",
+      "setups": 77,
+      "retained": 39,
+      "skipped": 38,
+      "netR": 21.3757916411551,
+      "skippedRecordedLosses": 17,
+      "skippedRecordedWinners": 21,
+      "fullReplayStops": 12,
+      "cost20R": 20.656785530647774,
+      "cost50R": 19.57827636488679,
+      "ambiguous": 0
+    },
+    {
+      "rule": "exit_m5_opposite",
+      "setups": 77,
+      "retained": 77,
+      "skipped": 0,
+      "netR": -10.613329226624161,
+      "skippedRecordedLosses": 0,
+      "skippedRecordedWinners": 0,
+      "fullReplayStops": 2,
+      "cost20R": -12.017980386324064,
+      "cost50R": -14.124957125873916,
+      "ambiguous": 0
+    },
+    {
+      "rule": "exit_m5_fib_rejection",
+      "setups": 77,
+      "retained": 77,
+      "skipped": 0,
+      "netR": 24.00527927266193,
+      "skippedRecordedLosses": 0,
+      "skippedRecordedWinners": 0,
+      "fullReplayStops": 19,
+      "cost20R": 22.600628112962024,
+      "cost50R": 20.493651373412174,
+      "ambiguous": 0
+    },
+    {
+      "rule": "exit_m15_failure",
+      "setups": 77,
+      "retained": 77,
+      "skipped": 0,
+      "netR": -1.6761704933956336,
+      "skippedRecordedLosses": 0,
+      "skippedRecordedWinners": 0,
+      "fullReplayStops": 6,
+      "cost20R": -3.080821653095536,
+      "cost50R": -5.187798392645389,
+      "ambiguous": 0
+    },
+    {
+      "rule": "be_05",
+      "setups": 77,
+      "retained": 77,
+      "skipped": 0,
+      "netR": 15.95,
+      "skippedRecordedLosses": 0,
+      "skippedRecordedWinners": 0,
+      "fullReplayStops": 19,
+      "cost20R": 14.545348840300099,
+      "cost50R": 12.438372100750245,
+      "ambiguous": 0
+    },
+    {
+      "rule": "partial_05",
+      "setups": 77,
+      "retained": 77,
+      "skipped": 0,
+      "netR": 12.375,
+      "skippedRecordedLosses": 0,
+      "skippedRecordedWinners": 0,
+      "fullReplayStops": 19,
+      "cost20R": 10.970348840300097,
+      "cost50R": 8.863372100750246,
+      "ambiguous": 0
+    }
+  ],
+  "historyWindowSensitivityChangedOutcomes": {
+    "baseline": 0,
+    "skip_same_fib_tp": 0,
+    "skip_same_any_tp": 0,
+    "skip_all_fib_tp": 0,
+    "skip_all_fib_1r": 0,
+    "skip_confirmed_tp": 2,
+    "cap_same_fib": 0,
+    "cap_all_fib": 1,
+    "exit_m5_opposite": 0,
+    "exit_m5_fib_rejection": 0,
+    "exit_m15_failure": 0,
+    "be_05": 0,
+    "partial_05": 0
+  },
+  "yesterday": [
+    {
+      "key": "SCALP_1_1:1795551300:bearish",
+      "style": "SCALP_1_1",
+      "signalAt": 1795551300,
+      "direction": "bearish",
+      "legs": [
+        {
+          "slot": 10,
+          "entry": 3552.1515,
+          "risk": 9.058500000000095,
+          "stopLoss": 3561.21,
+          "targetR": 1.25,
+          "takeProfit": 3540.828375,
+          "share": 0.4,
+          "expiresAt": 1795555800,
+          "savedResult": "sl",
+          "savedR": -1
+        },
+        {
+          "slot": 25,
+          "entry": 3553.0837500000002,
+          "risk": 8.1262499999998,
+          "stopLoss": 3561.21,
+          "targetR": 1.25,
+          "takeProfit": 3542.9259375000006,
+          "share": 0.6,
+          "expiresAt": 1795555800,
+          "savedResult": "sl",
+          "savedR": -1
+        }
+      ],
+      "sign": -1,
+      "day": "2026-11-25",
+      "signalNepal": "02:00",
+      "decisionAt": 1795552200,
+      "zoneTimeframe": "M15",
+      "obstacles": [],
+      "trends": {
+        "M5": "bearish",
+        "M15": "bearish",
+        "M30": "bearish",
+        "H1": "bearish",
+        "H4": "bearish",
+        "D": "bearish"
+      },
+      "historyCounts": {
+        "M5": 5000,
+        "M15": 5000,
+        "M30": 4946,
+        "H1": 1500,
+        "H4": 1192,
+        "D": 497
+      },
+      "results": {
+        "baseline": {
+          "skipped": false,
+          "low": -1,
+          "high": -1,
+          "cost20": -1.0235984431707161,
+          "cost50": -1.0589961079267902,
+          "ambiguous": false,
+          "filled": true,
+          "latestExit": 1795561980,
+          "legs": [
+            {
+              "low": -1,
+              "high": -1,
+              "ambiguous": false,
+              "filled": true,
+              "costR20": 0.02207871060330054,
+              "costR50": 0.05519677650825134,
+              "reasons": [
+                "sl"
+              ],
+              "latestExit": 1795561980
+            },
+            {
+              "low": -1,
+              "high": -1,
+              "ambiguous": false,
+              "filled": true,
+              "costR20": 0.024611598215659735,
+              "costR50": 0.06152899553914934,
+              "reasons": [
+                "sl"
+              ],
+              "latestExit": 1795561980
+            }
+          ]
+        },
+        "skip_same_fib_tp": {
+          "skipped": false,
+          "low": -1,
+          "high": -1,
+          "cost20": -1.0235984431707161,
+          "cost50": -1.0589961079267902,
+          "ambiguous": false,
+          "filled": true,
+          "latestExit": 1795561980,
+          "legs": [
+            {
+              "low": -1,
+              "high": -1,
+              "ambiguous": false,
+              "filled": true,
+              "costR20": 0.02207871060330054,
+              "costR50": 0.05519677650825134,
+              "reasons": [
+                "sl"
+              ],
+              "latestExit": 1795561980
+            },
+            {
+              "low": -1,
+              "high": -1,
+              "ambiguous": false,
+              "filled": true,
+              "costR20": 0.024611598215659735,
+              "costR50": 0.06152899553914934,
+              "reasons": [
+                "sl"
+              ],
+              "latestExit": 1795561980
+            }
+          ]
+        },
+        "skip_same_any_tp": {
+          "skipped": false,
+          "low": -1,
+          "high": -1,
+          "cost20": -1.0235984431707161,
+          "cost50": -1.0589961079267902,
+          "ambiguous": false,
+          "filled": true,
+          "latestExit": 1795561980,
+          "legs": [
+            {
+              "low": -1,
+              "high": -1,
+              "ambiguous": false,
+              "filled": true,
+              "costR20": 0.02207871060330054,
+              "costR50": 0.05519677650825134,
+              "reasons": [
+                "sl"
+              ],
+              "latestExit": 1795561980
+            },
+            {
+              "low": -1,
+              "high": -1,
+              "ambiguous": false,
+              "filled": true,
+              "costR20": 0.024611598215659735,
+              "costR50": 0.06152899553914934,
+              "reasons": [
+                "sl"
+              ],
+              "latestExit": 1795561980
+            }
+          ]
+        },
+        "skip_all_fib_tp": {
+          "skipped": false,
+          "low": -1,
+          "high": -1,
+          "cost20": -1.0235984431707161,
+          "cost50": -1.0589961079267902,
+          "ambiguous": false,
+          "filled": true,
+          "latestExit": 1795561980,
+          "legs": [
+            {
+              "low": -1,
+              "high": -1,
+              "ambiguous": false,
+              "filled": true,
+              "costR20": 0.02207871060330054,
+              "costR50": 0.05519677650825134,
+              "reasons": [
+                "sl"
+              ],
+              "latestExit": 1795561980
+            },
+            {
+              "low": -1,
+              "high": -1,
+              "ambiguous": false,
+              "filled": true,
+              "costR20": 0.024611598215659735,
+              "costR50": 0.06152899553914934,
+              "reasons": [
+                "sl"
+              ],
+              "latestExit": 1795561980
+            }
+          ]
+        },
+        "skip_all_fib_1r": {
+          "skipped": false,
+          "low": -1,
+          "high": -1,
+          "cost20": -1.0235984431707161,
+          "cost50": -1.0589961079267902,
+          "ambiguous": false,
+          "filled": true,
+          "latestExit": 1795561980,
+          "legs": [
+            {
+              "low": -1,
+              "high": -1,
+              "ambiguous": false,
+              "filled": true,
+              "costR20": 0.02207871060330054,
+              "costR50": 0.05519677650825134,
+              "reasons": [
+                "sl"
+              ],
+              "latestExit": 1795561980
+            },
+            {
+              "low": -1,
+              "high": -1,
+              "ambiguous": false,
+              "filled": true,
+              "costR20": 0.024611598215659735,
+              "costR50": 0.06152899553914934,
+              "reasons": [
+                "sl"
+              ],
+              "latestExit": 1795561980
+            }
+          ]
+        },
+        "skip_confirmed_tp": {
+          "skipped": false,
+          "low": -1,
+          "high": -1,
+          "cost20": -1.0235984431707161,
+          "cost50": -1.0589961079267902,
+          "ambiguous": false,
+          "filled": true,
+          "latestExit": 1795561980,
+          "legs": [
+            {
+              "low": -1,
+              "high": -1,
+              "ambiguous": false,
+              "filled": true,
+              "costR20": 0.02207871060330054,
+              "costR50": 0.05519677650825134,
+              "reasons": [
+                "sl"
+              ],
+              "latestExit": 1795561980
+            },
+            {
+              "low": -1,
+              "high": -1,
+              "ambiguous": false,
+              "filled": true,
+              "costR20": 0.024611598215659735,
+              "costR50": 0.06152899553914934,
+              "reasons": [
+                "sl"
+              ],
+              "latestExit": 1795561980
+            }
+          ]
+        },
+        "cap_same_fib": {
+          "skipped": false,
+          "low": -1,
+          "high": -1,
+          "cost20": -1.0235984431707161,
+          "cost50": -1.0589961079267902,
+          "ambiguous": false,
+          "filled": true,
+          "latestExit": 1795561980,
+          "legs": [
+            {
+              "low": -1,
+              "high": -1,
+              "ambiguous": false,
+              "filled": true,
+              "costR20": 0.02207871060330054,
+              "costR50": 0.05519677650825134,
+              "reasons": [
+                "sl"
+              ],
+              "latestExit": 1795561980
+            },
+            {
+              "low": -1,
+              "high": -1,
+              "ambiguous": false,
+              "filled": true,
+              "costR20": 0.024611598215659735,
+              "costR50": 0.06152899553914934,
+              "reasons": [
+                "sl"
+              ],
+              "latestExit": 1795561980
+            }
+          ]
+        },
+        "cap_all_fib": {
+          "skipped": false,
+          "low": -1,
+          "high": -1,
+          "cost20": -1.0235984431707161,
+          "cost50": -1.0589961079267902,
+          "ambiguous": false,
+          "filled": true,
+          "latestExit": 1795561980,
+          "legs": [
+            {
+              "low": -1,
+              "high": -1,
+              "ambiguous": false,
+              "filled": true,
+              "costR20": 0.02207871060330054,
+              "costR50": 0.05519677650825134,
+              "reasons": [
+                "sl"
+              ],
+              "latestExit": 1795561980
+            },
+            {
+              "low": -1,
+              "high": -1,
+              "ambiguous": false,
+              "filled": true,
+              "costR20": 0.024611598215659735,
+              "costR50": 0.06152899553914934,
+              "reasons": [
+                "sl"
+              ],
+              "latestExit": 1795561980
+            }
+          ]
+        },
+        "exit_m5_opposite": {
+          "skipped": false,
+          "low": -0.8513298080244631,
+          "high": -0.8513298080244631,
+          "cost20": -0.8749282511951791,
+          "cost50": -0.9103259159512532,
+          "ambiguous": false,
+          "filled": true,
+          "latestExit": 1795561380,
+          "legs": [
+            {
+              "low": -0.8609041231991825,
+              "high": -0.8609041231991825,
+              "ambiguous": false,
+              "filled": true,
+              "costR20": 0.02207871060330054,
+              "costR50": 0.05519677650825134,
+              "reasons": [
+                "signal"
+              ],
+              "latestExit": 1795561380
+            },
+            {
+              "low": -0.8449469312413168,
+              "high": -0.8449469312413168,
+              "ambiguous": false,
+              "filled": true,
+              "costR20": 0.024611598215659735,
+              "costR50": 0.06152899553914934,
+              "reasons": [
+                "signal"
+              ],
+              "latestExit": 1795561380
+            }
+          ]
+        },
+        "exit_m5_fib_rejection": {
+          "skipped": false,
+          "low": -1,
+          "high": -1,
+          "cost20": -1.0235984431707161,
+          "cost50": -1.0589961079267902,
+          "ambiguous": false,
+          "filled": true,
+          "latestExit": 1795561980,
+          "legs": [
+            {
+              "low": -1,
+              "high": -1,
+              "ambiguous": false,
+              "filled": true,
+              "costR20": 0.02207871060330054,
+              "costR50": 0.05519677650825134,
+              "reasons": [
+                "sl"
+              ],
+              "latestExit": 1795561980
+            },
+            {
+              "low": -1,
+              "high": -1,
+              "ambiguous": false,
+              "filled": true,
+              "costR20": 0.024611598215659735,
+              "costR50": 0.06152899553914934,
+              "reasons": [
+                "sl"
+              ],
+              "latestExit": 1795561980
+            }
+          ]
+        },
+        "exit_m15_failure": {
+          "skipped": false,
+          "low": -1,
+          "high": -1,
+          "cost20": -1.0235984431707161,
+          "cost50": -1.0589961079267902,
+          "ambiguous": false,
+          "filled": true,
+          "latestExit": 1795561980,
+          "legs": [
+            {
+              "low": -1,
+              "high": -1,
+              "ambiguous": false,
+              "filled": true,
+              "costR20": 0.02207871060330054,
+              "costR50": 0.05519677650825134,
+              "reasons": [
+                "sl"
+              ],
+              "latestExit": 1795561980
+            },
+            {
+              "low": -1,
+              "high": -1,
+              "ambiguous": false,
+              "filled": true,
+              "costR20": 0.024611598215659735,
+              "costR50": 0.06152899553914934,
+              "reasons": [
+                "sl"
+              ],
+              "latestExit": 1795561980
+            }
+          ]
+        },
+        "be_05": {
+          "skipped": false,
+          "low": 0,
+          "high": 0,
+          "cost20": -0.023598443170716056,
+          "cost50": -0.05899610792679014,
+          "ambiguous": false,
+          "filled": true,
+          "latestExit": 1795553400,
+          "legs": [
+            {
+              "low": 0,
+              "high": 0,
+              "ambiguous": false,
+              "filled": true,
+              "costR20": 0.02207871060330054,
+              "costR50": 0.05519677650825134,
+              "reasons": [
+                "be"
+              ],
+              "latestExit": 1795553400
+            },
+            {
+              "low": 0,
+              "high": 0,
+              "ambiguous": false,
+              "filled": true,
+              "costR20": 0.024611598215659735,
+              "costR50": 0.06152899553914934,
+              "reasons": [
+                "be"
+              ],
+              "latestExit": 1795553400
+            }
+          ]
+        },
+        "partial_05": {
+          "skipped": false,
+          "low": 0.25,
+          "high": 0.25,
+          "cost20": 0.22640155682928395,
+          "cost50": 0.19100389207320986,
+          "ambiguous": false,
+          "filled": true,
+          "latestExit": 1795553400,
+          "legs": [
+            {
+              "low": 0.25,
+              "high": 0.25,
+              "ambiguous": false,
+              "filled": true,
+              "costR20": 0.02207871060330054,
+              "costR50": 0.05519677650825134,
+              "reasons": [
+                "be"
+              ],
+              "latestExit": 1795553400
+            },
+            {
+              "low": 0.25,
+              "high": 0.25,
+              "ambiguous": false,
+              "filled": true,
+              "costR20": 0.024611598215659735,
+              "costR50": 0.06152899553914934,
+              "reasons": [
+                "be"
+              ],
+              "latestExit": 1795553400
+            }
+          ]
+        }
+      },
+      "savedR": -1
+    },
+    {
+      "key": "SCALP_1_1:1795565700:bearish",
+      "style": "SCALP_1_1",
+      "signalAt": 1795565700,
+      "direction": "bearish",
+      "legs": [
+        {
+          "slot": 10,
+          "entry": 3543.4715,
+          "risk": 16.683500000000095,
+          "stopLoss": 3560.155,
+          "targetR": 1.25,
+          "takeProfit": 3522.6171249999998,
+          "share": 0.4,
+          "expiresAt": 1795570200,
+          "savedResult": "sl",
+          "savedR": -1
+        },
+        {
+          "slot": 25,
+          "entry": 3544.76375,
+          "risk": 15.391250000000127,
+          "stopLoss": 3560.155,
+          "targetR": 1.25,
+          "takeProfit": 3525.5246875,
+          "share": 0.6,
+          "expiresAt": 1795570200,
+          "savedResult": "sl",
+          "savedR": -1
+        }
+      ],
+      "sign": -1,
+      "day": "2026-11-25",
+      "signalNepal": "06:00",
+      "decisionAt": 1795566600,
+      "zoneTimeframe": "M15",
+      "obstacles": [
+        {
+          "timeframe": "M5",
+          "id": "TJL1-1795188300-3534.8209",
+          "name": "QML",
+          "bottom": 3526.74,
+          "top": 3534.8209,
+          "startTime": 1795188300,
+          "activeFromTime": 1795389000,
+          "fib": true,
+          "fibSources": [
+            "structure"
+          ],
+          "fibBand": "deep",
+          "reversalConfirmed": false,
+          "distances": [
+            {
+              "slot": 10,
+              "inPath": true,
+              "roomR": 0.5185123025743933,
+              "beforeTP": true
+            },
+            {
+              "slot": 25,
+              "inPath": true,
+              "roomR": 0.6460066596280241,
+              "beforeTP": true
+            }
+          ]
+        },
+        {
+          "timeframe": "M15",
+          "id": "TJL1-1795144500-3523.3856",
+          "name": "QML",
+          "bottom": 3517.27,
+          "top": 3523.3856,
+          "startTime": 1795144500,
+          "activeFromTime": 1795397400,
+          "fib": true,
+          "fibSources": [
+            "structure"
+          ],
+          "fibBand": "deep",
+          "reversalConfirmed": false,
+          "distances": [
+            {
+              "slot": 10,
+              "inPath": true,
+              "roomR": 1.2039380225971723,
+              "beforeTP": true
+            },
+            {
+              "slot": 25,
+              "inPath": true,
+              "roomR": 1.388980752050667,
+              "beforeTP": false
+            }
+          ]
+        },
+        {
+          "timeframe": "M30",
+          "id": "TJL1-1795150800-3524.7768",
+          "name": "QML",
+          "bottom": 3514.41,
+          "top": 3524.7768,
+          "startTime": 1795150800,
+          "activeFromTime": 1795399200,
+          "fib": true,
+          "fibSources": [
+            "structure"
+          ],
+          "fibBand": "deep",
+          "reversalConfirmed": false,
+          "distances": [
+            {
+              "slot": 10,
+              "inPath": true,
+              "roomR": 1.1205502442532984,
+              "beforeTP": true
+            },
+            {
+              "slot": 25,
+              "inPath": true,
+              "roomR": 1.2985917323154268,
+              "beforeTP": false
+            }
+          ]
+        }
+      ],
+      "trends": {
+        "M5": "bearish",
+        "M15": "bearish",
+        "M30": "bearish",
+        "H1": "bearish",
+        "H4": "bearish",
+        "D": "bearish"
+      },
+      "historyCounts": {
+        "M5": 5000,
+        "M15": 5000,
+        "M30": 4952,
+        "H1": 1500,
+        "H4": 1193,
+        "D": 498
+      },
+      "results": {
+        "baseline": {
+          "skipped": false,
+          "low": -1,
+          "high": -1,
+          "cost20": -1.0125917945915313,
+          "cost50": -1.0314794864788284,
+          "ambiguous": false,
+          "filled": true,
+          "latestExit": 1795572840,
+          "legs": [
+            {
+              "low": -1,
+              "high": -1,
+              "ambiguous": false,
+              "filled": true,
+              "costR20": 0.011987892228848796,
+              "costR50": 0.029969730572121985,
+              "reasons": [
+                "sl"
+              ],
+              "latestExit": 1795572840
+            },
+            {
+              "low": -1,
+              "high": -1,
+              "ambiguous": false,
+              "filled": true,
+              "costR20": 0.012994396166653025,
+              "costR50": 0.03248599041663256,
+              "reasons": [
+                "sl"
+              ],
+              "latestExit": 1795572840
+            }
+          ]
+        },
+        "skip_same_fib_tp": {
+          "skipped": true,
+          "low": 0,
+          "high": 0,
+          "cost20": 0,
+          "cost50": 0,
+          "ambiguous": false,
+          "filled": false,
+          "blockedBy": [
+            "M15:QML"
+          ]
+        },
+        "skip_same_any_tp": {
+          "skipped": true,
+          "low": 0,
+          "high": 0,
+          "cost20": 0,
+          "cost50": 0,
+          "ambiguous": false,
+          "filled": false,
+          "blockedBy": [
+            "M15:QML"
+          ]
+        },
+        "skip_all_fib_tp": {
+          "skipped": true,
+          "low": 0,
+          "high": 0,
+          "cost20": 0,
+          "cost50": 0,
+          "ambiguous": false,
+          "filled": false,
+          "blockedBy": [
+            "M5:QML",
+            "M15:QML",
+            "M30:QML"
+          ]
+        },
+        "skip_all_fib_1r": {
+          "skipped": true,
+          "low": 0,
+          "high": 0,
+          "cost20": 0,
+          "cost50": 0,
+          "ambiguous": false,
+          "filled": false,
+          "blockedBy": [
+            "M5:QML"
+          ]
+        },
+        "skip_confirmed_tp": {
+          "skipped": false,
+          "low": -1,
+          "high": -1,
+          "cost20": -1.0125917945915313,
+          "cost50": -1.0314794864788284,
+          "ambiguous": false,
+          "filled": true,
+          "latestExit": 1795572840,
+          "legs": [
+            {
+              "low": -1,
+              "high": -1,
+              "ambiguous": false,
+              "filled": true,
+              "costR20": 0.011987892228848796,
+              "costR50": 0.029969730572121985,
+              "reasons": [
+                "sl"
+              ],
+              "latestExit": 1795572840
+            },
+            {
+              "low": -1,
+              "high": -1,
+              "ambiguous": false,
+              "filled": true,
+              "costR20": 0.012994396166653025,
+              "costR50": 0.03248599041663256,
+              "reasons": [
+                "sl"
+              ],
+              "latestExit": 1795572840
+            }
+          ]
+        },
+        "cap_same_fib": {
+          "skipped": false,
+          "low": -1,
+          "high": -1,
+          "cost20": -1.0125917945915313,
+          "cost50": -1.0314794864788284,
+          "ambiguous": false,
+          "filled": true,
+          "latestExit": 1795572840,
+          "legs": [
+            {
+              "low": -1,
+              "high": -1,
+              "ambiguous": false,
+              "filled": true,
+              "costR20": 0.011987892228848796,
+              "costR50": 0.029969730572121985,
+              "reasons": [
+                "sl"
+              ],
+              "latestExit": 1795572840
+            },
+            {
+              "low": -1,
+              "high": -1,
+              "ambiguous": false,
+              "filled": true,
+              "costR20": 0.012994396166653025,
+              "costR50": 0.03248599041663256,
+              "reasons": [
+                "sl"
+              ],
+              "latestExit": 1795572840
+            }
+          ]
+        },
+        "cap_all_fib": {
+          "skipped": true,
+          "low": 0,
+          "high": 0,
+          "cost20": 0,
+          "cost50": 0,
+          "ambiguous": false,
+          "filled": false,
+          "blockedBy": [
+            "M5:QML",
+            "M15:QML",
+            "M30:QML"
+          ]
+        },
+        "exit_m5_opposite": {
+          "skipped": false,
+          "low": -0.33672721989106763,
+          "high": -0.33672721989106763,
+          "cost20": -0.34931901448259894,
+          "cost50": -0.36820670636989594,
+          "ambiguous": false,
+          "filled": true,
+          "latestExit": 1795566900,
+          "legs": [
+            {
+              "low": -0.3685377768453712,
+              "high": -0.3685377768453712,
+              "ambiguous": false,
+              "filled": true,
+              "costR20": 0.011987892228848796,
+              "costR50": 0.029969730572121985,
+              "reasons": [
+                "signal"
+              ],
+              "latestExit": 1795566900
+            },
+            {
+              "low": -0.3155201819215319,
+              "high": -0.3155201819215319,
+              "ambiguous": false,
+              "filled": true,
+              "costR20": 0.012994396166653025,
+              "costR50": 0.03248599041663256,
+              "reasons": [
+                "signal"
+              ],
+              "latestExit": 1795566900
+            }
+          ]
+        },
+        "exit_m5_fib_rejection": {
+          "skipped": false,
+          "low": 0.1581303075560931,
+          "high": 0.1581303075560931,
+          "cost20": 0.14553851296456177,
+          "cost50": 0.12665082107726477,
+          "ambiguous": false,
+          "filled": true,
+          "latestExit": 1795570200,
+          "legs": [
+            {
+              "low": 0.1025863877483668,
+              "high": 0.1025863877483668,
+              "ambiguous": false,
+              "filled": true,
+              "costR20": 0.011987892228848796,
+              "costR50": 0.029969730572121985,
+              "reasons": [
+                "signal"
+              ],
+              "latestExit": 1795570200
+            },
+            {
+              "low": 0.19515958742791065,
+              "high": 0.19515958742791065,
+              "ambiguous": false,
+              "filled": true,
+              "costR20": 0.012994396166653025,
+              "costR50": 0.03248599041663256,
+              "reasons": [
+                "signal"
+              ],
+              "latestExit": 1795570200
+            }
+          ]
+        },
+        "exit_m15_failure": {
+          "skipped": false,
+          "low": -0.4922358830964956,
+          "high": -0.4922358830964956,
+          "cost20": -0.5048276776880269,
+          "cost50": -0.5237153695753239,
+          "ambiguous": false,
+          "filled": true,
+          "latestExit": 1795571100,
+          "legs": [
+            {
+              "low": -0.5165882458716691,
+              "high": -0.5165882458716691,
+              "ambiguous": false,
+              "filled": true,
+              "costR20": 0.011987892228848796,
+              "costR50": 0.029969730572121985,
+              "reasons": [
+                "signal"
+              ],
+              "latestExit": 1795571100
+            },
+            {
+              "low": -0.4760009745797133,
+              "high": -0.4760009745797133,
+              "ambiguous": false,
+              "filled": true,
+              "costR20": 0.012994396166653025,
+              "costR50": 0.03248599041663256,
+              "reasons": [
+                "signal"
+              ],
+              "latestExit": 1795571100
+            }
+          ]
+        },
+        "be_05": {
+          "skipped": false,
+          "low": 0,
+          "high": 0,
+          "cost20": -0.012591794591531334,
+          "cost50": -0.031479486478828325,
+          "ambiguous": false,
+          "filled": true,
+          "latestExit": 1795570440,
+          "legs": [
+            {
+              "low": 0,
+              "high": 0,
+              "ambiguous": false,
+              "filled": true,
+              "costR20": 0.011987892228848796,
+              "costR50": 0.029969730572121985,
+              "reasons": [
+                "be"
+              ],
+              "latestExit": 1795570080
+            },
+            {
+              "low": 0,
+              "high": 0,
+              "ambiguous": false,
+              "filled": true,
+              "costR20": 0.012994396166653025,
+              "costR50": 0.03248599041663256,
+              "reasons": [
+                "be"
+              ],
+              "latestExit": 1795570440
+            }
+          ]
+        },
+        "partial_05": {
+          "skipped": false,
+          "low": 0.25,
+          "high": 0.25,
+          "cost20": 0.23740820540846866,
+          "cost50": 0.2185205135211717,
+          "ambiguous": false,
+          "filled": true,
+          "latestExit": 1795570440,
+          "legs": [
+            {
+              "low": 0.25,
+              "high": 0.25,
+              "ambiguous": false,
+              "filled": true,
+              "costR20": 0.011987892228848796,
+              "costR50": 0.029969730572121985,
+              "reasons": [
+                "be"
+              ],
+              "latestExit": 1795570080
+            },
+            {
+              "low": 0.25,
+              "high": 0.25,
+              "ambiguous": false,
+              "filled": true,
+              "costR20": 0.012994396166653025,
+              "costR50": 0.03248599041663256,
+              "reasons": [
+                "be"
+              ],
+              "latestExit": 1795570440
+            }
+          ]
+        }
+      },
+      "savedR": -1
+    },
+    {
+      "key": "SCALPING:1795573680:bearish",
+      "style": "SCALPING",
+      "signalAt": 1795573680,
+      "direction": "bearish",
+      "legs": [
+        {
+          "slot": 0,
+          "entry": 3566.95,
+          "risk": 4,
+          "stopLoss": 3570.95,
+          "targetR": 3,
+          "takeProfit": 3554.95,
+          "share": 1,
+          "expiresAt": 1795575540,
+          "savedResult": "sl",
+          "savedR": -1
+        }
+      ],
+      "sign": -1,
+      "day": "2026-11-25",
+      "signalNepal": "08:13",
+      "decisionAt": 1795573740,
+      "zoneTimeframe": "M15",
+      "obstacles": [
+        {
+          "timeframe": "M1",
+          "id": "TJL1-1795570920-3555.53",
+          "name": "TJL1",
+          "bottom": 3553.8347,
+          "top": 3555.53,
+          "startTime": 1795570920,
+          "activeFromTime": 1795572900,
+          "fib": true,
+          "fibSources": [
+            "structure"
+          ],
+          "fibBand": "0.5-0.618",
+          "reversalConfirmed": false,
+          "distances": [
+            {
+              "slot": 0,
+              "inPath": true,
+              "roomR": 2.8549999999999045,
+              "beforeTP": true
+            }
+          ]
+        },
+        {
+          "timeframe": "M5",
+          "id": "TJL2-1795568100-3558.31",
+          "name": "RBS",
+          "bottom": 3555.1637,
+          "top": 3558.31,
+          "startTime": 1795568100,
+          "activeFromTime": 1795573200,
+          "fib": false,
+          "fibSources": [],
+          "reversalConfirmed": false,
+          "distances": [
+            {
+              "slot": 0,
+              "inPath": true,
+              "roomR": 2.159999999999968,
+              "beforeTP": true
+            }
+          ]
+        }
+      ],
+      "trends": {
+        "M1": "bullish",
+        "M5": "bullish",
+        "M15": "bearish",
+        "M30": "bearish",
+        "H1": "bearish",
+        "H4": "bearish",
+        "D": "bearish"
+      },
+      "historyCounts": {
+        "M1": 5000,
+        "M5": 5000,
+        "M15": 5000,
+        "M30": 4955,
+        "H1": 1500,
+        "H4": 1194,
+        "D": 498
+      },
+      "results": {
+        "baseline": {
+          "skipped": false,
+          "low": -1,
+          "high": -1,
+          "cost20": -1.05,
+          "cost50": -1.125,
+          "ambiguous": false,
+          "filled": true,
+          "latestExit": 1795573800,
+          "legs": [
+            {
+              "low": -1,
+              "high": -1,
+              "ambiguous": false,
+              "filled": true,
+              "costR20": 0.05,
+              "costR50": 0.125,
+              "reasons": [
+                "sl"
+              ],
+              "latestExit": 1795573800
+            }
+          ]
+        },
+        "skip_same_fib_tp": {
+          "skipped": false,
+          "low": -1,
+          "high": -1,
+          "cost20": -1.05,
+          "cost50": -1.125,
+          "ambiguous": false,
+          "filled": true,
+          "latestExit": 1795573800,
+          "legs": [
+            {
+              "low": -1,
+              "high": -1,
+              "ambiguous": false,
+              "filled": true,
+              "costR20": 0.05,
+              "costR50": 0.125,
+              "reasons": [
+                "sl"
+              ],
+              "latestExit": 1795573800
+            }
+          ]
+        },
+        "skip_same_any_tp": {
+          "skipped": false,
+          "low": -1,
+          "high": -1,
+          "cost20": -1.05,
+          "cost50": -1.125,
+          "ambiguous": false,
+          "filled": true,
+          "latestExit": 1795573800,
+          "legs": [
+            {
+              "low": -1,
+              "high": -1,
+              "ambiguous": false,
+              "filled": true,
+              "costR20": 0.05,
+              "costR50": 0.125,
+              "reasons": [
+                "sl"
+              ],
+              "latestExit": 1795573800
+            }
+          ]
+        },
+        "skip_all_fib_tp": {
+          "skipped": true,
+          "low": 0,
+          "high": 0,
+          "cost20": 0,
+          "cost50": 0,
+          "ambiguous": false,
+          "filled": false,
+          "blockedBy": [
+            "M1:TJL1"
+          ]
+        },
+        "skip_all_fib_1r": {
+          "skipped": false,
+          "low": -1,
+          "high": -1,
+          "cost20": -1.05,
+          "cost50": -1.125,
+          "ambiguous": false,
+          "filled": true,
+          "latestExit": 1795573800,
+          "legs": [
+            {
+              "low": -1,
+              "high": -1,
+              "ambiguous": false,
+              "filled": true,
+              "costR20": 0.05,
+              "costR50": 0.125,
+              "reasons": [
+                "sl"
+              ],
+              "latestExit": 1795573800
+            }
+          ]
+        },
+        "skip_confirmed_tp": {
+          "skipped": false,
+          "low": -1,
+          "high": -1,
+          "cost20": -1.05,
+          "cost50": -1.125,
+          "ambiguous": false,
+          "filled": true,
+          "latestExit": 1795573800,
+          "legs": [
+            {
+              "low": -1,
+              "high": -1,
+              "ambiguous": false,
+              "filled": true,
+              "costR20": 0.05,
+              "costR50": 0.125,
+              "reasons": [
+                "sl"
+              ],
+              "latestExit": 1795573800
+            }
+          ]
+        },
+        "cap_same_fib": {
+          "skipped": false,
+          "low": -1,
+          "high": -1,
+          "cost20": -1.05,
+          "cost50": -1.125,
+          "ambiguous": false,
+          "filled": true,
+          "latestExit": 1795573800,
+          "legs": [
+            {
+              "low": -1,
+              "high": -1,
+              "ambiguous": false,
+              "filled": true,
+              "costR20": 0.05,
+              "costR50": 0.125,
+              "reasons": [
+                "sl"
+              ],
+              "latestExit": 1795573800
+            }
+          ]
+        },
+        "cap_all_fib": {
+          "skipped": false,
+          "low": -1,
+          "high": -1,
+          "cost20": -1.05,
+          "cost50": -1.125,
+          "ambiguous": false,
+          "filled": true,
+          "latestExit": 1795573800,
+          "legs": [
+            {
+              "low": -1,
+              "high": -1,
+              "ambiguous": false,
+              "filled": true,
+              "costR20": 0.05,
+              "costR50": 0.125,
+              "reasons": [
+                "sl"
+              ],
+              "latestExit": 1795573800
+            }
+          ]
+        },
+        "exit_m5_opposite": {
+          "skipped": false,
+          "low": -1,
+          "high": -1,
+          "cost20": -1.05,
+          "cost50": -1.125,
+          "ambiguous": false,
+          "filled": true,
+          "latestExit": 1795573800,
+          "legs": [
+            {
+              "low": -1,
+              "high": -1,
+              "ambiguous": false,
+              "filled": true,
+              "costR20": 0.05,
+              "costR50": 0.125,
+              "reasons": [
+                "sl"
+              ],
+              "latestExit": 1795573800
+            }
+          ]
+        },
+        "exit_m5_fib_rejection": {
+          "skipped": false,
+          "low": -1,
+          "high": -1,
+          "cost20": -1.05,
+          "cost50": -1.125,
+          "ambiguous": false,
+          "filled": true,
+          "latestExit": 1795573800,
+          "legs": [
+            {
+              "low": -1,
+              "high": -1,
+              "ambiguous": false,
+              "filled": true,
+              "costR20": 0.05,
+              "costR50": 0.125,
+              "reasons": [
+                "sl"
+              ],
+              "latestExit": 1795573800
+            }
+          ]
+        },
+        "exit_m15_failure": {
+          "skipped": false,
+          "low": -1,
+          "high": -1,
+          "cost20": -1.05,
+          "cost50": -1.125,
+          "ambiguous": false,
+          "filled": true,
+          "latestExit": 1795573800,
+          "legs": [
+            {
+              "low": -1,
+              "high": -1,
+              "ambiguous": false,
+              "filled": true,
+              "costR20": 0.05,
+              "costR50": 0.125,
+              "reasons": [
+                "sl"
+              ],
+              "latestExit": 1795573800
+            }
+          ]
+        },
+        "be_05": {
+          "skipped": false,
+          "low": -1,
+          "high": -1,
+          "cost20": -1.05,
+          "cost50": -1.125,
+          "ambiguous": false,
+          "filled": true,
+          "latestExit": 1795573800,
+          "legs": [
+            {
+              "low": -1,
+              "high": -1,
+              "ambiguous": false,
+              "filled": true,
+              "costR20": 0.05,
+              "costR50": 0.125,
+              "reasons": [
+                "sl"
+              ],
+              "latestExit": 1795573800
+            }
+          ]
+        },
+        "partial_05": {
+          "skipped": false,
+          "low": -1,
+          "high": -1,
+          "cost20": -1.05,
+          "cost50": -1.125,
+          "ambiguous": false,
+          "filled": true,
+          "latestExit": 1795573800,
+          "legs": [
+            {
+              "low": -1,
+              "high": -1,
+              "ambiguous": false,
+              "filled": true,
+              "costR20": 0.05,
+              "costR50": 0.125,
+              "reasons": [
+                "sl"
+              ],
+              "latestExit": 1795573800
+            }
+          ]
+        }
+      },
+      "savedR": -1
+    },
+    {
+      "key": "SCALP_1_1:1795574700:bearish",
+      "style": "SCALP_1_1",
+      "signalAt": 1795574700,
+      "direction": "bearish",
+      "legs": [
+        {
+          "slot": 10,
+          "entry": 3551.5305000000003,
+          "risk": 26.75949999999966,
+          "stopLoss": 3578.29,
+          "targetR": 1.25,
+          "takeProfit": 3518.0811250000006,
+          "share": 0.4,
+          "expiresAt": 1795579200,
+          "savedResult": "tp",
+          "savedR": 1.25
+        },
+        {
+          "slot": 25,
+          "entry": 3552.4387500000003,
+          "risk": 25.85124999999971,
+          "stopLoss": 3578.29,
+          "targetR": 1.25,
+          "takeProfit": 3520.1246875000006,
+          "share": 0.6,
+          "expiresAt": 1795579200,
+          "savedResult": "tp",
+          "savedR": 1.25
+        }
+      ],
+      "sign": -1,
+      "day": "2026-11-25",
+      "signalNepal": "08:30",
+      "decisionAt": 1795575600,
+      "zoneTimeframe": "M15",
+      "obstacles": [
+        {
+          "timeframe": "M5",
+          "id": "TJL1-1795188300-3534.8209",
+          "name": "QML",
+          "bottom": 3526.74,
+          "top": 3534.8209,
+          "startTime": 1795188300,
+          "activeFromTime": 1795389000,
+          "fib": true,
+          "fibSources": [
+            "structure"
+          ],
+          "fibBand": "deep",
+          "reversalConfirmed": false,
+          "distances": [
+            {
+              "slot": 10,
+              "inPath": true,
+              "roomR": 0.6244361815430164,
+              "beforeTP": true
+            },
+            {
+              "slot": 25,
+              "inPath": true,
+              "roomR": 0.6815086311106925,
+              "beforeTP": true
+            }
+          ]
+        },
+        {
+          "timeframe": "M5",
+          "id": "TJL1-1795566300-3542.7708",
+          "name": "QML",
+          "bottom": 3539.42,
+          "top": 3542.7708,
+          "startTime": 1795566300,
+          "activeFromTime": 1795573200,
+          "fib": true,
+          "fibSources": [
+            "structure"
+          ],
+          "fibBand": "0.71-0.79",
+          "reversalConfirmed": false,
+          "distances": [
+            {
+              "slot": 10,
+              "inPath": true,
+              "roomR": 0.32734916571687184,
+              "beforeTP": true
+            },
+            {
+              "slot": 25,
+              "inPath": true,
+              "roomR": 0.37398384991056843,
+              "beforeTP": true
+            }
+          ]
+        },
+        {
+          "timeframe": "M5",
+          "id": "DB-1795569900-3535.0874",
+          "name": "DB",
+          "bottom": 3533.59,
+          "top": 3535.0874,
+          "startTime": 1795569900,
+          "activeFromTime": 1795573200,
+          "fib": true,
+          "fibSources": [
+            "structure"
+          ],
+          "fibBand": "DB/DT",
+          "reversalConfirmed": false,
+          "distances": [
+            {
+              "slot": 10,
+              "inPath": true,
+              "roomR": 0.6144771015901127,
+              "beforeTP": true
+            },
+            {
+              "slot": 25,
+              "inPath": true,
+              "roomR": 0.6711996518543808,
+              "beforeTP": true
+            }
+          ]
+        },
+        {
+          "timeframe": "M15",
+          "id": "TJL1-1795144500-3523.3856",
+          "name": "QML",
+          "bottom": 3517.27,
+          "top": 3523.3856,
+          "startTime": 1795144500,
+          "activeFromTime": 1795397400,
+          "fib": true,
+          "fibSources": [
+            "structure"
+          ],
+          "fibBand": "deep",
+          "reversalConfirmed": false,
+          "distances": [
+            {
+              "slot": 10,
+              "inPath": true,
+              "roomR": 1.0517722677927686,
+              "beforeTP": true
+            },
+            {
+              "slot": 25,
+              "inPath": true,
+              "roomR": 1.1238586141869547,
+              "beforeTP": true
+            }
+          ]
+        },
+        {
+          "timeframe": "M30",
+          "id": "TJL1-1795150800-3524.7768",
+          "name": "QML",
+          "bottom": 3514.41,
+          "top": 3524.7768,
+          "startTime": 1795150800,
+          "activeFromTime": 1795399200,
+          "fib": true,
+          "fibSources": [
+            "structure"
+          ],
+          "fibBand": "deep",
+          "reversalConfirmed": false,
+          "distances": [
+            {
+              "slot": 10,
+              "inPath": true,
+              "roomR": 0.9997832545451353,
+              "beforeTP": true
+            },
+            {
+              "slot": 25,
+              "inPath": true,
+              "roomR": 1.0700430346695218,
+              "beforeTP": true
+            }
+          ]
+        }
+      ],
+      "trends": {
+        "M5": "bullish",
+        "M15": "bearish",
+        "M30": "bearish",
+        "H1": "bearish",
+        "H4": "bearish",
+        "D": "bearish"
+      },
+      "historyCounts": {
+        "M5": 5000,
+        "M15": 5000,
+        "M30": 4957,
+        "H1": 1500,
+        "H4": 1194,
+        "D": 498
+      },
+      "results": {
+        "baseline": {
+          "skipped": false,
+          "low": 1.25,
+          "high": 1.25,
+          "cost20": 1.2423684656398055,
+          "cost50": 1.2309211640995141,
+          "ambiguous": false,
+          "filled": true,
+          "latestExit": 1795586400,
+          "legs": [
+            {
+              "low": 1.25,
+              "high": 1.25,
+              "ambiguous": false,
+              "filled": true,
+              "costR20": 0.007473981202937369,
+              "costR50": 0.01868495300734342,
+              "reasons": [
+                "tp"
+              ],
+              "latestExit": 1795586400
+            },
+            {
+              "low": 1.25,
+              "high": 1.25,
+              "ambiguous": false,
+              "filled": true,
+              "costR20": 0.007736569798365737,
+              "costR50": 0.01934142449591434,
+              "reasons": [
+                "tp"
+              ],
+              "latestExit": 1795586400
+            }
+          ]
+        },
+        "skip_same_fib_tp": {
+          "skipped": true,
+          "low": 0,
+          "high": 0,
+          "cost20": 0,
+          "cost50": 0,
+          "ambiguous": false,
+          "filled": false,
+          "blockedBy": [
+            "M15:QML"
+          ]
+        },
+        "skip_same_any_tp": {
+          "skipped": true,
+          "low": 0,
+          "high": 0,
+          "cost20": 0,
+          "cost50": 0,
+          "ambiguous": false,
+          "filled": false,
+          "blockedBy": [
+            "M15:QML"
+          ]
+        },
+        "skip_all_fib_tp": {
+          "skipped": true,
+          "low": 0,
+          "high": 0,
+          "cost20": 0,
+          "cost50": 0,
+          "ambiguous": false,
+          "filled": false,
+          "blockedBy": [
+            "M5:QML",
+            "M5:QML",
+            "M5:DB",
+            "M15:QML",
+            "M30:QML"
+          ]
+        },
+        "skip_all_fib_1r": {
+          "skipped": true,
+          "low": 0,
+          "high": 0,
+          "cost20": 0,
+          "cost50": 0,
+          "ambiguous": false,
+          "filled": false,
+          "blockedBy": [
+            "M5:QML",
+            "M5:QML",
+            "M5:DB",
+            "M30:QML"
+          ]
+        },
+        "skip_confirmed_tp": {
+          "skipped": false,
+          "low": 1.25,
+          "high": 1.25,
+          "cost20": 1.2423684656398055,
+          "cost50": 1.2309211640995141,
+          "ambiguous": false,
+          "filled": true,
+          "latestExit": 1795586400,
+          "legs": [
+            {
+              "low": 1.25,
+              "high": 1.25,
+              "ambiguous": false,
+              "filled": true,
+              "costR20": 0.007473981202937369,
+              "costR50": 0.01868495300734342,
+              "reasons": [
+                "tp"
+              ],
+              "latestExit": 1795586400
+            },
+            {
+              "low": 1.25,
+              "high": 1.25,
+              "ambiguous": false,
+              "filled": true,
+              "costR20": 0.007736569798365737,
+              "costR50": 0.01934142449591434,
+              "reasons": [
+                "tp"
+              ],
+              "latestExit": 1795586400
+            }
+          ]
+        },
+        "cap_same_fib": {
+          "skipped": false,
+          "low": 0.9950240756292802,
+          "high": 0.9950240756292802,
+          "cost20": 0.9873925412690858,
+          "cost50": 0.9759452397287942,
+          "ambiguous": false,
+          "filled": true,
+          "latestExit": 1795585740,
+          "legs": [
+            {
+              "low": 0.9517722677927686,
+              "high": 0.9517722677927686,
+              "ambiguous": false,
+              "filled": true,
+              "costR20": 0.007473981202937369,
+              "costR50": 0.01868495300734342,
+              "reasons": [
+                "tp"
+              ],
+              "latestExit": 1795585740
+            },
+            {
+              "low": 1.0238586141869546,
+              "high": 1.0238586141869546,
+              "ambiguous": false,
+              "filled": true,
+              "costR20": 0.007736569798365737,
+              "costR50": 0.01934142449591434,
+              "reasons": [
+                "tp"
+              ],
+              "latestExit": 1795585740
+            }
+          ]
+        },
+        "cap_all_fib": {
+          "skipped": true,
+          "low": 0,
+          "high": 0,
+          "cost20": 0,
+          "cost50": 0,
+          "ambiguous": false,
+          "filled": false,
+          "blockedBy": [
+            "M5:QML",
+            "M5:QML",
+            "M5:DB",
+            "M15:QML",
+            "M30:QML"
+          ]
+        },
+        "exit_m5_opposite": {
+          "skipped": false,
+          "low": -0.25783328347110257,
+          "high": -0.25783328347110257,
+          "cost20": -0.26546481783129694,
+          "cost50": -0.27691211937158855,
+          "ambiguous": false,
+          "filled": true,
+          "latestExit": 1795576200,
+          "legs": [
+            {
+              "low": -0.27315532801434766,
+              "high": -0.27315532801434766,
+              "ambiguous": false,
+              "filled": true,
+              "costR20": 0.007473981202937369,
+              "costR50": 0.01868495300734342,
+              "reasons": [
+                "signal"
+              ],
+              "latestExit": 1795576200
+            },
+            {
+              "low": -0.24761858710893914,
+              "high": -0.24761858710893914,
+              "ambiguous": false,
+              "filled": true,
+              "costR20": 0.007736569798365737,
+              "costR50": 0.01934142449591434,
+              "reasons": [
+                "signal"
+              ],
+              "latestExit": 1795576200
+            }
+          ]
+        },
+        "exit_m5_fib_rejection": {
+          "skipped": false,
+          "low": 1.25,
+          "high": 1.25,
+          "cost20": 1.2423684656398055,
+          "cost50": 1.2309211640995141,
+          "ambiguous": false,
+          "filled": true,
+          "latestExit": 1795586400,
+          "legs": [
+            {
+              "low": 1.25,
+              "high": 1.25,
+              "ambiguous": false,
+              "filled": true,
+              "costR20": 0.007473981202937369,
+              "costR50": 0.01868495300734342,
+              "reasons": [
+                "tp"
+              ],
+              "latestExit": 1795586400
+            },
+            {
+              "low": 1.25,
+              "high": 1.25,
+              "ambiguous": false,
+              "filled": true,
+              "costR20": 0.007736569798365737,
+              "costR50": 0.01934142449591434,
+              "reasons": [
+                "tp"
+              ],
+              "latestExit": 1795586400
+            }
+          ]
+        },
+        "exit_m15_failure": {
+          "skipped": false,
+          "low": -0.20975461700186956,
+          "high": -0.20975461700186956,
+          "cost20": -0.21738615136206396,
+          "cost50": -0.22883345290235554,
+          "ambiguous": false,
+          "filled": true,
+          "latestExit": 1795576500,
+          "legs": [
+            {
+              "low": -0.22606924643583406,
+              "high": -0.22606924643583406,
+              "ambiguous": false,
+              "filled": true,
+              "costR20": 0.007473981202937369,
+              "costR50": 0.01868495300734342,
+              "reasons": [
+                "signal"
+              ],
+              "latestExit": 1795576500
+            },
+            {
+              "low": -0.19887819737922655,
+              "high": -0.19887819737922655,
+              "ambiguous": false,
+              "filled": true,
+              "costR20": 0.007736569798365737,
+              "costR50": 0.01934142449591434,
+              "reasons": [
+                "signal"
+              ],
+              "latestExit": 1795576500
+            }
+          ]
+        },
+        "be_05": {
+          "skipped": false,
+          "low": 1.25,
+          "high": 1.25,
+          "cost20": 1.2423684656398055,
+          "cost50": 1.2309211640995141,
+          "ambiguous": false,
+          "filled": true,
+          "latestExit": 1795586400,
+          "legs": [
+            {
+              "low": 1.25,
+              "high": 1.25,
+              "ambiguous": false,
+              "filled": true,
+              "costR20": 0.007473981202937369,
+              "costR50": 0.01868495300734342,
+              "reasons": [
+                "tp"
+              ],
+              "latestExit": 1795586400
+            },
+            {
+              "low": 1.25,
+              "high": 1.25,
+              "ambiguous": false,
+              "filled": true,
+              "costR20": 0.007736569798365737,
+              "costR50": 0.01934142449591434,
+              "reasons": [
+                "tp"
+              ],
+              "latestExit": 1795586400
+            }
+          ]
+        },
+        "partial_05": {
+          "skipped": false,
+          "low": 0.875,
+          "high": 0.875,
+          "cost20": 0.8673684656398056,
+          "cost50": 0.855921164099514,
+          "ambiguous": false,
+          "filled": true,
+          "latestExit": 1795586400,
+          "legs": [
+            {
+              "low": 0.875,
+              "high": 0.875,
+              "ambiguous": false,
+              "filled": true,
+              "costR20": 0.007473981202937369,
+              "costR50": 0.01868495300734342,
+              "reasons": [
+                "tp"
+              ],
+              "latestExit": 1795586400
+            },
+            {
+              "low": 0.875,
+              "high": 0.875,
+              "ambiguous": false,
+              "filled": true,
+              "costR20": 0.007736569798365737,
+              "costR50": 0.01934142449591434,
+              "reasons": [
+                "tp"
+              ],
+              "latestExit": 1795586400
+            }
+          ]
+        }
+      },
+      "savedR": 1.25
+    },
+    {
+      "key": "SCALP_1_1:1795589100:bearish",
+      "style": "SCALP_1_1",
+      "signalAt": 1795589100,
+      "direction": "bearish",
+      "legs": [
+        {
+          "slot": 10,
+          "entry": 3516.554,
+          "risk": 14.641000000000076,
+          "stopLoss": 3531.195,
+          "targetR": 1.25,
+          "takeProfit": 3498.25275,
+          "share": 0.4,
+          "expiresAt": 1795593600,
+          "savedResult": "sl",
+          "savedR": -1
+        },
+        {
+          "slot": 25,
+          "entry": 3517.4075000000003,
+          "risk": 13.787499999999909,
+          "stopLoss": 3531.195,
+          "targetR": 1.25,
+          "takeProfit": 3500.1731250000003,
+          "share": 0.6,
+          "expiresAt": 1795593600,
+          "savedResult": "sl",
+          "savedR": -1
+        }
+      ],
+      "sign": -1,
+      "day": "2026-11-25",
+      "signalNepal": "12:30",
+      "decisionAt": 1795590000,
+      "zoneTimeframe": "M15",
+      "obstacles": [
+        {
+          "timeframe": "M5",
+          "id": "DB-1795200300-3506.4138",
+          "name": "DB",
+          "bottom": 3502.8,
+          "top": 3506.4138,
+          "startTime": 1795200300,
+          "activeFromTime": 1795389000,
+          "fib": true,
+          "fibSources": [
+            "structure"
+          ],
+          "fibBand": "DB/DT",
+          "reversalConfirmed": false,
+          "distances": [
+            {
+              "slot": 10,
+              "inPath": true,
+              "roomR": 0.6925893040093043,
+              "beforeTP": true
+            },
+            {
+              "slot": 25,
+              "inPath": true,
+              "roomR": 0.7973671804170819,
+              "beforeTP": true
+            }
+          ]
+        },
+        {
+          "timeframe": "M15",
+          "id": "TJL1-1795144500-3523.3856",
+          "name": "QML",
+          "bottom": 3517.27,
+          "top": 3523.3856,
+          "startTime": 1795144500,
+          "activeFromTime": 1795397400,
+          "fib": false,
+          "fibSources": [],
+          "reversalConfirmed": false,
+          "distances": [
+            {
+              "slot": 10,
+              "inPath": false,
+              "roomR": null,
+              "beforeTP": false
+            },
+            {
+              "slot": 25,
+              "inPath": true,
+              "roomR": 0,
+              "beforeTP": true
+            }
+          ]
+        },
+        {
+          "timeframe": "M15",
+          "id": "DB-1795200300-3507.0721",
+          "name": "DB",
+          "bottom": 3502.8,
+          "top": 3507.0721,
+          "startTime": 1795200300,
+          "activeFromTime": 1795397400,
+          "fib": true,
+          "fibSources": [
+            "structure"
+          ],
+          "fibBand": "DB/DT",
+          "reversalConfirmed": false,
+          "distances": [
+            {
+              "slot": 10,
+              "inPath": true,
+              "roomR": 0.6476265282426182,
+              "beforeTP": true
+            },
+            {
+              "slot": 25,
+              "inPath": true,
+              "roomR": 0.7496210335449109,
+              "beforeTP": true
+            }
+          ]
+        },
+        {
+          "timeframe": "M30",
+          "id": "TJL1-1795150800-3524.7768",
+          "name": "QML",
+          "bottom": 3514.41,
+          "top": 3524.7768,
+          "startTime": 1795150800,
+          "activeFromTime": 1795399200,
+          "fib": false,
+          "fibSources": [],
+          "reversalConfirmed": false,
+          "distances": [
+            {
+              "slot": 10,
+              "inPath": true,
+              "roomR": 0,
+              "beforeTP": true
+            },
+            {
+              "slot": 25,
+              "inPath": true,
+              "roomR": 0,
+              "beforeTP": true
+            }
+          ]
+        },
+        {
+          "timeframe": "M30",
+          "id": "DB-1795199400-3514.4377",
+          "name": "DB",
+          "bottom": 3502.8,
+          "top": 3514.4377,
+          "startTime": 1795199400,
+          "activeFromTime": 1795399200,
+          "fib": true,
+          "fibSources": [
+            "structure"
+          ],
+          "fibBand": "DB/DT",
+          "reversalConfirmed": false,
+          "distances": [
+            {
+              "slot": 10,
+              "inPath": true,
+              "roomR": 0.14454613755891854,
+              "beforeTP": true
+            },
+            {
+              "slot": 25,
+              "inPath": true,
+              "roomR": 0.21539800543973342,
+              "beforeTP": true
+            }
+          ]
+        },
+        {
+          "timeframe": "D",
+          "id": "TJL1-1745272800-3499.99",
+          "name": "TJL1",
+          "bottom": 3423.4916000000003,
+          "top": 3499.99,
+          "startTime": 1745272800,
+          "activeFromTime": 1757278800,
+          "fib": false,
+          "fibSources": [],
+          "reversalConfirmed": false,
+          "distances": [
+            {
+              "slot": 10,
+              "inPath": true,
+              "roomR": 1.131343487466718,
+              "beforeTP": true
+            },
+            {
+              "slot": 25,
+              "inPath": true,
+              "roomR": 1.2632819582956003,
+              "beforeTP": false
+            }
+          ]
+        }
+      ],
+      "trends": {
+        "M5": "bearish",
+        "M15": "bearish",
+        "M30": "bearish",
+        "H1": "bearish",
+        "H4": "bearish",
+        "D": "bearish"
+      },
+      "historyCounts": {
+        "M5": 5000,
+        "M15": 5000,
+        "M30": 4965,
+        "H1": 1500,
+        "H4": 1195,
+        "D": 498
+      },
+      "results": {
+        "baseline": {
+          "skipped": false,
+          "low": -1,
+          "high": -1,
+          "cost20": -1.014167643454344,
+          "cost50": -1.03541910863586,
+          "ambiguous": false,
+          "filled": true,
+          "latestExit": 1795592760,
+          "legs": [
+            {
+              "low": -1,
+              "high": -1,
+              "ambiguous": false,
+              "filled": true,
+              "costR20": 0.013660269107301344,
+              "costR50": 0.03415067276825336,
+              "reasons": [
+                "sl"
+              ],
+              "latestExit": 1795592760
+            },
+            {
+              "low": -1,
+              "high": -1,
+              "ambiguous": false,
+              "filled": true,
+              "costR20": 0.014505893019039082,
+              "costR50": 0.0362647325475977,
+              "reasons": [
+                "sl"
+              ],
+              "latestExit": 1795592760
+            }
+          ]
+        },
+        "skip_same_fib_tp": {
+          "skipped": true,
+          "low": 0,
+          "high": 0,
+          "cost20": 0,
+          "cost50": 0,
+          "ambiguous": false,
+          "filled": false,
+          "blockedBy": [
+            "M15:DB"
+          ]
+        },
+        "skip_same_any_tp": {
+          "skipped": true,
+          "low": 0,
+          "high": 0,
+          "cost20": 0,
+          "cost50": 0,
+          "ambiguous": false,
+          "filled": false,
+          "blockedBy": [
+            "M15:QML",
+            "M15:DB"
+          ]
+        },
+        "skip_all_fib_tp": {
+          "skipped": true,
+          "low": 0,
+          "high": 0,
+          "cost20": 0,
+          "cost50": 0,
+          "ambiguous": false,
+          "filled": false,
+          "blockedBy": [
+            "M5:DB",
+            "M15:DB",
+            "M30:DB"
+          ]
+        },
+        "skip_all_fib_1r": {
+          "skipped": true,
+          "low": 0,
+          "high": 0,
+          "cost20": 0,
+          "cost50": 0,
+          "ambiguous": false,
+          "filled": false,
+          "blockedBy": [
+            "M5:DB",
+            "M15:DB",
+            "M30:DB"
+          ]
+        },
+        "skip_confirmed_tp": {
+          "skipped": false,
+          "low": -1,
+          "high": -1,
+          "cost20": -1.014167643454344,
+          "cost50": -1.03541910863586,
+          "ambiguous": false,
+          "filled": true,
+          "latestExit": 1795592760,
+          "legs": [
+            {
+              "low": -1,
+              "high": -1,
+              "ambiguous": false,
+              "filled": true,
+              "costR20": 0.013660269107301344,
+              "costR50": 0.03415067276825336,
+              "reasons": [
+                "sl"
+              ],
+              "latestExit": 1795592760
+            },
+            {
+              "low": -1,
+              "high": -1,
+              "ambiguous": false,
+              "filled": true,
+              "costR20": 0.014505893019039082,
+              "costR50": 0.0362647325475977,
+              "reasons": [
+                "sl"
+              ],
+              "latestExit": 1795592760
+            }
+          ]
+        },
+        "cap_same_fib": {
+          "skipped": true,
+          "low": 0,
+          "high": 0,
+          "cost20": 0,
+          "cost50": 0,
+          "ambiguous": false,
+          "filled": false,
+          "blockedBy": [
+            "M15:DB"
+          ]
+        },
+        "cap_all_fib": {
+          "skipped": true,
+          "low": 0,
+          "high": 0,
+          "cost20": 0,
+          "cost50": 0,
+          "ambiguous": false,
+          "filled": false,
+          "blockedBy": [
+            "M5:DB",
+            "M15:DB",
+            "M30:DB"
+          ]
+        },
+        "exit_m5_opposite": {
+          "skipped": false,
+          "low": -0.2388433554153449,
+          "high": -0.2388433554153449,
+          "cost20": -0.2530109988696889,
+          "cost50": -0.27426246405120486,
+          "ambiguous": false,
+          "filled": true,
+          "latestExit": 1795590300,
+          "legs": [
+            {
+              "low": -0.2661020422102118,
+              "high": -0.2661020422102118,
+              "ambiguous": false,
+              "filled": true,
+              "costR20": 0.013660269107301344,
+              "costR50": 0.03415067276825336,
+              "reasons": [
+                "signal"
+              ],
+              "latestExit": 1795590300
+            },
+            {
+              "low": -0.22067089755210034,
+              "high": -0.22067089755210034,
+              "ambiguous": false,
+              "filled": true,
+              "costR20": 0.014505893019039082,
+              "costR50": 0.0362647325475977,
+              "reasons": [
+                "signal"
+              ],
+              "latestExit": 1795590300
+            }
+          ]
+        },
+        "exit_m5_fib_rejection": {
+          "skipped": false,
+          "low": -0.2388433554153449,
+          "high": -0.2388433554153449,
+          "cost20": -0.2530109988696889,
+          "cost50": -0.27426246405120486,
+          "ambiguous": false,
+          "filled": true,
+          "latestExit": 1795590300,
+          "legs": [
+            {
+              "low": -0.2661020422102118,
+              "high": -0.2661020422102118,
+              "ambiguous": false,
+              "filled": true,
+              "costR20": 0.013660269107301344,
+              "costR50": 0.03415067276825336,
+              "reasons": [
+                "signal"
+              ],
+              "latestExit": 1795590300
+            },
+            {
+              "low": -0.22067089755210034,
+              "high": -0.22067089755210034,
+              "ambiguous": false,
+              "filled": true,
+              "costR20": 0.014505893019039082,
+              "costR50": 0.0362647325475977,
+              "reasons": [
+                "signal"
+              ],
+              "latestExit": 1795590300
+            }
+          ]
+        },
+        "exit_m15_failure": {
+          "skipped": false,
+          "low": -0.3621018534681544,
+          "high": -0.3621018534681544,
+          "cost20": -0.37626949692249834,
+          "cost50": -0.39752096210401433,
+          "ambiguous": false,
+          "filled": true,
+          "latestExit": 1795591800,
+          "legs": [
+            {
+              "low": -0.3849463834437496,
+              "high": -0.3849463834437496,
+              "ambiguous": false,
+              "filled": true,
+              "costR20": 0.013660269107301344,
+              "costR50": 0.03415067276825336,
+              "reasons": [
+                "signal"
+              ],
+              "latestExit": 1795591800
+            },
+            {
+              "low": -0.3468721668177575,
+              "high": -0.3468721668177575,
+              "ambiguous": false,
+              "filled": true,
+              "costR20": 0.014505893019039082,
+              "costR50": 0.0362647325475977,
+              "reasons": [
+                "signal"
+              ],
+              "latestExit": 1795591800
+            }
+          ]
+        },
+        "be_05": {
+          "skipped": false,
+          "low": -1,
+          "high": -1,
+          "cost20": -1.014167643454344,
+          "cost50": -1.03541910863586,
+          "ambiguous": false,
+          "filled": true,
+          "latestExit": 1795592760,
+          "legs": [
+            {
+              "low": -1,
+              "high": -1,
+              "ambiguous": false,
+              "filled": true,
+              "costR20": 0.013660269107301344,
+              "costR50": 0.03415067276825336,
+              "reasons": [
+                "sl"
+              ],
+              "latestExit": 1795592760
+            },
+            {
+              "low": -1,
+              "high": -1,
+              "ambiguous": false,
+              "filled": true,
+              "costR20": 0.014505893019039082,
+              "costR50": 0.0362647325475977,
+              "reasons": [
+                "sl"
+              ],
+              "latestExit": 1795592760
+            }
+          ]
+        },
+        "partial_05": {
+          "skipped": false,
+          "low": -1,
+          "high": -1,
+          "cost20": -1.014167643454344,
+          "cost50": -1.03541910863586,
+          "ambiguous": false,
+          "filled": true,
+          "latestExit": 1795592760,
+          "legs": [
+            {
+              "low": -1,
+              "high": -1,
+              "ambiguous": false,
+              "filled": true,
+              "costR20": 0.013660269107301344,
+              "costR50": 0.03415067276825336,
+              "reasons": [
+                "sl"
+              ],
+              "latestExit": 1795592760
+            },
+            {
+              "low": -1,
+              "high": -1,
+              "ambiguous": false,
+              "filled": true,
+              "costR20": 0.014505893019039082,
+              "costR50": 0.0362647325475977,
+              "reasons": [
+                "sl"
+              ],
+              "latestExit": 1795592760
+            }
+          ]
+        }
+      },
+      "savedR": -1
+    },
+    {
+      "key": "SCALPING:1795609200:bearish",
+      "style": "SCALPING",
+      "signalAt": 1795609200,
+      "direction": "bearish",
+      "legs": [
+        {
+          "slot": 0,
+          "entry": 3519.58,
+          "risk": 4,
+          "stopLoss": 3523.58,
+          "targetR": 3,
+          "takeProfit": 3507.58,
+          "share": 1,
+          "expiresAt": 1795611060,
+          "savedResult": "sl",
+          "savedR": -1
+        }
+      ],
+      "sign": -1,
+      "day": "2026-11-25",
+      "signalNepal": "18:05",
+      "decisionAt": 1795609260,
+      "zoneTimeframe": "M15",
+      "obstacles": [
+        {
+          "timeframe": "M1",
+          "id": "TJL1-1795606620-3511.6261999999997",
+          "name": "QML",
+          "bottom": 3508.9,
+          "top": 3511.6261999999997,
+          "startTime": 1795606620,
+          "activeFromTime": 1795609020,
+          "fib": false,
+          "fibSources": [],
+          "reversalConfirmed": false,
+          "distances": [
+            {
+              "slot": 0,
+              "inPath": true,
+              "roomR": 1.9884500000000571,
+              "beforeTP": true
+            }
+          ]
+        },
+        {
+          "timeframe": "M1",
+          "id": "TJL2-1795607460-3517.25",
+          "name": "RBS",
+          "bottom": 3515.5331,
+          "top": 3517.25,
+          "startTime": 1795607460,
+          "activeFromTime": 1795609020,
+          "fib": false,
+          "fibSources": [],
+          "reversalConfirmed": false,
+          "distances": [
+            {
+              "slot": 0,
+              "inPath": true,
+              "roomR": 0.5824999999999818,
+              "beforeTP": true
+            }
+          ]
+        },
+        {
+          "timeframe": "M30",
+          "id": "TJL1-1795150800-3524.7768",
+          "name": "QML",
+          "bottom": 3514.41,
+          "top": 3524.7768,
+          "startTime": 1795150800,
+          "activeFromTime": 1795399200,
+          "fib": false,
+          "fibSources": [],
+          "reversalConfirmed": false,
+          "distances": [
+            {
+              "slot": 0,
+              "inPath": true,
+              "roomR": 0,
+              "beforeTP": true
+            }
+          ]
+        },
+        {
+          "timeframe": "M30",
+          "id": "DB-1795199400-3514.4377",
+          "name": "DB",
+          "bottom": 3502.8,
+          "top": 3514.4377,
+          "startTime": 1795199400,
+          "activeFromTime": 1795399200,
+          "fib": true,
+          "fibSources": [
+            "structure"
+          ],
+          "fibBand": "DB/DT",
+          "reversalConfirmed": false,
+          "distances": [
+            {
+              "slot": 0,
+              "inPath": true,
+              "roomR": 1.2855749999999944,
+              "beforeTP": true
+            }
+          ]
+        }
+      ],
+      "trends": {
+        "M1": "bullish",
+        "M5": "bearish",
+        "M15": "bearish",
+        "M30": "bearish",
+        "H1": "bearish",
+        "H4": "bearish",
+        "D": "bearish"
+      },
+      "historyCounts": {
+        "M1": 5000,
+        "M5": 5000,
+        "M15": 5000,
+        "M30": 4975,
+        "H1": 1500,
+        "H4": 1196,
+        "D": 498
+      },
+      "results": {
+        "baseline": {
+          "skipped": false,
+          "low": -1,
+          "high": -1,
+          "cost20": -1.05,
+          "cost50": -1.125,
+          "ambiguous": false,
+          "filled": true,
+          "latestExit": 1795609620,
+          "legs": [
+            {
+              "low": -1,
+              "high": -1,
+              "ambiguous": false,
+              "filled": true,
+              "costR20": 0.05,
+              "costR50": 0.125,
+              "reasons": [
+                "sl"
+              ],
+              "latestExit": 1795609620
+            }
+          ]
+        },
+        "skip_same_fib_tp": {
+          "skipped": false,
+          "low": -1,
+          "high": -1,
+          "cost20": -1.05,
+          "cost50": -1.125,
+          "ambiguous": false,
+          "filled": true,
+          "latestExit": 1795609620,
+          "legs": [
+            {
+              "low": -1,
+              "high": -1,
+              "ambiguous": false,
+              "filled": true,
+              "costR20": 0.05,
+              "costR50": 0.125,
+              "reasons": [
+                "sl"
+              ],
+              "latestExit": 1795609620
+            }
+          ]
+        },
+        "skip_same_any_tp": {
+          "skipped": false,
+          "low": -1,
+          "high": -1,
+          "cost20": -1.05,
+          "cost50": -1.125,
+          "ambiguous": false,
+          "filled": true,
+          "latestExit": 1795609620,
+          "legs": [
+            {
+              "low": -1,
+              "high": -1,
+              "ambiguous": false,
+              "filled": true,
+              "costR20": 0.05,
+              "costR50": 0.125,
+              "reasons": [
+                "sl"
+              ],
+              "latestExit": 1795609620
+            }
+          ]
+        },
+        "skip_all_fib_tp": {
+          "skipped": true,
+          "low": 0,
+          "high": 0,
+          "cost20": 0,
+          "cost50": 0,
+          "ambiguous": false,
+          "filled": false,
+          "blockedBy": [
+            "M30:DB"
+          ]
+        },
+        "skip_all_fib_1r": {
+          "skipped": false,
+          "low": -1,
+          "high": -1,
+          "cost20": -1.05,
+          "cost50": -1.125,
+          "ambiguous": false,
+          "filled": true,
+          "latestExit": 1795609620,
+          "legs": [
+            {
+              "low": -1,
+              "high": -1,
+              "ambiguous": false,
+              "filled": true,
+              "costR20": 0.05,
+              "costR50": 0.125,
+              "reasons": [
+                "sl"
+              ],
+              "latestExit": 1795609620
+            }
+          ]
+        },
+        "skip_confirmed_tp": {
+          "skipped": false,
+          "low": -1,
+          "high": -1,
+          "cost20": -1.05,
+          "cost50": -1.125,
+          "ambiguous": false,
+          "filled": true,
+          "latestExit": 1795609620,
+          "legs": [
+            {
+              "low": -1,
+              "high": -1,
+              "ambiguous": false,
+              "filled": true,
+              "costR20": 0.05,
+              "costR50": 0.125,
+              "reasons": [
+                "sl"
+              ],
+              "latestExit": 1795609620
+            }
+          ]
+        },
+        "cap_same_fib": {
+          "skipped": false,
+          "low": -1,
+          "high": -1,
+          "cost20": -1.05,
+          "cost50": -1.125,
+          "ambiguous": false,
+          "filled": true,
+          "latestExit": 1795609620,
+          "legs": [
+            {
+              "low": -1,
+              "high": -1,
+              "ambiguous": false,
+              "filled": true,
+              "costR20": 0.05,
+              "costR50": 0.125,
+              "reasons": [
+                "sl"
+              ],
+              "latestExit": 1795609620
+            }
+          ]
+        },
+        "cap_all_fib": {
+          "skipped": false,
+          "low": -1,
+          "high": -1,
+          "cost20": -1.05,
+          "cost50": -1.125,
+          "ambiguous": false,
+          "filled": true,
+          "latestExit": 1795609620,
+          "legs": [
+            {
+              "low": -1,
+              "high": -1,
+              "ambiguous": false,
+              "filled": true,
+              "costR20": 0.05,
+              "costR50": 0.125,
+              "reasons": [
+                "sl"
+              ],
+              "latestExit": 1795609620
+            }
+          ]
+        },
+        "exit_m5_opposite": {
+          "skipped": false,
+          "low": -1,
+          "high": -1,
+          "cost20": -1.05,
+          "cost50": -1.125,
+          "ambiguous": false,
+          "filled": true,
+          "latestExit": 1795609620,
+          "legs": [
+            {
+              "low": -1,
+              "high": -1,
+              "ambiguous": false,
+              "filled": true,
+              "costR20": 0.05,
+              "costR50": 0.125,
+              "reasons": [
+                "sl"
+              ],
+              "latestExit": 1795609620
+            }
+          ]
+        },
+        "exit_m5_fib_rejection": {
+          "skipped": false,
+          "low": -1,
+          "high": -1,
+          "cost20": -1.05,
+          "cost50": -1.125,
+          "ambiguous": false,
+          "filled": true,
+          "latestExit": 1795609620,
+          "legs": [
+            {
+              "low": -1,
+              "high": -1,
+              "ambiguous": false,
+              "filled": true,
+              "costR20": 0.05,
+              "costR50": 0.125,
+              "reasons": [
+                "sl"
+              ],
+              "latestExit": 1795609620
+            }
+          ]
+        },
+        "exit_m15_failure": {
+          "skipped": false,
+          "low": -1,
+          "high": -1,
+          "cost20": -1.05,
+          "cost50": -1.125,
+          "ambiguous": false,
+          "filled": true,
+          "latestExit": 1795609620,
+          "legs": [
+            {
+              "low": -1,
+              "high": -1,
+              "ambiguous": false,
+              "filled": true,
+              "costR20": 0.05,
+              "costR50": 0.125,
+              "reasons": [
+                "sl"
+              ],
+              "latestExit": 1795609620
+            }
+          ]
+        },
+        "be_05": {
+          "skipped": false,
+          "low": 0,
+          "high": 0,
+          "cost20": -0.05,
+          "cost50": -0.125,
+          "ambiguous": false,
+          "filled": true,
+          "latestExit": 1795609500,
+          "legs": [
+            {
+              "low": 0,
+              "high": 0,
+              "ambiguous": false,
+              "filled": true,
+              "costR20": 0.05,
+              "costR50": 0.125,
+              "reasons": [
+                "be"
+              ],
+              "latestExit": 1795609500
+            }
+          ]
+        },
+        "partial_05": {
+          "skipped": false,
+          "low": 0.25,
+          "high": 0.25,
+          "cost20": 0.2,
+          "cost50": 0.125,
+          "ambiguous": false,
+          "filled": true,
+          "latestExit": 1795609500,
+          "legs": [
+            {
+              "low": 0.25,
+              "high": 0.25,
+              "ambiguous": false,
+              "filled": true,
+              "costR20": 0.05,
+              "costR50": 0.125,
+              "reasons": [
+                "be"
+              ],
+              "latestExit": 1795609500
+            }
+          ]
+        }
+      },
+      "savedR": -1
+    }
+  ]
+}

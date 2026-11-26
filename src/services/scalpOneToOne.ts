@@ -5,6 +5,7 @@ import type { MarketTrend, TradeLevels, TradeTimeframe } from './tradeLevels';
 import type { JournalTradeRecord } from '../components/TradeJournal';
 import type { StructureCandle } from './marketStructure';
 import { ABHI_SCALP_EXPIRY_SECONDS } from './pullbackExpiry';
+import { abhiScalpM15FibDecision } from './abhiScalpM15Fib';
 
 /** Chart results are simulations, never broker fills. Pending/ambiguous rows are not results. */
 export function scalpOneToOneChartRecord(r: VolumeStudyRecord): JournalTradeRecord | undefined {
@@ -26,7 +27,7 @@ export function scalpOneToOneChartRecord(r: VolumeStudyRecord): JournalTradeReco
   };
 }
 
-/** Live adapter for the approved study. No zone/Fib requirement or altered exit rule. */
+/** Live adapter with the same confirmation-time M15 Fib path veto as chart history. */
 export function buildScalpOneToOneSignals(candles: StudyCandles, now: number,
   pendingExpiryMinutes: number, maximumAgeSeconds = 120): Mt5SignalInput[] {
   if (!candles.M15?.length || !candles.H1?.length || !candles.H4?.length) return [];
@@ -58,7 +59,7 @@ export function scalpOneToOnePullbackSignals(r: VolumeStudyRecord, candles: Stud
     return { leg, entry, risk: sign * (entry - base.stopLoss) };
   });
   if (plans.some(p => !(p.risk > 0 && p.risk <= 30.000001))) return [];
-  return plans.map(({ leg, entry, risk }) => {
+  const signals: Mt5SignalInput[] = plans.map(({ leg, entry, risk }) => {
     const takeProfit = entry + sign * risk * 1.25;
     const riskShare = leg === 10 ? 0.4 : 0.6;
     return { ...base, id: `${base.id}:P${leg}`, setupId: `${base.setupId}:P${leg}`,
@@ -69,9 +70,10 @@ export function scalpOneToOnePullbackSignals(r: VolumeStudyRecord, candles: Stud
         nextOpen: confirmation.close, confirmationClose: confirmation.close, confirmationRange: range,
         confirmationBody: body, setupKey: `ABHI_SCALP:${r.signal.time}:${r.signal.direction}` },
       journalContext: { ...base.journalContext!, autoReason: `${base.journalContext!.autoReason.replace('fixed 1:1 target.', 'original pattern SL.')} `
-        + `Abhi Scalp Logic: ${leg}% confirmation-body pullback from its close; ${Math.round(riskShare * 100)}% of setup risk. Body >=30% of range. Original SL; this entry's fixed 1.25R TP; 60-minute expiry.` },
+        + `Abhi Scalp Logic: ${leg}% confirmation-body pullback from its close; ${Math.round(riskShare * 100)}% of setup risk. Body >=30% of range. Original SL; this entry's fixed 1.25R TP; 60-minute expiry. M15 opposing Fib-zone path clear at confirmation.` },
     };
   });
+  return abhiScalpM15FibDecision(signals[0], candles).status === 'allowed' ? signals : [];
 }
 
 /** Every next-bar event order consistent with OHLC, including partial fills before TP. */

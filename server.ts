@@ -1,6 +1,7 @@
 import { buildBollingerM5Signals } from './src/services/bollingerM5';
 import 'dotenv/config';
 import { buildScalpOneToOneSignals } from './src/services/scalpOneToOne';
+import { abhiScalpM15FibDecision } from './src/services/abhiScalpM15Fib';
 import { buildPullbackChartSetups } from './src/services/pullbackChartSetup';
 import { pullbackTelegramAlerts } from './src/services/pullbackTelegram';
 import { buildIntradayPullbackSignals, intradayPullbackSignalError, sameIntradayPullbackSetup } from './src/services/intradayPullback';
@@ -2278,6 +2279,7 @@ async function startServer() {
         const signals = await readMt5Signals();
         if (!mt5ConnectionMatches(mt5Context().mt5BridgeHeartbeat, req.body) || !mt5ExecutionFeedIsFresh()
           || !mt5DailyRiskAllowsEntry(mt5Context().mt5BridgeHeartbeat?.dailyRisk)) return null;
+        const awaitingScalpFibHistory = new Set<string>();
         for (const item of signals) {
           if (item.intradayEntry && ['QUEUED', 'CLAIMED', 'PLACED'].includes(item.status)
             && signals.some(sibling => sibling.id !== item.id && sameIntradayPullbackSetup(item, sibling)
@@ -2309,6 +2311,14 @@ async function startServer() {
             item.updatedAt = now;
             item.message = disabledReason;
           }
+          if (item.status === 'QUEUED' && item.tradeStyle === 'SCALP_1_1' && item.scalpEntry?.version === 4) {
+            const decision = abhiScalpM15FibDecision(item, mt5Context().automationCandleCache);
+            if (decision.status === 'unavailable') awaitingScalpFibHistory.add(item.id);
+            if (decision.status === 'blocked') {
+              item.status = 'REJECTED'; item.updatedAt = now;
+              item.message = `Abhi Scalp entry blocked: opposing M15 ${decision.block.zone.name} Fib zone lies before planned TP.`;
+            }
+          }
           if (item.status === 'QUEUED') {
             Object.assign(item, applySignalOppositePositionTarget(
               item,
@@ -2318,6 +2328,7 @@ async function startServer() {
         }
         const next = signals.find((item) => (
           item.status === 'QUEUED'
+          && !awaitingScalpFibHistory.has(item.id)
           && mt5ConnectionMatches(mt5Context().mt5BridgeHeartbeat, item)
           && !mt5SignalDisabledReason(config, item)
         ));

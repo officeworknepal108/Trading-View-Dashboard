@@ -1,0 +1,64 @@
+{
+  "createdUTC": "2026-11-26T01:32:34.508Z",
+  "engineVersion": "v2",
+  "sourceHash": "6ea58b3a9ecc261be13624cb175c63f8e61f007f1445095c40eee460fdfa2df1",
+  "rules": [
+    {
+      "id": "baseline",
+      "label": "Original SL and target"
+    },
+    {
+      "id": "skip_same_fib_tp",
+      "label": "Skip: same-chart opposing Fib zone before TP"
+    },
+    {
+      "id": "skip_same_any_tp",
+      "label": "Skip: same-chart opposing zone before TP"
+    },
+    {
+      "id": "skip_all_fib_tp",
+      "label": "Skip: any studied timeframe opposing Fib zone before TP"
+    },
+    {
+      "id": "skip_all_fib_1r",
+      "label": "Skip: any opposing Fib zone within 1R"
+    },
+    {
+      "id": "skip_confirmed_tp",
+      "label": "Skip: already-confirmed opposing reversal before TP"
+    },
+    {
+      "id": "cap_same_fib",
+      "label": "TP before same-chart Fib zone; skip if reward below 0.75R"
+    },
+    {
+      "id": "cap_all_fib",
+      "label": "TP before nearest Fib zone; skip if reward below 0.75R"
+    },
+    {
+      "id": "exit_m5_opposite",
+      "label": "Exit after closed opposite M5 engulfing"
+    },
+    {
+      "id": "exit_m5_fib_rejection",
+      "label": "Exit after opposite M5 engulfing touching a known opposing Fib zone"
+    },
+    {
+      "id": "exit_m15_failure",
+      "label": "Exit after M15 closes beyond confirmation open against trade"
+    },
+    {
+      "id": "be_05",
+      "label": "Breakeven after +0.5R"
+    },
+    {
+      "id": "partial_05",
+      "label": "Take half at +0.5R; stop remainder at entry"
+    }
+  ],
+  "universe": "Saved v4 Abhi setups with both recorded legs, Oct7-Nov25; two Nov25 M1 zone scalps analysed separately. Original qualification is not rebuilt. Only already-filled/closed saved samples are available.",
+  "cutoff": "Only candles fully closed at signal confirmation; active valid opposing zones only. Fib is reconstructed independently at each cutoff. No current/future zones veto earlier trades.",
+  "room": "Zone near edge in favorable direction; overlap gives zero room. Skip entire setup if either intended leg is blocked. TP buffer is 0.1R before obstacle; adjusted target must be at least 0.75R.",
+  "splits": "Oct7-31 development comparison; Nov1-24 later comparison; Nov25 case study. All dates previously inspected, not untouched holdout data.",
+  "execution": "Current broker M1 bid OHLC; original planned entries reconstructed before outcome. 60min Abhi limit expiry; legacy 30min assumed. OHLC two intrabar paths, entry and bracket ordering preserved. Gross R and 0.20/0.50 price-unit round-trip sensitivity. Stop gaps use bar open. Signal exits execute next M1 open, never on the signalling close."
+}

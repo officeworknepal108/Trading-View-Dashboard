@@ -124,7 +124,6 @@ import {
   twoMonthAccuracyWindow,
   tradeRecordDatePeriodKey,
   tradeRecordPeriodLabel,
-  countTradeSetups,
   type TradeRecordFilters,
 } from '../services/tradeRecordFilters';
 import { deduplicateTradeRecords } from '../services/tradeRecordDeduplication';
@@ -165,6 +164,7 @@ import {
 } from '../services/zoneConfluence';
 import {
   TradeJournal,
+  combineJournalTradeSetups,
   renderHistoricalTradeSnapshot,
   type JournalTradeRecord,
 } from './TradeJournal';
@@ -2553,8 +2553,8 @@ export const EngulfingAccuracyTable: React.FC<{
   const filteredAllRecords = useMemo(
     () => filterAccuracyTradeRecords<AccuracyTradeRecord>(
       activeTab === 'MT5'
-        ? selectTwoMonthJournalRecords(mt5Records, historyAsOf)
-        : selectTwoMonthAccuracyRecords(allRecords, historyAsOf),
+        ? selectTwoMonthJournalRecords(combineJournalTradeSetups(mt5Records), historyAsOf)
+        : selectTwoMonthAccuracyRecords(combineJournalTradeSetups(allRecords), historyAsOf),
       { ...filters, tradeStyle: selectedStrategies }, timeZone, marketSymbol)
       .filter((record) => matchesAccuracyTradingTime(record, tradingTimeFilter)),
     [activeTab, allRecords, mt5Records, filters, timeZone, tradingTimeFilter, selectedStrategies, historyAsOf, marketSymbol],
@@ -2563,13 +2563,18 @@ export const EngulfingAccuracyTable: React.FC<{
     record.result === 'tp' || record.result === 'sl' || record.result === 'rf'
   )), [filteredAllRecords]);
   const visibleChartLinks = useMemo(() => {
-    const selectedIds = new Set(summaryRecords.map((record) => record.id));
-    return chartArrowRecordLinks(entryArrows, records.filter(record => selectedIds.has(record.id)));
+    const links = new Map<string, Set<string>>();
+    for (const setup of summaryRecords) {
+      const selectedIds = new Set((setup.setupEntries ?? [setup]).map(record => record.id));
+      const entryLinks = chartArrowRecordLinks(entryArrows, records.filter(record => selectedIds.has(record.id)));
+      links.set(setup.id, new Set([...entryLinks.values()].flatMap(ids => [...ids])));
+    }
+    return new Map([...links].filter(([, ids]) => ids.size > 0));
   }, [records, entryArrows, summaryRecords]);
   const visibleChartIds = new Set(visibleChartLinks.keys());
   const visibleArrowIds = new Set([...visibleChartLinks.values()].flatMap(ids => [...ids]));
   const timeframeCounts = accuracyCounts(summaryRecords);
-  const summarySetupCount = countTradeSetups(summaryRecords);
+  const summarySetupCount = summaryRecords.length;
   const availableTimeframes = useMemo(() => Array.from(new Set<TradeTimeframe>(
     [...TIMEFRAMES.map(({ value }) => value),
       ...allRecords.map((record) => record.signalTimeframe),
@@ -2590,7 +2595,7 @@ export const EngulfingAccuracyTable: React.FC<{
       <tr key={title} className="border-t border-slate-200 bg-white/95">
         <td className="whitespace-nowrap px-1.5 py-0.5 text-left font-bold text-slate-700">
           {title}{setupRecords && <div className="text-[7px] font-semibold text-slate-500">
-            {countTradeSetups(setupRecords)} {countTradeSetups(setupRecords) === 1 ? 'setup' : 'setups'} / {setupRecords.length} {setupRecords.length === 1 ? 'entry' : 'entries'}
+            {setupRecords.length} {setupRecords.length === 1 ? 'setup' : 'setups'}
           </div>}
         </td>
         <td className="px-1.5 py-0.5 font-black text-rose-700">{counts.sl}</td>
@@ -2621,7 +2626,7 @@ export const EngulfingAccuracyTable: React.FC<{
     }`}>
       <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-slate-300 bg-indigo-50 px-2 py-1 text-[9px] font-black uppercase tracking-wide text-indigo-700">
         <span>
-          {marketSymbol} trade accuracy · {summarySetupCount} {summarySetupCount === 1 ? 'setup' : 'setups'} / {summaryRecords.length} {summaryRecords.length === 1 ? 'entry' : 'entries'} · {entryArrowsVisible ? visibleArrowIds.size : 0} {visibleArrowIds.size === 1 ? 'arrow' : 'arrows'}
+          {marketSymbol} trade accuracy · {summarySetupCount} {summarySetupCount === 1 ? 'setup' : 'setups'} · {entryArrowsVisible ? visibleArrowIds.size : 0} {visibleArrowIds.size === 1 ? 'arrow' : 'arrows'}
         </span>
         <TradeMultiSelect
           allLabel="ALL TIMEFRAMES"
@@ -2689,7 +2694,7 @@ export const EngulfingAccuracyTable: React.FC<{
                 : filters.timeframes.map((value) => GRANULARITY_LABELS[value].toUpperCase()).join(', ') || 'NONE', timeframeCounts)}
               {marketSymbol === 'XAUUSD' && <>
                 {header('Trade style')}
-                {(() => { const rows = summaryRecords.filter((record) => record.tradeStyle === 'INTRADAY'); return resultRow('INTRADAY ENTRIES', accuracyCounts(rows), rows); })()}
+                {(() => { const rows = summaryRecords.filter((record) => record.tradeStyle === 'INTRADAY'); return resultRow('INTRADAY', accuracyCounts(rows), rows); })()}
                 {(() => { const rows = summaryRecords.filter((record) => record.tradeStyle === 'SCALPING'); return resultRow('SCALPING', accuracyCounts(rows), rows); })()}
                 {(() => { const rows = summaryRecords.filter((record) => record.tradeStyle === 'SCALP_1_1'); return resultRow('ABHI SCALP', accuracyCounts(rows), rows); })()}
                 {(() => { const rows = summaryRecords.filter(record => record.tradeStyle === 'BOLLINGER_M5' && !record.mt5Managed && record.brokerTicket === undefined); return resultRow('BB M5 CHART STUDY', accuracyCounts(rows), rows); })()}
@@ -2808,9 +2813,10 @@ export const EngulfingAccuracyTable: React.FC<{
                   <td className="px-1.5 py-1 font-bold text-indigo-700">{record.tradeStyle === 'BOLLINGER_M5' ? 'BOLLINGER M5' : record.tradeStyle === 'SCALP_1_1' ? 'SCALP 1:1' : record.tradeStyle ?? '—'}</td>
                   <td className="whitespace-nowrap px-1.5 py-1 text-left font-bold text-slate-700">
                     {record.zoneName}
+                    {record.setupEntries && <div className="text-[8px] text-slate-500">Combined entries · weighted prices</div>}
                     {(record.tradeStyle === 'SCALP_1_1' || record.tradeStyle === 'BOLLINGER_M5') && <div className="text-[8px] text-slate-500">
                       {record.mt5Managed || record.brokerTicket !== undefined ? 'MT5' : 'CHART ONLY'}
-                      {record.scalpEntry && ` · ${record.scalpEntry.leg}% pullback / ${Math.round(record.scalpEntry.riskShare * 100)}% risk`}
+                      {!record.setupEntries && record.scalpEntry && ` · ${record.scalpEntry.leg}% pullback / ${Math.round(record.scalpEntry.riskShare * 100)}% risk`}
                     </div>}
                   </td>
                   <td className={`px-1.5 py-1 font-black ${
@@ -2831,7 +2837,7 @@ export const EngulfingAccuracyTable: React.FC<{
                   <td className="whitespace-nowrap px-1.5 py-1 text-slate-700">{formatPrice(record.takeProfit)}</td>
                   <td className="px-1.5 py-1 font-bold text-slate-700">1:{record.rewardRisk}</td>
                   {activeTab === 'MT5' && <>
-                    <td className="px-1.5 py-1 font-bold text-indigo-700">#{record.brokerTicket}</td>
+                    <td className="px-1.5 py-1 font-bold text-indigo-700">{(record.setupEntries ?? [record]).map(entry => `#${entry.brokerTicket}`).join(' / ')}</td>
                     <td className="px-1.5 py-1 text-slate-700">{record.volume ?? '—'}</td>
                     <td className="px-1.5 py-1 text-slate-700">{record.realizedProfit === undefined ? '—' : record.realizedProfit.toFixed(2)}</td>
                   </>}
@@ -4799,7 +4805,7 @@ export const OandaProChart: React.FC<{
       if (event.data.fills) setScalpOneToOneChartFills(event.data.fills);
       setScalpOneToOneHistoryStatus(event.data.error ?? (event.data.progress !== undefined
         ? `Loading Abhi Scalp Logic chart results... ${event.data.progress}%`
-        : `Abhi Scalp Logic: ${event.data.fills?.length ?? 0} confirmed historical entry fills. Results and MT5 executions are tracked separately.`));
+        : `Abhi Scalp Logic · M15 Fib-zone entry filter: ${event.data.fills?.length ?? 0} confirmed historical entry fills. Results and MT5 executions are tracked separately.`));
     };
     task.onerror = () => setScalpOneToOneHistoryStatus('Abhi Scalp Logic history unavailable.');
     return () => {
@@ -11453,7 +11459,7 @@ export const OandaProChart: React.FC<{
                 {mtf && <div>Entry zone: <b>{timeframeName(trade.signal.timeframe)} {zoneName(entryZone)}</b></div>}
                 {entry.style === 'BOLLINGER_M5' ? <div>Confirmation: <b>M5 Bollinger re-entry, EMA200, SuperTrend, ADX ≥15, confirmed H4 bias. One entry; fixed SL / 1.5R TP.</b></div> : <div>Confirmation: <b>{timeframeName(trade.signal.timeframe)} {bullish ? 'bullish' : 'bearish'} engulfing {trade.signal.type}</b></div>}
                 {entry.style === 'BOLLINGER_M5' ? <div>Entry method: <b>One market entry; original SL and TP fixed</b></div>
-                  : scalpOneToOne ? <div>Entry method: <b>{entry.pullbackSetup?.abhi || record?.scalpEntry?.version === 4 ? 'Abhi Scalp Logic: confirmation-close 10% / 25% body pullbacks · 40% / 60% setup risk · original SL · separate 1.25R targets · body >=30% range' : '10% / 25% body pullbacks · 60% / 40% setup risk · original SL/TP fixed'} · M15 volume decrease ≥ 250 units · H4 bias + EMA20/50 · H1 continuation/Far</b></div>
+                  : scalpOneToOne ? <div>Entry method: <b>{entry.pullbackSetup?.abhi || record?.scalpEntry?.version === 4 ? 'Abhi Scalp Logic: confirmation-close 10% / 25% body pullbacks · 40% / 60% setup risk · original SL · separate 1.25R targets · body >=30% range · skip when an opposing M15 Fib zone lies before either TP' : '10% / 25% body pullbacks · 60% / 40% setup risk · original SL/TP fixed'} · M15 volume decrease ≥ 250 units · H4 bias + EMA20/50 · H1 continuation/Far</b></div>
                   : entry.pullbackSetup ? <div>Entry method: <b>{entry.pullbackSetup.abhi ? 'Abhi Scalp Logic: confirmation-close 10% / 25% pullbacks · 40% / 60% risk · individual 1.25R targets' : '10% / 25% body pullbacks · 60% / 40% setup risk · original SL/TP fixed'}</b></div>
                   : !mtf && <div>Entry method: <b>Candle confirmation at the main zone</b></div>}
                 {entry.fib !== 'Not recorded' && <div>Fibonacci: <b>{entry.fib}</b></div>}

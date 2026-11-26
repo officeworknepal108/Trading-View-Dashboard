@@ -51,8 +51,8 @@ test('accuracy links both pullback legs to one rendered chart arrow and excludes
     timeframe: 'M15', showAllTrades: true, historyAsOf: 3600, timeZone: 'UTC', marketSymbol: 'XAUUSD',
     entryArrowsVisible: true, selectedStrategies: ['INTRADAY'], onStrategiesChange: () => {}, onClose: () => {},
   }));
-  assert.match(html, /trade accuracy · 1 setup \/ 2 entries · 1 arrow/);
-  assert.equal((html.match(/>ARROW</g) ?? []).length, 2, 'both filled accuracy rows link to that one chart marker');
+  assert.match(html, /trade accuracy · 1 setup · 1 arrow/);
+  assert.equal((html.match(/>ARROW</g) ?? []).length, 1, 'the combined accuracy setup links both filled legs to one chart marker');
 });
 
 for (const style of ['INTRADAY', 'SCALP_1_1'] as const) test(`${style}: one setup anchored to first fill with two distinct entries and fixed exits`, () => {

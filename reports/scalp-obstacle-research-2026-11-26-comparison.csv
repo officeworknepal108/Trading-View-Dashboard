@@ -1,0 +1,53 @@
+period,rule,label,setups,retained,skipped,netR,skippedRecordedLosses,skippedRecordedWinners,fullReplayStops,cost20R,cost50R,ambiguous
+Oct 7–31,baseline,Original SL and target,48,48,0,15.1,0,0,17,14.280839581997647,13.05209895499412,0
+Oct 7–31,skip_same_fib_tp,Skip: same-chart opposing Fib zone before TP,48,31,17,17.5,9,8,8,16.95805039811987,16.145125995299676,0
+Oct 7–31,skip_same_any_tp,Skip: same-chart opposing zone before TP,48,27,21,13.75,9,12,8,13.260415307063619,12.526038267659048,0
+Oct 7–31,skip_all_fib_tp,Skip: any studied timeframe opposing Fib zone before TP,48,14,34,8.5,14,20,4,8.226003973548654,7.815009933871634,0
+Oct 7–31,skip_all_fib_1r,Skip: any opposing Fib zone within 1R,48,17,31,10.0,13,18,5,9.669748632765266,9.174371581913167,0
+Oct 7–31,skip_confirmed_tp,Skip: already-confirmed opposing reversal before TP,48,26,22,16.5,11,11,6,16.019651032340583,15.299127580851456,0
+Oct 7–31,cap_same_fib,TP before same-chart Fib zone; skip if reward below 0.75R,48,35,13,18.551289855178954,7,6,9,17.94530071870619,17.036317013997046,0
+Oct 7–31,cap_all_fib,TP before nearest Fib zone; skip if reward below 0.75R,48,17,31,9.625791641155098,13,18,5,9.295540273920365,8.800163223068266,0
+Oct 7–31,exit_m5_opposite,Exit after closed opposite M5 engulfing,48,48,0,-9.828176832905491,0,0,3,-10.647337250907844,-11.87607787791137,0
+Oct 7–31,exit_m5_fib_rejection,Exit after opposite M5 engulfing touching a known opposing Fib zone,48,48,0,5.983581740904363,0,0,12,5.164421322902011,3.935680695898483,0
+Oct 7–31,exit_m15_failure,Exit after M15 closes beyond confirmation open against trade,48,48,0,-7.475516728699236,0,0,4,-8.294677146701588,-9.523417773705116,0
+Oct 7–31,be_05,Breakeven after +0.5R,48,48,0,3.6,0,0,13,2.780839581997648,1.5520989549941202,0
+Oct 7–31,partial_05,Take half at +0.5R; stop remainder at entry,48,48,0,2.6,0,0,13,1.7808395819976481,0.5520989549941203,0
+Nov 1–24,baseline,Original SL and target,33,33,0,14.85,0,0,11,14.262753609626543,13.381884024066357,0
+Nov 1–24,skip_same_fib_tp,Skip: same-chart opposing Fib zone before TP,33,28,5,17.6,4,1,7,17.112593584536015,16.38148396134004,0
+Nov 1–24,skip_same_any_tp,Skip: same-chart opposing zone before TP,33,28,5,17.6,4,1,7,17.112593584536015,16.38148396134004,0
+Nov 1–24,skip_all_fib_tp,Skip: any studied timeframe opposing Fib zone before TP,33,21,12,14.25,6,6,5,13.879947962872142,13.324869907180355,0
+Nov 1–24,skip_all_fib_1r,Skip: any opposing Fib zone within 1R,33,22,11,13.25,5,6,6,12.871010351108552,12.302525877771382,0
+Nov 1–24,skip_confirmed_tp,Skip: already-confirmed opposing reversal before TP,33,27,6,16.35,4,2,7,15.890231565829934,15.200578914574837,0
+Nov 1–24,cap_same_fib,TP before same-chart Fib zone; skip if reward below 0.75R,33,29,4,16.6,3,1,8,16.102067862713735,15.35516965678434,0
+Nov 1–24,cap_all_fib,TP before nearest Fib zone; skip if reward below 0.75R,33,23,10,12.25,4,6,7,11.860484629286272,11.276211573215683,0
+Nov 1–24,exit_m5_opposite,Exit after closed opposite M5 engulfing,33,33,0,0.025535925435406573,0,0,0,-0.5617104649380505,-1.4425800504982358,0
+Nov 1–24,exit_m5_fib_rejection,Exit after opposite M5 engulfing touching a known opposing Fib zone,33,33,0,16.852410579616816,0,0,8,16.26516418924336,15.384294603683175,0
+Nov 1–24,exit_m15_failure,Exit after M15 closes beyond confirmation open against trade,33,33,0,6.4112065894802335,0,0,2,5.823960199106776,4.943090613546591,0
+Nov 1–24,be_05,Breakeven after +0.5R,33,33,0,11.1,0,0,7,10.512753609626543,9.631884024066357,0
+Nov 1–24,partial_05,Take half at +0.5R; stop remainder at entry,33,33,0,8.1,0,0,7,7.512753609626543,6.631884024066358,0
+Nov 25,baseline,Original SL and target,4,4,0,-1.75,0,0,3,-1.807989415576786,-1.8949735389419644,0
+Nov 25,skip_same_fib_tp,Skip: same-chart opposing Fib zone before TP,4,1,3,-1,2,1,1,-1.0235984431707161,-1.0589961079267902,0
+Nov 25,skip_same_any_tp,Skip: same-chart opposing zone before TP,4,1,3,-1,2,1,1,-1.0235984431707161,-1.0589961079267902,0
+Nov 25,skip_all_fib_tp,Skip: any studied timeframe opposing Fib zone before TP,4,1,3,-1,2,1,1,-1.0235984431707161,-1.0589961079267902,0
+Nov 25,skip_all_fib_1r,Skip: any opposing Fib zone within 1R,4,1,3,-1,2,1,1,-1.0235984431707161,-1.0589961079267902,0
+Nov 25,skip_confirmed_tp,Skip: already-confirmed opposing reversal before TP,4,4,0,-1.75,0,0,3,-1.807989415576786,-1.8949735389419644,0
+Nov 25,cap_same_fib,TP before same-chart Fib zone; skip if reward below 0.75R,4,3,1,-1.00497592437072,1,0,2,-1.0487976964931616,-1.1145303546768244,0
+Nov 25,cap_all_fib,TP before nearest Fib zone; skip if reward below 0.75R,4,1,3,-1,2,1,1,-1.0235984431707161,-1.0589961079267902,0
+Nov 25,exit_m5_opposite,Exit after closed opposite M5 engulfing,4,4,0,-1.6847336668019781,0,0,0,-1.742723082378764,-1.8297072057439425,0
+Nov 25,exit_m5_fib_rejection,Exit after opposite M5 engulfing touching a known opposing Fib zone,4,4,0,0.16928695214074824,0,0,1,0.11129753656396224,0.02431341319878383,0
+Nov 25,exit_m15_failure,Exit after M15 closes beyond confirmation open against trade,4,4,0,-2.064092353566519,0,0,1,-2.122081769143305,-2.209065892508484,0
+Nov 25,be_05,Breakeven after +0.5R,4,4,0,0.25,0,0,1,0.19201058442321406,0.10502646105803572,0
+Nov 25,partial_05,Take half at +0.5R; stop remainder at entry,4,4,0,0.375,0,0,1,0.31701058442321417,0.23002646105803562,0
+All 85 setups,baseline,Original SL and target,85,85,0,28.2,0,0,31,26.735603776047405,24.539009440118512,0
+All 85 setups,skip_same_fib_tp,Skip: same-chart opposing Fib zone before TP,85,60,25,34.1,15,10,16,33.04704553948517,31.467613848712926,0
+All 85 setups,skip_same_any_tp,Skip: same-chart opposing zone before TP,85,56,29,30.35,15,14,16,29.34941044842892,27.848526121072297,0
+All 85 setups,skip_all_fib_tp,Skip: any studied timeframe opposing Fib zone before TP,85,36,49,21.75,22,27,10,21.08235349325008,20.080883733125198,0
+All 85 setups,skip_all_fib_1r,Skip: any opposing Fib zone within 1R,85,40,45,22.25,20,25,12,21.517160540703102,20.41790135175776,0
+All 85 setups,skip_confirmed_tp,Skip: already-confirmed opposing reversal before TP,85,57,28,31.1,15,13,16,30.10189318259373,28.60473295648433,0
+All 85 setups,cap_same_fib,TP before same-chart Fib zone; skip if reward below 0.75R,85,67,18,34.14631393080823,11,7,19,32.998570884926764,31.276956316104563,0
+All 85 setups,cap_all_fib,TP before nearest Fib zone; skip if reward below 0.75R,85,41,44,20.8757916411551,19,25,13,20.132426460035923,19.01737868835716,0
+All 85 setups,exit_m5_opposite,Exit after closed opposite M5 engulfing,85,85,0,-11.487374574272064,0,0,3,-12.951770798224658,-15.148365134153549,0
+All 85 setups,exit_m5_fib_rejection,Exit after opposite M5 engulfing touching a known opposing Fib zone,85,85,0,23.00527927266193,0,0,21,21.540883048709333,19.34428871278044,0
+All 85 setups,exit_m15_failure,Exit after M15 closes beyond confirmation open against trade,85,85,0,-3.128402492785521,0,0,7,-4.592798716738117,-6.789393052667009,0
+All 85 setups,be_05,Breakeven after +0.5R,85,85,0,14.95,0,0,21,13.485603776047405,11.289009440118514,0
+All 85 setups,partial_05,Take half at +0.5R; stop remainder at entry,85,85,0,11.075,0,0,21,9.610603776047405,7.414009440118514,0

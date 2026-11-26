@@ -1,0 +1,16 @@
+{
+  "counts": {
+    "accuracy": 83,
+    "journal": 83
+  },
+  "liveRecords": 212,
+  "liveArrowFills": 251,
+  "replayRecords": 212,
+  "replayArrowFills": 251,
+  "blockedSignalTimesExcluded": [
+    1795565700,
+    1795574700,
+    1795589100
+  ],
+  "browserErrors": []
+}

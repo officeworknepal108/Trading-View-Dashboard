@@ -7,12 +7,17 @@ import { SCALP_ONE_TO_ONE_RISK_OPTIONS, normalizeScalpOneToOneRisk, isTradeStyle
   mt5SignalDisabledReason, applySignalOppositePositionTarget,
   goldAutomationOpposingZoneBlocked, goldAutomationRepeatAreaBlocked, scalpOneToOneVolumePasses } from '../src/services/mt5Automation';
 import type { VolumeStudyRecord } from '../src/services/volumeEngulfingStudy';
-import { scalpOneToOnePullbackSignals, scalpOneToOneChartHistory, scalpOneToOneChartRecords, scalpPullbackBarStates } from '../src/services/scalpOneToOne';
+import { scalpOneToOnePullbackSignals as pullbackSignals, scalpOneToOneChartHistory as chartHistory, scalpOneToOneChartRecords as chartRecords, scalpPullbackBarStates } from '../src/services/scalpOneToOne';
+import { withScalpFibHistory } from './helpers/scalpFibHistory';
 import { scalpHistoryFillDisplays } from '../src/services/scalpChartDisplay';
 import { scalpPullbackSignalError } from '../src/services/mt5Automation';
 import { calculateJournalPerformance } from '../src/components/TradeJournal';
 import { deduplicateTradeRecords } from '../src/services/tradeRecordDeduplication';
 import type { StudyCandles } from '../src/services/trendlineStudyHistory';
+
+const scalpOneToOnePullbackSignals: typeof pullbackSignals = (record, candles, ...args) => pullbackSignals(record, withScalpFibHistory(candles), ...args);
+const scalpOneToOneChartHistory: typeof chartHistory = (record, candles, ...args) => chartHistory(record, withScalpFibHistory(candles), ...args);
+const scalpOneToOneChartRecords: typeof chartRecords = (record, candles, ...args) => chartRecords(record, withScalpFibHistory(candles), ...args);
 
 const record: VolumeStudyRecord = { id: 'VE:XAUUSD:M15:900',
   signal: { type: 'T1', direction: 'bullish', timeframe: 'M15', time: 900, candleCount: 2 },

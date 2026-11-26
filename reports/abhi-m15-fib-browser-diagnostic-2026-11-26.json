@@ -1,0 +1,23 @@
+{
+  "scanRecords": 212,
+  "scanFills": 251,
+  "accuracy": "XAUUSD TRADE ACCURACY · 83 SETUPS · 0 ARROWS\n15M ▾\nALL TIMES\nTRADING TIME\nNON-TRADING TIME\nSCALPING\nABHI SCALP LOGIC\nINTRADAY\nBOLLINGER M5\n×\n26 Sept 2026 – 26 Nov 2026\nALL SETUPS\nEXECUTED IN MT5\nTIMEFRAME\tSL\tRF\tTP\tTOTAL\tACCURACY%\n15M\t33\t0\t50\t83\t60.24%\nTRADE STYLE\tSL\tRF\tTP\tTOTAL\tACCURACY%\nINTRADAY\n0 setups\n\t0\t0\t0\t0\t—\nSCALPING\n0 setups\n\t0\t0\t0\t0\t—\nABHI SCALP\n83 setups\n\t33\t0\t50\t83\t60.24%\nBB M5 CHART STUDY\n0 setups\n\t0\t0\t0\t0\t—\nBB M5 MT5 FILLS\n0 setups\n\t0\t0\t0\t0\t—\nTRADE SOURCE\tSL\tRF\tTP\tTOTAL\tACCURACY%\nENGULFING\t33\t0\t50\t83\t60.24%\nMTF\t0\t0\t0\t0\t—\nZONE TYPE\tSL\tRF\tTP\tTOTAL\tACCURACY%\nTJL1\t0\t0\t0\t0\t—\nTJL2\t0\t0\t0\t0\t—\nQML\t0\t0\t0\t0\t—\nQML(A+)\t0\t0\t0\t0\t—\nQML(A++)\t0\t0\t0\t0\t—\nSBR\t0\t0\t0\t0\t—\nRBS\t0\t0\t0\t0\t—\nDB\t0\t0\t0\t0\t—\nDT\t0\t0\t0\t0\t—\nDBD\t0\t0\t0\t0\t—\nDTD\t0\t0\t0\t0\t—\nInternal QML A+\t0\t0\t0\t0\t—\nInternal QML A++\t0\t0\t0\t0\t—\nInternal DBD\t0\t0\t0\t0\t—\nInternal DTD\t0\t0\t0\t0\t—\nInternal QML\t0\t0\t0\t0\t—\nInternal SBR\t0\t0\t0\t0\t—\nInternal RBS\t0\t0\t0\t0\t—\nISS L3\t0\t0\t0\t0\t—\nISS L4\t0\t0\t0\t0\t—\nAbhi Scalp Logic\t33\t0\t50\t83\t60.24%",
+  "strategies": [
+    {
+      "text": "SCALPING",
+      "checked": false
+    },
+    {
+      "text": "ABHI SCALP LOGIC",
+      "checked": true
+    },
+    {
+      "text": "INTRADAY",
+      "checked": false
+    },
+    {
+      "text": "BOLLINGER M5",
+      "checked": false
+    }
+  ]
+}

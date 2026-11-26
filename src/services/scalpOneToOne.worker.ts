@@ -17,8 +17,12 @@ self.onmessage = (event: MessageEvent<{ taskId: number;
     const study = runVolumeStudy({ symbol: 'XAUUSD', timeframe: 'M15', biasTimeframe: 'H4',
       h4EmaFilter: true, h1TrendlineFilter: true, cutoff: now,
       lookback: Math.min(VOLUME_STUDY_MAX_LOOKBACK, candles.M15.length), candles },
-      (done, total) => post({ progress: Math.round(done / Math.max(1, total) * 100) }));
-    const history = study.records.map(record => scalpOneToOneChartHistory(record, candles, now));
+      (done, total) => post({ progress: Math.round(done / Math.max(1, total) * 70) }));
+    const history = study.records.map((record, index) => {
+      const row = scalpOneToOneChartHistory(record, candles, now);
+      if (index % 10 === 0) post({ progress: 70 + Math.round((index + 1) / Math.max(1, study.records.length) * 30) });
+      return row;
+    });
     post({ records: history.flatMap(row => row.records), fills: history.flatMap(row => row.fills) });
   } catch (error) {
     post({ signals: [], records: [], fills: [], error: error instanceof Error ? error.message : 'Scalp 1:1 history unavailable.' });

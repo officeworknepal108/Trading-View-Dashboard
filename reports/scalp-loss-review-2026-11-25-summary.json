@@ -1,0 +1,1424 @@
+{
+  "date": "2026-11-25",
+  "timeZone": "Asia/Kathmandu",
+  "createdUTC": "2026-11-26T01:21:49.585659+00:00",
+  "summary": {
+    "uniqueSavedSetups": 6,
+    "losses": 5,
+    "wins": 1,
+    "recordedBrokerSetups": 3,
+    "recordedBrokerCash": -61.38
+  },
+  "cases": [
+    {
+      "signalAt": 1795551300,
+      "signalNepal": "02:00",
+      "confirmedNepal": "02:15",
+      "style": "SCALP_1_1",
+      "direction": "bearish",
+      "result": "sl",
+      "recordedBrokerEntries": 2,
+      "recordedBrokerCash": -65.7,
+      "volumeStatus": "valid",
+      "closedNepal": "04:58:16"
+    },
+    {
+      "signalAt": 1795565700,
+      "signalNepal": "06:00",
+      "confirmedNepal": "06:15",
+      "style": "SCALP_1_1",
+      "direction": "bearish",
+      "result": "sl",
+      "recordedBrokerEntries": 0,
+      "recordedBrokerCash": null,
+      "volumeStatus": "valid",
+      "closedNepal": "07:45:00"
+    },
+    {
+      "signalAt": 1795573680,
+      "signalNepal": "08:13",
+      "confirmedNepal": "08:14",
+      "style": "SCALPING",
+      "direction": "bearish",
+      "result": "sl",
+      "recordedBrokerEntries": 0,
+      "recordedBrokerCash": null,
+      "volumeStatus": "failed",
+      "closedNepal": "08:15:00"
+    },
+    {
+      "signalAt": 1795574700,
+      "signalNepal": "08:30",
+      "confirmedNepal": "08:45",
+      "style": "SCALP_1_1",
+      "direction": "bearish",
+      "result": "tp",
+      "recordedBrokerEntries": 1,
+      "recordedBrokerCash": 32.23,
+      "volumeStatus": "valid",
+      "closedNepal": "11:45:34"
+    },
+    {
+      "signalAt": 1795589100,
+      "signalNepal": "12:30",
+      "confirmedNepal": "12:45",
+      "style": "SCALP_1_1",
+      "direction": "bearish",
+      "result": "sl",
+      "recordedBrokerEntries": 2,
+      "recordedBrokerCash": -27.91,
+      "volumeStatus": "valid",
+      "closedNepal": "13:31:45"
+    },
+    {
+      "signalAt": 1795609200,
+      "signalNepal": "18:05",
+      "confirmedNepal": "18:06",
+      "style": "SCALPING",
+      "direction": "bearish",
+      "result": "sl",
+      "recordedBrokerEntries": 0,
+      "recordedBrokerCash": null,
+      "volumeStatus": "failed",
+      "closedNepal": "18:12:00"
+    }
+  ],
+  "preEntryFilters": [
+    {
+      "period": "Sep-Oct",
+      "baseline": {
+        "setups": 105,
+        "wins": 69,
+        "losses": 36,
+        "netR": 42.3
+      },
+      "avoidExtreme15": {
+        "setups": 84,
+        "wins": 54,
+        "losses": 30,
+        "netR": 31.35
+      },
+      "avoidExtreme20": {
+        "setups": 82,
+        "wins": 53,
+        "losses": 29,
+        "netR": 31.1
+      }
+    },
+    {
+      "period": "Nov1-24",
+      "baseline": {
+        "setups": 35,
+        "wins": 23,
+        "losses": 12,
+        "netR": 15.7
+      },
+      "avoidExtreme15": {
+        "setups": 28,
+        "wins": 19,
+        "losses": 9,
+        "netR": 14.6
+      },
+      "avoidExtreme20": {
+        "setups": 22,
+        "wins": 16,
+        "losses": 6,
+        "netR": 13.85
+      }
+    },
+    {
+      "period": "Nov25",
+      "baseline": {
+        "setups": 4,
+        "wins": 1,
+        "losses": 3,
+        "netR": -1.75
+      },
+      "avoidExtreme15": {
+        "setups": 1,
+        "wins": 1,
+        "losses": 0,
+        "netR": 1.25
+      },
+      "avoidExtreme20": {
+        "setups": 1,
+        "wins": 1,
+        "losses": 0,
+        "netR": 1.25
+      }
+    }
+  ],
+  "exitSensitivity": [
+    {
+      "period": "Nov13-24",
+      "setups": 19,
+      "savedBaselineSignMismatches": 0,
+      "rules": {
+        "baseline": {
+          "lowR": 15.35,
+          "highR": 15.35,
+          "ambiguousSetups": 0
+        },
+        "BE_0.5R": {
+          "lowR": 8.1,
+          "highR": 8.1,
+          "ambiguousSetups": 0
+        },
+        "BE_0.75R": {
+          "lowR": 10.75,
+          "highR": 10.75,
+          "ambiguousSetups": 0
+        },
+        "time60_no_0.5R": {
+          "lowR": 10.4885,
+          "highR": 10.4885,
+          "ambiguousSetups": 0
+        },
+        "time90_no_0.5R": {
+          "lowR": 13.0138,
+          "highR": 13.0138,
+          "ambiguousSetups": 0
+        },
+        "conditional_BE_0.5R_extreme15": {
+          "lowR": 14.6,
+          "affected": 4
+        }
+      }
+    },
+    {
+      "period": "Nov25",
+      "setups": 4,
+      "savedBaselineSignMismatches": 0,
+      "rules": {
+        "baseline": {
+          "lowR": -1.75,
+          "highR": -1.75,
+          "ambiguousSetups": 0
+        },
+        "BE_0.5R": {
+          "lowR": 0.25,
+          "highR": 0.25,
+          "ambiguousSetups": 0
+        },
+        "BE_0.75R": {
+          "lowR": -1.15,
+          "highR": -1.15,
+          "ambiguousSetups": 0
+        },
+        "time60_no_0.5R": {
+          "lowR": -2.8476,
+          "highR": -2.8476,
+          "ambiguousSetups": 0
+        },
+        "time90_no_0.5R": {
+          "lowR": -2.9732,
+          "highR": -2.9732,
+          "ambiguousSetups": 0
+        },
+        "conditional_BE_0.5R_extreme15": {
+          "lowR": 0.25,
+          "affected": 3
+        }
+      }
+    }
+  ],
+  "legacyVolume": {
+    "savedClosed": 77,
+    "failedVolumeClosed": 35,
+    "failedVolumeResults": {
+      "sl": 13,
+      "rf": 4,
+      "tp": 18
+    },
+    "failedVolumeNetR": 23.0
+  },
+  "marketContext": "Scheduled US PCE/GDP release at 08:30 EST = 19:15 Nepal on Nov25; every reviewed loss closed before this. Upcoming Thanksgiving schedule is context, not an established cause.",
+  "limitations": [
+    "Exploratory analysis of saved setups; missing, rejected and unfilled signals are not exhaustively reconstructed. Historical records may reflect changing strategy versions. These totals do not establish full-strategy performance.",
+    "Nov25 was inspected before hypotheses were tested. Earlier periods are comparison samples, not an untouched validation set. Conditional breakeven is a post-hoc hypothesis.",
+    "M1 replay uses current primary-broker bid candles with saved chart/MT5 entry levels. Chart snapshots are midpoint-like and tick-volume histories differ by feed. Clock alignment checked against three saved M15 snapshots (median close differences 0.08, 0.095 and 0.135 price units).",
+    "Both high/low intrabar paths were evaluated for stop/target/breakeven sequencing. Simulation begins at the first whole minute after entry; first-minute movements, bid/ask spread, commission, latency and subsequent sizing changes are not fully modelled. Gross R is before costs; breakeven can still lose cash.",
+    "Broader pre-entry-filter results use stored outcomes, not a rerun with alternative entries. Nine covered setups have only one stored leg. Chart and broker observations are not interchangeable with realized account P/L.",
+    "No source code, live orders, trading configuration or stop-loss settings changed."
+  ],
+  "sources": [
+    {
+      "title": "BEA: September PCE release and next-release timing",
+      "url": "https://bea.gov/news/2026/personal-income-and-outlays-september-2026"
+    },
+    {
+      "title": "BEA: Q3 GDP second estimate, November 25 at 08:30 EST",
+      "url": "https://www.bea.gov/sites/default/files/2026-11/gdp3q26-2nd.pdf"
+    },
+    {
+      "title": "OANDA: market conditions and spreads",
+      "url": "https://help.oanda.com/sg/en/faqs/market-conditions-spreads-impact.htm"
+    },
+    {
+      "title": "CME holiday and trading hours",
+      "url": "https://www.cmegroup.com/trading-hours.html"
+    }
+  ],
+  "features": [
+    {
+      "signalAt": 1795635000,
+      "day": "2026-11-26",
+      "direction": "bearish",
+      "netR": -1.0,
+      "extremePosition": 0.8493035999695553,
+      "legs": 2
+    },
+    {
+      "signalAt": 1795589100,
+      "day": "2026-11-25",
+      "direction": "bearish",
+      "netR": -1.0,
+      "extremePosition": 0.05776860815743311,
+      "legs": 2
+    },
+    {
+      "signalAt": 1795574700,
+      "day": "2026-11-25",
+      "direction": "bearish",
+      "netR": 1.25,
+      "extremePosition": 0.4096905732789615,
+      "legs": 2
+    },
+    {
+      "signalAt": 1795565700,
+      "day": "2026-11-25",
+      "direction": "bearish",
+      "netR": -1.0,
+      "extremePosition": 0.11332882273342068,
+      "legs": 2
+    },
+    {
+      "signalAt": 1795551300,
+      "day": "2026-11-25",
+      "direction": "bearish",
+      "netR": -1.0,
+      "extremePosition": 0.04479578392621795,
+      "legs": 2
+    },
+    {
+      "signalAt": 1795474800,
+      "day": "2026-11-24",
+      "direction": "bearish",
+      "netR": 0.35,
+      "extremePosition": 0.028365136668395,
+      "legs": 2
+    },
+    {
+      "signalAt": 1795451400,
+      "day": "2026-11-23",
+      "direction": "bearish",
+      "netR": 1.25,
+      "extremePosition": 0.6510443199184909,
+      "legs": 2
+    },
+    {
+      "signalAt": 1795454100,
+      "day": "2026-11-23",
+      "direction": "bearish",
+      "netR": 1.25,
+      "extremePosition": 0.6411105450840571,
+      "legs": 2
+    },
+    {
+      "signalAt": 1795457700,
+      "day": "2026-11-24",
+      "direction": "bearish",
+      "netR": 1.25,
+      "extremePosition": 0.5114620478858872,
+      "legs": 2
+    },
+    {
+      "signalAt": 1795180500,
+      "day": "2026-11-20",
+      "direction": "bearish",
+      "netR": -1.0,
+      "extremePosition": 0.15713610586011664,
+      "legs": 2
+    },
+    {
+      "signalAt": 1795110300,
+      "day": "2026-11-19",
+      "direction": "bearish",
+      "netR": 1.25,
+      "extremePosition": 0.20910003345600625,
+      "legs": 2
+    },
+    {
+      "signalAt": 1795079700,
+      "day": "2026-11-19",
+      "direction": "bearish",
+      "netR": 1.25,
+      "extremePosition": 0.26201616333474764,
+      "legs": 2
+    },
+    {
+      "signalAt": 1795081500,
+      "day": "2026-11-19",
+      "direction": "bearish",
+      "netR": 1.25,
+      "extremePosition": 0.2011343804537571,
+      "legs": 2
+    },
+    {
+      "signalAt": 1795086000,
+      "day": "2026-11-19",
+      "direction": "bearish",
+      "netR": 1.25,
+      "extremePosition": 0.17461229178632906,
+      "legs": 2
+    },
+    {
+      "signalAt": 1795050900,
+      "day": "2026-11-19",
+      "direction": "bearish",
+      "netR": 1.25,
+      "extremePosition": 0.626934984520125,
+      "legs": 2
+    },
+    {
+      "signalAt": 1795023000,
+      "day": "2026-11-18",
+      "direction": "bearish",
+      "netR": 1.25,
+      "extremePosition": 0.10370903853078443,
+      "legs": 2
+    },
+    {
+      "signalAt": 1795010400,
+      "day": "2026-11-18",
+      "direction": "bearish",
+      "netR": 1.25,
+      "extremePosition": 0.7166178317287587,
+      "legs": 2
+    },
+    {
+      "signalAt": 1794973500,
+      "day": "2026-11-18",
+      "direction": "bearish",
+      "netR": 1.25,
+      "extremePosition": 0.04131429363648986,
+      "legs": 2
+    },
+    {
+      "signalAt": 1794976200,
+      "day": "2026-11-18",
+      "direction": "bearish",
+      "netR": -1.0,
+      "extremePosition": 0.04831787345977822,
+      "legs": 2
+    },
+    {
+      "signalAt": 1794958200,
+      "day": "2026-11-18",
+      "direction": "bearish",
+      "netR": 1.25,
+      "extremePosition": 0.3165137614678768,
+      "legs": 2
+    },
+    {
+      "signalAt": 1794897900,
+      "day": "2026-11-17",
+      "direction": "bearish",
+      "netR": 1.25,
+      "extremePosition": 0.37015043547111176,
+      "legs": 2
+    },
+    {
+      "signalAt": 1794828600,
+      "day": "2026-11-16",
+      "direction": "bearish",
+      "netR": 1.25,
+      "extremePosition": 0.9018987341772194,
+      "legs": 2
+    },
+    {
+      "signalAt": 1794810600,
+      "day": "2026-11-16",
+      "direction": "bearish",
+      "netR": -1.0,
+      "extremePosition": 0.17409345119971206,
+      "legs": 2
+    },
+    {
+      "signalAt": 1794797100,
+      "day": "2026-11-16",
+      "direction": "bearish",
+      "netR": 0.5,
+      "extremePosition": 0.35956678700360983,
+      "legs": 1
+    },
+    {
+      "signalAt": 1794372300,
+      "day": "2026-11-11",
+      "direction": "bullish",
+      "netR": 1.25,
+      "extremePosition": 0.24122137404580524,
+      "legs": 2
+    },
+    {
+      "signalAt": 1794322800,
+      "day": "2026-11-10",
+      "direction": "bullish",
+      "netR": -1.0,
+      "extremePosition": 0.6381939014855391,
+      "legs": 2
+    },
+    {
+      "signalAt": 1794187800,
+      "day": "2026-11-09",
+      "direction": "bullish",
+      "netR": -1.0,
+      "extremePosition": 0.028691392582215203,
+      "legs": 2
+    },
+    {
+      "signalAt": 1794195000,
+      "day": "2026-11-09",
+      "direction": "bullish",
+      "netR": 1.25,
+      "extremePosition": 0.16339050957805545,
+      "legs": 2
+    },
+    {
+      "signalAt": 1793976300,
+      "day": "2026-11-06",
+      "direction": "bullish",
+      "netR": 1.25,
+      "extremePosition": 0.5446627958910231,
+      "legs": 2
+    },
+    {
+      "signalAt": 1793967300,
+      "day": "2026-11-06",
+      "direction": "bullish",
+      "netR": -1.0,
+      "extremePosition": 0.2755465175393944,
+      "legs": 2
+    },
+    {
+      "signalAt": 1793788200,
+      "day": "2026-11-04",
+      "direction": "bearish",
+      "netR": -1.0,
+      "extremePosition": 0.8566804002354292,
+      "legs": 2
+    },
+    {
+      "signalAt": 1793808900,
+      "day": "2026-11-04",
+      "direction": "bearish",
+      "netR": -1.0,
+      "extremePosition": 0.5440414507772016,
+      "legs": 2
+    },
+    {
+      "signalAt": 1793784600,
+      "day": "2026-11-04",
+      "direction": "bearish",
+      "netR": 1.25,
+      "extremePosition": 0.9426739214924205,
+      "legs": 2
+    },
+    {
+      "signalAt": 1793756700,
+      "day": "2026-11-04",
+      "direction": "bearish",
+      "netR": -0.4,
+      "extremePosition": 0.6209302325581408,
+      "legs": 1
+    },
+    {
+      "signalAt": 1793729700,
+      "day": "2026-11-04",
+      "direction": "bearish",
+      "netR": 1.25,
+      "extremePosition": 0.15500205846027607,
+      "legs": 2
+    },
+    {
+      "signalAt": 1793674800,
+      "day": "2026-11-03",
+      "direction": "bearish",
+      "netR": 1.25,
+      "extremePosition": 0.005455308434750611,
+      "legs": 2
+    },
+    {
+      "signalAt": 1793669400,
+      "day": "2026-11-03",
+      "direction": "bearish",
+      "netR": 1.25,
+      "extremePosition": 0.45650557620816745,
+      "legs": 2
+    },
+    {
+      "signalAt": 1793660400,
+      "day": "2026-11-03",
+      "direction": "bearish",
+      "netR": -1.0,
+      "extremePosition": 0.1971645235740202,
+      "legs": 2
+    },
+    {
+      "signalAt": 1793619900,
+      "day": "2026-11-02",
+      "direction": "bearish",
+      "netR": -1.0,
+      "extremePosition": 0.5282823040996524,
+      "legs": 2
+    },
+    {
+      "signalAt": 1793614500,
+      "day": "2026-11-02",
+      "direction": "bearish",
+      "netR": -1.0,
+      "extremePosition": 0.13080467919177774,
+      "legs": 2
+    },
+    {
+      "signalAt": 1793379600,
+      "day": "2026-10-30",
+      "direction": "bearish",
+      "netR": 1.25,
+      "extremePosition": 0.05121508062684268,
+      "legs": 2
+    },
+    {
+      "signalAt": 1793364300,
+      "day": "2026-10-30",
+      "direction": "bearish",
+      "netR": 1.25,
+      "extremePosition": 0.06558773424190684,
+      "legs": 2
+    },
+    {
+      "signalAt": 1793363400,
+      "day": "2026-10-30",
+      "direction": "bearish",
+      "netR": 1.25,
+      "extremePosition": 0.1763503649635026,
+      "legs": 2
+    },
+    {
+      "signalAt": 1793339100,
+      "day": "2026-10-30",
+      "direction": "bearish",
+      "netR": 0.5,
+      "extremePosition": 0.2959541255176765,
+      "legs": 1
+    },
+    {
+      "signalAt": 1793342700,
+      "day": "2026-10-30",
+      "direction": "bearish",
+      "netR": 1.25,
+      "extremePosition": 0.14826021180030502,
+      "legs": 2
+    },
+    {
+      "signalAt": 1793321100,
+      "day": "2026-10-30",
+      "direction": "bearish",
+      "netR": 1.25,
+      "extremePosition": 0.09616087751371387,
+      "legs": 2
+    },
+    {
+      "signalAt": 1793326500,
+      "day": "2026-10-30",
+      "direction": "bearish",
+      "netR": 0.5,
+      "extremePosition": 0.34375864932189415,
+      "legs": 1
+    },
+    {
+      "signalAt": 1793285100,
+      "day": "2026-10-29",
+      "direction": "bearish",
+      "netR": 0.5,
+      "extremePosition": 0.3056405771753446,
+      "legs": 1
+    },
+    {
+      "signalAt": 1793277900,
+      "day": "2026-10-29",
+      "direction": "bearish",
+      "netR": -1.0,
+      "extremePosition": 0.13966244725738006,
+      "legs": 2
+    },
+    {
+      "signalAt": 1793268900,
+      "day": "2026-10-29",
+      "direction": "bearish",
+      "netR": -1.0,
+      "extremePosition": 0.3349530288305808,
+      "legs": 2
+    },
+    {
+      "signalAt": 1793245500,
+      "day": "2026-10-29",
+      "direction": "bearish",
+      "netR": 1.25,
+      "extremePosition": 0.3487598306110169,
+      "legs": 2
+    },
+    {
+      "signalAt": 1793178000,
+      "day": "2026-10-28",
+      "direction": "bearish",
+      "netR": 1.25,
+      "extremePosition": 0.9086149452641574,
+      "legs": 2
+    },
+    {
+      "signalAt": 1793193300,
+      "day": "2026-10-28",
+      "direction": "bearish",
+      "netR": 1.25,
+      "extremePosition": 0.8569656883009497,
+      "legs": 2
+    },
+    {
+      "signalAt": 1793164500,
+      "day": "2026-10-28",
+      "direction": "bearish",
+      "netR": -1.0,
+      "extremePosition": 0.0032829940906076473,
+      "legs": 2
+    },
+    {
+      "signalAt": 1793081700,
+      "day": "2026-10-27",
+      "direction": "bearish",
+      "netR": 0.35,
+      "extremePosition": 0.07960199004974008,
+      "legs": 2
+    },
+    {
+      "signalAt": 1793075400,
+      "day": "2026-10-27",
+      "direction": "bearish",
+      "netR": 0.5,
+      "extremePosition": 0.9295081967213125,
+      "legs": 1
+    },
+    {
+      "signalAt": 1793018700,
+      "day": "2026-10-26",
+      "direction": "bearish",
+      "netR": 1.25,
+      "extremePosition": 0.6852631578947359,
+      "legs": 2
+    },
+    {
+      "signalAt": 1792772100,
+      "day": "2026-10-23",
+      "direction": "bearish",
+      "netR": 1.25,
+      "extremePosition": 0.36074766355140275,
+      "legs": 2
+    },
+    {
+      "signalAt": 1792741500,
+      "day": "2026-10-23",
+      "direction": "bearish",
+      "netR": -1.0,
+      "extremePosition": 0.6224928366762091,
+      "legs": 2
+    },
+    {
+      "signalAt": 1792681200,
+      "day": "2026-10-22",
+      "direction": "bearish",
+      "netR": 1.25,
+      "extremePosition": 0.14542415378186552,
+      "legs": 2
+    },
+    {
+      "signalAt": 1792658700,
+      "day": "2026-10-22",
+      "direction": "bearish",
+      "netR": 1.25,
+      "extremePosition": 0.4280524722502554,
+      "legs": 2
+    },
+    {
+      "signalAt": 1792654200,
+      "day": "2026-10-22",
+      "direction": "bearish",
+      "netR": 1.25,
+      "extremePosition": 0.40582490408091626,
+      "legs": 2
+    },
+    {
+      "signalAt": 1792590300,
+      "day": "2026-10-21",
+      "direction": "bearish",
+      "netR": 1.25,
+      "extremePosition": 0.5948275862068861,
+      "legs": 2
+    },
+    {
+      "signalAt": 1792594800,
+      "day": "2026-10-21",
+      "direction": "bearish",
+      "netR": -1.0,
+      "extremePosition": 0.5414456233421753,
+      "legs": 2
+    },
+    {
+      "signalAt": 1792556100,
+      "day": "2026-10-21",
+      "direction": "bearish",
+      "netR": -1.0,
+      "extremePosition": 0.6040241448692152,
+      "legs": 2
+    },
+    {
+      "signalAt": 1792554300,
+      "day": "2026-10-21",
+      "direction": "bearish",
+      "netR": -1.0,
+      "extremePosition": 0.4486929379633223,
+      "legs": 2
+    },
+    {
+      "signalAt": 1792507500,
+      "day": "2026-10-20",
+      "direction": "bearish",
+      "netR": 0.5,
+      "extremePosition": 0.7115808014090633,
+      "legs": 1
+    },
+    {
+      "signalAt": 1792470600,
+      "day": "2026-10-20",
+      "direction": "bearish",
+      "netR": 1.25,
+      "extremePosition": 0.9402840542285237,
+      "legs": 2
+    },
+    {
+      "signalAt": 1792395000,
+      "day": "2026-10-19",
+      "direction": "bearish",
+      "netR": 1.25,
+      "extremePosition": 0.39496781743709436,
+      "legs": 2
+    },
+    {
+      "signalAt": 1792376100,
+      "day": "2026-10-19",
+      "direction": "bearish",
+      "netR": -1.0,
+      "extremePosition": 0.35606060606060497,
+      "legs": 2
+    },
+    {
+      "signalAt": 1792372500,
+      "day": "2026-10-19",
+      "direction": "bearish",
+      "netR": -1.0,
+      "extremePosition": 0.6188537425618444,
+      "legs": 2
+    },
+    {
+      "signalAt": 1792174500,
+      "day": "2026-10-17",
+      "direction": "bearish",
+      "netR": -1.0,
+      "extremePosition": 0.13716216216216376,
+      "legs": 2
+    },
+    {
+      "signalAt": 1792142100,
+      "day": "2026-10-16",
+      "direction": "bearish",
+      "netR": 1.25,
+      "extremePosition": 0.7994762439206702,
+      "legs": 2
+    },
+    {
+      "signalAt": 1792113300,
+      "day": "2026-10-16",
+      "direction": "bearish",
+      "netR": -1.0,
+      "extremePosition": 0.14511162432638916,
+      "legs": 2
+    },
+    {
+      "signalAt": 1792078200,
+      "day": "2026-10-15",
+      "direction": "bearish",
+      "netR": -1.0,
+      "extremePosition": 0.6911064055055545,
+      "legs": 2
+    },
+    {
+      "signalAt": 1792034100,
+      "day": "2026-10-15",
+      "direction": "bearish",
+      "netR": -1.0,
+      "extremePosition": 0.8145647015878835,
+      "legs": 2
+    },
+    {
+      "signalAt": 1792035900,
+      "day": "2026-10-15",
+      "direction": "bearish",
+      "netR": 1.25,
+      "extremePosition": 0.9780471821756201,
+      "legs": 2
+    },
+    {
+      "signalAt": 1791991800,
+      "day": "2026-10-14",
+      "direction": "bearish",
+      "netR": -1.0,
+      "extremePosition": 0.3245337536117669,
+      "legs": 2
+    },
+    {
+      "signalAt": 1791895500,
+      "day": "2026-10-13",
+      "direction": "bearish",
+      "netR": 1.25,
+      "extremePosition": 0.40000000000001273,
+      "legs": 2
+    },
+    {
+      "signalAt": 1791876600,
+      "day": "2026-10-13",
+      "direction": "bearish",
+      "netR": 1.25,
+      "extremePosition": 0.7071701144808207,
+      "legs": 2
+    },
+    {
+      "signalAt": 1791880200,
+      "day": "2026-10-13",
+      "direction": "bearish",
+      "netR": 1.25,
+      "extremePosition": 0.46918955123911404,
+      "legs": 2
+    },
+    {
+      "signalAt": 1791868500,
+      "day": "2026-10-13",
+      "direction": "bearish",
+      "netR": 1.25,
+      "extremePosition": 0.9525598872710089,
+      "legs": 2
+    },
+    {
+      "signalAt": 1791816300,
+      "day": "2026-10-12",
+      "direction": "bearish",
+      "netR": -1.0,
+      "extremePosition": 0.6696428571428514,
+      "legs": 2
+    },
+    {
+      "signalAt": 1791805500,
+      "day": "2026-10-12",
+      "direction": "bearish",
+      "netR": 1.25,
+      "extremePosition": 0.357968620974414,
+      "legs": 2
+    },
+    {
+      "signalAt": 1791785700,
+      "day": "2026-10-12",
+      "direction": "bearish",
+      "netR": 1.25,
+      "extremePosition": 0.04077442065120012,
+      "legs": 2
+    },
+    {
+      "signalAt": 1791474300,
+      "day": "2026-10-08",
+      "direction": "bearish",
+      "netR": -1.0,
+      "extremePosition": 0.4676165803108662,
+      "legs": 2
+    },
+    {
+      "signalAt": 1791468000,
+      "day": "2026-10-08",
+      "direction": "bearish",
+      "netR": -1.0,
+      "extremePosition": 0.7152658662092839,
+      "legs": 2
+    },
+    {
+      "signalAt": 1791427500,
+      "day": "2026-10-08",
+      "direction": "bearish",
+      "netR": 1.25,
+      "extremePosition": 0.8745267712276834,
+      "legs": 2
+    },
+    {
+      "signalAt": 1791436500,
+      "day": "2026-10-08",
+      "direction": "bearish",
+      "netR": 1.25,
+      "extremePosition": 0.7921052631578803,
+      "legs": 2
+    },
+    {
+      "signalAt": 1791342000,
+      "day": "2026-10-07",
+      "direction": "bearish",
+      "netR": 1.25,
+      "extremePosition": 0.092425759092412,
+      "legs": 2
+    },
+    {
+      "signalAt": 1791337500,
+      "day": "2026-10-07",
+      "direction": "bearish",
+      "netR": 1.25,
+      "extremePosition": 0.017665396605480436,
+      "legs": 2
+    },
+    {
+      "signalAt": 1791332100,
+      "day": "2026-10-07",
+      "direction": "bearish",
+      "netR": 1.25,
+      "extremePosition": 0.3674475955610204,
+      "legs": 2
+    },
+    {
+      "signalAt": 1791296100,
+      "day": "2026-10-06",
+      "direction": "bearish",
+      "netR": -1.0,
+      "extremePosition": 0.46829971181555213,
+      "legs": 2
+    },
+    {
+      "signalAt": 1791292500,
+      "day": "2026-10-06",
+      "direction": "bearish",
+      "netR": 1.25,
+      "extremePosition": 0.915052160953786,
+      "legs": 2
+    },
+    {
+      "signalAt": 1791249300,
+      "day": "2026-10-06",
+      "direction": "bearish",
+      "netR": 0.5,
+      "extremePosition": 0.6320450885668533,
+      "legs": 1
+    },
+    {
+      "signalAt": 1791243000,
+      "day": "2026-10-06",
+      "direction": "bearish",
+      "netR": -1.0,
+      "extremePosition": 0.9432553509208402,
+      "legs": 2
+    },
+    {
+      "signalAt": 1791204300,
+      "day": "2026-10-05",
+      "direction": "bearish",
+      "netR": 1.25,
+      "extremePosition": 0.31561618062088276,
+      "legs": 2
+    },
+    {
+      "signalAt": 1790950500,
+      "day": "2026-10-02",
+      "direction": "bearish",
+      "netR": 1.25,
+      "extremePosition": 0.4565469293163382,
+      "legs": 2
+    },
+    {
+      "signalAt": 1790939700,
+      "day": "2026-10-02",
+      "direction": "bearish",
+      "netR": -1.0,
+      "extremePosition": 0.26387096774191554,
+      "legs": 2
+    },
+    {
+      "signalAt": 1790926200,
+      "day": "2026-10-02",
+      "direction": "bearish",
+      "netR": -1.0,
+      "extremePosition": 0.6757123473541301,
+      "legs": 2
+    },
+    {
+      "signalAt": 1790859600,
+      "day": "2026-10-01",
+      "direction": "bearish",
+      "netR": 1.25,
+      "extremePosition": 0.7506797172376254,
+      "legs": 2
+    },
+    {
+      "signalAt": 1790777700,
+      "day": "2026-09-30",
+      "direction": "bearish",
+      "netR": 1.25,
+      "extremePosition": 0.3954408001860918,
+      "legs": 2
+    },
+    {
+      "signalAt": 1790764200,
+      "day": "2026-09-30",
+      "direction": "bearish",
+      "netR": -1.0,
+      "extremePosition": 0.6118063112078401,
+      "legs": 2
+    },
+    {
+      "signalAt": 1790757900,
+      "day": "2026-09-30",
+      "direction": "bearish",
+      "netR": 1.25,
+      "extremePosition": 0.7822309417040454,
+      "legs": 2
+    },
+    {
+      "signalAt": 1790739900,
+      "day": "2026-09-30",
+      "direction": "bearish",
+      "netR": -1.0,
+      "extremePosition": 0.5969637610185875,
+      "legs": 2
+    },
+    {
+      "signalAt": 1790739000,
+      "day": "2026-09-30",
+      "direction": "bearish",
+      "netR": -1.0,
+      "extremePosition": 0.5563173359451338,
+      "legs": 2
+    },
+    {
+      "signalAt": 1790697600,
+      "day": "2026-09-29",
+      "direction": "bearish",
+      "netR": -1.0,
+      "extremePosition": 0.5383522727272704,
+      "legs": 2
+    },
+    {
+      "signalAt": 1790703000,
+      "day": "2026-09-29",
+      "direction": "bearish",
+      "netR": -1.0,
+      "extremePosition": 0.005415162454860548,
+      "legs": 2
+    },
+    {
+      "signalAt": 1790681400,
+      "day": "2026-09-29",
+      "direction": "bearish",
+      "netR": -1.0,
+      "extremePosition": 0.9871720116617925,
+      "legs": 2
+    },
+    {
+      "signalAt": 1790622000,
+      "day": "2026-09-29",
+      "direction": "bearish",
+      "netR": 1.25,
+      "extremePosition": 0.5032128514056105,
+      "legs": 2
+    },
+    {
+      "signalAt": 1790598600,
+      "day": "2026-09-28",
+      "direction": "bearish",
+      "netR": 1.25,
+      "extremePosition": 0.30888458344867786,
+      "legs": 2
+    },
+    {
+      "signalAt": 1790604000,
+      "day": "2026-09-28",
+      "direction": "bearish",
+      "netR": 1.25,
+      "extremePosition": 0.21624266144813908,
+      "legs": 2
+    },
+    {
+      "signalAt": 1790577900,
+      "day": "2026-09-28",
+      "direction": "bearish",
+      "netR": 1.25,
+      "extremePosition": 0.008162490508737446,
+      "legs": 2
+    },
+    {
+      "signalAt": 1790334900,
+      "day": "2026-09-25",
+      "direction": "bearish",
+      "netR": 1.25,
+      "extremePosition": 0.9663234663234724,
+      "legs": 2
+    },
+    {
+      "signalAt": 1790300700,
+      "day": "2026-09-25",
+      "direction": "bearish",
+      "netR": 1.25,
+      "extremePosition": 0.8483582089552261,
+      "legs": 2
+    },
+    {
+      "signalAt": 1790291700,
+      "day": "2026-09-25",
+      "direction": "bearish",
+      "netR": 0.35,
+      "extremePosition": 0.5130996937734,
+      "legs": 2
+    },
+    {
+      "signalAt": 1790255700,
+      "day": "2026-09-24",
+      "direction": "bearish",
+      "netR": 1.25,
+      "extremePosition": 0.6284403669724843,
+      "legs": 2
+    },
+    {
+      "signalAt": 1790244900,
+      "day": "2026-09-24",
+      "direction": "bearish",
+      "netR": -1.0,
+      "extremePosition": 0.017162194827169994,
+      "legs": 2
+    },
+    {
+      "signalAt": 1790152200,
+      "day": "2026-09-23",
+      "direction": "bearish",
+      "netR": 1.25,
+      "extremePosition": 0.11490572749912509,
+      "legs": 2
+    },
+    {
+      "signalAt": 1790128800,
+      "day": "2026-09-23",
+      "direction": "bearish",
+      "netR": 1.25,
+      "extremePosition": 0.1320604614160929,
+      "legs": 2
+    },
+    {
+      "signalAt": 1790137800,
+      "day": "2026-09-23",
+      "direction": "bearish",
+      "netR": 1.25,
+      "extremePosition": 0.22426571506999746,
+      "legs": 2
+    },
+    {
+      "signalAt": 1790122500,
+      "day": "2026-09-23",
+      "direction": "bearish",
+      "netR": 1.25,
+      "extremePosition": 0.7874897568970277,
+      "legs": 2
+    },
+    {
+      "signalAt": 1790101800,
+      "day": "2026-09-23",
+      "direction": "bearish",
+      "netR": -1.0,
+      "extremePosition": 0.8117607299763483,
+      "legs": 2
+    },
+    {
+      "signalAt": 1790091000,
+      "day": "2026-09-22",
+      "direction": "bearish",
+      "netR": -1.0,
+      "extremePosition": 0.3167981961668523,
+      "legs": 2
+    },
+    {
+      "signalAt": 1790092800,
+      "day": "2026-09-22",
+      "direction": "bearish",
+      "netR": -1.0,
+      "extremePosition": 0.7722660653889508,
+      "legs": 2
+    },
+    {
+      "signalAt": 1790062200,
+      "day": "2026-09-22",
+      "direction": "bearish",
+      "netR": 0.35,
+      "extremePosition": 0.12773722627737114,
+      "legs": 2
+    },
+    {
+      "signalAt": 1790040600,
+      "day": "2026-09-22",
+      "direction": "bearish",
+      "netR": 1.25,
+      "extremePosition": 0.43899132321042467,
+      "legs": 2
+    },
+    {
+      "signalAt": 1789986600,
+      "day": "2026-09-21",
+      "direction": "bearish",
+      "netR": -1.0,
+      "extremePosition": 0.3349842413327554,
+      "legs": 2
+    },
+    {
+      "signalAt": 1789965900,
+      "day": "2026-09-21",
+      "direction": "bearish",
+      "netR": 1.25,
+      "extremePosition": 0.04489164086686718,
+      "legs": 2
+    },
+    {
+      "signalAt": 1789956000,
+      "day": "2026-09-21",
+      "direction": "bearish",
+      "netR": 1.25,
+      "extremePosition": 0.8310861423220938,
+      "legs": 2
+    },
+    {
+      "signalAt": 1789958700,
+      "day": "2026-09-21",
+      "direction": "bearish",
+      "netR": 1.25,
+      "extremePosition": 0.7514863258026033,
+      "legs": 2
+    },
+    {
+      "signalAt": 1789631100,
+      "day": "2026-09-17",
+      "direction": "bearish",
+      "netR": 0.5,
+      "extremePosition": 0.894151764137262,
+      "legs": 1
+    },
+    {
+      "signalAt": 1789571700,
+      "day": "2026-09-16",
+      "direction": "bearish",
+      "netR": -1.0,
+      "extremePosition": 0.3814886020324192,
+      "legs": 2
+    },
+    {
+      "signalAt": 1789529400,
+      "day": "2026-09-16",
+      "direction": "bearish",
+      "netR": -1.0,
+      "extremePosition": 0.8735830458353839,
+      "legs": 2
+    },
+    {
+      "signalAt": 1789481700,
+      "day": "2026-09-15",
+      "direction": "bearish",
+      "netR": -1.0,
+      "extremePosition": 0.7555878084179937,
+      "legs": 2
+    },
+    {
+      "signalAt": 1789441200,
+      "day": "2026-09-15",
+      "direction": "bearish",
+      "netR": 1.25,
+      "extremePosition": 0.8436199722607421,
+      "legs": 2
+    },
+    {
+      "signalAt": 1789373700,
+      "day": "2026-09-14",
+      "direction": "bearish",
+      "netR": 1.25,
+      "extremePosition": 0.014412136536045912,
+      "legs": 2
+    },
+    {
+      "signalAt": 1789353900,
+      "day": "2026-09-14",
+      "direction": "bearish",
+      "netR": 1.25,
+      "extremePosition": 0.9396578538102496,
+      "legs": 2
+    },
+    {
+      "signalAt": 1789370100,
+      "day": "2026-09-14",
+      "direction": "bearish",
+      "netR": 1.25,
+      "extremePosition": 0.24151280524120577,
+      "legs": 2
+    },
+    {
+      "signalAt": 1789362900,
+      "day": "2026-09-14",
+      "direction": "bearish",
+      "netR": -1.0,
+      "extremePosition": 0.18790131801285478,
+      "legs": 2
+    },
+    {
+      "signalAt": 1789147800,
+      "day": "2026-09-11",
+      "direction": "bearish",
+      "netR": 1.25,
+      "extremePosition": 0.6498113885396108,
+      "legs": 2
+    },
+    {
+      "signalAt": 1789141500,
+      "day": "2026-09-11",
+      "direction": "bearish",
+      "netR": 1.25,
+      "extremePosition": 0.7150170648464125,
+      "legs": 2
+    },
+    {
+      "signalAt": 1789110900,
+      "day": "2026-09-11",
+      "direction": "bearish",
+      "netR": 1.25,
+      "extremePosition": 0.8397499177361003,
+      "legs": 2
+    },
+    {
+      "signalAt": 1789116300,
+      "day": "2026-09-11",
+      "direction": "bearish",
+      "netR": 1.25,
+      "extremePosition": 0.728035538005926,
+      "legs": 2
+    },
+    {
+      "signalAt": 1789092900,
+      "day": "2026-09-11",
+      "direction": "bearish",
+      "netR": 1.25,
+      "extremePosition": 0.5760980592441313,
+      "legs": 2
+    }
+  ]
+}

@@ -1,0 +1,764 @@
+{
+  "method": "Exploratory broker M1 sensitivity; saved chart or broker entry levels; start at next full minute; OHLC high/low path alternatives, gap stop slippage; gross R before costs. Not an exact broker replay. Frozen simple 0.5/0.75R BE and 60/90min no-0.5R time-stop hypotheses. Saved-history selection is incomplete. Nov25 already inspected.",
+  "rows": [
+    {
+      "signalAt": 1795589100,
+      "day": "2026-11-25",
+      "savedR": -1.0,
+      "legs": 2,
+      "results": {
+        "baseline": {
+          "low": -1.0,
+          "high": -1.0,
+          "ambiguous": false
+        },
+        "BE_0.5R": {
+          "low": -1.0,
+          "high": -1.0,
+          "ambiguous": false
+        },
+        "BE_0.75R": {
+          "low": -1.0,
+          "high": -1.0,
+          "ambiguous": false
+        },
+        "time60_no_0.5R": {
+          "low": -1.0,
+          "high": -1.0,
+          "ambiguous": false
+        },
+        "time90_no_0.5R": {
+          "low": -1.0,
+          "high": -1.0,
+          "ambiguous": false
+        }
+      }
+    },
+    {
+      "signalAt": 1795574700,
+      "day": "2026-11-25",
+      "savedR": 1.25,
+      "legs": 2,
+      "results": {
+        "baseline": {
+          "low": 1.25,
+          "high": 1.25,
+          "ambiguous": false
+        },
+        "BE_0.5R": {
+          "low": 1.25,
+          "high": 1.25,
+          "ambiguous": false
+        },
+        "BE_0.75R": {
+          "low": 1.25,
+          "high": 1.25,
+          "ambiguous": false
+        },
+        "time60_no_0.5R": {
+          "low": 0.15236168838934588,
+          "high": 0.15236168838934588,
+          "ambiguous": false
+        },
+        "time90_no_0.5R": {
+          "low": 0.026822948164149582,
+          "high": 0.026822948164149582,
+          "ambiguous": false
+        }
+      }
+    },
+    {
+      "signalAt": 1795565700,
+      "day": "2026-11-25",
+      "savedR": -1.0,
+      "legs": 2,
+      "results": {
+        "baseline": {
+          "low": -1.0,
+          "high": -1.0,
+          "ambiguous": false
+        },
+        "BE_0.5R": {
+          "low": 0.0,
+          "high": 0.0,
+          "ambiguous": false
+        },
+        "BE_0.75R": {
+          "low": -1.0,
+          "high": -1.0,
+          "ambiguous": false
+        },
+        "time60_no_0.5R": {
+          "low": -1.0,
+          "high": -1.0,
+          "ambiguous": false
+        },
+        "time90_no_0.5R": {
+          "low": -1.0,
+          "high": -1.0,
+          "ambiguous": false
+        }
+      }
+    },
+    {
+      "signalAt": 1795551300,
+      "day": "2026-11-25",
+      "savedR": -1.0,
+      "legs": 2,
+      "results": {
+        "baseline": {
+          "low": -1.0,
+          "high": -1.0,
+          "ambiguous": false
+        },
+        "BE_0.5R": {
+          "low": 0.0,
+          "high": 0.0,
+          "ambiguous": false
+        },
+        "BE_0.75R": {
+          "low": -0.4,
+          "high": -0.4,
+          "ambiguous": false
+        },
+        "time60_no_0.5R": {
+          "low": -1.0,
+          "high": -1.0,
+          "ambiguous": false
+        },
+        "time90_no_0.5R": {
+          "low": -1.0,
+          "high": -1.0,
+          "ambiguous": false
+        }
+      }
+    },
+    {
+      "signalAt": 1795474800,
+      "day": "2026-11-24",
+      "savedR": 0.35,
+      "legs": 2,
+      "results": {
+        "baseline": {
+          "low": 0.35,
+          "high": 0.35,
+          "ambiguous": false
+        },
+        "BE_0.5R": {
+          "low": 0.75,
+          "high": 0.75,
+          "ambiguous": false
+        },
+        "BE_0.75R": {
+          "low": 0.75,
+          "high": 0.75,
+          "ambiguous": false
+        },
+        "time60_no_0.5R": {
+          "low": 0.35,
+          "high": 0.35,
+          "ambiguous": false
+        },
+        "time90_no_0.5R": {
+          "low": 0.35,
+          "high": 0.35,
+          "ambiguous": false
+        }
+      }
+    },
+    {
+      "signalAt": 1795451400,
+      "day": "2026-11-23",
+      "savedR": 1.25,
+      "legs": 2,
+      "results": {
+        "baseline": {
+          "low": 1.25,
+          "high": 1.25,
+          "ambiguous": false
+        },
+        "BE_0.5R": {
+          "low": 0.5,
+          "high": 0.5,
+          "ambiguous": false
+        },
+        "BE_0.75R": {
+          "low": 1.25,
+          "high": 1.25,
+          "ambiguous": false
+        },
+        "time60_no_0.5R": {
+          "low": 1.25,
+          "high": 1.25,
+          "ambiguous": false
+        },
+        "time90_no_0.5R": {
+          "low": 1.25,
+          "high": 1.25,
+          "ambiguous": false
+        }
+      }
+    },
+    {
+      "signalAt": 1795454100,
+      "day": "2026-11-23",
+      "savedR": 1.25,
+      "legs": 2,
+      "results": {
+        "baseline": {
+          "low": 1.25,
+          "high": 1.25,
+          "ambiguous": false
+        },
+        "BE_0.5R": {
+          "low": 1.25,
+          "high": 1.25,
+          "ambiguous": false
+        },
+        "BE_0.75R": {
+          "low": 1.25,
+          "high": 1.25,
+          "ambiguous": false
+        },
+        "time60_no_0.5R": {
+          "low": 1.25,
+          "high": 1.25,
+          "ambiguous": false
+        },
+        "time90_no_0.5R": {
+          "low": 1.25,
+          "high": 1.25,
+          "ambiguous": false
+        }
+      }
+    },
+    {
+      "signalAt": 1795457700,
+      "day": "2026-11-24",
+      "savedR": 1.25,
+      "legs": 2,
+      "results": {
+        "baseline": {
+          "low": 1.25,
+          "high": 1.25,
+          "ambiguous": false
+        },
+        "BE_0.5R": {
+          "low": 0.0,
+          "high": 0.0,
+          "ambiguous": false
+        },
+        "BE_0.75R": {
+          "low": 0.5,
+          "high": 0.5,
+          "ambiguous": false
+        },
+        "time60_no_0.5R": {
+          "low": 1.25,
+          "high": 1.25,
+          "ambiguous": false
+        },
+        "time90_no_0.5R": {
+          "low": 1.25,
+          "high": 1.25,
+          "ambiguous": false
+        }
+      }
+    },
+    {
+      "signalAt": 1795180500,
+      "day": "2026-11-20",
+      "savedR": -1.0,
+      "legs": 2,
+      "results": {
+        "baseline": {
+          "low": -1.0,
+          "high": -1.0,
+          "ambiguous": false
+        },
+        "BE_0.5R": {
+          "low": -1.0,
+          "high": -1.0,
+          "ambiguous": false
+        },
+        "BE_0.75R": {
+          "low": -1.0,
+          "high": -1.0,
+          "ambiguous": false
+        },
+        "time60_no_0.5R": {
+          "low": -0.29147082744144354,
+          "high": -0.29147082744144354,
+          "ambiguous": false
+        },
+        "time90_no_0.5R": {
+          "low": -0.7379045350327484,
+          "high": -0.7379045350327484,
+          "ambiguous": false
+        }
+      }
+    },
+    {
+      "signalAt": 1795110300,
+      "day": "2026-11-19",
+      "savedR": 1.25,
+      "legs": 2,
+      "results": {
+        "baseline": {
+          "low": 1.25,
+          "high": 1.25,
+          "ambiguous": false
+        },
+        "BE_0.5R": {
+          "low": 1.25,
+          "high": 1.25,
+          "ambiguous": false
+        },
+        "BE_0.75R": {
+          "low": 1.25,
+          "high": 1.25,
+          "ambiguous": false
+        },
+        "time60_no_0.5R": {
+          "low": -0.006974838936705994,
+          "high": -0.006974838936705994,
+          "ambiguous": false
+        },
+        "time90_no_0.5R": {
+          "low": 1.25,
+          "high": 1.25,
+          "ambiguous": false
+        }
+      }
+    },
+    {
+      "signalAt": 1795079700,
+      "day": "2026-11-19",
+      "savedR": 1.25,
+      "legs": 2,
+      "results": {
+        "baseline": {
+          "low": 1.25,
+          "high": 1.25,
+          "ambiguous": false
+        },
+        "BE_0.5R": {
+          "low": 1.25,
+          "high": 1.25,
+          "ambiguous": false
+        },
+        "BE_0.75R": {
+          "low": 1.25,
+          "high": 1.25,
+          "ambiguous": false
+        },
+        "time60_no_0.5R": {
+          "low": 0.046803378591958954,
+          "high": 0.046803378591958954,
+          "ambiguous": false
+        },
+        "time90_no_0.5R": {
+          "low": -0.4543688953285111,
+          "high": -0.4543688953285111,
+          "ambiguous": false
+        }
+      }
+    },
+    {
+      "signalAt": 1795081500,
+      "day": "2026-11-19",
+      "savedR": 1.25,
+      "legs": 2,
+      "results": {
+        "baseline": {
+          "low": 1.25,
+          "high": 1.25,
+          "ambiguous": false
+        },
+        "BE_0.5R": {
+          "low": 1.25,
+          "high": 1.25,
+          "ambiguous": false
+        },
+        "BE_0.75R": {
+          "low": 1.25,
+          "high": 1.25,
+          "ambiguous": false
+        },
+        "time60_no_0.5R": {
+          "low": -0.6994795139887585,
+          "high": -0.6994795139887585,
+          "ambiguous": false
+        },
+        "time90_no_0.5R": {
+          "low": -0.18569957860995157,
+          "high": -0.18569957860995157,
+          "ambiguous": false
+        }
+      }
+    },
+    {
+      "signalAt": 1795086000,
+      "day": "2026-11-19",
+      "savedR": 1.25,
+      "legs": 2,
+      "results": {
+        "baseline": {
+          "low": 1.25,
+          "high": 1.25,
+          "ambiguous": false
+        },
+        "BE_0.5R": {
+          "low": 1.25,
+          "high": 1.25,
+          "ambiguous": false
+        },
+        "BE_0.75R": {
+          "low": 1.25,
+          "high": 1.25,
+          "ambiguous": false
+        },
+        "time60_no_0.5R": {
+          "low": 1.25,
+          "high": 1.25,
+          "ambiguous": false
+        },
+        "time90_no_0.5R": {
+          "low": 1.25,
+          "high": 1.25,
+          "ambiguous": false
+        }
+      }
+    },
+    {
+      "signalAt": 1795050900,
+      "day": "2026-11-19",
+      "savedR": 1.25,
+      "legs": 2,
+      "results": {
+        "baseline": {
+          "low": 1.25,
+          "high": 1.25,
+          "ambiguous": false
+        },
+        "BE_0.5R": {
+          "low": 0.5,
+          "high": 0.5,
+          "ambiguous": false
+        },
+        "BE_0.75R": {
+          "low": 1.25,
+          "high": 1.25,
+          "ambiguous": false
+        },
+        "time60_no_0.5R": {
+          "low": 0.7258122743682283,
+          "high": 0.7258122743682283,
+          "ambiguous": false
+        },
+        "time90_no_0.5R": {
+          "low": 1.25,
+          "high": 1.25,
+          "ambiguous": false
+        }
+      }
+    },
+    {
+      "signalAt": 1795023000,
+      "day": "2026-11-18",
+      "savedR": 1.25,
+      "legs": 2,
+      "results": {
+        "baseline": {
+          "low": 1.25,
+          "high": 1.25,
+          "ambiguous": false
+        },
+        "BE_0.5R": {
+          "low": 0.75,
+          "high": 0.75,
+          "ambiguous": false
+        },
+        "BE_0.75R": {
+          "low": 0.75,
+          "high": 0.75,
+          "ambiguous": false
+        },
+        "time60_no_0.5R": {
+          "low": 1.25,
+          "high": 1.25,
+          "ambiguous": false
+        },
+        "time90_no_0.5R": {
+          "low": 1.25,
+          "high": 1.25,
+          "ambiguous": false
+        }
+      }
+    },
+    {
+      "signalAt": 1795010400,
+      "day": "2026-11-18",
+      "savedR": 1.25,
+      "legs": 2,
+      "results": {
+        "baseline": {
+          "low": 1.25,
+          "high": 1.25,
+          "ambiguous": false
+        },
+        "BE_0.5R": {
+          "low": 1.25,
+          "high": 1.25,
+          "ambiguous": false
+        },
+        "BE_0.75R": {
+          "low": 1.25,
+          "high": 1.25,
+          "ambiguous": false
+        },
+        "time60_no_0.5R": {
+          "low": 1.25,
+          "high": 1.25,
+          "ambiguous": false
+        },
+        "time90_no_0.5R": {
+          "low": 1.25,
+          "high": 1.25,
+          "ambiguous": false
+        }
+      }
+    },
+    {
+      "signalAt": 1794973500,
+      "day": "2026-11-18",
+      "savedR": 1.25,
+      "legs": 2,
+      "results": {
+        "baseline": {
+          "low": 1.25,
+          "high": 1.25,
+          "ambiguous": false
+        },
+        "BE_0.5R": {
+          "low": 0.0,
+          "high": 0.0,
+          "ambiguous": false
+        },
+        "BE_0.75R": {
+          "low": 0.5,
+          "high": 0.5,
+          "ambiguous": false
+        },
+        "time60_no_0.5R": {
+          "low": 1.25,
+          "high": 1.25,
+          "ambiguous": false
+        },
+        "time90_no_0.5R": {
+          "low": 1.25,
+          "high": 1.25,
+          "ambiguous": false
+        }
+      }
+    },
+    {
+      "signalAt": 1794976200,
+      "day": "2026-11-18",
+      "savedR": -1.0,
+      "legs": 2,
+      "results": {
+        "baseline": {
+          "low": -1.0,
+          "high": -1.0,
+          "ambiguous": false
+        },
+        "BE_0.5R": {
+          "low": -0.4,
+          "high": -0.4,
+          "ambiguous": false
+        },
+        "BE_0.75R": {
+          "low": -1.0,
+          "high": -1.0,
+          "ambiguous": false
+        },
+        "time60_no_0.5R": {
+          "low": -1.0,
+          "high": -1.0,
+          "ambiguous": false
+        },
+        "time90_no_0.5R": {
+          "low": -1.0,
+          "high": -1.0,
+          "ambiguous": false
+        }
+      }
+    },
+    {
+      "signalAt": 1794958200,
+      "day": "2026-11-18",
+      "savedR": 1.25,
+      "legs": 2,
+      "results": {
+        "baseline": {
+          "low": 1.25,
+          "high": 1.25,
+          "ambiguous": false
+        },
+        "BE_0.5R": {
+          "low": 0.5,
+          "high": 0.5,
+          "ambiguous": false
+        },
+        "BE_0.75R": {
+          "low": 1.25,
+          "high": 1.25,
+          "ambiguous": false
+        },
+        "time60_no_0.5R": {
+          "low": 1.25,
+          "high": 1.25,
+          "ambiguous": false
+        },
+        "time90_no_0.5R": {
+          "low": 1.25,
+          "high": 1.25,
+          "ambiguous": false
+        }
+      }
+    },
+    {
+      "signalAt": 1794897900,
+      "day": "2026-11-17",
+      "savedR": 1.25,
+      "legs": 2,
+      "results": {
+        "baseline": {
+          "low": 1.25,
+          "high": 1.25,
+          "ambiguous": false
+        },
+        "BE_0.5R": {
+          "low": 0.0,
+          "high": 0.0,
+          "ambiguous": false
+        },
+        "BE_0.75R": {
+          "low": 0.0,
+          "high": 0.0,
+          "ambiguous": false
+        },
+        "time60_no_0.5R": {
+          "low": 0.05323751304234014,
+          "high": 0.05323751304234014,
+          "ambiguous": false
+        },
+        "time90_no_0.5R": {
+          "low": 1.25,
+          "high": 1.25,
+          "ambiguous": false
+        }
+      }
+    },
+    {
+      "signalAt": 1794828600,
+      "day": "2026-11-16",
+      "savedR": 1.25,
+      "legs": 2,
+      "results": {
+        "baseline": {
+          "low": 1.25,
+          "high": 1.25,
+          "ambiguous": false
+        },
+        "BE_0.5R": {
+          "low": 0.0,
+          "high": 0.0,
+          "ambiguous": false
+        },
+        "BE_0.75R": {
+          "low": 0.0,
+          "high": 0.0,
+          "ambiguous": false
+        },
+        "time60_no_0.5R": {
+          "low": 1.25,
+          "high": 1.25,
+          "ambiguous": false
+        },
+        "time90_no_0.5R": {
+          "low": 1.25,
+          "high": 1.25,
+          "ambiguous": false
+        }
+      }
+    },
+    {
+      "signalAt": 1794810600,
+      "day": "2026-11-16",
+      "savedR": -1.0,
+      "legs": 2,
+      "results": {
+        "baseline": {
+          "low": -1.0,
+          "high": -1.0,
+          "ambiguous": false
+        },
+        "BE_0.5R": {
+          "low": -1.0,
+          "high": -1.0,
+          "ambiguous": false
+        },
+        "BE_0.75R": {
+          "low": -1.0,
+          "high": -1.0,
+          "ambiguous": false
+        },
+        "time60_no_0.5R": {
+          "low": -0.4394000574978789,
+          "high": -0.4394000574978789,
+          "ambiguous": false
+        },
+        "time90_no_0.5R": {
+          "low": -0.4582261749699764,
+          "high": -0.4582261749699764,
+          "ambiguous": false
+        }
+      }
+    },
+    {
+      "signalAt": 1794797100,
+      "day": "2026-11-16",
+      "savedR": 0.5,
+      "legs": 1,
+      "results": {
+        "baseline": {
+          "low": 0.5,
+          "high": 0.5,
+          "ambiguous": false
+        },
+        "BE_0.5R": {
+          "low": 0.0,
+          "high": 0.0,
+          "ambiguous": false
+        },
+        "BE_0.75R": {
+          "low": 0.0,
+          "high": 0.0,
+          "ambiguous": false
+        },
+        "time60_no_0.5R": {
+          "low": 0.5,
+          "high": 0.5,
+          "ambiguous": false
+        },
+        "time90_no_0.5R": {
+          "low": 0.5,
+          "high": 0.5,
+          "ambiguous": false
+        }
+      }
+    }
+  ]
+}

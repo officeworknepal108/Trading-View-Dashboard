@@ -1,0 +1,9 @@
+{
+  "reviewedSetups": 85,
+  "blockedSetups": 25,
+  "admittedSetups": 59,
+  "unavailableForMissingHistory": [
+    "SCALP_1_1:1793224800:bearish"
+  ],
+  "mismatches": []
+}
